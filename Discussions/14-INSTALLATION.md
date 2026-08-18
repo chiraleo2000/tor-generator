@@ -6,6 +6,9 @@
 
 ดูคำอธิบายแอปที่ `15-APPLICATION_DESCRIPTION.md` และคู่มือผู้ใช้ที่ `13-USER_GUIDELINE.md`
 
+หน้าจำลองบน GitHub Pages (คลิกได้ แต่ไม่เรียก API/LLM): https://chiraleo2000.github.io/tor-generator/  
+ไฟล์คือ `index.html` ที่ราก — ไม่ใช่แอป Docker
+
 ## สิ่งที่ต้องมี
 
 - Docker Desktop (Windows/macOS) หรือ Docker Engine + Compose
@@ -39,9 +42,14 @@ LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m
 LM_STUDIO_TIMEOUT=180
 OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
 LLAMA_CPP_BASE_URL=http://host.docker.internal:8080/v1
+MONGO_URI=mongodb://mongo:27017
+MONGO_DB=tor_docs
+NEO4J_URI=bolt://neo4j:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=changeme_neo4j
 ```
 
-คีย์คลาวด์ (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) ว่างได้ถ้าใช้เฉพาะโมเดลท้องถิ่น — Compose ส่งค่าผ่านไปถ้ามี แต่ไม่บังคับว่างแล้ว คีย์ที่บันทึกจากหน้าผู้ดูแลอยู่ใน Postgres และมีผลทันทีหลังกดบันทึก (ไม่ต้องรีสตาร์ท backend)
+คีย์คลาวด์ (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, และคีย์ Bedrock / Azure Foundry / OpenAI-compatible) ว่างได้ถ้าใช้เฉพาะโมเดลท้องถิ่น — Compose ส่งค่าผ่านไปถ้ามี แต่ไม่บังคับว่างแล้ว คีย์ที่บันทึกจากหน้าผู้ดูแลอยู่ใน Postgres และมีผลทันทีหลังกดบันทึก (ไม่ต้องรีสตาร์ท backend)
 
 ## 2. เปิด LM Studio (โหมดในเครื่อง)
 
@@ -65,16 +73,36 @@ docker compose -p tor-app --env-file .env up -d --build
 | frontend (Next.js) | 3000 |
 | backend (FastAPI) | 4000 |
 | postgres + pgvector | 5432 |
+| mongo (GridFS ต้นฉบับ) | 27017 |
+| neo4j (GraphRAG) | 7474 / 7687 |
 | redis | 6379 |
-| minio | 9000 / 9001 |
+| minio (ส่งออก TOR) | 9000 / 9001 |
 
-รอจนสถานะ healthy แล้วเปิด http://localhost:3000
+รอจนสถานะ healthy แล้วเปิด http://localhost:3000  
+`GET http://localhost:4000/health` ต้องมี `postgres` `redis` `minio` `mongo` `neo4j` เป็น `up`
 
-หลังย้ายมิติ embeddings เป็น 768 backend จะรัน Alembic เมื่อสตาร์ท แล้วต้องฝังเวกเตอร์ใหม่:
+หลังแก้โค้ด frontend/backend ให้ build ใหม่พร้อมบริการใหม่:
 
 ```bash
-docker compose -p tor-app --env-file .env exec backend python -m app.seed_kb
+docker compose -p tor-app --env-file .env up -d --build frontend backend mongo neo4j
 ```
+
+หลังย้ายมิติ embeddings เป็น 768 backend จะรัน Alembic เมื่อสตาร์ท แล้วต้องฝังเวกเตอร์ใหม่จาก PDF ข้อมูลดิบ (ไม่ ingest JSON extracts เก่าเป็นคลังใช้งาน):
+
+จาก **โฮสต์** (เพราะ bind-mount path ไทยมัก Errno 5):
+
+```bash
+cd app/backend
+set POSTGRES_HOST=127.0.0.1
+set LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1
+set MONGO_URI=mongodb://127.0.0.1:27017
+set NEO4J_URI=bolt://127.0.0.1:7687
+python -m app.seed_raw_docs
+```
+
+เปิด LM Studio ที่พอร์ต 1234 และโหลดทั้งแชทกับ embeddings ก่อนรัน `seed_raw_docs` และก่อนชุดเทสต์ที่ติด LLM
+
+`python -m app.seed_kb` ยังมีสำหรับชุด extracts ใน `documents/knowledge-base` แต่**ไม่ใช่คลังใช้งานหลังรีเซ็ตรอบนี้**
 
 ## 4. ใส่ข้อมูลเริ่มต้น
 
@@ -84,32 +112,22 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 บัญชีทดลอง: `officer@example.go.th` / `admin@example.go.th` / `reviewer@example.go.th` รหัส `Passw0rd!`
 
-ใส่ฐานความรู้ (ถ้าเมานต์ `documents/knowledge-base` สำเร็จ) — รวม `*_tor_extract.json`, ชุด `*_combined.json` และ `04-decision-rules`:
+คลังกฎหมายใช้งานรอบนี้มาจาก PDF ใน `documents/sources/` ผ่าน `seed_raw_docs` ด้านบน ไม่ ingest JSON extracts ใน `documents/knowledge-base` เป็นคลังหลัก
 
-```bash
-docker compose -p tor-app --env-file .env exec backend python -m app.seed_kb
-```
-
-บน Windows ชื่อโฟลเดอร์ไทยอาจทำให้ bind-mount ล้ม (Errno 5) — คัดลอกไฟล์ชื่อสั้น (`*_combined.json`, `04-decision-rules/*.json`) เข้าคอนเทนเนอร์ที่ `/tmp/kb-linux-seed` แล้ว:
-
-```bash
-docker compose -p tor-app --env-file .env exec -e KNOWLEDGE_BASE_DIR=/tmp/kb-linux-seed backend python -m app.seed_kb
-```
-
-ชื่อไทยยาวเกิน NAME_MAX ให้ใช้ sidecar `.kbname` คู่กับชื่อสั้น `e01_tor_extract.json` แอปยังร่าง TOR ได้โดยไม่ต้องมี RAG ครบ
+`python -m app.seed_kb` ยังมีถ้าต้องการชุด extracts เก่าสำหรับงานวิจัย — บน Windows ชื่อโฟลเดอร์ไทยอาจทำให้ bind-mount ล้ม (Errno 5)
 
 ## 5. สลับ Local / Cloud จากหน้าผู้ดูแล
 
 เข้าสู่ระบบด้วยบัญชี admin แล้วเปิด **การตั้งค่า AI**:
 
 - รันในเครื่อง: LM Studio / Ollama / llama.cpp เท่านั้น, URL, ชื่อโมเดลแชทและ embeddings, timeout
-- คลาวด์: Claude / OpenAI / Gemini เท่านั้น + API key (ใส่ในหน้านี้ได้ ไม่ต้องใส่ใน `.env`)
+- คลาวด์: Claude / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible + API key (ใส่ในหน้านี้ได้ ไม่ต้องใส่ใน `.env`)
 - ผสม: เลือกแชท/embeddings/คลังเวกเตอร์ทีละส่วน (คลาวด์ต้องมีคีย์)
 - คลังเวกเตอร์: `pgvector` หรือ `qdrant` (ใช้ได้ทั้งโหมดในเครื่อง)
 - **ทดสอบการเชื่อมต่อ** ไม่ต้องรีสตาร์ท
 - **บันทึก** มีผลทันทีในกระบวนการ — ไม่ต้อง `restart backend`
 
-ถ้าเปลี่ยนผู้ให้บริการ embeddings หรือชื่อโมเดลฝังตัว ต้อง `python -m app.seed_kb` อีกครั้ง (หน้าผู้ดูแลจะเตือน `reingest_required`)
+ถ้าเปลี่ยนผู้ให้บริการ embeddings หรือชื่อโมเดลฝังตัว ต้อง `python -m app.seed_raw_docs` อีกครั้ง (หน้าผู้ดูแลจะเตือน `reingest_required`)
 
 ## 6. ตรวจสุขภาพ
 
@@ -160,24 +178,24 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**18 ส.ค. 2026 ~10:58 น.**) กับสแตก Docker (`tor-app`) + LM Studio ที่พอร์ต 1234 — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**18 ส.ค. 2026 ~16:35 น.**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
-![Playwright 13 passed](test-evidence/15-playwright-report.png)
+![Playwright 15 passed](test-evidence/15-playwright-report.png)
 
 | ชุด | ผล |
 |-----|-----|
-| pytest รวม live LM Studio | **1339 ผ่าน** / ครอบคลุม **92%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `main`) |
-| Vitest | **104 ผ่าน** / ครอบคลุม **92.47%** statements ของ lib+stores+หน้าตั้งค่า AI |
-| Playwright headed (แอป) | **13 ผ่าน** / 0 ล้ม — ฟอร์มสร้างโครงการ, เดิน Phase 0–4, ร่างด้วย AI (Gemma), Admin AI ping LM Studio |
+| pytest รวม live LM Studio | **1367 ผ่าน** / ครอบคลุม **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| Vitest | **109 ผ่าน** / ครอบคลุม **90.97%** statements ของ lib+stores+หน้าตั้งค่า AI+chat SSE |
+| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม — ฟอร์มสร้างโครงการ, แชทร่าง Phase 0–1, `/chat`, เดิน Phase 0–4, ร่างด้วย AI (Gemma), Admin AI ping LM Studio |
 | Playwright รายงาน coverage | **3 ผ่าน** (`test:e2e:reports` ที่พอร์ต 8765/8766/8767) |
 | การตั้งค่า AI | โหมดในเครื่อง = LM Studio/Ollama/llama.cpp; โหมดคลาวด์ = Claude/OpenAI/Gemini + คีย์ในหน้า UI; บันทึกมีผลทันที |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 
-![Backend coverage 92%](test-evidence/13-backend-coverage.png)
+![Backend coverage 87%](test-evidence/13-backend-coverage.png)
 
-![Frontend coverage 92.47%](test-evidence/14-frontend-coverage.png)
+![Frontend coverage 90.97%](test-evidence/14-frontend-coverage.png)
 
 รอบนี้แก้ pgvector จริง: คอลัมน์ `metadata` ชนกับ `Table.metadata` ทำให้ upsert ฝังเวกเตอร์ไม่ได้ และ `search()` ล้มตอนสร้าง SQL — ตอนนี้ insert ใช้ `__table__` / `excluded["metadata"]` และ `Vector.cosine_distance` `seed_kb` ข้าม bind-mount ที่อ่านไม่ได้ (Errno 5) และรองรับไฟล์ชื่อสั้น + sidecar `.kbname` เพราะชื่อไทยยาวเกิน NAME_MAX ของ Linux Gemma 4 ใช้ reasoning tokens — `LMStudioLocalProvider` ตั้ง `max_tokens` เริ่มต้น 4096
 
@@ -199,10 +217,11 @@ npm run test:e2e:headed
 
 | เส้นทาง | บทบาท |
 |---------|--------|
-| `docker-compose.yml` | สแตกที่รากรีโป |
+| `docker-compose.yml` | สแตกที่รากรีโป (frontend, backend, postgres, mongo, neo4j, redis, minio) |
 | `app/frontend` | Next.js 14 |
 | `app/backend` | FastAPI |
-| `documents/knowledge-base` | เมล็ด RAG (อ่านอย่างเดียวในคอนเทนเนอร์) |
+| `documents/sources/` | PDF กฎหมาย/คู่มือต้นฉบับ — คลังใช้งานผ่าน `seed_raw_docs` |
+| `documents/knowledge-base` | extracts งานวิจัย (ไม่ใช่คลัง RAG หลักหลังรีเซ็ตรอบนี้) |
 | `.env` | ความลับและโมเดล (ไม่ commit) |
 
 อย่าวางซอร์สแอปหรือเมล็ด RAG ที่รากรีโป — ดู `.cursor/rules/repo-layout.mdc`

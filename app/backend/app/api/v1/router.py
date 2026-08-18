@@ -9,10 +9,12 @@ from app.api.v1.endpoints import (
     admin_users,
     admin_ai_settings,
     auth,
+    chat,
     drafting,
     export,
     files,
     health,
+    intake,
     knowledge_base,
     projects,
     review,
@@ -29,6 +31,7 @@ wizard_router = APIRouter(prefix=PROJECTS_PREFIX, tags=["wizard"])
 wizard_router.include_router(wizard.router)
 drafting_router = APIRouter(prefix=PROJECTS_PREFIX, tags=["drafting"])
 drafting_router.include_router(drafting.router)
+drafting_router.include_router(intake.router)
 review_router = APIRouter(prefix=PROJECTS_PREFIX, tags=["review"])
 review_router.include_router(review.router)
 export_router = APIRouter(prefix=PROJECTS_PREFIX, tags=["export"])
@@ -47,6 +50,7 @@ api_router.include_router(drafting_router)
 api_router.include_router(review_router)
 api_router.include_router(templates.router, prefix="/templates", tags=["templates"])
 api_router.include_router(knowledge_base.router, prefix="/knowledge-base", tags=["knowledge-base"])
+api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(export_router)
 api_router.include_router(files_router)
 api_router.include_router(admin_users.router, prefix="/admin/users", tags=["admin-users"])

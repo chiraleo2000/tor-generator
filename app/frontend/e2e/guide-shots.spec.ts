@@ -27,15 +27,27 @@ test.describe("Guide screenshots", () => {
     await page.getByTestId("nav-help").click();
     await expect(page.getByTestId("help-page")).toBeVisible();
     await saveEvidence(page, "10a-help-overview");
+    await page.getByTestId("help-tab-login").click();
+    await saveEvidence(page, "10g-help-login");
     await page.getByTestId("help-tab-dashboard").click();
     await saveEvidence(page, "10b-help-dashboard");
     await page.getByTestId("help-tab-draft").click();
     await expect(page.getByRole("heading", { name: "กระบวนการร่าง 5 Phase" })).toBeVisible();
     await saveEvidence(page, "10c-help-draft");
+    await page.getByTestId("help-tab-chat").click();
+    await saveEvidence(page, "10f-help-chat");
     await page.getByTestId("help-tab-review").click();
     await saveEvidence(page, "10d-help-review");
     await page.getByTestId("help-tab-kb").click();
     await saveEvidence(page, "10e-help-kb");
+    await page.getByTestId("help-tab-admin").click();
+    await saveEvidence(page, "10h-help-admin");
+    await page.getByTestId("help-tab-faq").click();
+    await saveEvidence(page, "10-help-faq");
+
+    await page.getByTestId("nav-chat").click();
+    await expect(page.getByTestId("chat-page")).toBeVisible();
+    await saveEvidence(page, "13-kb-chat");
 
     await page.getByTestId("nav-review").click();
     await expect(page.getByTestId("review-page")).toBeVisible();

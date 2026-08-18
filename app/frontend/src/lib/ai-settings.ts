@@ -14,10 +14,26 @@ export interface AiSettings {
   anthropic_api_key_set?: boolean;
   openai_api_key_set?: boolean;
   gemini_api_key_set?: boolean;
+  aws_access_key_id: string;
+  aws_secret_access_key: string;
+  aws_secret_access_key_set?: boolean;
+  azure_foundry_api_key: string;
+  azure_foundry_api_key_set?: boolean;
+  openai_compatible_api_key: string;
+  openai_compatible_api_key_set?: boolean;
   openai_chat_model: string;
   gemini_model: string;
   gemini_embedding_model: string;
   vector_store_provider: string;
+  bedrock_region: string;
+  bedrock_model_id: string;
+  bedrock_embedding_model_id: string;
+  azure_foundry_endpoint: string;
+  azure_foundry_deployment: string;
+  azure_foundry_api_version: string;
+  openai_compatible_base_url: string;
+  openai_compatible_model: string;
+  openai_compatible_embedding_model: string;
   restart_required?: boolean;
   reingest_required?: boolean;
   default_chat_model?: string;
@@ -34,6 +50,9 @@ export const CLOUD_LLMS = [
   { value: "claude", label: "Claude (Anthropic)" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini (Google)" },
+  { value: "bedrock", label: "Amazon Bedrock" },
+  { value: "azure_foundry", label: "Azure AI Foundry" },
+  { value: "openai_compatible", label: "อื่น ๆ (OpenAI-compatible)" },
 ];
 
 export const LOCAL_EMBEDS = [
@@ -44,6 +63,9 @@ export const LOCAL_EMBEDS = [
 export const CLOUD_EMBEDS = [
   { value: "openai", label: "OpenAI embeddings" },
   { value: "gemini", label: "Gemini embeddings" },
+  { value: "bedrock", label: "Bedrock (Titan)" },
+  { value: "azure_foundry", label: "Azure Foundry embeddings" },
+  { value: "openai_compatible", label: "OpenAI-compatible embeddings" },
 ];
 
 export const VECTOR_STORES = [
@@ -68,6 +90,19 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   gemini_model: "gemini-2.0-flash",
   gemini_embedding_model: "text-embedding-004",
   vector_store_provider: "pgvector",
+  aws_access_key_id: "",
+  aws_secret_access_key: "",
+  azure_foundry_api_key: "",
+  openai_compatible_api_key: "",
+  bedrock_region: "ap-southeast-1",
+  bedrock_model_id: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  bedrock_embedding_model_id: "amazon.titan-embed-text-v2:0",
+  azure_foundry_endpoint: "",
+  azure_foundry_deployment: "",
+  azure_foundry_api_version: "2024-10-21",
+  openai_compatible_base_url: "",
+  openai_compatible_model: "",
+  openai_compatible_embedding_model: "text-embedding-3-small",
 };
 
 export function llmOptionsForMode(mode: string) {
@@ -128,9 +163,21 @@ export function nextFormOnModeChange(prev: AiSettings, mode: string): AiSettings
 
 export function saveSuccessMessage(reingestRequired: boolean): string {
   if (reingestRequired) {
-    return "บันทึกแล้ว — มีผลทันที เปลี่ยน embeddings แล้ว ต้องรัน python -m app.seed_kb เพื่อฝังเวกเตอร์ใหม่";
+    return "บันทึกแล้ว — มีผลทันที เปลี่ยน embeddings แล้ว ต้องรัน python -m app.seed_raw_docs เพื่อฝังเวกเตอร์ใหม่";
   }
   return "บันทึกแล้ว — มีผลทันที ไม่ต้องรีสตาร์ท backend";
+}
+
+export function showBedrockFields(llmProvider: string, embedProvider: string): boolean {
+  return llmProvider === "bedrock" || embedProvider === "bedrock";
+}
+
+export function showAzureFields(llmProvider: string, embedProvider: string): boolean {
+  return llmProvider === "azure_foundry" || embedProvider === "azure_foundry";
+}
+
+export function showCompatFields(llmProvider: string, embedProvider: string): boolean {
+  return llmProvider === "openai_compatible" || embedProvider === "openai_compatible";
 }
 
 export function isMaskedSecret(value: string | undefined): boolean {

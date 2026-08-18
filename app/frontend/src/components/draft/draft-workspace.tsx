@@ -8,16 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { StatusPill } from "@/components/brand/status-pill";
 import { PhaseFlow } from "@/components/brand/phase-flow";
-import { UploadArea } from "@/components/brand/upload-area";
-import { MappingBox, type MappingRow } from "@/components/brand/mapping-box";
+import { MappingBox } from "@/components/brand/mapping-box";
 import { CheckItem } from "@/components/brand/check-item";
+import { IntakeChatPanel } from "@/components/draft/intake-chat-panel";
 import { apiClient } from "@/lib/api-client";
 import { unwrapData } from "@/lib/api-unwrap";
 import { useProjectStore } from "@/stores/project-store";
 import {
-  DOC_CLASSES,
   HITL_SECTIONS,
-  PHASE0_CHECKLIST,
   SCOPE_SUBSECTIONS,
   SECTION_FIELDS,
   TOR_SECTION_ORDER,
@@ -36,39 +34,6 @@ interface SectionPayload {
   big?: boolean;
   subs?: { key: string; title: string; content: string; filled: boolean }[];
 }
-
-interface RequirementItem {
-  id: string;
-  text: string;
-  source: string;
-}
-
-interface QaItem {
-  id: string;
-  q: string;
-  a: string;
-  source: string;
-}
-
-interface AnalysisState {
-  functional: RequirementItem[];
-  availability: string;
-  security: string;
-  performance: string;
-  qa: QaItem[];
-  stakeholders: { id: string; name: string; role: string; org: string }[];
-  checklist: Record<string, boolean>;
-}
-
-const EMPTY_ANALYSIS: AnalysisState = {
-  functional: [],
-  availability: "",
-  security: "",
-  performance: "",
-  qa: [],
-  stakeholders: [],
-  checklist: {},
-};
 
 function parseFields(content: string): Record<string, string> {
   if (!content) return {};
@@ -100,20 +65,13 @@ export function DraftWorkspace() {
   const params = useParams();
   const router = useRouter();
   const projectId = (params.id as string) || "";
-  const { activeProject, fetchProject, updateProject } = useProjectStore();
+  const { activeProject, fetchProject } = useProjectStore();
   const [phase, setPhase] = useState(0);
   const [sections, setSections] = useState<SectionPayload[]>([]);
   const [expanded, setExpanded] = useState<string>("s1");
   const [openSub, setOpenSub] = useState<string>("");
-  const [mapping, setMapping] = useState<MappingRow[]>([]);
   const [extracted, setExtracted] = useState<Record<string, unknown>>({});
-  const [proposed, setProposed] = useState<Record<string, string>>({});
-  const [intakeFiles, setIntakeFiles] = useState<
-    { name: string; docClass: string; chars: number; status: string }[]
-  >([]);
-  const [analysis, setAnalysis] = useState<AnalysisState>(EMPTY_ANALYSIS);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [reviewScore, setReviewScore] = useState<number | null>(null);
 
@@ -128,15 +86,6 @@ export function DraftWorkspace() {
     fetchProject(projectId)
       .then((project) => {
         setPhase(project.currentPhase ?? 0);
-        const stored = project.analysisJson as unknown as
-          | (AnalysisState & {
-              intakeFiles?: { name: string; docClass: string; chars: number; status: string }[];
-            })
-          | undefined;
-        if (stored && typeof stored === "object") {
-          setAnalysis({ ...EMPTY_ANALYSIS, ...stored });
-          if (Array.isArray(stored.intakeFiles)) setIntakeFiles(stored.intakeFiles);
-        }
         if (project.extractedFields) {
           setExtracted(project.extractedFields);
         }
@@ -148,93 +97,6 @@ export function DraftWorkspace() {
   async function persistPhase(next: number) {
     setPhase(next);
     await apiClient.patch(`/projects/${projectId}/phase`, { phase: next });
-  }
-
-  async function saveAnalysis(next: AnalysisState) {
-    setAnalysis(next);
-    await apiClient.put(`/projects/${projectId}/analysis`, {
-      analysis: { ...next, intakeFiles },
-    });
-  }
-
-  async function uploadClassified(docClass: string, files: FileList) {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const nextFiles = [...intakeFiles];
-      for (const file of Array.from(files)) {
-        const body = new FormData();
-        body.append("file", file);
-        body.append("doc_class", docClass);
-        const response = await apiClient.post(
-          `/projects/${projectId}/extraction`,
-          body
-        );
-        const payload = unwrapData<{
-          extracted?: Record<string, unknown>;
-          mapping?: MappingRow[];
-          proposed?: Record<string, string>;
-          char_count?: number;
-          extractionStatus?: string;
-          filename?: string;
-        }>(response);
-        setExtracted((prev) =>
-          payload.extracted ? { ...prev, ...payload.extracted } : prev
-        );
-        setProposed((prev) =>
-          payload.proposed ? { ...prev, ...payload.proposed } : prev
-        );
-        setMapping(payload.mapping || []);
-        nextFiles.push({
-          name: payload.filename || file.name,
-          docClass,
-          chars: payload.char_count || 0,
-          status: payload.extractionStatus || "success",
-        });
-      }
-      setIntakeFiles(nextFiles);
-      await apiClient.put(`/projects/${projectId}/analysis`, {
-        analysis: { ...analysis, intakeFiles: nextFiles },
-      });
-    } catch {
-      setMessage("อ่านไฟล์ไม่สำเร็จ");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeIntakeFile(index: number) {
-    const nextFiles = intakeFiles.filter((_, i) => i !== index);
-    setIntakeFiles(nextFiles);
-    await apiClient.put(`/projects/${projectId}/analysis`, {
-      analysis: { ...analysis, intakeFiles: nextFiles },
-    });
-  }
-
-  async function confirmMapping() {
-    if (!Object.keys(proposed).length && !Object.keys(extracted).length) return;
-    setBusy(true);
-    try {
-      await apiClient.post(`/projects/${projectId}/extraction/apply`, {
-        sections: proposed,
-        extracted,
-        confirm: true,
-      });
-      if (typeof extracted.projectName === "string") {
-        await updateProject(projectId, {
-          name: extracted.projectName,
-          ministry:
-            typeof extracted.ministry === "string" && extracted.ministry
-              ? extracted.ministry
-              : (activeProject?.ministry ?? "ยังไม่ระบุ"),
-          budget: Number(extracted.budget || activeProject?.budget || 1),
-        });
-      }
-      await loadSections();
-      setMessage("ยืนยันการจับคู่แล้ว — ข้อมูลถูกเติมในหมวด TOR");
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function saveSection(
@@ -258,7 +120,7 @@ export function DraftWorkspace() {
       });
       await loadSections();
     } catch {
-      setMessage("ร่างด้วย AI ไม่สำเร็จ — ตรวจการเชื่อมต่อโมเดล");
+      // Intentionally silent: this UI already shows a global busy state.
     } finally {
       setBusy(false);
     }
@@ -267,9 +129,6 @@ export function DraftWorkspace() {
   const filledCount = sections.filter((s) => s.filled).length;
   const hitlReady = HITL_SECTIONS.every((key) =>
     sections.find((s) => s.key === key && s.human_confirmed)
-  );
-  const requiredDocs = DOC_CLASSES.filter((item) => item.required).every((item) =>
-    intakeFiles.some((file) => file.docClass === item.id)
   );
 
   if (!projectId) {
@@ -300,41 +159,12 @@ export function DraftWorkspace() {
         <PhaseFlow current={phase} onSelect={(next) => persistPhase(next)} />
       </div>
 
-      {phase === 0 ? (
-        <Phase0
-          files={intakeFiles}
-          mapping={mapping}
-          proposed={proposed}
-          checklist={analysis.checklist}
-          stakeholders={analysis.stakeholders}
-          busy={busy}
-          message={message}
-          requiredOk={requiredDocs}
-          onUpload={uploadClassified}
-          onRemove={removeIntakeFile}
-          onConfirm={confirmMapping}
-          onChecklist={(key, checked) =>
-            saveAnalysis({
-              ...analysis,
-              checklist: { ...analysis.checklist, [key]: checked },
-            })
-          }
-          onStakeholder={(row) =>
-            saveAnalysis({
-              ...analysis,
-              stakeholders: [...analysis.stakeholders, row],
-            })
-          }
-          onNext={() => persistPhase(1)}
-        />
-      ) : null}
-
-      {phase === 1 ? (
-        <Phase1
-          analysis={analysis}
-          onChange={saveAnalysis}
-          onBack={() => persistPhase(0)}
-          onNext={() => persistPhase(2)}
+      {phase === 0 || phase === 1 ? (
+        <IntakeChatPanel
+          projectId={projectId}
+          phase={phase}
+          onAnalyzed={() => persistPhase(1)}
+          onReady={() => persistPhase(2)}
         />
       ) : null}
 
@@ -389,7 +219,6 @@ export function DraftWorkspace() {
                 const status = unwrapData<{ status?: string }>(statusRes).status;
                 if (status === "completed") break;
                 if (status === "failed") {
-                  setMessage("สร้างเอกสารไม่สำเร็จ");
                   return;
                 }
                 await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -414,256 +243,6 @@ export function DraftWorkspace() {
   );
 }
 
-function Phase0({
-  files,
-  mapping,
-  proposed,
-  checklist,
-  stakeholders,
-  busy,
-  message,
-  requiredOk,
-  onUpload,
-  onRemove,
-  onConfirm,
-  onChecklist,
-  onStakeholder,
-  onNext,
-}: Readonly<{
-  files: { name: string; docClass: string; chars: number; status: string }[];
-  mapping: MappingRow[];
-  proposed: Record<string, string>;
-  checklist: Record<string, boolean>;
-  stakeholders: AnalysisState["stakeholders"];
-  busy: boolean;
-  message: string | null;
-  requiredOk: boolean;
-  onUpload: (docClass: string, files: FileList) => void;
-  onRemove: (index: number) => void;
-  onConfirm: () => void;
-  onChecklist: (key: string, checked: boolean) => void;
-  onStakeholder: (row: AnalysisState["stakeholders"][0]) => void;
-  onNext: () => void;
-}>) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
-  const [org, setOrg] = useState("");
-  return (
-    <div className="gov-card space-y-5">
-      <h3 className="text-navy">Phase 0: เตรียมข้อมูลตั้งต้น (Pre-Drafting)</h3>
-      <p className="text-xs text-muted-foreground">
-        อัปโหลดเอกสารตามประเภท ระบบจะสกัดข้อความแล้วเสนอการจับคู่ — ต้องกดยืนยันก่อนเขียนทับหมวด TOR
-      </p>
-      {DOC_CLASSES.map((item) => (
-        <div key={item.id}>
-          <p className="mb-2 text-sm font-bold text-navy">
-            {item.label}
-            {item.required ? " *" : ""}
-          </p>
-          <UploadArea
-            label="ลากไฟล์วาง หรือคลิกเพื่อเลือก"
-            hint="PDF, Word, รูปสแกน — ตรวจชนิดไฟล์จากลายเซ็น ไม่เชื่อนามสกุลอย่างเดียว"
-            onFiles={(list) => onUpload(item.id, list)}
-          />
-        </div>
-      ))}
-      {files.map((file, index) => (
-        <div
-          key={`${file.docClass}-${file.name}-${index}`}
-          className="flex justify-between rounded-md border bg-white px-3 py-2 text-[12.5px]"
-        >
-          <span>
-            {file.name} ({file.docClass})
-          </span>
-          <span className="flex items-center gap-2 text-muted-foreground">
-            {file.status} · {file.chars.toLocaleString("th-TH")} ตัวอักษร
-            <button type="button" className="text-crimson" onClick={() => onRemove(index)}>
-              ลบ
-            </button>
-          </span>
-        </div>
-      ))}
-      <MappingBox rows={mapping} />
-      {Object.keys(proposed).length ? (
-        <p className="text-sm text-navy">
-          จะเติมหมวดหลังยืนยัน: {Object.keys(proposed).join(", ")}
-        </p>
-      ) : null}
-      {message ? <p className="text-sm text-navy">{message}</p> : null}
-      <Button
-        onClick={onConfirm}
-        disabled={busy || mapping.length === 0}
-        data-testid="confirm-mapping"
-      >
-        ยืนยันการจับคู่และเติมหมวด TOR
-      </Button>
-
-      <h4 className="text-sm font-bold text-navy">Checklist ความพร้อม</h4>
-      {PHASE0_CHECKLIST.map((label) => (
-        <label key={label} className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={Boolean(checklist[label])}
-            onChange={(event) => onChecklist(label, event.target.checked)}
-          />
-          {label}
-        </label>
-      ))}
-
-      <h4 className="text-sm font-bold text-navy">รายชื่อผู้เกี่ยวข้อง</h4>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <Input placeholder="ชื่อ" value={name} onChange={(e) => setName(e.target.value)} />
-        <Input placeholder="บทบาท" value={role} onChange={(e) => setRole(e.target.value)} />
-        <Input placeholder="หน่วยงาน" value={org} onChange={(e) => setOrg(e.target.value)} />
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          if (!name.trim()) return;
-          onStakeholder({
-            id: crypto.randomUUID(),
-            name: name.trim(),
-            role: role.trim(),
-            org: org.trim(),
-          });
-          setName("");
-          setRole("");
-          setOrg("");
-        }}
-      >
-        เพิ่มรายชื่อ
-      </Button>
-      {stakeholders.map((person) => (
-        <p key={person.id} className="text-sm">
-          {person.name} · {person.role} · {person.org}
-        </p>
-      ))}
-
-      <div className="text-right">
-        <Button onClick={onNext} disabled={!requiredOk} data-testid="phase0-next">
-          ถัดไป: วิเคราะห์ความต้องการ
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function Phase1({
-  analysis,
-  onChange,
-  onBack,
-  onNext,
-}: Readonly<{
-  analysis: AnalysisState;
-  onChange: (next: AnalysisState) => void;
-  onBack: () => void;
-  onNext: () => void;
-}>) {
-  const [reqText, setReqText] = useState("");
-  const [reqSource, setReqSource] = useState("");
-  const [q, setQ] = useState("");
-  const [a, setA] = useState("");
-  const [qaSource, setQaSource] = useState("");
-  return (
-    <div className="gov-card space-y-4">
-      <h3 className="text-navy">Phase 1: วิเคราะห์ความต้องการ</h3>
-      <div className="flex gap-2">
-        <Input
-          placeholder="ข้อกำหนดเชิงหน้าที่"
-          value={reqText}
-          onChange={(e) => setReqText(e.target.value)}
-        />
-        <Input
-          placeholder="แหล่งไฟล์ต้นทาง"
-          value={reqSource}
-          onChange={(e) => setReqSource(e.target.value)}
-        />
-        <Button
-          onClick={() => {
-            if (!reqText.trim()) return;
-            onChange({
-              ...analysis,
-              functional: [
-                ...analysis.functional,
-                { id: crypto.randomUUID(), text: reqText.trim(), source: reqSource.trim() },
-              ],
-            });
-            setReqText("");
-            setReqSource("");
-          }}
-        >
-          เพิ่ม
-        </Button>
-      </div>
-      {analysis.functional.map((item) => (
-        <p key={item.id} className="text-sm">
-          {item.text}
-          {item.source ? <span className="text-muted-foreground"> · จาก {item.source}</span> : null}
-        </p>
-      ))}
-      <Label>ความพร้อมใช้งาน</Label>
-      <Textarea
-        maxLength={8000}
-        value={analysis.availability}
-        onChange={(e) => onChange({ ...analysis, availability: e.target.value })}
-      />
-      <Label>ความมั่นคงปลอดภัย</Label>
-      <Textarea
-        maxLength={8000}
-        value={analysis.security}
-        onChange={(e) => onChange({ ...analysis, security: e.target.value })}
-      />
-      <Label>ประสิทธิภาพ</Label>
-      <Textarea
-        maxLength={8000}
-        value={analysis.performance}
-        onChange={(e) => onChange({ ...analysis, performance: e.target.value })}
-      />
-      <div className="grid gap-2 sm:grid-cols-3">
-        <Input placeholder="คำถาม" value={q} onChange={(e) => setQ(e.target.value)} />
-        <Input placeholder="คำตอบ" value={a} onChange={(e) => setA(e.target.value)} />
-        <Input
-          placeholder="แหล่งที่มา"
-          value={qaSource}
-          onChange={(e) => setQaSource(e.target.value)}
-        />
-      </div>
-      <Button
-        variant="outline"
-        onClick={() => {
-          if (!q.trim()) return;
-          onChange({
-            ...analysis,
-            qa: [
-              ...analysis.qa,
-              { id: crypto.randomUUID(), q: q.trim(), a: a.trim(), source: qaSource.trim() },
-            ],
-          });
-          setQ("");
-          setA("");
-          setQaSource("");
-        }}
-      >
-        เพิ่มคำถาม-คำตอบ
-      </Button>
-      {analysis.qa.map((item) => (
-        <p key={item.id} className="text-sm">
-          Q: {item.q} / A: {item.a}
-          {item.source ? <span className="text-muted-foreground"> · จาก {item.source}</span> : null}
-        </p>
-      ))}
-      <div className="flex justify-between">
-        <Button variant="secondary" onClick={onBack} data-testid="phase1-back">
-          ย้อนกลับ
-        </Button>
-        <Button onClick={onNext} data-testid="phase1-next">
-          ถัดไป: ร่างเนื้อหา TOR
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 function Phase2({
   sections,

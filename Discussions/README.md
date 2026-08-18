@@ -4,7 +4,7 @@ Architecture, API, UX, and product write-ups. **Not imported** by Next.js or Fas
 
 Help text in the running app is under `/help` (`app/frontend`). The current operator/install/architecture/test guides are `13`–`18` below (Docker + LM Studio Gemma). Files `01`–`12` are earlier design notes.
 
-เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma คือ **13–18** (ไม่มีแฟ้ม 19 หรือ 20):
+เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–18** (ไม่มีแฟ้ม 19 หรือ 20):
 
 | File | Topic |
 |------|--------|

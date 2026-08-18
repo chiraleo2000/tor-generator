@@ -1,7 +1,7 @@
 """Health check endpoints.
 
 Provides liveness and readiness probes for the application.
-- GET /health: Checks all dependencies (PostgreSQL, Redis, MinIO) and returns aggregate status.
+- GET /health: Checks PostgreSQL, Redis, MinIO, MongoDB, and Neo4j.
 - GET /health/ready: Readiness probe — checks DB + Redis (critical for request handling).
 
 Requirements: 1.5, 1.7
@@ -57,6 +57,28 @@ def _check_minio(request: Request) -> str:
         return "down"
 
 
+def _check_mongo(request: Request) -> str:
+    mongo_client = getattr(request.app.state, "mongo", None)
+    if mongo_client is None:
+        return "down"
+    try:
+        mongo_client.admin.command("ping")
+        return "up"
+    except Exception:
+        return "down"
+
+
+async def _check_neo4j(request: Request) -> str:
+    driver = getattr(request.app.state, "neo4j", None)
+    if driver is None:
+        return "down"
+    try:
+        await driver.verify_connectivity()
+        return "up"
+    except Exception:
+        return "down"
+
+
 def _compute_aggregate_status(services: dict[str, str]) -> str:
     """Compute aggregate status from individual service statuses.
 
@@ -78,17 +100,21 @@ def _compute_aggregate_status(services: dict[str, str]) -> str:
 async def health_check(request: Request):
     """Full health check — liveness + dependency check.
 
-    Checks PostgreSQL, Redis, and MinIO connectivity and returns
+    Checks PostgreSQL, Redis, MinIO, MongoDB, and Neo4j and returns
     aggregate status with individual service statuses and a timestamp.
     """
     postgres_status = await _check_postgres(request)
     redis_status = await _check_redis(request)
     minio_status = _check_minio(request)
+    mongo_status = _check_mongo(request)
+    neo4j_status = await _check_neo4j(request)
 
     services = {
         "postgres": postgres_status,
         "redis": redis_status,
         "minio": minio_status,
+        "mongo": mongo_status,
+        "neo4j": neo4j_status,
     }
 
     return {

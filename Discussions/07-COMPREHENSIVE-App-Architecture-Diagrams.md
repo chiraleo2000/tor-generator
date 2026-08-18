@@ -1,6 +1,9 @@
 # 07 — COMPREHENSIVE App Architecture Diagrams
 ### ระบบ TOR Generator (ร่าง TOR + ตรวจสอบ TOR) — สถาปัตยกรรมเชิงลึกระดับ System / Component / Sequence / Deployment / Data Model
 
+> **ไดอะแกรมของแอปที่รันอยู่ตอนนี้อยู่ที่ `16-BACKEND_ARCHITECTURE.md` และ `17-FRONTEND_ARCHITECTURE.md`**  
+> ไฟล์นี้เป็นแผน PoC (client-only, Rule-based) อย่าใช้เป็นสแตก Docker ปัจจุบัน
+
 เอกสารนี้ต่อเนื่องจากเอกสาร 05 (Flow Diagrams) โดยลงรายละเอียดสถาปัตยกรรมให้ครอบคลุมมากขึ้นในระดับที่ใช้อ้างอิงสำหรับทีมพัฒนาจริง ครอบคลุมทั้งสถาปัตยกรรมของ **PoC ปัจจุบัน** (Client-only, Rule-based, ไม่มี LLM) และสถาปัตยกรรม **เป้าหมาย Production** ที่ต่อยอดจาก PoC
 
 สอดคล้องกับเอกสาร 01 (โครงสร้าง TOR), 02 (ขั้นตอนการร่าง), 03 (ภาพรวมสถาปัตยกรรมเทคนิค) และ 04 (คู่มือ Implementation ของ Component)

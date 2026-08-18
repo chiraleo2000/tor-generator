@@ -13,6 +13,9 @@ from app.models.suggestion import Suggestion
 from app.models.audit_log import AuditLog
 from app.models.uploaded_file import UploadedFile
 from app.models.ai_runtime_settings import AiRuntimeSettings
+from app.models.chat_room import ChatRoom
+from app.models.chat_message import ChatMessage
+from app.models.chat_prompt_template import ChatPromptTemplate
 
 __all__ = [
     "Base",
@@ -28,4 +31,7 @@ __all__ = [
     "AuditLog",
     "UploadedFile",
     "AiRuntimeSettings",
+    "ChatRoom",
+    "ChatMessage",
+    "ChatPromptTemplate",
 ]

@@ -71,12 +71,34 @@ def mock_minio_down():
     return minio
 
 
+@pytest.fixture
+def mock_mongo():
+    mongo = MagicMock()
+    mongo.admin.command = MagicMock(return_value={"ok": 1})
+    return mongo
+
+
+@pytest.fixture
+def mock_neo4j():
+    driver = MagicMock()
+    driver.verify_connectivity = AsyncMock(return_value=None)
+    return driver
+
+
+def _core_up(monkeypatch, app, mock_db_engine, mock_redis, mock_minio, mock_mongo, mock_neo4j):
+    monkeypatch.setattr(app.state, "db_engine", mock_db_engine, raising=False)
+    monkeypatch.setattr(app.state, "redis", mock_redis, raising=False)
+    monkeypatch.setattr(app.state, "minio", mock_minio, raising=False)
+    monkeypatch.setattr(app.state, "mongo", mock_mongo, raising=False)
+    monkeypatch.setattr(app.state, "neo4j", mock_neo4j, raising=False)
+
+
 @pytest.mark.asyncio
-async def test_health_all_services_up(mock_db_engine, mock_redis, mock_minio):
+async def test_health_all_services_up(
+    mock_db_engine, mock_redis, mock_minio, mock_mongo, mock_neo4j, monkeypatch
+):
     """When all services are up, status should be 'healthy'."""
-    app.state.db_engine = mock_db_engine
-    app.state.redis = mock_redis
-    app.state.minio = mock_minio
+    _core_up(monkeypatch, app, mock_db_engine, mock_redis, mock_minio, mock_mongo, mock_neo4j)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -88,15 +110,19 @@ async def test_health_all_services_up(mock_db_engine, mock_redis, mock_minio):
     assert data["services"]["postgres"] == "up"
     assert data["services"]["redis"] == "up"
     assert data["services"]["minio"] == "up"
+    assert data["services"]["mongo"] == "up"
+    assert data["services"]["neo4j"] == "up"
     assert "timestamp" in data
 
 
 @pytest.mark.asyncio
-async def test_health_all_services_down():
+async def test_health_all_services_down(monkeypatch):
     """When all services are down (None), status should be 'unhealthy'."""
-    app.state.db_engine = None
-    app.state.redis = None
-    app.state.minio = None
+    monkeypatch.setattr(app.state, "db_engine", None, raising=False)
+    monkeypatch.setattr(app.state, "redis", None, raising=False)
+    monkeypatch.setattr(app.state, "minio", None, raising=False)
+    monkeypatch.setattr(app.state, "mongo", None, raising=False)
+    monkeypatch.setattr(app.state, "neo4j", None, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -108,14 +134,16 @@ async def test_health_all_services_down():
     assert data["services"]["postgres"] == "down"
     assert data["services"]["redis"] == "down"
     assert data["services"]["minio"] == "down"
+    assert data["services"]["mongo"] == "down"
+    assert data["services"]["neo4j"] == "down"
 
 
 @pytest.mark.asyncio
-async def test_health_degraded_postgres_down(mock_redis, mock_minio):
+async def test_health_degraded_postgres_down(mock_redis, mock_minio, monkeypatch):
     """When postgres is down but redis and minio are up, status should be 'degraded'."""
-    app.state.db_engine = None
-    app.state.redis = mock_redis
-    app.state.minio = mock_minio
+    monkeypatch.setattr(app.state, "db_engine", None, raising=False)
+    monkeypatch.setattr(app.state, "redis", mock_redis, raising=False)
+    monkeypatch.setattr(app.state, "minio", mock_minio, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -130,11 +158,13 @@ async def test_health_degraded_postgres_down(mock_redis, mock_minio):
 
 
 @pytest.mark.asyncio
-async def test_health_degraded_redis_exception(mock_db_engine, mock_redis_down, mock_minio):
+async def test_health_degraded_redis_exception(
+    mock_db_engine, mock_redis_down, mock_minio, monkeypatch
+):
     """When redis raises an exception on ping, it should report 'down' and status is 'degraded'."""
-    app.state.db_engine = mock_db_engine
-    app.state.redis = mock_redis_down
-    app.state.minio = mock_minio
+    monkeypatch.setattr(app.state, "db_engine", mock_db_engine, raising=False)
+    monkeypatch.setattr(app.state, "redis", mock_redis_down, raising=False)
+    monkeypatch.setattr(app.state, "minio", mock_minio, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -149,11 +179,13 @@ async def test_health_degraded_redis_exception(mock_db_engine, mock_redis_down, 
 
 
 @pytest.mark.asyncio
-async def test_health_degraded_minio_exception(mock_db_engine, mock_redis, mock_minio_down):
+async def test_health_degraded_minio_exception(
+    mock_db_engine, mock_redis, mock_minio_down, monkeypatch
+):
     """When minio raises an exception, it should report 'down' and status is 'degraded'."""
-    app.state.db_engine = mock_db_engine
-    app.state.redis = mock_redis
-    app.state.minio = mock_minio_down
+    monkeypatch.setattr(app.state, "db_engine", mock_db_engine, raising=False)
+    monkeypatch.setattr(app.state, "redis", mock_redis, raising=False)
+    monkeypatch.setattr(app.state, "minio", mock_minio_down, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -168,11 +200,13 @@ async def test_health_degraded_minio_exception(mock_db_engine, mock_redis, mock_
 
 
 @pytest.mark.asyncio
-async def test_health_degraded_db_connect_exception(mock_db_engine_down, mock_redis, mock_minio):
+async def test_health_degraded_db_connect_exception(
+    mock_db_engine_down, mock_redis, mock_minio, monkeypatch
+):
     """When db engine raises on connect, postgres should be 'down'."""
-    app.state.db_engine = mock_db_engine_down
-    app.state.redis = mock_redis
-    app.state.minio = mock_minio
+    monkeypatch.setattr(app.state, "db_engine", mock_db_engine_down, raising=False)
+    monkeypatch.setattr(app.state, "redis", mock_redis, raising=False)
+    monkeypatch.setattr(app.state, "minio", mock_minio, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -187,10 +221,10 @@ async def test_health_degraded_db_connect_exception(mock_db_engine_down, mock_re
 
 
 @pytest.mark.asyncio
-async def test_readiness_ready(mock_db_engine, mock_redis):
+async def test_readiness_ready(mock_db_engine, mock_redis, monkeypatch):
     """When DB and Redis are up, readiness status should be 'ready'."""
-    app.state.db_engine = mock_db_engine
-    app.state.redis = mock_redis
+    monkeypatch.setattr(app.state, "db_engine", mock_db_engine, raising=False)
+    monkeypatch.setattr(app.state, "redis", mock_redis, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -204,10 +238,10 @@ async def test_readiness_ready(mock_db_engine, mock_redis):
 
 
 @pytest.mark.asyncio
-async def test_readiness_not_ready_db_down(mock_redis):
+async def test_readiness_not_ready_db_down(mock_redis, monkeypatch):
     """When DB is down, readiness status should be 'not_ready'."""
-    app.state.db_engine = None
-    app.state.redis = mock_redis
+    monkeypatch.setattr(app.state, "db_engine", None, raising=False)
+    monkeypatch.setattr(app.state, "redis", mock_redis, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -221,10 +255,10 @@ async def test_readiness_not_ready_db_down(mock_redis):
 
 
 @pytest.mark.asyncio
-async def test_readiness_not_ready_redis_down(mock_db_engine):
+async def test_readiness_not_ready_redis_down(mock_db_engine, monkeypatch):
     """When Redis is down, readiness status should be 'not_ready'."""
-    app.state.db_engine = mock_db_engine
-    app.state.redis = None
+    monkeypatch.setattr(app.state, "db_engine", mock_db_engine, raising=False)
+    monkeypatch.setattr(app.state, "redis", None, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -238,10 +272,10 @@ async def test_readiness_not_ready_redis_down(mock_db_engine):
 
 
 @pytest.mark.asyncio
-async def test_readiness_not_ready_all_down():
+async def test_readiness_not_ready_all_down(monkeypatch):
     """When both DB and Redis are down, readiness status should be 'not_ready'."""
-    app.state.db_engine = None
-    app.state.redis = None
+    monkeypatch.setattr(app.state, "db_engine", None, raising=False)
+    monkeypatch.setattr(app.state, "redis", None, raising=False)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

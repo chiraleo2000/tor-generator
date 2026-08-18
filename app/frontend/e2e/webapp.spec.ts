@@ -13,6 +13,8 @@ test.describe("Help and standalone review", () => {
     await expect(page.getByRole("heading", { name: "ภาพรวมระบบ" })).toBeVisible();
     await page.getByTestId("help-tab-draft").click();
     await expect(page.getByRole("heading", { name: "กระบวนการร่าง 5 Phase" })).toBeVisible();
+    await page.getByTestId("help-tab-chat").click();
+    await expect(page.getByRole("heading", { name: "ถาม-ตอบ" })).toBeVisible();
     await page.getByTestId("help-tab-faq").click();
     await expect(page.getByText(/google\/gemma-4-e4b/)).toBeVisible();
     await expect(page.getByText(/text-embedding-embeddinggemma-300m/)).toBeVisible();

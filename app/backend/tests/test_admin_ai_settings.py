@@ -425,23 +425,31 @@ def test_validate_ollama_and_llama_urls():
 
 
 def test_validate_invalid_mode_and_providers():
+    invalid_mode = _local_body(deployment_mode="invalid")
     with pytest.raises(ValidationError) as mode_exc:
-        _validate_update(_local_body(deployment_mode="invalid"), {})
+        _validate_update(invalid_mode, {})
     assert mode_exc.value.field == "deployment_mode"
+
+    unknown_llm = _local_body(llm_provider="unknown")
     with pytest.raises(ValidationError) as llm_exc:
-        _validate_update(_local_body(llm_provider="unknown"), {})
+        _validate_update(unknown_llm, {})
     assert llm_exc.value.field == "llm_provider"
+
+    unknown_embed = _local_body(embedding_provider="unknown")
     with pytest.raises(ValidationError) as embed_exc:
-        _validate_update(_local_body(embedding_provider="unknown"), {})
+        _validate_update(unknown_embed, {})
     assert embed_exc.value.field == "embedding_provider"
 
 
 def test_validate_local_requires_chat_and_embed_models():
+    missing_chat = _local_body(lm_studio_model=None)
     with pytest.raises(ValidationError) as chat_exc:
-        _validate_update(_local_body(lm_studio_model=None), {})
+        _validate_update(missing_chat, {})
     assert chat_exc.value.field == "lm_studio_model"
+
+    missing_embed = _local_body(lm_studio_embedding_model=None)
     with pytest.raises(ValidationError) as embed_exc:
-        _validate_update(_local_body(lm_studio_embedding_model=None), {})
+        _validate_update(missing_embed, {})
     assert embed_exc.value.field == "lm_studio_embedding_model"
 
 

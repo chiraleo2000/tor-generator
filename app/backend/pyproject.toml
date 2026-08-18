@@ -29,6 +29,9 @@ dependencies = [
     "langchain-core>=0.3.0",
     "pgvector>=0.3.6",
     "qdrant-client>=1.12.0",
+    "pymongo>=4.10.0",
+    "neo4j>=5.26.0",
+    "boto3>=1.35.0",
 ]
 
 [project.optional-dependencies]
@@ -58,7 +61,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-omit = ["app/seed_db.py", "app/seed_kb.py", "app/main.py"]
+omit = ["app/seed_db.py", "app/seed_kb.py", "app/seed_raw_docs.py", "app/main.py"]
 
 [tool.ruff]
 target-version = "py311"

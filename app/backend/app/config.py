@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    azure_foundry_api_key: str = ""
+    openai_compatible_api_key: str = ""
 
     # -------------------------------------------------------------------------
     # Local OpenAI-compatible servers (On-Prem)
@@ -82,14 +86,30 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-4o-mini"
     gemini_model: str = "gemini-2.0-flash"
     gemini_embedding_model: str = "text-embedding-004"
+    bedrock_region: str = "ap-southeast-1"
+    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
+    azure_foundry_endpoint: str = ""
+    azure_foundry_deployment: str = ""
+    azure_foundry_api_version: str = "2024-10-21"
+    openai_compatible_base_url: str = ""
+    openai_compatible_model: str = ""
+    openai_compatible_embedding_model: str = "text-embedding-3-small"
+
+    # -------------------------------------------------------------------------
+    # MongoDB (original documents) + Neo4j (GraphRAG)
+    # -------------------------------------------------------------------------
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_db: str = "tor_docs"
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "changeme_neo4j"
 
     # -------------------------------------------------------------------------
     # Provider Selection (Hybrid Mode)
     # -------------------------------------------------------------------------
-    llm_provider: Literal[
-        "claude", "lm_studio", "ollama", "llama_cpp", "openai", "gemini"
-    ] = "lm_studio"
-    embedding_provider: Literal["openai", "qwen3", "local", "gemini"] = "local"
+    llm_provider: str = "lm_studio"
+    embedding_provider: str = "local"
     vector_store_provider: Literal["pgvector", "qdrant"] = "pgvector"
 
     # -------------------------------------------------------------------------

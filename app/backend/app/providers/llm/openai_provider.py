@@ -21,15 +21,19 @@ class OpenAILLMProvider(LLMProvider):
         api_key: str,
         model_name: str = "gpt-4o-mini",
         timeout: float = 60.0,
+        base_url: str | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("OpenAI API key is required for OpenAILLMProvider")
         self._model_name = model_name
         self._timeout = timeout
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            timeout=Timeout(timeout, connect=10.0),
-        )
+        client_kwargs: dict = {
+            "api_key": api_key,
+            "timeout": Timeout(timeout, connect=10.0),
+        }
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        self._client = AsyncOpenAI(**client_kwargs)
 
     async def invoke(
         self,

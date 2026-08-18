@@ -55,8 +55,8 @@ class DraftSectionRequest(BaseModel):
 
     section_key: str = Field(
         ...,
-        description="Target TOR section key (e.g., 's1', 's4')",
-        pattern=r"^s([1-9]|1[0-3])$",
+        description="Target TOR section key (e.g., 's1', 's4', 's4.1')",
+        pattern=r"^s([1-9]|1[0-3])(\.[0-9]{1,2})?$",
     )
     additional_context: dict[str, Any] | None = Field(
         default=None,

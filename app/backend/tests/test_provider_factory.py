@@ -559,6 +559,9 @@ class TestConstants:
         assert "llama_cpp" in VALID_LLM_PROVIDERS
         assert "openai" in VALID_LLM_PROVIDERS
         assert "gemini" in VALID_LLM_PROVIDERS
+        assert "bedrock" in VALID_LLM_PROVIDERS
+        assert "azure_foundry" in VALID_LLM_PROVIDERS
+        assert "openai_compatible" in VALID_LLM_PROVIDERS
 
     def test_valid_embedding_providers(self):
         """Factory should recognize openai, local/qwen3 alias, and gemini."""

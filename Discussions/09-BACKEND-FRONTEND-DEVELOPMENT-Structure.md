@@ -1,9 +1,13 @@
 # 09 — BACKEND / FRONTEND DEVELOPMENT STRUCTURE
 ### ระบบ TOR Generator — โครงสร้างโปรเจกต์สำหรับทีมพัฒนา (Production)
 
+> **โครงสร้างที่รันจริงอยู่ที่ `app/frontend` (Next.js 14) และ `app/backend` (FastAPI)**  
+> ดู `16-BACKEND_ARCHITECTURE.md` และ `17-FRONTEND_ARCHITECTURE.md`  
+> ต้นไม้นี้เป็นแผนจาก PoC (Vite / Express) ไม่ใช่เลย์เอาต์ Docker ปัจจุบัน และโฟลเดอร์ `frontend/` / `backend/` ที่ราก**ไม่มีในรีโป**
+
 เอกสารนี้กำหนดโครงสร้างโฟลเดอร์/โมดูลสำหรับพัฒนาต่อจาก PoC (`06-UXUI-Mockup.html`) ไปสู่ระบบ Production จริง โดย **map ฟังก์ชันทุกตัวใน PoC ไปยังโมดูล Backend/Frontend ที่ควรจะเป็น** เพื่อให้ทีมพัฒนาไม่ต้องออกแบบตรรกะใหม่ทั้งหมด เพียงย้าย logic ที่พิสูจน์แล้วไปวางในโครงสร้างที่ scale ได้
 
-**Tech Stack ที่แนะนำ** (สามารถปรับตามมาตรฐานองค์กรได้):
+**Tech Stack ที่แนะนำในบันทึกนี้** (แผนเดิม — ของจริงใช้ Next.js + FastAPI):
 
 | Layer | แนะนำ | เหตุผล |
 |---|---|---|

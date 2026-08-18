@@ -28,8 +28,19 @@ VALID_LLM_PROVIDERS = (
     "llama_cpp",
     "openai",
     "gemini",
+    "bedrock",
+    "azure_foundry",
+    "openai_compatible",
 )
-VALID_EMBEDDING_PROVIDERS = ("openai", "qwen3", "local", "gemini")
+VALID_EMBEDDING_PROVIDERS = (
+    "openai",
+    "qwen3",
+    "local",
+    "gemini",
+    "azure_foundry",
+    "openai_compatible",
+    "bedrock",
+)
 VALID_VECTOR_STORE_PROVIDERS = ("pgvector", "qdrant")
 
 
@@ -64,8 +75,8 @@ class ProviderFactory:
 
     def _resolved_cloud_embedding(self) -> str:
         provider = _attr(self._settings, "embedding_provider", "local")
-        if provider == "gemini":
-            return "gemini"
+        if provider in ("gemini", "azure_foundry", "openai_compatible", "bedrock"):
+            return provider
         return "openai"
 
     def _validate_cloud_config(self) -> None:
@@ -85,6 +96,16 @@ class ProviderFactory:
             raise ValueError(
                 "DEPLOYMENT_MODE is 'cloud' but GEMINI_API_KEY is not set. "
                 "Cloud chat requires a valid Gemini API key."
+            )
+        if llm == "azure_foundry" and not _attr(self._settings, "azure_foundry_api_key"):
+            raise ValueError(
+                "DEPLOYMENT_MODE is 'cloud' but AZURE_FOUNDRY_API_KEY is not set."
+            )
+        if llm == "openai_compatible" and not _attr(
+            self._settings, "openai_compatible_base_url"
+        ):
+            raise ValueError(
+                "DEPLOYMENT_MODE is 'cloud' but OPENAI_COMPATIBLE_BASE_URL is not set."
             )
         if embedding == "openai" and not _attr(self._settings, "openai_api_key"):
             raise ValueError(
@@ -144,6 +165,18 @@ class ProviderFactory:
                 "LLM_PROVIDER is 'gemini' but GEMINI_API_KEY is not set. "
                 "Provide a valid Gemini API key."
             )
+        if settings.llm_provider == "azure_foundry" and not _attr(
+            settings, "azure_foundry_api_key"
+        ):
+            raise ValueError(
+                "LLM_PROVIDER is 'azure_foundry' but AZURE_FOUNDRY_API_KEY is not set."
+            )
+        if settings.llm_provider == "openai_compatible" and not _attr(
+            settings, "openai_compatible_base_url"
+        ):
+            raise ValueError(
+                "LLM_PROVIDER is 'openai_compatible' but OPENAI_COMPATIBLE_BASE_URL is not set."
+            )
         if settings.embedding_provider == "openai" and not _attr(settings, "openai_api_key"):
             raise ValueError(
                 "EMBEDDING_PROVIDER is 'openai' but OPENAI_API_KEY is not set. "
@@ -153,6 +186,12 @@ class ProviderFactory:
             raise ValueError(
                 "EMBEDDING_PROVIDER is 'gemini' but GEMINI_API_KEY is not set. "
                 "Provide a valid Gemini API key."
+            )
+        if settings.embedding_provider == "azure_foundry" and not _attr(
+            settings, "azure_foundry_api_key"
+        ):
+            raise ValueError(
+                "EMBEDDING_PROVIDER is 'azure_foundry' but AZURE_FOUNDRY_API_KEY is not set."
             )
 
     def get_llm(self) -> LLMProvider:
@@ -170,15 +209,10 @@ class ProviderFactory:
         if mode == "on_prem":
             return self._create_local_embedding_provider()
         if mode == "cloud":
-            kind = self._resolved_cloud_embedding()
-            if kind == "gemini":
-                return self._create_gemini_embedding_provider()
-            return self._create_openai_embedding_provider()
+            return self._create_embedding_by_kind(self._resolved_cloud_embedding())
         if self._settings.embedding_provider in LOCAL_EMBEDDING_PROVIDERS:
             return self._create_local_embedding_provider()
-        if self._settings.embedding_provider == "gemini":
-            return self._create_gemini_embedding_provider()
-        return self._create_openai_embedding_provider()
+        return self._create_embedding_by_kind(self._settings.embedding_provider)
 
     def get_vector_store(
         self,
@@ -204,9 +238,90 @@ class ProviderFactory:
                 api_key=_attr(self._settings, "gemini_api_key"),
                 model_name=_attr(self._settings, "gemini_model", "gemini-2.0-flash"),
             )
+        if kind == "bedrock":
+            from app.providers.llm.bedrock_provider import BedrockLLMProvider
+
+            return BedrockLLMProvider(
+                region=_attr(self._settings, "bedrock_region", "ap-southeast-1"),
+                model_id=_attr(self._settings, "bedrock_model_id"),
+                aws_access_key_id=_attr(self._settings, "aws_access_key_id"),
+                aws_secret_access_key=_attr(self._settings, "aws_secret_access_key"),
+                timeout=_attr(self._settings, "lm_studio_timeout", 180.0),
+            )
+        if kind == "azure_foundry":
+            from app.providers.llm.azure_foundry_provider import AzureFoundryLLMProvider
+
+            return AzureFoundryLLMProvider(
+                api_key=_attr(self._settings, "azure_foundry_api_key"),
+                endpoint=_attr(self._settings, "azure_foundry_endpoint"),
+                deployment=_attr(self._settings, "azure_foundry_deployment"),
+                api_version=_attr(self._settings, "azure_foundry_api_version", "2024-10-21"),
+            )
+        if kind == "openai_compatible":
+            from app.providers.llm.openai_provider import OpenAILLMProvider
+
+            api_key = _attr(self._settings, "openai_compatible_api_key") or "not-needed"
+            return OpenAILLMProvider(
+                api_key=api_key,
+                model_name=_attr(self._settings, "openai_compatible_model")
+                or _attr(self._settings, "lm_studio_model"),
+                base_url=_attr(self._settings, "openai_compatible_base_url"),
+            )
         from app.providers.llm.claude_provider import ClaudeSonnetProvider
 
         return ClaudeSonnetProvider(api_key=_attr(self._settings, "anthropic_api_key"))
+
+    def _create_embedding_by_kind(self, kind: str) -> EmbeddingProvider:
+        if kind == "gemini":
+            return self._create_gemini_embedding_provider()
+        if kind == "bedrock":
+            from app.providers.embedding.bedrock_provider import BedrockEmbeddingProvider
+
+            return BedrockEmbeddingProvider(
+                region=_attr(self._settings, "bedrock_region", "ap-southeast-1"),
+                model_id=_attr(
+                    self._settings,
+                    "bedrock_embedding_model_id",
+                    "amazon.titan-embed-text-v2:0",
+                ),
+                aws_access_key_id=_attr(self._settings, "aws_access_key_id"),
+                aws_secret_access_key=_attr(self._settings, "aws_secret_access_key"),
+            )
+        if kind == "azure_foundry":
+            from httpx import Timeout
+            from openai import AsyncAzureOpenAI
+
+            from app.providers.embedding.openai_provider import OpenAIEmbeddingProvider
+
+            provider = OpenAIEmbeddingProvider(
+                api_key=_attr(self._settings, "azure_foundry_api_key"),
+                model=_attr(self._settings, "azure_foundry_deployment")
+                or "text-embedding-3-small",
+                dimensions=EMBEDDING_DIMENSIONS,
+            )
+            provider._client = AsyncAzureOpenAI(
+                api_key=_attr(self._settings, "azure_foundry_api_key"),
+                azure_endpoint=_attr(self._settings, "azure_foundry_endpoint"),
+                api_version=_attr(
+                    self._settings, "azure_foundry_api_version", "2024-10-21"
+                ),
+                timeout=Timeout(60.0, connect=10.0),
+            )
+            return provider
+        if kind == "openai_compatible":
+            from app.providers.embedding.openai_provider import OpenAIEmbeddingProvider
+
+            return OpenAIEmbeddingProvider(
+                api_key=_attr(self._settings, "openai_compatible_api_key") or "not-needed",
+                model=_attr(
+                    self._settings,
+                    "openai_compatible_embedding_model",
+                    "text-embedding-3-small",
+                ),
+                dimensions=EMBEDDING_DIMENSIONS,
+                base_url=_attr(self._settings, "openai_compatible_base_url"),
+            )
+        return self._create_openai_embedding_provider()
 
     def _create_local_llm_provider(self) -> LLMProvider:
         from app.providers.llm.lm_studio_provider import LMStudioLocalProvider

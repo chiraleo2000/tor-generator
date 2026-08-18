@@ -18,7 +18,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.constants import MIME_DOCX, MIME_PDF, MIME_TXT
@@ -98,11 +98,7 @@ async def list_knowledge_base_documents(
     Returns: document name, category, file_type, processing status, chunk count.
     Req 11.3: Display current KB inventory.
     """
-    stmt = select(KnowledgeBaseDocument).order_by(
-        KnowledgeBaseDocument.uploaded_at.desc()
-    )
-    result = await db.execute(stmt)
-    documents = result.scalars().all()
+    documents = await _load_kb_docs(db, current_user)
 
     items = [KBDocumentResponse.model_validate(doc) for doc in documents]
 
@@ -151,10 +147,17 @@ def _catalog_payload(documents: list) -> dict:
     }
 
 
-async def _load_kb_docs(db: AsyncSession) -> list:
+async def _load_kb_docs(db: AsyncSession, user: User | None = None) -> list:
     stmt = select(KnowledgeBaseDocument).order_by(
         KnowledgeBaseDocument.uploaded_at.desc()
     )
+    if user is not None and user.role != "admin":
+        stmt = stmt.where(
+            or_(
+                KnowledgeBaseDocument.owner_id.is_(None),
+                KnowledgeBaseDocument.owner_id == user.id,
+            )
+        )
     return (await db.execute(stmt)).scalars().all()
 
 
@@ -169,7 +172,7 @@ async def knowledge_base_catalog(
     _current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     """Return raw documents grouped by category and chunked RAG totals."""
-    documents = await _load_kb_docs(db)
+    documents = await _load_kb_docs(db, _current_user)
     return _build_success_response(request, _catalog_payload(documents))
 
 
@@ -179,7 +182,7 @@ async def knowledge_base_raw(
     db: Annotated[AsyncSession, Depends(get_db)],
     _current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
-    payload = _catalog_payload(await _load_kb_docs(db))
+    payload = _catalog_payload(await _load_kb_docs(db, _current_user))
     return _build_success_response(
         request, {"raw": payload["raw"], "totals": payload["totals"]}
     )
@@ -191,7 +194,7 @@ async def knowledge_base_chunked(
     db: Annotated[AsyncSession, Depends(get_db)],
     _current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
-    payload = _catalog_payload(await _load_kb_docs(db))
+    payload = _catalog_payload(await _load_kb_docs(db, _current_user))
     return _build_success_response(
         request, {"chunked": payload["chunked"], "totals": payload["totals"]}
     )

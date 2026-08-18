@@ -1,6 +1,10 @@
 # 12 — HYBRID ON-PREMISE / CLOUD LLM ARCHITECTURE
 ### ระบบ TOR Generator — สถาปัตยกรรม AI/LLM แบบ Hybrid (On-Premise / Cloud) พร้อม RAG และ Orchestration
 
+> **สแตกที่รันอยู่ตอนนี้:** LM Studio `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` (768 มิติ), pgvector, Mongo GridFS, Neo4j GraphRAG  
+> คลาวด์ที่เปิดจากหน้าผู้ดูแล: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible  
+> ค่าติดตั้งจริงดู `14-INSTALLATION.md` และ `16-BACKEND_ARCHITECTURE.md` — ตารางโมเดลด้านล่าง (เช่น Qwen3 / OpenThaiChinda) เป็นบันทึกออกแบบเดิม ไม่ใช่ค่าเริ่มต้นปัจจุบัน
+
 เอกสารนี้ต่อยอดจากเอกสาร 07 (สถาปัตยกรรมของ PoC ที่เป็น Rule-based ล้วน ไม่มี LLM) โดยออกแบบสถาปัตยกรรมชั้นที่เพิ่มขึ้นมาสำหรับการใช้ **LLM + RAG ช่วยร่าง/ตรวจ TOR** ควบคู่กับ Rule Engine เดิม (ซึ่งยังคงทำงานเป็น **Deterministic Guardrail** ตรวจสอบผลลัพธ์จาก LLM เสมอ — ไม่ปล่อยให้ LLM ตัดสินใจเรื่องกฎหมาย/ตัวเลขเพียงลำพัง)
 
 **หลักการออกแบบสำคัญ:** ระบบต้องรองรับ 3 รูปแบบการติดตั้งโดยไม่ต้องแก้โค้ดหลัก เปลี่ยนแค่ Environment Variable — **On-Premise Only** (ข้อมูลไม่ออกนอกองค์กรเลย เหมาะกับข้อมูลจัดซื้อจัดจ้างที่มีชั้นความลับ), **Cloud** (ใช้บริการ Managed เต็มรูปแบบเพื่อคุณภาพ/ความเร็วสูงสุด), และ **Hybrid** (เลือกได้ต่อ Component)

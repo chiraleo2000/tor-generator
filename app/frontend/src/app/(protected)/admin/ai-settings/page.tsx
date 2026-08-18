@@ -12,7 +12,10 @@ import {
   llmOptionsForMode,
   nextFormOnModeChange,
   saveSuccessMessage,
+  showAzureFields,
+  showBedrockFields,
   showCloudKeyFields,
+  showCompatFields,
   showLocalServerFields,
   type AiSettings,
 } from "@/lib/ai-settings";
@@ -71,6 +74,14 @@ export default function AdminAiSettingsPage() {
         anthropic_api_key: form.anthropic_api_key,
         openai_api_key: form.openai_api_key,
         gemini_api_key: form.gemini_api_key,
+        aws_access_key_id: form.aws_access_key_id,
+        aws_secret_access_key: form.aws_secret_access_key,
+        bedrock_region: form.bedrock_region,
+        azure_foundry_endpoint: form.azure_foundry_endpoint,
+        azure_foundry_api_key: form.azure_foundry_api_key,
+        azure_foundry_api_version: form.azure_foundry_api_version,
+        openai_compatible_base_url: form.openai_compatible_base_url,
+        openai_compatible_api_key: form.openai_compatible_api_key,
       });
       const payload = unwrapData<{ message?: string }>(response);
       setMessage(payload.message || "เชื่อมต่อได้");
@@ -91,7 +102,7 @@ export default function AdminAiSettingsPage() {
         <p className="text-sm text-muted-foreground mt-1">
           ค่าเริ่มต้นคือรันในเครื่องผ่าน LM Studio ที่พอร์ต 1234 (Gemma + EmbeddingGemma-300M)
           การบันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend หากเปลี่ยนผู้ให้บริการหรือโมเดล embeddings
-          ต้องประมวลผลฐานความรู้ใหม่ (`python -m app.seed_kb`)
+          ต้องประมวลผลฐานความรู้ใหม่ (`python -m app.seed_raw_docs`)
         </p>
       </div>
 
@@ -276,6 +287,87 @@ export default function AdminAiSettingsPage() {
               onChange={(event) => patch("gemini_embedding_model", event.target.value)}
             />
           </div>
+        </div>
+      ) : null}
+
+      {showCloud && showBedrockFields(form.llm_provider, form.embedding_provider) ? (
+        <div className="gov-card space-y-3">
+          <h2 className="font-semibold">Amazon Bedrock</h2>
+          <Label htmlFor="bedrock-region">Region</Label>
+          <Input
+            id="bedrock-region"
+            value={form.bedrock_region}
+            onChange={(event) => patch("bedrock_region", event.target.value)}
+          />
+          <Label htmlFor="bedrock-model">Model ID</Label>
+          <Input
+            id="bedrock-model"
+            value={form.bedrock_model_id}
+            onChange={(event) => patch("bedrock_model_id", event.target.value)}
+          />
+          <Label htmlFor="aws-key">AWS access key</Label>
+          <Input
+            id="aws-key"
+            value={form.aws_access_key_id}
+            onChange={(event) => patch("aws_access_key_id", event.target.value)}
+          />
+          <Label htmlFor="aws-secret">AWS secret</Label>
+          <Input
+            id="aws-secret"
+            type="password"
+            value={form.aws_secret_access_key}
+            onChange={(event) => patch("aws_secret_access_key", event.target.value)}
+          />
+        </div>
+      ) : null}
+
+      {showCloud && showAzureFields(form.llm_provider, form.embedding_provider) ? (
+        <div className="gov-card space-y-3">
+          <h2 className="font-semibold">Azure AI Foundry</h2>
+          <Label htmlFor="azure-endpoint">Endpoint</Label>
+          <Input
+            id="azure-endpoint"
+            value={form.azure_foundry_endpoint}
+            onChange={(event) => patch("azure_foundry_endpoint", event.target.value)}
+          />
+          <Label htmlFor="azure-key">API key</Label>
+          <Input
+            id="azure-key"
+            type="password"
+            value={form.azure_foundry_api_key}
+            onChange={(event) => patch("azure_foundry_api_key", event.target.value)}
+          />
+          <Label htmlFor="azure-deploy">Deployment</Label>
+          <Input
+            id="azure-deploy"
+            value={form.azure_foundry_deployment}
+            onChange={(event) => patch("azure_foundry_deployment", event.target.value)}
+          />
+        </div>
+      ) : null}
+
+      {showCloud && showCompatFields(form.llm_provider, form.embedding_provider) ? (
+        <div className="gov-card space-y-3">
+          <h2 className="font-semibold">OpenAI-compatible</h2>
+          <Label htmlFor="compat-url">Base URL</Label>
+          <Input
+            id="compat-url"
+            value={form.openai_compatible_base_url}
+            onChange={(event) => patch("openai_compatible_base_url", event.target.value)}
+          />
+          <Label htmlFor="compat-key">API key</Label>
+          <Input
+            id="compat-key"
+            type="password"
+            value={form.openai_compatible_api_key}
+            onChange={(event) => patch("openai_compatible_api_key", event.target.value)}
+          />
+          <Label htmlFor="compat-model">ชื่อโมเดล</Label>
+          <Input
+            id="compat-model"
+            value={form.openai_compatible_model}
+            onChange={(event) => patch("openai_compatible_model", event.target.value)}
+          />
         </div>
       ) : null}
 

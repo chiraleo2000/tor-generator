@@ -11,6 +11,12 @@ export function pageMeta(pathname: string): { title: string; sub: string } {
       sub: "กระบวนการร่างเอกสาร TOR แบบ Flow 5 Phase",
     };
   }
+  if (pathname.startsWith("/chat")) {
+    return {
+      title: "ถาม-ตอบ",
+      sub: "ห้องแชทรายคน ค้นคลังกลางและเอกสารของคุณด้วย RAG + กราฟกฎหมาย",
+    };
+  }
   if (pathname.startsWith("/review")) {
     return {
       title: "ตรวจสอบ TOR",

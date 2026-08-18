@@ -210,3 +210,29 @@ async def test_live_gemma_uses_retrieved_regulation_chunk():
     thai = sum(1 for char in text if "\u0e00" <= char <= "\u0e7f")
     assert thai >= 8, f"Expected Thai grounded reply, got: {text!r}"
 
+
+@pytest.mark.integration
+@pytest.mark.live_llm
+@pytest.mark.asyncio
+async def test_live_gemma_extracts_graph_json():
+    from app.providers.llm.lm_studio_provider import LMStudioLocalProvider
+    from app.rag.graph_extract import extract_graph_from_text
+
+    base = _require_lm_studio()
+    provider = LMStudioLocalProvider(
+        base_url=base,
+        model_name=DEFAULT_CHAT_MODEL,
+        timeout=180.0,
+    )
+    nodes, rels = await extract_graph_from_text(
+        provider,
+        "พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 มาตรา 65 "
+        "กำหนดหลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ สำหรับหมวด TOR หลักเกณฑ์คัดเลือก (s11) "
+        "และค่าปรับตามระเบียบเกี่ยวข้องกับหมวดอัตราค่าปรับ (s10)",
+        document_name="พรบ2560",
+    )
+    labels = {item.get("label") for item in nodes if isinstance(item, dict)}
+    assert labels & {"Law", "Article", "TorSlot", "Concept", "Document"}, (
+        f"Gemma did not return graph nodes. nodes={nodes!r} rels={rels!r}"
+    )
+

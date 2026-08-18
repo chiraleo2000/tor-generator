@@ -198,16 +198,9 @@ class TestRetrieveContext:
         mock_result = MagicMock(chunks=mock_chunks)
 
         with patch(
-            "app.providers.factory.ProviderFactory"
-        ) as mock_factory_cls, patch(
-            "app.rag.retrieval.RAGRetriever"
-        ) as mock_retriever_cls:
-            mock_factory = MagicMock()
-            mock_factory_cls.return_value = mock_factory
-
-            mock_retriever = AsyncMock()
-            mock_retriever.retrieve = AsyncMock(return_value=mock_result)
-            mock_retriever_cls.return_value = mock_retriever
+            "app.rag.hybrid.hybrid_retrieve", new_callable=AsyncMock
+        ) as mock_hybrid:
+            mock_hybrid.return_value = (mock_result, [], False)
 
             state: TORDraftState = {
                 "target_section": "s3",
@@ -226,9 +219,9 @@ class TestRetrieveContext:
     async def test_retrieval_failure_graceful_degradation(self):
         """RAG failure sets rag_retrieval_failed=True and continues (Req 5.8)."""
         with patch(
-            "app.providers.factory.ProviderFactory"
-        ) as mock_factory_cls:
-            mock_factory_cls.side_effect = Exception("Connection refused")
+            "app.rag.hybrid.hybrid_retrieve", new_callable=AsyncMock
+        ) as mock_hybrid:
+            mock_hybrid.side_effect = Exception("Connection refused")
 
             state: TORDraftState = {
                 "target_section": "s1",
@@ -246,16 +239,9 @@ class TestRetrieveContext:
         mock_result = MagicMock(chunks=[])
 
         with patch(
-            "app.providers.factory.ProviderFactory"
-        ) as mock_factory_cls, patch(
-            "app.rag.retrieval.RAGRetriever"
-        ) as mock_retriever_cls:
-            mock_factory = MagicMock()
-            mock_factory_cls.return_value = mock_factory
-
-            mock_retriever = AsyncMock()
-            mock_retriever.retrieve = AsyncMock(return_value=mock_result)
-            mock_retriever_cls.return_value = mock_retriever
+            "app.rag.hybrid.hybrid_retrieve", new_callable=AsyncMock
+        ) as mock_hybrid:
+            mock_hybrid.return_value = (mock_result, [], True)
 
             state: TORDraftState = {
                 "target_section": "s1",

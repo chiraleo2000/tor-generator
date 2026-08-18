@@ -810,6 +810,7 @@ async def list_project_sections(
             "title": TOR_SECTION_LABELS[key],
             "filled": filled,
             "content": row.content if row else "",
+            "ai_draft": row.ai_draft if row else "",
             "human_confirmed": bool(row.is_approved) if row else False,
             "hitl": key in MANDATORY_HUMAN_REVIEW_SECTIONS,
             "matchStatus": "matched" if extracted else "partial",

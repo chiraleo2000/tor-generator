@@ -20,6 +20,9 @@ describe("ai-settings helpers", () => {
       "claude",
       "openai",
       "gemini",
+      "bedrock",
+      "azure_foundry",
+      "openai_compatible",
     ]);
     expect(llmOptionsForMode("hybrid").map((item) => item.value)).toContain("lm_studio");
     expect(llmOptionsForMode("hybrid").map((item) => item.value)).toContain("claude");
@@ -33,6 +36,9 @@ describe("ai-settings helpers", () => {
     expect(embedOptionsForMode("cloud").map((item) => item.value)).toEqual([
       "openai",
       "gemini",
+      "bedrock",
+      "azure_foundry",
+      "openai_compatible",
     ]);
     expect(embedOptionsForMode("hybrid").map((item) => item.value)).toContain("gemini");
     expect(embedOptionsForMode("hybrid").map((item) => item.value)).toContain("local");
@@ -77,12 +83,19 @@ describe("ai-settings helpers", () => {
   it("explains immediate apply vs re-ingest", () => {
     expect(saveSuccessMessage(false)).toContain("มีผลทันที");
     expect(saveSuccessMessage(false)).toContain("ไม่ต้องรีสตาร์ท");
-    expect(saveSuccessMessage(true)).toContain("seed_kb");
+    expect(saveSuccessMessage(true)).toContain("seed_raw_docs");
   });
 
   it("detects masked secrets", () => {
     expect(isMaskedSecret("****abcd")).toBe(true);
     expect(isMaskedSecret("sk-live")).toBe(false);
-    expect(CLOUD_LLMS.map((item) => item.value)).toEqual(["claude", "openai", "gemini"]);
+    expect(CLOUD_LLMS.map((item) => item.value)).toEqual([
+      "claude",
+      "openai",
+      "gemini",
+      "bedrock",
+      "azure_foundry",
+      "openai_compatible",
+    ]);
   });
 });

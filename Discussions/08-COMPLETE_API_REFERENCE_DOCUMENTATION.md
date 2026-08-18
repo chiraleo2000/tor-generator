@@ -1,7 +1,10 @@
 # 08 — COMPLETE API REFERENCE DOCUMENTATION
 ### ระบบ TOR Generator (ร่าง TOR + ตรวจสอบ TOR) — REST API สำหรับ Production
 
-เอกสารนี้กำหนดสัญญา (contract) ของ REST API ที่แปลงมาจากตรรกะ Rule-based ที่พิสูจน์แล้วใน PoC (`06-UXUI-Mockup.html`) ทุก endpoint สะท้อนฟังก์ชัน JavaScript จริงในต้นแบบ (`AuthService_*`, `ProjectService_*`, `ExtractionService_*`, `NLPEngine_*`, `ReviewEngine_*`) เพื่อให้ทีม Backend นำไป implement ได้ทันทีโดยไม่ต้องออกแบบตรรกะใหม่ — **ระบบทั้งหมดเป็น Rule-based (Regex/Keyword/Jaccard Similarity) ไม่มีการเรียกใช้ LLM API ใดๆ**
+> **เอกสารนี้เป็นสัญญา API จากยุค PoC (Rule-based ไม่มี LLM)**  
+> แอปที่รันอยู่ตอนนี้มี LLM + RAG แล้ว: FastAPI ที่ `http://localhost:4000/api/v1` ดูเส้นทางปัจจุบันใน `16-BACKEND_ARCHITECTURE.md` และตารางท้ายไฟล์นี้ (หมวด 10)
+
+เอกสารด้านล่างกำหนดสัญญา (contract) ของ REST API ที่แปลงมาจากตรรกะ Rule-based ที่พิสูจน์แล้วใน PoC (`06-UXUI-Mockup.html`) เพื่อให้อ่านประวัติการออกแบบได้ — **อย่าใช้ข้อความ “ไม่มี LLM” เป็นข้อเท็จจริงของระบบ Docker ปัจจุบัน**
 
 ---
 
@@ -16,6 +19,7 @@
 7. [Export API](#7-export-api)
 8. [Error Codes Reference](#8-error-codes-reference)
 9. [Rate Limiting & Versioning](#9-rate-limiting--versioning)
+10. [เส้นทางที่เพิ่มในแอปที่รันอยู่](#10-เส้นทางที่เพิ่มในแอปที่รันอยู่)
 
 ---
 
@@ -490,4 +494,32 @@
 - **Idempotency:** endpoint ที่สร้างข้อมูล (POST) รองรับ header `Idempotency-Key` เพื่อป้องกันการสร้างซ้ำจาก retry
 
 ---
-*เอกสาร 08 — Complete API Reference Documentation | ทุก endpoint สะท้อนตรรกะ Rule-based เดิมจาก PoC (06-UXUI-Mockup.html) แบบ 1:1 | ไม่มีการเรียกใช้ LLM ในระบบ*
+
+## 10. เส้นทางที่เพิ่มในแอปที่รันอยู่
+
+Base URL จริง: `http://localhost:4000/api/v1` (เบราว์เซอร์เรียกผ่าน `/api/v1` ที่พอร์ต 3000)  
+Auth: cookie `tor_access_token` หรือ `Authorization: Bearer`
+
+| กลุ่ม | เส้นทาง | ใช้ทำอะไร |
+|--------|---------|-----------|
+| สุขภาพ | `GET /health` | `postgres` `redis` `minio` `mongo` `neo4j` |
+| แชทคลังความรู้ | `GET/POST /chat/rooms` | ห้อง `kind=kb` หรือ `draft_intake` |
+| | `GET/PATCH/DELETE /chat/rooms/{id}` | รายการ เปลี่ยนชื่อ ลบ |
+| | `GET /chat/rooms/{id}/messages` | ประวัติห้อง |
+| | `POST /chat/rooms/{id}/messages` | SSE ถาม-ตอบ + citations |
+| | `POST /chat/rooms/{id}/attachments` | แนบไฟล์เข้า Mongo GridFS (`scope: user`) |
+| | `GET /chat/prompts` | ชิปพรอมต์ตาม `kind` |
+| Intake Phase 0–1 | `POST /projects/{id}/intake/upload` | อัปโหลดชุดใหญ่ ไม่เลือก 9 ประเภท |
+| | `POST /projects/{id}/intake/analyze` | จัดเข้า s1–s13 / s4.1–s4.14 |
+| | `GET /projects/{id}/intake/coverage` | ตาราง filled / gap / reference_only |
+| | `POST /projects/{id}/intake/fill-reference` | ดึงอ้างอิงกฎหมายลงช่องว่าง |
+| | `POST /projects/{id}/intake/confirm-ready` | ตั้ง `ready_to_compose` แล้วเข้า Phase 2 |
+| | `POST /projects/{id}/intake/chat` | SSE แชทร่างโครงการ |
+| ร่าง | `POST /projects/{id}/draft-section` | เอเจนต์หมวด + เขียน `content` และ `ai_draft` |
+| ผู้ดูแล AI | `GET/PUT /admin/ai-settings` | Local / Cloud / Hybrid มีผลทันที |
+| | `POST /admin/ai-settings/test` | ping LM Studio หรือรายการโมเดลคลาวด์ |
+
+รายละเอียดชั้นภายใน: `16-BACKEND_ARCHITECTURE.md`
+
+---
+*เอกสาร 08 — Complete API Reference Documentation | หมวด 1–9 เป็นสัญญา PoC | หมวด 10 คือเส้นทางของแอป Docker ปัจจุบัน*

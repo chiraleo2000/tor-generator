@@ -45,6 +45,9 @@ class User(Base):
     templates: Mapped[list["Template"]] = relationship(  # noqa: F821
         "Template", back_populates="creator", lazy="selectin"
     )
+    chat_rooms: Mapped[list["ChatRoom"]] = relationship(  # noqa: F821
+        "ChatRoom", back_populates="user", lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email}, role={self.role})>"

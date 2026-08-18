@@ -55,11 +55,17 @@ async def lifespan(app: FastAPI):
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         app.state.db_engine = engine
         app.state.db_session_factory = session_factory
+        from app.infra import set_session_factory
+
+        set_session_factory(session_factory)
         logger.info("Database engine created: %s", settings.postgres_host)
     except Exception as exc:
         logger.warning("Failed to create database engine: %s", exc)
         app.state.db_engine = None
         app.state.db_session_factory = None
+        from app.infra import set_session_factory as _clear_sf
+
+        _clear_sf(None)
 
     # --- Redis ---
     try:
@@ -97,6 +103,39 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("MinIO not reachable (app will start without file storage): %s", exc)
         app.state.minio = None
+
+    # --- MongoDB (originals / GridFS) ---
+    try:
+        from pymongo import MongoClient
+
+        mongo_client = MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=4000)
+        mongo_client.admin.command("ping")
+        app.state.mongo = mongo_client
+        from app.infra import set_mongo_client
+
+        set_mongo_client(mongo_client)
+        logger.info("MongoDB connected: %s", settings.mongo_uri)
+    except Exception as exc:
+        logger.warning("MongoDB not reachable (originals store degraded): %s", exc)
+        app.state.mongo = None
+
+    # --- Neo4j (GraphRAG) ---
+    try:
+        from neo4j import AsyncGraphDatabase
+
+        neo4j_driver = AsyncGraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+        )
+        await neo4j_driver.verify_connectivity()
+        app.state.neo4j = neo4j_driver
+        from app.infra import set_neo4j_driver
+
+        set_neo4j_driver(neo4j_driver)
+        logger.info("Neo4j connected: %s", settings.neo4j_uri)
+    except Exception as exc:
+        logger.warning("Neo4j not reachable (GraphRAG degraded to pgvector): %s", exc)
+        app.state.neo4j = None
 
     # --- Run pending Alembic migrations ---
     if app.state.db_engine is not None:
@@ -159,6 +198,16 @@ async def lifespan(app: FastAPI):
     if app.state.redis is not None:
         await app.state.redis.close()
         logger.info("Redis connection closed")
+
+    mongo = getattr(app.state, "mongo", None)
+    if mongo is not None:
+        mongo.close()
+        logger.info("MongoDB connection closed")
+
+    neo4j = getattr(app.state, "neo4j", None)
+    if neo4j is not None:
+        await neo4j.close()
+        logger.info("Neo4j connection closed")
 
 
 # -----------------------------------------------------------------------------

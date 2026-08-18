@@ -128,8 +128,39 @@ class PgVectorProvider(VectorStoreProvider):
             .where(KBChunk.embedding.is_not(None))
         )
 
+        jsonb_filter: dict[str, Any] | None = None
+        search_scope = None
+        owner_user_id = None
         if filter:
-            stmt = stmt.where(KBChunk.chunk_metadata.contains(filter))
+            jsonb_filter = dict(filter)
+            search_scope = jsonb_filter.pop("search_scope", None)
+            owner_user_id = jsonb_filter.pop("owner_user_id", None)
+            jsonb_filter.pop("owner_ids", None)
+
+        if search_scope or owner_user_id:
+            from sqlalchemy import or_
+
+            from app.models.knowledge_base_document import KnowledgeBaseDocument
+
+            stmt = stmt.join(
+                KnowledgeBaseDocument, KnowledgeBaseDocument.id == KBChunk.document_id
+            )
+            if search_scope == "mine" and owner_user_id:
+                stmt = stmt.where(
+                    KnowledgeBaseDocument.owner_id == uuid.UUID(str(owner_user_id))
+                )
+            elif search_scope == "global":
+                stmt = stmt.where(KnowledgeBaseDocument.owner_id.is_(None))
+            elif owner_user_id:
+                stmt = stmt.where(
+                    or_(
+                        KnowledgeBaseDocument.owner_id.is_(None),
+                        KnowledgeBaseDocument.owner_id == uuid.UUID(str(owner_user_id)),
+                    )
+                )
+
+        if jsonb_filter:
+            stmt = stmt.where(KBChunk.chunk_metadata.contains(jsonb_filter))
 
         stmt = stmt.order_by(distance).limit(top_k)
 

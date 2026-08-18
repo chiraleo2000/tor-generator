@@ -8,13 +8,16 @@ FastAPI service in `app/backend`. Listens on port **4000**. The Next.js containe
 flowchart LR
   Next["Next.js rewrite /api/v1"] --> API["FastAPI /api/v1"]
   API --> PG["PostgreSQL + pgvector"]
+  API --> Mongo["MongoDB GridFS"]
+  API --> Neo["Neo4j GraphRAG"]
   API --> Redis
   API --> MinIO
   API --> Rules["Rule Engine"]
+  API --> Chat["Chat rooms + intake SSE"]
   API --> Graph["LangGraph orchestrator"]
   Graph --> Local["Local OpenAI-compat\nLM Studio / Ollama / llama.cpp"]
-  Graph --> Cloud["Claude / OpenAI / Gemini"]
-  Graph --> RAG["Embeddings 768-d + pgvector"]
+  Graph --> Cloud["Claude / OpenAI / Gemini\nBedrock / Azure / compat"]
+  Graph --> RAG["Embeddings 768-d + pgvector + graph"]
   API --> Export["DOCX / PDF + MinIO"]
 ```
 
@@ -24,14 +27,14 @@ flowchart LR
 
 | Layer | Path | Role |
 |-------|------|------|
-| HTTP | `app/api/v1/endpoints/` | Auth, projects (5-phase + extraction), wizard steps (compat), review, templates, knowledge-base, export, admin users, admin AI settings, standalone review, health |
+| HTTP | `app/api/v1/endpoints/` | Auth, projects, intake (Phase 0–1), drafting, chat rooms/SSE, wizard compat, review, templates, knowledge-base, export, admin users, admin AI settings, health |
 | Domain | `app/domain/` | Canonical s1–s13, NLP mapping, file magic bytes |
 | Orchestrator | `app/orchestrator/` | LangGraph nodes and section agents |
 | RAG | `app/rag/` | Extract, chunk, ingest, retrieve |
 | Rules | `app/rule_engine/` | Legal, completeness, consistency, format, payment, timeline |
-| Providers | `app/providers/` | LLM (local OpenAI-compat, Claude, OpenAI, Gemini), embeddings, vector stores |
+| Providers | `app/providers/` | LLM (local OpenAI-compat, Claude, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compat), embeddings, vector stores |
 | Export | `app/export/` | Thai formatting, DOCX, PDF, MinIO |
-| Models | `app/models/` | SQLAlchemy: users, projects (`current_phase`, `analysis_json`, `extracted_fields`), TOR sections, templates, KB, audit, AI runtime settings |
+| Models | `app/models/` | SQLAlchemy: users, projects (`current_phase`, `analysis_json`, `extracted_fields`), TOR sections, templates, KB (`owner_id`, `mongo_gridfs_id`, `scope`), chat rooms/messages/prompts, audit, AI runtime settings |
 
 HTTP handlers use FastAPI `Annotated[..., Depends(...)]`. Shared API strings are in `app/api/constants.py`. Short tempfile writes go through `app/io_temp.py` so they do not block the event loop. `get_redis` and `get_minio` are synchronous (they only read `app.state`). `require_role`’s **inner** checker is sync and must use `current_user=Depends(get_current_user)` — wrapping that nested parameter in `Annotated` makes FastAPI 0.115 on Python 3.14 treat `current_user` as a missing body field (HTTP 422). `require_project_access` raises on deny and returns `None` on success. Knowledge-base list is registered on both `""` and `"/"` because `redirect_slashes=False`.
 
@@ -41,11 +44,13 @@ Persistence is **section-keyed** (`s1`…`s13`, plus `s4.1`–`s4.14`). The live
 
 | Phase | Stored as | Main APIs |
 |-------|-----------|-----------|
-| 0 Upload | `extracted_fields`, classified files in `analysis_json.intakeFiles` | `POST /projects/{id}/extraction`, `POST /projects/{id}/extraction/apply` |
-| 1 Analysis | `analysis_json` | `PUT /projects/{id}/analysis` |
-| 2 Draft 13 sections | `tor_sections` | `GET /projects/{id}/sections`, `PUT /projects/{id}/sections/{key}` |
+| 0 Upload pack | GridFS originals + `analysis_json.slot_map` | `POST /projects/{id}/intake/upload`, `POST /projects/{id}/intake/analyze` |
+| 1 Gaps + ready | coverage rows, `ready_to_compose` | `GET .../intake/coverage`, `POST .../intake/fill-reference`, `POST .../intake/confirm-ready`, `POST .../intake/chat` (SSE) |
+| 2 Draft 13 sections | `tor_sections` (`content` + `ai_draft`; s4.* as `sub_key`) | `GET /projects/{id}/sections`, `PUT /projects/{id}/sections/{key}`, `POST /projects/{id}/draft-section` |
 | 3 Review | `quality_score`, project `status` | `POST /projects/{id}/review`, `POST /projects/{id}/submit` |
 | 4 Publish | MinIO objects | `POST /projects/{id}/export` |
+
+KB Q&A (not a draft phase) uses `/api/v1/chat/rooms` with `kind=kb`. Draft intake chat uses `kind=draft_intake` on the same room APIs plus the intake routes above. Legacy `POST /projects/{id}/extraction` remains for compatibility; the live UI does not use the 9-class upload form.
 
 `PATCH /projects/{id}/phase` stores `current_phase` (0–4). Uploads are checked with magic bytes (`app/domain/file_magic.py`) before extraction. Money and date regexes use ASCII `[0-9]` only — Python `\\d` also matches Thai digits `๐-๙`.
 
@@ -53,7 +58,9 @@ HITL sections (qualifications, budget, payments, penalty, other terms) require `
 
 `llm_draft` calls the s1–s13 agent from `get_agent_for_section()` (`_draft_section_with_agent`). The live Rule Engine registers payment and timeline rules alongside legal rules; those rules skip when installment/timeline data is absent.
 
-`python -m app.seed_kb` ingests `*_tor_extract.json`, `*_combined.json` topic packs, and `04-decision-rules/*.json` (skips `_coverage_matrix*` and `_external_sources_note.md`).
+`python -m app.seed_raw_docs` wipes `kb_chunks` / baseline GridFS / Neo4j graph then ingests the 27 PDFs under `documents/sources/` with EmbeddingGemma and Gemma graph extract. Run it from the **host** (`POSTGRES_HOST=127.0.0.1`, `LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1`). Do not ingest old `documents/knowledge-base` JSON as the live corpus.
+
+`python -m app.seed_kb` remains for research extracts only (skips `_coverage_matrix*` and `_external_sources_note.md`).
 
 ## Local vs cloud LLM
 
@@ -66,7 +73,7 @@ Default `DEPLOYMENT_MODE=on_prem` and `LLM_PROVIDER=lm_studio`:
 
 The same OpenAI-compat client also targets Ollama (`:11434/v1`) and llama.cpp (`:8080/v1`). `EMBEDDING_PROVIDER=local` is the public id; `qwen3` remains a deprecated alias.
 
-Cloud is opt-in (`claude`, `openai`, `gemini`). Compose passes `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` through when set; Admin can also enter keys in the UI. Admin `GET/PUT /api/v1/admin/ai-settings` stores a singleton `ai_runtime_settings` row. `PUT` calls `apply_runtime_overlay` in-process so `get_settings()` / `ProviderFactory()` pick up LLM, URL, and key changes immediately (`restart_required` is false). Cloud mode accepts only cloud LLM/embedding ids; hybrid PUT requires the matching API key. Changing the embedding vendor or embedding model sets `reingest_required` and still needs `python -m app.seed_kb`. Cloud embeddings request `dimensions=768` so they fit the pgvector column.
+Cloud is opt-in (`claude`, `openai`, `gemini`, `bedrock`, `azure_foundry`, `openai_compatible`). Compose passes cloud keys through when set; Admin can also enter keys in the UI. Admin `GET/PUT /api/v1/admin/ai-settings` stores a singleton `ai_runtime_settings` row. `PUT` calls `apply_runtime_overlay` in-process so `get_settings()` / `ProviderFactory()` pick up LLM, URL, and key changes immediately (`restart_required` is false). Cloud mode accepts only cloud LLM/embedding ids; hybrid PUT requires the matching API key. Changing the embedding vendor or embedding model sets `reingest_required` and still needs `python -m app.seed_raw_docs`. Cloud embeddings request `dimensions=768` so they fit the pgvector column.
 
 `POST /api/v1/admin/ai-settings/test` pings the local `/models` endpoint or a cheap cloud models list and does not require a restart. Keys are returned masked (`****abcd`). Missing cloud keys use shared Thai messages (`ต้องใส่ OPENAI_API_KEY` / `GEMINI_API_KEY`). pgvector cosine search uses a single SQL fragment `embedding <=> :query_vector::vector` (no empty f-string).
 
@@ -79,14 +86,15 @@ Cloud is opt-in (`claude`, `openai`, `gemini`). Compose passes `ANTHROPIC_API_KE
 - Rate limits on general requests and uploads
 - Security headers / CSP on API responses
 - Audit log on upload, extraction apply, and submit
-- Alembic migrations run at backend startup (including `vector(768)`, `ai_runtime_settings`, `current_phase`)
+- Alembic migrations run at backend startup (including `vector(768)`, `ai_runtime_settings`, `current_phase`, chat rooms, KB `owner_id`)
 
 ## Seed CLIs
 
 From `app/backend` (or `docker compose exec backend`):
 
 - `python -m app.seed_db` — demo users and sample data
-- `python -m app.seed_kb` — ingest `documents/knowledge-base` (volume `/knowledge-base`)
+- `python -m app.seed_raw_docs` — live corpus from PDFs → Mongo GridFS + pgvector + Neo4j
+- `python -m app.seed_kb` — research extracts in `documents/knowledge-base` (not the live corpus)
 
 Source PDFs for laws and manuals live under `documents/sources/`. Do not copy that corpus into `app/frontend` or `app/backend`.
 
@@ -108,7 +116,7 @@ python -m pytest tests -q --tb=short --cov=app --cov-report=term-missing -m "not
 python -m pytest tests/test_real_procurement_pdfs.py tests/test_live_lm_studio.py -q --tb=short
 ```
 
-Last host run (**18 Aug 2026 ~10:52**): **1339 passed** / **92%** coverage including live LM Studio chat and EmbeddingGemma-300M. Screenshots and the 13 headed Playwright cases: `discussions/18-TEST_EVIDENCE.md`.
+Latest counts and headed screenshots: `discussions/18-TEST_EVIDENCE.md`. Live LM Studio tests need both chat and embedding models loaded at `http://127.0.0.1:1234/v1`.
 
 `POST /api/v1/review/compare-projects` accepts `project_ids` and `extract_ids` (job ids from `POST /review/extract`). Pairwise Jaccard is computed in `_token_set` / `_jaccard`; missing ids are skipped. Combined length must be ≥ 2.
 

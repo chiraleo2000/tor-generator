@@ -534,35 +534,16 @@ async def retrieve_context(state: TORDraftState) -> TORDraftState:
     logger.info("Retrieving RAG context for section=%s", target_section)
 
     try:
-        from app.providers.factory import ProviderFactory
-        from app.rag.retrieval import RAGRetriever
+        from app.rag.hybrid import hybrid_retrieve
 
-        # Create provider instances
-        factory = ProviderFactory()
-        embedding_provider = factory.get_embedding()
-        vector_store_provider = factory.get_vector_store()
-
-        # Create RAG retriever
-        retriever = RAGRetriever(
-            embedding_provider=embedding_provider,
-            vector_store_provider=vector_store_provider,
-            default_top_k=5,
-        )
-
-        # Build contextual query based on section and user input
         query = _build_rag_query(target_section, user_input)
-
-        # Build section-specific filter
-        retrieval_filter = _build_section_filter(target_section)
-
-        # Execute retrieval
-        result = await retriever.retrieve(
-            query=query,
+        result, citations, degraded = await hybrid_retrieve(
+            query,
+            search_scope="both",
             top_k=5,
-            filter=retrieval_filter,
+            section_relevance=target_section if target_section.startswith("s") else None,
         )
 
-        # Convert RetrievedChunk objects to RAGChunk dicts for state
         rag_chunks = [
             {
                 "id": chunk.id,
@@ -576,11 +557,16 @@ async def retrieve_context(state: TORDraftState) -> TORDraftState:
             }
             for chunk in result.chunks
         ]
+        if citations:
+            extra = " ".join(f"{c.get('type')}:{c.get('label')}" for c in citations[:8])
+            if rag_chunks:
+                rag_chunks[0]["text"] = rag_chunks[0]["text"] + f"\n[กราฟ] {extra}"
 
         logger.info(
-            "RAG retrieval successful: %d chunks retrieved for section=%s",
+            "RAG retrieval successful: %d chunks retrieved for section=%s degraded=%s",
             len(rag_chunks),
             target_section,
+            degraded,
         )
 
         return {

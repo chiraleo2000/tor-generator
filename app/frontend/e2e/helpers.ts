@@ -51,9 +51,11 @@ export async function createProjectAndOpenDraft(page: Page) {
 
 export async function walkFivePhases(page: Page) {
   await expect(page.getByTestId("draft-page")).toBeVisible();
+  await expect(page.getByTestId("intake-chat-panel")).toBeVisible();
+  await expect(page.getByText("โหลดห้องแชทไม่สำเร็จ")).toHaveCount(0);
   await saveEvidence(page, "03-phase-0-upload");
   await page.getByTestId("phase-1").click();
-  await expect(page.getByText("Phase 1: วิเคราะห์ความต้องการ")).toBeVisible();
+  await expect(page.getByText("Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง")).toBeVisible();
   await saveEvidence(page, "04-phase-1-analysis");
   await page.getByTestId("phase-2").click();
   await expect(page.getByText("Phase 2: ร่างเนื้อหา TOR")).toBeVisible();

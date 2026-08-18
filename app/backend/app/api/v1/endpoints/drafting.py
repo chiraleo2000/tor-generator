@@ -39,6 +39,15 @@ logger = logging.getLogger("tor_app.drafting")
 router = APIRouter()
 
 
+def _persist_keys_for_section(section_key: str) -> tuple[str, str | None]:
+    """Map s4.x / 4.x onto section_key=s4 plus a sub_key."""
+    if not section_key.startswith(("s4.", "4.")):
+        return section_key, None
+    if section_key[0] == "s":
+        return "s4", section_key
+    return "s4", f"s4.{section_key[2:]}"
+
+
 # =============================================================================
 # POST /projects/{id}/draft-section — Draft a specific TOR section
 # =============================================================================
@@ -104,6 +113,22 @@ async def draft_section(
     if body.additional_context:
         user_input.update(body.additional_context)
 
+    analysis = project.analysis_json or {}
+    slot_map = analysis.get("slot_map") or {}
+    user_input["analysis_json"] = analysis
+    user_input["slot_map"] = slot_map
+    target_slot = slot_map.get(target_section) or {}
+    if target_slot.get("content"):
+        user_input["intake_slot_content"] = target_slot.get("content")
+        user_input["intake_slot_status"] = target_slot.get("status")
+        user_input["intake_slot_sources"] = target_slot.get("sources")
+    if target_section == "s4":
+        user_input["scope_subslots"] = {
+            key: slot_map.get(key)
+            for key in slot_map
+            if str(key).startswith("s4.")
+        }
+
     # Get template data if project has a template
     template_data: dict = {}
     if project.template_id:
@@ -153,27 +178,32 @@ async def draft_section(
                 field="draft",
             )
 
-        # Persist the AI draft to the TOR section
+        persist_key, persist_sub = _persist_keys_for_section(target_section)
+
         section_stmt = select(TORSection).where(
             TORSection.project_id == project_id,
-            TORSection.section_key == target_section,
-            TORSection.sub_key.is_(None),
+            TORSection.section_key == persist_key,
         )
+        if persist_sub:
+            section_stmt = section_stmt.where(TORSection.sub_key == persist_sub)
+        else:
+            section_stmt = section_stmt.where(TORSection.sub_key.is_(None))
         section_result = await db.execute(section_stmt)
         section = section_result.scalar_one_or_none()
 
         if section:
             section.ai_draft = draft_content
+            section.content = draft_content
             section.quality_score = quality_score
             section.validation_findings = (
                 {"findings": validation_findings} if validation_findings else None
             )
         else:
-            # Create section with the AI draft
             new_section = TORSection(
                 project_id=project_id,
-                section_key=target_section,
-                content="",
+                section_key=persist_key,
+                sub_key=persist_sub,
+                content=draft_content,
                 ai_draft=draft_content,
                 quality_score=quality_score,
                 validation_findings=(
@@ -182,6 +212,33 @@ async def draft_section(
                 version=1,
             )
             db.add(new_section)
+
+        if persist_key == "s4" and persist_sub is None:
+            from app.domain.tor_sections import SCOPE_SUBSECTIONS
+
+            for sub_key in SCOPE_SUBSECTIONS:
+                sub_text = (slot_map.get(sub_key) or {}).get("content") or ""
+                if not sub_text.strip():
+                    continue
+                sub_stmt = select(TORSection).where(
+                    TORSection.project_id == project_id,
+                    TORSection.section_key == "s4",
+                    TORSection.sub_key == sub_key,
+                )
+                sub_row = (await db.execute(sub_stmt)).scalar_one_or_none()
+                if sub_row:
+                    if not (sub_row.content or "").strip():
+                        sub_row.content = str(sub_text)
+                else:
+                    db.add(
+                        TORSection(
+                            project_id=project_id,
+                            section_key="s4",
+                            sub_key=sub_key,
+                            content=str(sub_text),
+                            version=1,
+                        )
+                    )
 
         await db.flush()
 

@@ -37,10 +37,19 @@ from app.schemas.responses import MetaInfo, SuccessResponse
 
 router = APIRouter()
 
-_KEY_FIELDS = ("anthropic_api_key", "openai_api_key", "gemini_api_key")
+_KEY_FIELDS = (
+    "anthropic_api_key",
+    "openai_api_key",
+    "gemini_api_key",
+    "aws_secret_access_key",
+    "azure_foundry_api_key",
+    "openai_compatible_api_key",
+)
 _MSG_ANTHROPIC_KEY = "ต้องใส่ ANTHROPIC_API_KEY"
 _MSG_OPENAI_KEY = "ต้องใส่ OPENAI_API_KEY"
 _MSG_GEMINI_KEY = "ต้องใส่ GEMINI_API_KEY"
+_MSG_AZURE_KEY = "ต้องใส่ Azure Foundry API key"
+_MSG_COMPAT_URL = "ต้องใส่ OpenAI-compatible base URL"
 
 
 def _mask_key(value: str | None) -> str:
@@ -122,6 +131,19 @@ class AiSettingsUpdate(BaseModel):
     gemini_model: str | None = None
     gemini_embedding_model: str | None = None
     vector_store_provider: str | None = None
+    bedrock_region: str | None = None
+    bedrock_model_id: str | None = None
+    bedrock_embedding_model_id: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    azure_foundry_endpoint: str | None = None
+    azure_foundry_api_key: str | None = None
+    azure_foundry_deployment: str | None = None
+    azure_foundry_api_version: str | None = None
+    openai_compatible_base_url: str | None = None
+    openai_compatible_api_key: str | None = None
+    openai_compatible_model: str | None = None
+    openai_compatible_embedding_model: str | None = None
 
 
 class AiSettingsTest(BaseModel):
@@ -134,6 +156,17 @@ class AiSettingsTest(BaseModel):
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    bedrock_region: str | None = None
+    bedrock_model_id: str | None = None
+    azure_foundry_endpoint: str | None = None
+    azure_foundry_api_key: str | None = None
+    azure_foundry_deployment: str | None = None
+    azure_foundry_api_version: str | None = None
+    openai_compatible_base_url: str | None = None
+    openai_compatible_api_key: str | None = None
+    openai_compatible_model: str | None = None
 
 
 def _require_cloud_key(
@@ -174,12 +207,12 @@ def _validate_update(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
         )
     if body.deployment_mode == "cloud" and body.llm_provider not in CLOUD_LLM_PROVIDERS:
         raise ValidationError(
-            message="โหมดคลาวด์ต้องเลือก Claude, OpenAI หรือ Gemini",
+            message="โหมดคลาวด์ต้องเลือก Claude, OpenAI, Gemini, Bedrock, Azure Foundry หรือ OpenAI-compatible",
             field="llm_provider",
         )
     if body.deployment_mode == "cloud" and body.embedding_provider not in CLOUD_EMBEDDING_PROVIDERS:
         raise ValidationError(
-            message="โหมดคลาวด์ต้องเลือก embeddings ของ OpenAI หรือ Gemini",
+            message="โหมดคลาวด์ต้องเลือก embeddings ของ OpenAI, Gemini, Bedrock, Azure หรือ OpenAI-compatible",
             field="embedding_provider",
         )
 
@@ -240,6 +273,21 @@ def _validate_update(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
             _MSG_GEMINI_KEY,
             "gemini_api_key",
         )
+        _require_cloud_key(
+            body.llm_provider,
+            "azure_foundry",
+            resolved_key("azure_foundry_api_key"),
+            _MSG_AZURE_KEY,
+            "azure_foundry_api_key",
+        )
+        if body.llm_provider == "openai_compatible" and not (
+            body.openai_compatible_base_url or existing.get("openai_compatible_base_url")
+        ):
+            raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
+        if body.llm_provider == "azure_foundry" and not (
+            body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
+        ):
+            raise ValidationError(message="ต้องใส่ Azure Foundry endpoint", field="azure_foundry_endpoint")
 
 
 def _embedding_changed(existing: dict[str, Any], merged: dict[str, Any]) -> bool:
@@ -368,6 +416,40 @@ async def test_ai_settings(
                     f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
                 )
                 response.raise_for_status()
+        elif body.llm_provider == "openai_compatible":
+            base = (body.openai_compatible_base_url or existing.get("openai_compatible_base_url") or "").rstrip("/")
+            if not base:
+                raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
+            key = body.openai_compatible_api_key or existing.get("openai_compatible_api_key") or ""
+            headers = {"Authorization": f"Bearer {key}"} if key and not str(key).startswith("****") else {}
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                response = await client.get(f"{base}/models", headers=headers)
+                response.raise_for_status()
+        elif body.llm_provider == "azure_foundry":
+            endpoint = body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
+            key = body.azure_foundry_api_key or existing.get("azure_foundry_api_key")
+            version = body.azure_foundry_api_version or existing.get("azure_foundry_api_version") or "2024-10-21"
+            if not endpoint or not key or str(key).startswith("****"):
+                raise ValidationError(message=_MSG_AZURE_KEY, field="azure_foundry_api_key")
+            url = f"{str(endpoint).rstrip('/')}/openai/models?api-version={version}"
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                response = await client.get(url, headers={"api-key": str(key)})
+                response.raise_for_status()
+        elif body.llm_provider == "bedrock":
+            region = body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1"
+            # Connectivity check without live AWS: STS GetCallerIdentity if keys given.
+            try:
+                import boto3
+
+                kwargs = {"region_name": region}
+                access = body.aws_access_key_id or existing.get("aws_access_key_id")
+                secret = body.aws_secret_access_key or existing.get("aws_secret_access_key")
+                if access and secret and not str(secret).startswith("****"):
+                    kwargs["aws_access_key_id"] = access
+                    kwargs["aws_secret_access_key"] = secret
+                boto3.client("sts", **kwargs).get_caller_identity()
+            except Exception as exc:
+                raise ValidationError(message=f"ทดสอบ Bedrock/STS ไม่สำเร็จ: {exc}") from exc
         else:
             raise ValidationError(message="ผู้ให้บริการไม่ถูกต้อง", field="llm_provider")
         return _ok(request, {"ok": True, "message": "เชื่อมต่อคลาวด์ได้"})

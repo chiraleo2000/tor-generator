@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, Text, func
+from sqlalchemy import ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,6 +36,11 @@ class KnowledgeBaseDocument(Base):
         nullable=False, server_default=func.now()
     )
     processed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    mongo_gridfs_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False, default="baseline")
 
     # Relationships
     chunks: Mapped[list["KBChunk"]] = relationship(  # noqa: F821

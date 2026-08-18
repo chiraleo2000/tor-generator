@@ -1,7 +1,8 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **18 สิงหาคม 2026 ~10:58–11:30 น.**  
-สแตก Docker `tor-app` + LM Studio ที่ `http://127.0.0.1:1234`
+วันที่ **18 สิงหาคม 2026 ~16:35 น.**  
+สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234`  
+`GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
 เอกสารชุดปัจจุบันเรียง **13–18** (ไม่มีแฟ้ม 19–20 — หลักฐานเทสต์คือไฟล์นี้ ไม่ใช่ `21`)
 
@@ -10,7 +11,7 @@
 | Chat | `google/gemma-4-e4b` |
 | Embeddings | `text-embedding-embeddinggemma-300m` (768 มิติ) |
 
-ภาพอยู่ใน `discussions/test-evidence/` ถ่ายจาก Playwright แบบเห็นหน้าจอหลังเคสผ่านแล้วเท่านั้น — **ไม่มีเคสที่ล้ม**  
+ภาพอยู่ใน `discussions/test-evidence/` ถ่ายจาก Playwright แบบเห็นหน้าจอหลังเคสผ่านแล้วเท่านั้น — **ไม่มีเคสที่ล้มในรอบนี้**  
 คู่มือผู้ใช้ที่อธิบายภาพชุดเดียวกันทีละขั้น: `13-USER_GUIDELINE.md`
 
 ---
@@ -19,22 +20,24 @@
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest รวม live LM Studio | **1339 ผ่าน**, coverage **92%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `main`) | หน่วยทดสอบ backend ทั้งก้อน รวมยิง LM Studio จริง |
-| Vitest | **104 ผ่าน** / **92.47%** statements | lib, stores, หน้าตั้งค่า AI |
-| Playwright headed (แอป) | **13 ผ่าน** / 0 ล้ม / 0 ข้าม (~1.0 นาที) | เวิร์กโฟลว์ผู้ใช้บน http://localhost:3000 |
-| ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **2 ผ่าน** | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือ หน้าแอดมิน |
+| pytest รวม live LM Studio | **1367 ผ่าน**, coverage **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) | หน่วยทดสอบ backend ทั้งก้อน รวมยิง LM Studio จริง 10 เคส |
+| Vitest | **109 ผ่าน** / **90.97%** statements | lib, stores, หน้าตั้งค่า AI, chat SSE |
+| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (~1.2 นาที) | เวิร์กโฟลว์ผู้ใช้บน http://localhost:3000 รวม `/chat` และแชทร่าง Phase 0–1 |
+| ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ หน้าแอดมิน `/chat` HITL |
 | Playwright รายงาน coverage (`test:e2e:reports`) | **3 ผ่าน** | ถ่าย htmlcov / Istanbul / รายงาน Playwright |
 
 ไฟล์ `e2e/reports.spec.ts` และ `e2e/guide-shots.spec.ts` **ไม่ถูกรวม**ใน `npm run test:e2e` ปกติ จึงไม่มีเคสข้ามในชุดหลัก (Sonar S1607)
 
+Coverage backend ลดจากรอบเช้าเพราะเพิ่มโมดูลแชท / Mongo / GraphRAG ที่ยังไม่คลุมครบทุกบรรทัด — ชุดเทสต์ยังผ่านทั้งหมด
+
 ---
 
-## รายงาน Playwright — 13 เคสแอป
+## รายงาน Playwright — 15 เคสแอป
 
 รัน: `cd app/frontend && npm run test:e2e:headed`  
 Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเนอร์พอร์ต 3000
 
-![รายงาน Playwright — 13 ผ่าน 0 ล้ม](test-evidence/15-playwright-report.png)
+![รายงาน Playwright — 15 ผ่าน 0 ล้ม](test-evidence/15-playwright-report.png)
 
 ด้านล่างอธิบายทีละเคสว่าตรวจอะไร และภาพที่บันทึกหลังผ่าน
 
@@ -99,21 +102,27 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเ
 
 ## ขั้นที่ 6 — เดิน Phase 0 ถึง Phase 4
 
-**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *login, create project, walk Phase 0-4*
+**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *login, create project, walk Phase 0-4*  
+**แชทร่าง:** `chat.spec.ts` — *Phase 0–1 is intake chat; upload then confirm-ready*
 
-สร้างโครงการใหม่แล้วคลิกแถบ Phase ทีละขั้น ตรวจหัวข้อภาษาไทยของแต่ละขั้น
+สร้างโครงการใหม่แล้วคลิกแถบ Phase ทีละขั้น ตรวจหัวข้อภาษาไทยของแต่ละขั้น  
+แชทร่างต้องไม่มีข้อความ *โหลดห้องแชทไม่สำเร็จ*
 
 ### Phase 0 เตรียมข้อมูล
 
-ช่องอัปโหลดตามประเภทเอกสาร ช่องบังคับประกาศราคากลางและหนังสืออนุมัติงบ ปุ่มถัดไปวิเคราะห์ความต้องการ
+แชทโครงการ — ลากวางหลายไฟล์ได้ **ไม่ต้องเลือก 9 ประเภท** ต้นฉบับไป Mongo แล้วจัดเข้า s1–s13 / s4.1–s4.14
 
-![เคส 5-phase: Phase 0](test-evidence/03-phase-0-upload.png)
+![เคส 5-phase: Phase 0 แชทอัปโหลดชุดใหญ่](test-evidence/03-phase-0-upload.png)
 
-### Phase 1 วิเคราะห์ความต้องการ
+### Phase 1 ถามส่วนขาด
 
-หัวข้อ *Phase 1: วิเคราะห์ความต้องการ* ช่องข้อกำหนดเชิงหน้าที่ ความพร้อมใช้ ความมั่นคง ประสิทธิภาพ คำถาม–คำตอบ
+หัวข้อ *Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง* ตารางความครบถ้วน ปุ่มดึงอ้างอิงกฎหมาย ปุ่ม **พร้อมร่าง TOR แล้ว**
 
-![เคส 5-phase: Phase 1](test-evidence/04-phase-1-analysis.png)
+![เคส 5-phase: Phase 1 แชทถามส่วนขาด](test-evidence/04-phase-1-analysis.png)
+
+หลังอัปโหลด (เคส `chat.spec.ts` ที่ mock API) ตารางมีแถว `filled` และปุ่มยืนยันพร้อมร่าง
+
+![เคส intake: ตารางความครบถ้วนหลังแกะเอกสาร](test-evidence/04b-phase-1-coverage.png)
 
 ### Phase 2 ร่าง 13 หมวด
 
@@ -135,9 +144,20 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเ
 
 ---
 
+## ขั้นที่ 6b — ถาม-ตอบคลังความรู้
+
+**ไฟล์เทสต์:** `chat.spec.ts` — *ถาม-ตอบ opens Open WebUI-like rooms*
+
+เมนู **ถาม-ตอบ** เปิด `/chat` เห็นรายการห้อง ปุ่มห้องใหม่ กล่องพิมพ์ และชิปพรอมต์ (คุณสมบัติผู้เสนอราคา, งวดจ่าย, ค่าปรับ, ราคากลาง)  
+ไม่ปนประวัติกับแชทร่างโครงการ
+
+![เคส chat: หน้าถาม-ตอบ](test-evidence/13-kb-chat.png)
+
+---
+
 ## ขั้นที่ 7 — ร่างด้วย AI จริงผ่าน Gemma
 
-**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *Phase 2 AI draft uses LM Studio Gemma* (34.4 วินาที)
+**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *Phase 2 AI draft uses LM Studio Gemma* (~35 วินาที)
 
 1. เข้า Phase 2
 2. กด `draft-ai-s1` (หมวดความเป็นมา)
@@ -153,14 +173,18 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเ
 **ไฟล์เทสต์:** `webapp.spec.ts` — *help page tabs are usable*  
 **ภาพแท็บอื่น:** `guide-shots.spec.ts`
 
-คลิกแท็บภาพรวม / แดชบอร์ด / ร่าง / ตรวจสอบ / FAQ  
+คลิกแท็บภาพรวม / เข้าสู่ระบบ / แดชบอร์ด / ร่าง / ถาม-ตอบ / ฐานความรู้ / ตรวจสอบ / ผู้ดูแล / FAQ  
 FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m`, `127.0.0.1:1234`
 
 ![คู่มือ — ภาพรวม](test-evidence/10a-help-overview.png)
 
+![คู่มือ — เข้าสู่ระบบ](test-evidence/10g-help-login.png)
+
 ![คู่มือ — แดชบอร์ด](test-evidence/10b-help-dashboard.png)
 
 ![คู่มือ — ร่าง 5 Phase](test-evidence/10c-help-draft.png)
+
+![คู่มือ — ถาม-ตอบ](test-evidence/10f-help-chat.png)
 
 ![คู่มือ — ตรวจสอบ](test-evidence/10d-help-review.png)
 
@@ -207,9 +231,11 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 ![HITL หมวดคุณสมบัติ](test-evidence/05b-hitl-confirm.png)
 
-แท็บคู่มือฐานความรู้:
+แท็บคู่มือฐานความรู้และผู้ดูแล:
 
 ![คู่มือ — ฐานความรู้](test-evidence/10e-help-kb.png)
+
+![คู่มือ — ผู้ดูแล](test-evidence/10h-help-admin.png)
 
 ---
 
@@ -228,7 +254,7 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 โหมดในเครื่อง: `#ai-mode=on_prem` แชท `google/gemma-4-e4b` embeddings `text-embedding-embeddinggemma-300m` คลัง `pgvector`  
 กดทดสอบการเชื่อมต่อ ต้องเห็นข้อความมีคำว่า *เชื่อมต่อ*  
-สลับโหมดคลาวด์: รายการมี claude/openai/gemini **ไม่มี** `lm_studio` ช่องคีย์ Claude/OpenAI/Gemini โชว์
+สลับโหมดคลาวด์: รายการมี claude/openai/gemini **ไม่มี** `lm_studio` ช่องคีย์ Claude/OpenAI/Gemini โชว์ (รวม Bedrock / Azure Foundry / OpenAI-compatible)
 
 ![แอดมิน — ping LM Studio สำเร็จ](test-evidence/09-admin-ai-lm-studio.png)
 
@@ -242,13 +268,13 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **92%** (6590 statements, 498 miss)
+Backend `coverage.py`: **87%** (7674 statements, 1011 miss) — รวมโมดูลแชท Mongo GraphRAG ที่เพิ่มรอบนี้
 
-![Coverage backend 92%](test-evidence/13-backend-coverage.png)
+![Coverage backend 87%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **92.47%** (553/598), lines **94.38%**
+Frontend Istanbul/v8: statements **90.97%** (585/643), lines **92.72%**
 
-![Coverage frontend 92.47%](test-evidence/14-frontend-coverage.png)
+![Coverage frontend 90.97%](test-evidence/14-frontend-coverage.png)
 
 ---
 
@@ -260,6 +286,8 @@ Frontend Istanbul/v8: statements **92.47%** (553/598), lines **94.38%**
 python -m pytest tests -q --tb=short --cov=app --cov-report=term --cov-report=html
 ```
 
+ผลที่ยืนยันแยกชุด: `1357 passed` (`-m "not live_llm"`) + `10 passed` (`-m live_llm`) = **1367**
+
 จาก `app/frontend`:
 
 ```bash
@@ -269,7 +297,7 @@ npm run test:e2e:guide
 npm run test:e2e:reports
 ```
 
-หลังแก้ UI ต้อง `docker compose -p tor-app --env-file .env up -d --build frontend` ก่อนรัน Playwright เพราะเทสต์ยิงคอนเทนเนอร์ที่พอร์ต 3000
+หลังแก้ UI ต้อง `docker compose -p tor-app --env-file .env up -d --build frontend backend mongo neo4j` ก่อนรัน Playwright เพราะเทสต์ยิงคอนเทนเนอร์ที่พอร์ต 3000
 
 ติดตั้ง: `14-INSTALLATION.md`  
 คู่มือผู้ใช้: `13-USER_GUIDELINE.md`

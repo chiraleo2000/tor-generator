@@ -12,6 +12,7 @@ import {
   Users,
   Cpu,
   ClipboardList,
+  MessagesSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
@@ -31,6 +32,7 @@ const mainItems: NavItem[] = [
 const workItems: NavItem[] = [
   { href: "/draft", label: "ร่าง TOR", icon: PenLine, testId: "nav-draft" },
   { href: "/review", label: "ตรวจสอบ TOR", icon: ScanSearch, testId: "nav-review" },
+  { href: "/chat", label: "ถาม-ตอบ", icon: MessagesSquare, testId: "nav-chat" },
 ];
 
 const otherItems: NavItem[] = [

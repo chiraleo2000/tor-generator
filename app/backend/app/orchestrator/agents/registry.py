@@ -48,7 +48,10 @@ REVIEW_AGENT = ReviewAgent()
 
 def get_agent_for_section(section_key: str) -> BaseDraftingAgent | None:
     """Get the specialized agent for a given TOR section key."""
-    agent = AGENT_REGISTRY.get(section_key)
+    lookup = section_key
+    if section_key.startswith("s4"):
+        lookup = "s4"
+    agent = AGENT_REGISTRY.get(lookup)
     if agent is None:
         logger.warning(
             "No agent registered for section_key=%r. Valid keys: %s",
