@@ -5,6 +5,7 @@ import {
   saveEvidence,
   skipReason,
   skipUnlessLive,
+  unlockPhase2ViaMockedIntake,
   walkFivePhases,
 } from "./helpers";
 
@@ -24,8 +25,7 @@ test.describe("TOR 5-phase draft", () => {
     test.setTimeout(240_000);
     await login(page);
     await createProjectAndOpenDraft(page);
-    await page.getByTestId("phase-2").click();
-    await expect(page.getByText("Phase 2: ร่างเนื้อหา TOR")).toBeVisible();
+    await unlockPhase2ViaMockedIntake(page);
     const aiButton = page.getByTestId("draft-ai-s1");
     await expect(aiButton).toBeVisible();
     await aiButton.click();

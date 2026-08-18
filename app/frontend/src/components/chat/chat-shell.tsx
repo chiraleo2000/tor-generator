@@ -118,6 +118,16 @@ export function ChatShell({
           await loadRooms();
           setActiveId(room.id);
           await loadMessages(room.id);
+          return;
+        }
+        if (kind === "kb") {
+          const created = await apiClient.post("/chat/rooms", {
+            kind,
+            title: "ถาม-ตอบคลังความรู้",
+          });
+          const room = unwrapData<ChatRoomCard>(created);
+          await loadRooms();
+          setActiveId(room.id);
         }
       })
       .catch(() => setError("โหลดห้องแชทไม่สำเร็จ"));
@@ -131,12 +141,13 @@ export function ChatShell({
     const response = await apiClient.post("/chat/rooms", {
       kind,
       project_id: projectId,
-      title: "ห้องใหม่",
+      title: kind === "kb" ? "ถาม-ตอบคลังความรู้" : "แชทร่าง TOR",
     });
     const room = unwrapData<ChatRoomCard>(response);
     await loadRooms();
     setActiveId(room.id);
     setMessages([]);
+    return room.id;
   }
 
   async function handleRename(id: string) {
@@ -157,8 +168,13 @@ export function ChatShell({
   }
 
   async function send(text: string) {
-    if (!activeId || !text.trim() || busy) return;
     const content = text.trim();
+    if (!content || busy) return;
+    let roomId = activeId;
+    if (!roomId) {
+      roomId = await handleNew();
+    }
+    if (!roomId) return;
     setDraft("");
     setBusy(true);
     setError(null);
@@ -171,7 +187,7 @@ export function ChatShell({
     abortRef.current = controller;
     try {
       await streamSsePost(
-        pathFor(activeId),
+        pathFor(roomId),
         { content, search_scope: scope },
         token,
         (event, data) => {
@@ -204,8 +220,8 @@ export function ChatShell({
         controller.signal
       );
       await loadRooms();
-    } catch {
-      setError("ส่งข้อความไม่สำเร็จ");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "ส่งข้อความไม่สำเร็จ");
     } finally {
       setBusy(false);
       abortRef.current = null;
@@ -308,6 +324,13 @@ export function ChatShell({
           </p>
         ) : null}
         <div className="flex-1 space-y-3 overflow-y-auto p-4" data-testid="chat-messages">
+          {messages.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              {kind === "kb"
+                ? "พิมพ์คำถามจากคลังกฎหมาย หรือเลือกชิปพรอมต์ด้านล่าง — คำตอบมาจากโมเดลในเครื่องพร้อมอ้างอิง"
+                : "วางข้อความหรืออัปโหลดเอกสารด้านบน แล้วถามบอทส่วนที่ยังขาด"}
+            </p>
+          ) : null}
           {messages.map((item) => (
             <article
               key={item.id}
@@ -353,7 +376,7 @@ export function ChatShell({
               data-testid="chat-input"
               className="min-h-[48px] flex-1 rounded-md border p-2 text-sm"
               value={draft}
-              placeholder="พิมพ์คำถาม..."
+              placeholder={kind === "kb" ? "ถามจากคลังกฎหมาย เช่น งวดจ่ายต้องวางหลักประกันหรือไม่" : "ตอบบอท หรือบอกข้อเท็จจริงโครงการ"}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

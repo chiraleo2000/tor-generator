@@ -140,3 +140,12 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
   s13: [{ key: "other", label: "เงื่อนไขอื่น ๆ", type: "textarea" }],
 };
 
+export function serializeSectionDraft(draft: Record<string, string>): string {
+  const entries = Object.entries(draft).filter(([, value]) => (value || "").trim());
+  if (!entries.length) return "";
+  if (entries.length === 1 && entries[0][0] === "body") {
+    return entries[0][1].trim();
+  }
+  return JSON.stringify(Object.fromEntries(entries));
+}
+

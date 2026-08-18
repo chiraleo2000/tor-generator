@@ -52,7 +52,17 @@ export async function streamSsePost(
     signal,
   });
   if (!response.ok || !response.body) {
-    throw new Error("สตรีมแชทไม่สำเร็จ");
+    let detail = "สตรีมแชทไม่สำเร็จ";
+    try {
+      const payload = (await response.json()) as { error?: { message?: string } };
+      const message = payload?.error?.message;
+      if (typeof message === "string" && message.trim()) {
+        detail = message;
+      }
+    } catch {
+      // keep the default Thai error when the body is not JSON
+    }
+    throw new Error(detail);
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

@@ -10,7 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, INTAKE_SLOT_ORDER
+from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_ORDER
 from app.models.project import Project
+from app.models.tor_section import TORSection
 from app.providers.factory import ProviderFactory
 from app.rag.graph_extract import parse_json_lenient
 from app.rag.hybrid import hybrid_retrieve
@@ -67,6 +69,96 @@ def ready_criteria_met(slot_map: dict[str, Any]) -> bool:
         if status != "filled" or not content:
             return False
     return True
+
+
+def _analysis_dict(project: Project) -> dict[str, Any]:
+    raw = project.analysis_json
+    return raw if isinstance(raw, dict) else {}
+
+
+def _extracted_dict(project: Project) -> dict[str, Any]:
+    raw = project.extracted_fields
+    return raw if isinstance(raw, dict) else {}
+
+
+def slot_map_of(project: Project) -> dict[str, Any]:
+    raw = _analysis_dict(project).get("slot_map") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def has_intake_material(project: Project) -> bool:
+    """True when the officer uploaded files, pasted text, or filled a slot."""
+    texts = _extracted_dict(project).get("intake_texts") or []
+    if isinstance(texts, list):
+        for item in texts:
+            if isinstance(item, dict) and str(item.get("text") or "").strip():
+                return True
+    files = _analysis_dict(project).get("intake_files") or []
+    if isinstance(files, list) and files:
+        return True
+    for slot in slot_map_of(project).values():
+        if not isinstance(slot, dict):
+            continue
+        if slot.get("status") == "filled" and str(slot.get("content") or "").strip():
+            return True
+    return False
+
+
+def is_ready_to_compose(project: Project) -> bool:
+    if not _analysis_dict(project).get("ready_to_compose"):
+        return False
+    return ready_criteria_met(slot_map_of(project))
+
+
+def intake_unlocked_phase(project: Project) -> int:
+    """Highest intake phase allowed: 0 empty, 1 has material, 2 confirmed ready."""
+    if is_ready_to_compose(project):
+        return 2
+    if has_intake_material(project):
+        return 1
+    return 0
+
+
+def can_set_phase(project: Project, target: int) -> bool:
+    if target < 0 or target > 4:
+        return False
+    current = int(project.current_phase or 0)
+    if target <= current:
+        return True
+    unlocked = intake_unlocked_phase(project)
+    if target <= unlocked:
+        return True
+    return bool(unlocked >= 2 and target == current + 1)
+
+
+def clamp_draft_phase(project: Project) -> bool:
+    """Pull a draft back from Phase 2+ when intake is still empty. Returns True if changed."""
+    if str(project.status or "") != "draft":
+        return False
+    current = int(project.current_phase or 0)
+    unlocked = intake_unlocked_phase(project)
+    if current <= unlocked:
+        return False
+    if current >= 2 and unlocked < 2:
+        project.current_phase = unlocked
+        return True
+    if current == 1 and unlocked < 1:
+        project.current_phase = 0
+        return True
+    return False
+
+
+def append_intake_text(project: Project, name: str, text: str, file_status: str = "ok") -> None:
+    analysis = dict(_analysis_dict(project))
+    intake_files = list(analysis.get("intake_files") or [])
+    intake_files.append({"name": name, "chars": len(text), "status": file_status})
+    analysis["intake_files"] = intake_files
+    project.analysis_json = analysis
+    fields = dict(_extracted_dict(project))
+    pack = list(fields.get("intake_texts") or [])
+    pack.append({"name": name, "text": text[:20000]})
+    fields["intake_texts"] = pack
+    project.extracted_fields = fields
 
 
 def merge_analysis(existing: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -147,3 +239,61 @@ async def load_project(db: AsyncSession, project_id: UUID) -> Project | None:
     return (
         await db.execute(select(Project).where(Project.id == project_id))
     ).scalar_one_or_none()
+
+
+async def _upsert_section_text(
+    db: AsyncSession,
+    project_id: UUID,
+    section_key: str,
+    sub_key: str | None,
+    text: str,
+) -> None:
+    stripped = text.strip()
+    if not stripped:
+        return
+    stmt = select(TORSection).where(
+        TORSection.project_id == project_id,
+        TORSection.section_key == section_key,
+    )
+    if sub_key:
+        stmt = stmt.where(TORSection.sub_key == sub_key)
+    else:
+        stmt = stmt.where(TORSection.sub_key.is_(None))
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if row:
+        if not (row.content or "").strip():
+            row.content = stripped
+        return
+    db.add(
+        TORSection(
+            project_id=project_id,
+            section_key=section_key,
+            sub_key=sub_key,
+            content=stripped,
+            version=1,
+        )
+    )
+
+
+async def apply_slot_map_to_sections(
+    db: AsyncSession,
+    project_id: UUID,
+    slot_map: dict[str, Any],
+) -> None:
+    """Copy filled intake slots into TOR sections so Phase 2/3/review have real text."""
+    for key in TOR_SECTION_ORDER:
+        if key == "s4":
+            continue
+        slot = slot_map.get(key) or {}
+        if isinstance(slot, dict):
+            await _upsert_section_text(db, project_id, key, None, str(slot.get("content") or ""))
+    parts: list[str] = []
+    for sub_key, title in SCOPE_SUBSECTIONS.items():
+        slot = slot_map.get(sub_key) or {}
+        text = str(slot.get("content") or "") if isinstance(slot, dict) else ""
+        if not text.strip():
+            continue
+        await _upsert_section_text(db, project_id, "s4", sub_key, text)
+        parts.append(f"{title}: {text.strip()}")
+    if parts:
+        await _upsert_section_text(db, project_id, "s4", None, "\n\n".join(parts))

@@ -7,6 +7,7 @@ import {
   createProjectAndOpenDraft,
   login,
   saveEvidence,
+  unlockPhase2ViaMockedIntake,
 } from "./helpers";
 
 /** Extra screenshots for the user guideline. Run with CAPTURE_GUIDE=1. */
@@ -91,8 +92,7 @@ test.describe("Guide screenshots", () => {
 
     await login(page);
     await createProjectAndOpenDraft(page);
-    await page.getByTestId("phase-2").click();
-    await expect(page.getByText("Phase 2: ร่างเนื้อหา TOR")).toBeVisible();
+    await unlockPhase2ViaMockedIntake(page);
     await page.getByRole("button", { name: /หมวด 3:/ }).click();
     await expect(page.getByTestId("hitl-confirm-s3")).toBeVisible();
     await saveEvidence(page, "05b-hitl-confirm");

@@ -318,6 +318,25 @@ class TestGetProject:
         assert data["ok"] is True
         assert data["data"]["id"] == str(PROJECT_ID)
 
+    def test_get_project_clamps_skipped_phase_two(self, client, mock_officer_user):
+        project = _make_project()
+        project.current_phase = 2
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = project
+        mock_db.execute = AsyncMock(return_value=result)
+        mock_db.flush = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+
+        response = client.get(f"/api/v1/projects/{PROJECT_ID}")
+        assert response.status_code == 200
+        assert project.current_phase == 0
+        mock_db.flush.assert_awaited()
+
     def test_get_project_not_found(self, client, mock_officer_user):
         """Returns 404 when project doesn't exist."""
         mock_db = AsyncMock()
@@ -630,8 +649,34 @@ class TestPhaseAndExtractionHitl:
         )
         assert response.status_code == 400
 
-    def test_patch_phase(self, client, mock_officer_user):
+    def test_patch_phase_rejects_skip_to_two_without_intake(self, client, mock_officer_user):
         project = _make_project()
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = project
+        mock_db.execute = AsyncMock(return_value=result)
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.patch(
+            f"/api/v1/projects/{PROJECT_ID}/phase",
+            json={"phase": 2},
+        )
+        assert response.status_code == 400
+        assert project.current_phase == 0
+
+    def test_patch_phase_allows_two_when_ready(self, client, mock_officer_user):
+        project = _make_project()
+        project.current_phase = 1
+        slots = {
+            key: {"content": "ข้อมูลข้อเท็จจริงของโครงการทดสอบ", "status": "filled"}
+            for key in ("s1", "s2", "s5", "s6", "s7", "s4.1")
+        }
+        project.analysis_json = {"ready_to_compose": True, "slot_map": slots}
         mock_db = AsyncMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = project
@@ -649,6 +694,26 @@ class TestPhaseAndExtractionHitl:
         )
         assert response.status_code == 200
         assert project.current_phase == 2
+
+    def test_patch_phase(self, client, mock_officer_user):
+        project = _make_project()
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = project
+        mock_db.execute = AsyncMock(return_value=result)
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.patch(
+            f"/api/v1/projects/{PROJECT_ID}/phase",
+            json={"phase": 0},
+        )
+        assert response.status_code == 200
+        assert project.current_phase == 0
 
     def test_list_sections_returns_thirteen_keys(self, client, mock_officer_user):
         project = _make_project()

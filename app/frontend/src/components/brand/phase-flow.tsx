@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { canSelectPhase } from "@/lib/phase-gate";
 
 export const PHASES = [
   { id: 0, title: "เตรียมข้อมูล", sub: "Pre-Drafting" },
@@ -13,21 +14,34 @@ export const PHASES = [
 
 export function PhaseFlow({
   current,
+  unlocked = 0,
   onSelect,
-}: Readonly<{ current: number; onSelect: (phase: number) => void }>) {
+}: Readonly<{
+  current: number;
+  unlocked?: number;
+  onSelect: (phase: number) => void;
+}>) {
   return (
     <div className="mb-5 flex items-start overflow-x-auto pb-1">
       {PHASES.map((phase, index) => {
         const done = phase.id < current;
         const active = phase.id === current;
+        const locked = !canSelectPhase(current, unlocked, phase.id);
         return (
           <div key={phase.id} className="flex min-w-[150px] flex-1 items-start">
             <button
               type="button"
               aria-label={`Phase ${phase.id}`}
+              aria-disabled={locked}
               data-testid={`phase-${phase.id}`}
-              onClick={() => onSelect(phase.id)}
-              className="flex-1 text-center"
+              onClick={() => {
+                if (locked) return;
+                onSelect(phase.id);
+              }}
+              className={cn(
+                "flex-1 text-center",
+                locked && "cursor-not-allowed opacity-40"
+              )}
             >
               <span
                 className={cn(

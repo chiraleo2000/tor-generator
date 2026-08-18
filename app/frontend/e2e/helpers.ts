@@ -52,19 +52,75 @@ export async function createProjectAndOpenDraft(page: Page) {
 export async function walkFivePhases(page: Page) {
   await expect(page.getByTestId("draft-page")).toBeVisible();
   await expect(page.getByTestId("intake-chat-panel")).toBeVisible();
+  await expect(page.getByText("Phase 0: อัปโหลดชุดเอกสาร")).toBeVisible();
+  await expect(page.getByTestId("intake-paste")).toBeVisible();
   await expect(page.getByText("โหลดห้องแชทไม่สำเร็จ")).toHaveCount(0);
-  await saveEvidence(page, "03-phase-0-upload");
-  await page.getByTestId("phase-1").click();
-  await expect(page.getByText("Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง")).toBeVisible();
-  await saveEvidence(page, "04-phase-1-analysis");
   await page.getByTestId("phase-2").click();
-  await expect(page.getByText("Phase 2: ร่างเนื้อหา TOR")).toBeVisible();
-  await saveEvidence(page, "05-phase-2-draft");
-  await page.getByTestId("phase-3").click();
-  await expect(page.getByText("Phase 3: ทบทวนและอนุมัติ")).toBeVisible();
-  await saveEvidence(page, "06-phase-3-review");
-  await page.getByTestId("phase-4").click();
-  await expect(page.getByText("Phase 4: เผยแพร่")).toBeVisible();
-  await expect(page.getByRole("button", { name: "ส่งออก Word" })).toBeVisible();
-  await saveEvidence(page, "07-phase-4-publish");
+  await expect(page.getByText("Phase 0: อัปโหลดชุดเอกสาร")).toBeVisible();
+  await expect(page.getByText("Phase 2: ร่างเนื้อหา TOR")).toHaveCount(0);
+  await saveEvidence(page, "03-phase-0-upload");
+}
+
+export async function unlockPhase2ViaMockedIntake(page: Page) {
+  const envelope = (data: unknown) => ({
+    ok: true,
+    data,
+    meta: { request_id: "e2e", timestamp: new Date().toISOString() },
+  });
+  const filledSlot = {
+    content: "ข้อมูลข้อเท็จจริงของโครงการทดสอบ",
+    status: "filled",
+    sources: ["ผู้ใช้"],
+  };
+  const slotMap = {
+    s1: filledSlot,
+    s2: filledSlot,
+    s5: filledSlot,
+    s6: filledSlot,
+    s7: filledSlot,
+    "s4.1": filledSlot,
+  };
+  const coverage = Object.entries(slotMap).map(([key, slot]) => ({
+    key,
+    label: key,
+    status: slot.status,
+    filled: true,
+    fact_required: true,
+  }));
+  await page.route("**/intake/text", async (route) => {
+    await route.fulfill({ json: envelope({ files: ["ข้อความผู้ใช้.txt"], count: 1 }) });
+  });
+  await page.route("**/intake/analyze", async (route) => {
+    await route.fulfill({
+      json: envelope({
+        slot_map: slotMap,
+        gap_questions: [],
+        coverage,
+        ready_to_compose: false,
+      }),
+    });
+  });
+  await page.route("**/intake/coverage", async (route) => {
+    await route.fulfill({
+      json: envelope({
+        coverage,
+        gap_questions: [],
+        ready_to_compose: false,
+        slot_map: slotMap,
+      }),
+    });
+  });
+  await page.route("**/intake/confirm-ready", async (route) => {
+    await route.fulfill({ json: envelope({ ready_to_compose: true, phase: 2 }) });
+  });
+  await page.route("**/projects/*/phase", async (route) => {
+    await route.fulfill({ json: envelope({ current_phase: 2 }) });
+  });
+  await page.getByTestId("intake-paste").fill(
+    "โครงการทดสอบวงเงินหนึ่งแสนบาท ระยะเวลาหนึ่งร้อยแปดสิบวัน สถานที่กรมบัญชีกลาง"
+  );
+  await page.getByTestId("intake-analyze-text").click();
+  await expect(page.getByText("แกะข้อความแล้ว")).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId("intake-confirm-ready").click();
+  await expect(page.getByText("Phase 2: ร่างเนื้อหา TOR")).toBeVisible({ timeout: 20_000 });
 }

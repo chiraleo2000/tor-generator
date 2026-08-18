@@ -90,7 +90,11 @@ export default function StandaloneReviewPage() {
             {file.name} · {Math.round(file.size / 1024)} KB
           </p>
         ) : null}
-        {status ? <p className="mt-2 text-sm text-brand-green">{status}</p> : null}
+        {status ? (
+          <p className={`mt-2 text-sm ${result || status.includes("สำเร็จ") ? "text-brand-green" : "text-destructive"}`}>
+            {status}
+          </p>
+        ) : null}
 
         <h3 className="mb-2 mt-6 text-navy">เอกสารอ้างอิงบังคับ</h3>
         <div className="rounded-lg bg-gray-50 p-3">

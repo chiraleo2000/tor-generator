@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -142,7 +142,8 @@ def test_confirm_ready_rejects_reference_only_facts(client, mock_officer_user):
     assert response.status_code == 400
 
 
-def test_confirm_ready_sets_phase_two(client, mock_officer_user):
+@patch("app.api.v1.endpoints.intake.apply_slot_map_to_sections", new_callable=AsyncMock)
+def test_confirm_ready_sets_phase_two(apply_sections, client, mock_officer_user):
     slots = empty_slot_map()
     for key in FACT_REQUIRED_SLOTS:
         slots[key] = {
@@ -166,3 +167,25 @@ def test_confirm_ready_sets_phase_two(client, mock_officer_user):
     assert response.json()["data"]["ready_to_compose"] is True
     assert project.current_phase >= 2
     assert project.analysis_json["ready_to_compose"] is True
+    apply_sections.assert_awaited()
+
+
+@patch("app.api.v1.endpoints.intake.ingest_file_bytes", new_callable=AsyncMock)
+def test_intake_text_appends_pack(ingest_mock, client, mock_officer_user):
+    project = _make_project()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/text",
+        json={"content": "โครงการทดสอบวงเงินหนึ่งแสนบาท ระยะเวลา 180 วัน"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["count"] == 1
+    ingest_mock.assert_awaited()
+    texts = project.extracted_fields["intake_texts"]
+    assert texts[0]["text"].startswith("โครงการทดสอบ")

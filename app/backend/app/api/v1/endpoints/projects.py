@@ -48,6 +48,7 @@ from app.models.tor_section import TORSection
 from app.models.user import User
 from app.rag.extraction import ExtractionResult, extract_text
 from app.rbac import require_project_access, require_role
+from app.services.intake_service import can_set_phase, clamp_draft_phase
 from app.schemas.project import (
     AnalysisUpdateRequest,
     PaginationMeta,
@@ -240,6 +241,9 @@ async def get_project(
 
     # Check access
     require_project_access(project.owner_id, current_user)
+
+    if clamp_draft_phase(project):
+        await db.flush()
 
     project_data = ProjectResponse.model_validate(project).model_dump(mode="json")
     return _build_success_response(request, project_data)
@@ -752,6 +756,11 @@ async def patch_project_phase(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     project = await _owned_project(project_id, current_user, db)
+    if not can_set_phase(project, body.phase):
+        raise ValidationError(
+            message="ต้องวางข้อความหรืออัปโหลดเอกสารใน Phase 0 ก่อน จึงจะร่าง TOR ได้",
+            field="phase",
+        )
     project.current_phase = body.phase
     await db.flush()
     await db.refresh(project)
@@ -801,15 +810,19 @@ async def list_project_sections(
         else:
             by_key[row.section_key] = row
     extracted = project.extracted_fields or {}
+    slot_map = (project.analysis_json or {}).get("slot_map") or {}
     sections = []
     for key in TOR_SECTION_ORDER:
         row = by_key.get(key)
-        filled = bool(row and (row.content or "").strip())
+        content = row.content if row else ""
+        if not str(content or "").strip() and isinstance(slot_map.get(key), dict):
+            content = str((slot_map.get(key) or {}).get("content") or "")
+        filled = bool(str(content or "").strip())
         item: dict = {
             "key": key,
             "title": TOR_SECTION_LABELS[key],
             "filled": filled,
-            "content": row.content if row else "",
+            "content": content,
             "ai_draft": row.ai_draft if row else "",
             "human_confirmed": bool(row.is_approved) if row else False,
             "hitl": key in MANDATORY_HUMAN_REVIEW_SECTIONS,
@@ -822,12 +835,14 @@ async def list_project_sections(
             for sub_key, title in SCOPE_SUBSECTIONS.items():
                 sub_row = scope_map.get(sub_key) or scope_map.get(sub_key.replace("s4.", "4."))
                 sub_content = sub_row.content if sub_row else ""
+                if not str(sub_content or "").strip() and isinstance(slot_map.get(sub_key), dict):
+                    sub_content = str((slot_map.get(sub_key) or {}).get("content") or "")
                 item["subs"].append(
                     {
                         "key": sub_key,
                         "title": title,
                         "content": sub_content,
-                        "filled": bool(sub_content.strip()),
+                        "filled": bool(str(sub_content or "").strip()),
                     }
                 )
         sections.append(item)

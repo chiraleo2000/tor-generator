@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.constants import PROJECT_NOT_FOUND, PROJECT_UUID_DESC
+from app.domain.section_text import section_plain_text
 from app.deps import get_current_user, get_db
 from app.exceptions import NotFoundError, ValidationError
 from app.models.project import Project
@@ -127,7 +128,7 @@ async def run_review(
     sections_map: dict[str, str] = {}
 
     for section in all_sections:
-        content = section.content or ""
+        content = section_plain_text(section.content or "")
         if section.sub_key:
             key = f"{section.section_key}.{section.sub_key}"
         else:

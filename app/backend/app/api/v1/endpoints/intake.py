@@ -28,6 +28,8 @@ from app.rag.hybrid import hybrid_retrieve
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.intake_service import (
     analyze_pack,
+    append_intake_text,
+    apply_slot_map_to_sections,
     coverage_table,
     empty_slot_map,
     fill_reference_slot,
@@ -38,6 +40,7 @@ from app.services.intake_service import (
 
 logger = logging.getLogger("tor_app.intake")
 router = APIRouter()
+INTAKE_PASTE_FILENAME = "ข้อความผู้ใช้.txt"
 
 
 class FillReferenceBody(BaseModel):
@@ -51,6 +54,10 @@ class IntakeChatBody(BaseModel):
 
 class ConfirmReadyBody(BaseModel):
     confirm: bool = True
+
+
+class IntakeTextBody(BaseModel):
+    content: str = Field(..., min_length=20, max_length=200_000)
 
 
 def _ok(request: Request, data: Any) -> JSONResponse:
@@ -108,10 +115,8 @@ async def intake_upload(
     files: Annotated[list[UploadFile], File()],
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
-    analysis = dict(project.analysis_json or {})
-    intake_files = list(analysis.get("intake_files") or [])
     factory = session_factory or request.app.state.db_session_factory
-    saved = []
+    saved: list[str] = []
     for upload in files:
         content = await upload.read()
         if not content:
@@ -134,24 +139,37 @@ async def intake_upload(
             project_id=str(project.id),
             session_factory=factory,
         )
-        entry = {
-            "name": name,
-            "chars": len(extracted.text),
-            "status": "ocr" if extracted.method in {"ocr", "mixed"} else "ok",
-            "text": extracted.text[:20000],
-        }
-        intake_files.append({k: v for k, v in entry.items() if k != "text"})
-        saved.append(entry)
-    analysis["intake_files"] = intake_files
-    project.analysis_json = analysis
-    # stash texts separately under extracted_fields for analyze
-    texts = dict(project.extracted_fields or {})
-    pack = list(texts.get("intake_texts") or [])
-    pack.extend({"name": item["name"], "text": item["text"]} for item in saved)
-    texts["intake_texts"] = pack
-    project.extracted_fields = texts
+        file_status = "ocr" if extracted.method in {"ocr", "mixed"} else "ok"
+        append_intake_text(project, name, extracted.text, file_status)
+        saved.append(name)
     await db.flush()
-    return _ok(request, {"files": [item["name"] for item in saved], "count": len(saved)})
+    return _ok(request, {"files": saved, "count": len(saved)})
+
+
+@router.post("/{project_id}/intake/text")
+async def intake_text(
+    request: Request,
+    project_id: uuid.UUID,
+    body: IntakeTextBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JSONResponse:
+    project = await _project(db, project_id, current_user)
+    text = body.content.strip()
+    factory = session_factory or request.app.state.db_session_factory
+    await ingest_file_bytes(
+        db=db,
+        filename=INTAKE_PASTE_FILENAME,
+        content=text.encode("utf-8"),
+        mime_type="text/plain",
+        scope="user",
+        owner_id=current_user.id,
+        project_id=str(project.id),
+        session_factory=factory,
+    )
+    append_intake_text(project, INTAKE_PASTE_FILENAME, text)
+    await db.flush()
+    return _ok(request, {"files": [INTAKE_PASTE_FILENAME], "count": 1})
 
 
 @router.post("/{project_id}/intake/analyze")
@@ -253,6 +271,7 @@ async def intake_confirm_ready(
     analysis["ready_to_compose"] = True
     project.analysis_json = analysis
     project.current_phase = max(project.current_phase or 0, 2)
+    await apply_slot_map_to_sections(db, project.id, slot_map)
     await db.flush()
     return _ok(request, {"ready_to_compose": True, "phase": project.current_phase})
 

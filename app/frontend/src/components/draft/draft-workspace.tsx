@@ -12,6 +12,7 @@ import { MappingBox } from "@/components/brand/mapping-box";
 import { CheckItem } from "@/components/brand/check-item";
 import { IntakeChatPanel } from "@/components/draft/intake-chat-panel";
 import { apiClient } from "@/lib/api-client";
+import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { useProjectStore } from "@/stores/project-store";
 import {
@@ -19,8 +20,11 @@ import {
   SCOPE_SUBSECTIONS,
   SECTION_FIELDS,
   TOR_SECTION_ORDER,
+  serializeSectionDraft,
   type SectionField,
 } from "@/lib/tor-sections";
+import { toReviewFinding, findingCheckTone, type ReviewFinding } from "@/lib/review-findings";
+import { canSelectPhase, displayPhase, intakeUnlockedPhase } from "@/lib/phase-gate";
 import { cn } from "@/lib/utils";
 
 interface SectionPayload {
@@ -67,6 +71,7 @@ export function DraftWorkspace() {
   const projectId = (params.id as string) || "";
   const { activeProject, fetchProject } = useProjectStore();
   const [phase, setPhase] = useState(0);
+  const [unlocked, setUnlocked] = useState(0);
   const [sections, setSections] = useState<SectionPayload[]>([]);
   const [expanded, setExpanded] = useState<string>("s1");
   const [openSub, setOpenSub] = useState<string>("");
@@ -74,6 +79,10 @@ export function DraftWorkspace() {
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [reviewScore, setReviewScore] = useState<number | null>(null);
+  const [reviewFindings, setReviewFindings] = useState<ReviewFinding[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   const loadSections = useCallback(async () => {
     const response = await apiClient.get(`/projects/${projectId}/sections`);
@@ -85,7 +94,9 @@ export function DraftWorkspace() {
     if (!projectId) return;
     fetchProject(projectId)
       .then((project) => {
-        setPhase(project.currentPhase ?? 0);
+        const nextUnlocked = intakeUnlockedPhase(project);
+        setUnlocked(nextUnlocked);
+        setPhase(displayPhase(project.currentPhase ?? 0, nextUnlocked));
         if (project.extractedFields) {
           setExtracted(project.extractedFields);
         }
@@ -94,9 +105,17 @@ export function DraftWorkspace() {
     loadSections().catch(() => undefined);
   }, [projectId, fetchProject, loadSections]);
 
-  async function persistPhase(next: number) {
-    setPhase(next);
-    await apiClient.patch(`/projects/${projectId}/phase`, { phase: next });
+  async function persistPhase(next: number, nextUnlocked = unlocked) {
+    if (!canSelectPhase(phase, nextUnlocked, next)) {
+      return;
+    }
+    try {
+      await apiClient.patch(`/projects/${projectId}/phase`, { phase: next });
+      setUnlocked(nextUnlocked);
+      setPhase(next);
+    } catch {
+      // stay on the current phase when the server rejects a skip
+    }
   }
 
   async function saveSection(
@@ -114,13 +133,16 @@ export function DraftWorkspace() {
 
   async function draftSection(key: string) {
     setBusy(true);
+    setActionError(null);
+    setActionInfo(null);
     try {
       await apiClient.post(`/projects/${projectId}/draft-section`, {
         section_key: key,
       });
       await loadSections();
-    } catch {
-      // Intentionally silent: this UI already shows a global busy state.
+      setActionInfo("ร่างด้วย AI สำเร็จ — ตรวจข้อความแล้วบันทึก");
+    } catch (err: unknown) {
+      setActionError(apiErrorMessage(err, "ร่างด้วย AI ไม่สำเร็จ"));
     } finally {
       setBusy(false);
     }
@@ -151,20 +173,28 @@ export function DraftWorkspace() {
               {activeProject?.name || "โครงการใหม่"}
             </p>
             <p className="text-xs text-muted-foreground">
-              กระบวนการร่าง TOR แบบ 5 Phase — คลิกที่ Phase เพื่อดูรายละเอียด
+              เริ่มที่ Phase 0 — วางข้อความหรืออัปโหลดเอกสารก่อน จึงจะไปร่าง TOR ได้
             </p>
           </div>
           <StatusPill status={activeProject?.status || "draft"} />
         </div>
-        <PhaseFlow current={phase} onSelect={(next) => persistPhase(next)} />
+        <PhaseFlow
+          current={phase}
+          unlocked={unlocked}
+          onSelect={(next) => persistPhase(next)}
+        />
       </div>
 
       {phase === 0 || phase === 1 ? (
         <IntakeChatPanel
           projectId={projectId}
           phase={phase}
-          onAnalyzed={() => persistPhase(1)}
-          onReady={() => persistPhase(2)}
+          onAnalyzed={() => persistPhase(1, Math.max(unlocked, 1))}
+          onReady={() => {
+            persistPhase(2, 2)
+              .then(() => loadSections())
+              .catch(() => undefined);
+          }}
         />
       ) : null}
 
@@ -175,6 +205,8 @@ export function DraftWorkspace() {
           openSub={openSub}
           extracted={extracted}
           busy={busy}
+          actionError={actionError}
+          actionInfo={actionInfo}
           onExpand={setExpanded}
           onOpenSub={setOpenSub}
           onSave={saveSection}
@@ -190,16 +222,37 @@ export function DraftWorkspace() {
           total={TOR_SECTION_ORDER.length}
           hitlReady={hitlReady}
           score={reviewScore}
+          findings={reviewFindings}
+          busy={reviewBusy}
+          error={actionError}
           onBack={() => persistPhase(2)}
           onReview={async () => {
-            const response = await apiClient.post(`/projects/${projectId}/review`);
-            const payload = unwrapData<{ quality_score?: number }>(response);
-            setReviewScore(payload.quality_score ?? null);
+            setReviewBusy(true);
+            setActionError(null);
+            try {
+              const response = await apiClient.post(`/projects/${projectId}/review`);
+              const payload = unwrapData<{
+                quality_score?: number;
+                findings?: Record<string, unknown>[];
+              }>(response);
+              setReviewScore(payload.quality_score ?? null);
+              setReviewFindings(
+                (payload.findings || []).map((item) => toReviewFinding(item))
+              );
+            } catch (err: unknown) {
+              setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+            } finally {
+              setReviewBusy(false);
+            }
           }}
           onSubmit={async () => {
-            await apiClient.post(`/projects/${projectId}/submit`);
-            await persistPhase(4);
-            router.push("/projects");
+            try {
+              await apiClient.post(`/projects/${projectId}/submit`);
+              await persistPhase(4);
+              router.push("/projects");
+            } catch (err: unknown) {
+              setActionError(apiErrorMessage(err, "ส่งขออนุมัติไม่สำเร็จ"));
+            }
           }}
         />
       ) : null}
@@ -250,6 +303,8 @@ function Phase2({
   openSub,
   extracted,
   busy,
+  actionError,
+  actionInfo,
   onExpand,
   onOpenSub,
   onSave,
@@ -262,6 +317,8 @@ function Phase2({
   openSub: string;
   extracted: Record<string, unknown>;
   busy: boolean;
+  actionError: string | null;
+  actionInfo: string | null;
   onExpand: (key: string) => void;
   onOpenSub: (key: string) => void;
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
@@ -273,8 +330,15 @@ function Phase2({
     <div className="gov-card">
       <h3 className="mb-1 text-navy">Phase 2: ร่างเนื้อหา TOR — 13 หมวดหลัก</h3>
       <p className="mb-4 text-xs text-muted-foreground">
-        คลิกแต่ละหมวดเพื่อกรอก ระบบแสดงแท็กจับคู่จาก Phase 0 — หมวดกฎหมายต้องกดยืนยันโดยเจ้าหน้าที่
+        ข้อความจาก Phase 0 ถูกจัดเข้าหมวดแล้ว กดร่างด้วย AI (LM Studio) เพื่อขยายเป็นภาษาราชการ — หมวดกฎหมายต้องยืนยันโดยเจ้าหน้าที่
       </p>
+      {busy ? <p className="mb-3 text-sm text-navy">กำลังร่างด้วย AI จากโมเดลในเครื่อง...</p> : null}
+      {actionError ? (
+        <p className="mb-3 text-sm text-destructive" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+      {actionInfo ? <p className="mb-3 text-sm text-brand-green">{actionInfo}</p> : null}
       <div className="flex flex-col">
         {sections.map((section, index) => (
           <SectionCard
@@ -330,10 +394,21 @@ function SectionCard({
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
   onDraft: (key: string) => void;
 }>) {
-  const fields = SECTION_FIELDS[section.key] || [
+  const baseFields = SECTION_FIELDS[section.key] || [
     { key: "body", label: section.title, type: "textarea" as const },
   ];
   const values = parseFields(section.content);
+  const fields =
+    values.body && !baseFields.some((item) => item.key === "body")
+      ? [
+          {
+            key: "body",
+            label: "เนื้อหาร่าง (จากเอกสาร/AI)",
+            type: "textarea" as const,
+          },
+          ...baseFields,
+        ]
+      : baseFields;
   const [draft, setDraft] = useState(values);
   useEffect(() => {
     setDraft(parseFields(section.content));
@@ -415,7 +490,7 @@ function SectionCard({
                   size="sm"
                   variant="outline"
                   data-testid={`save-section-${section.key}`}
-                  onClick={() => onSave(section.key, JSON.stringify(draft), false)}
+                  onClick={() => onSave(section.key, serializeSectionDraft(draft), false)}
                 >
                   บันทึกหมวดนี้
                 </Button>
@@ -423,7 +498,7 @@ function SectionCard({
                 <Button
                   size="sm"
                   data-testid={`hitl-confirm-${section.key}`}
-                  onClick={() => onSave(section.key, JSON.stringify(draft), true)}
+                  onClick={() => onSave(section.key, serializeSectionDraft(draft), true)}
                 >
                   เจ้าหน้าที่ยืนยันแล้ว
                 </Button>
@@ -441,6 +516,9 @@ function Phase3({
   total,
   hitlReady,
   score,
+  findings,
+  busy,
+  error,
   onBack,
   onReview,
   onSubmit,
@@ -449,6 +527,9 @@ function Phase3({
   total: number;
   hitlReady: boolean;
   score: number | null;
+  findings: ReviewFinding[];
+  busy: boolean;
+  error: string | null;
   onBack: () => void;
   onReview: () => Promise<void>;
   onSubmit: () => Promise<void>;
@@ -475,17 +556,35 @@ function Phase3({
         <CheckItem tone="warn" title="ยังไม่ได้ยืนยันหมวด HITL" />
       )}
       {score != null ? (
-        <CheckItem tone="pass" title={`คะแนนคุณภาพ ${score}/100`} />
+        <CheckItem
+          tone={score >= 70 ? "pass" : "warn"}
+          title={`คะแนนคุณภาพจาก Rule Engine ${score}/100`}
+        />
+      ) : (
+        <CheckItem tone="warn" title="ยังไม่ได้รันตรวจสอบ" detail="กดรัน Rule Engine เพื่อตรวจกฎหมาย ความครบถ้วน และความสอดคล้อง" />
+      )}
+      {findings.map((finding, index) => (
+        <CheckItem
+          key={`${finding.rule}-${index}`}
+          tone={findingCheckTone(finding.severity)}
+          title={finding.message}
+          detail={[finding.section, finding.recommendation].filter(Boolean).join(" — ")}
+        />
+      ))}
+      {error ? (
+        <p className="mt-2 text-sm text-destructive" role="alert">
+          {error}
+        </p>
       ) : null}
       <div className="mt-4 flex justify-between">
         <Button variant="secondary" onClick={onBack} data-testid="phase3-back">
           ย้อนกลับไปแก้ไข
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onReview}>
-            รัน Rule Engine
+          <Button variant="outline" onClick={onReview} disabled={busy} data-testid="run-review">
+            {busy ? "กำลังตรวจสอบ..." : "รัน Rule Engine"}
           </Button>
-          <Button onClick={onSubmit} disabled={pct < 100 || !hitlReady}>
+          <Button onClick={onSubmit} disabled={pct < 100 || !hitlReady || busy}>
             ส่งขออนุมัติ / สร้าง TOR
           </Button>
         </div>

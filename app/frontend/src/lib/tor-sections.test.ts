@@ -6,6 +6,7 @@ import {
   SCOPE_SUBSECTIONS,
   TOR_SECTION_LABELS,
   TOR_SECTION_ORDER,
+  serializeSectionDraft,
 } from "./tor-sections";
 
 describe("canonical TOR sections", () => {
@@ -19,5 +20,14 @@ describe("canonical TOR sections", () => {
     );
     expect(DOC_CLASSES.find((item) => item.id === "charter")?.label).toContain("เอกสารโครงการ");
     expect(PHASE0_CHECKLIST).toContain("รายงานการประชุม");
+  });
+
+  it("saves a single body field as plain TOR prose", () => {
+    expect(serializeSectionDraft({ body: " วงเงินหนึ่งแสนบาท " })).toBe("วงเงินหนึ่งแสนบาท");
+  });
+
+  it("keeps structured fields as JSON", () => {
+    const raw = serializeSectionDraft({ history: "ระบบเดิม", problems: "ซ่อมบ่อย" });
+    expect(JSON.parse(raw)).toEqual({ history: "ระบบเดิม", problems: "ซ่อมบ่อย" });
   });
 });

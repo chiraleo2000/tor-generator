@@ -94,6 +94,7 @@ test.describe("Chat Q&A and draft intake", () => {
     await createProjectAndOpenDraft(page);
     await expect(page.getByTestId("intake-chat-panel")).toBeVisible();
     await expect(page.getByText("Phase 0: อัปโหลดชุดเอกสาร")).toBeVisible();
+    await expect(page.getByTestId("intake-paste")).toBeVisible();
     await expect(page.getByTestId("intake-upload")).toBeAttached();
     await saveEvidence(page, "03-phase-0-upload");
 

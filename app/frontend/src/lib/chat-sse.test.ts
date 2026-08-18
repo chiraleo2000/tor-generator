@@ -35,7 +35,16 @@ describe("streamSsePost", () => {
   });
 
   it("throws when the response is not ok", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, body: null }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        body: null,
+        json: async () => {
+          throw new Error("empty");
+        },
+      })
+    );
     await expect(
       streamSsePost("/chat", { content: "hi" }, "token", () => undefined)
     ).rejects.toThrow("สตรีมแชทไม่สำเร็จ");

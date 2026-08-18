@@ -28,6 +28,7 @@ export function IntakeChatPanel({
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
   const [gaps, setGaps] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
+  const [draftText, setDraftText] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
@@ -42,6 +43,7 @@ export function IntakeChatPanel({
     setCoverage(payload.coverage || []);
     setGaps(payload.gap_questions || []);
     setReady(Boolean(payload.ready_to_compose));
+    return payload.coverage || [];
   }, [projectId]);
 
   useEffect(() => {
@@ -81,6 +83,27 @@ export function IntakeChatPanel({
     }
   }
 
+  async function submitText() {
+    const content = draftText.trim();
+    if (content.length < 20) {
+      setMessage("วางข้อความร่างหรือรายละเอียดโครงการอย่างน้อย 20 ตัวอักษร");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await apiClient.post(`/projects/${projectId}/intake/text`, { content });
+      await apiClient.post(`/projects/${projectId}/intake/analyze`);
+      await refreshCoverage();
+      onAnalyzed();
+      setMessage("แกะข้อความแล้ว — บอทจะถามส่วนที่ยังขาด");
+    } catch {
+      setMessage("วิเคราะห์ข้อความไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmReady() {
     setBusy(true);
     try {
@@ -102,10 +125,28 @@ export function IntakeChatPanel({
           {phase === 0 ? "Phase 0: อัปโหลดชุดเอกสาร" : "Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง"}
         </h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          ลากวางหลายไฟล์ได้ ไม่ต้องเลือกประเภทก่อน ต้นฉบับเก็บใน Mongo แล้วจัดเข้า s1–s13 / s4.1–s4.14
+          วางข้อความร่างหรืออัปโหลดเอกสารก่อน จึงจะไป Phase 2 ได้ — ไม่ต้องเลือกประเภทไฟล์
         </p>
+        <textarea
+          className="mt-3 min-h-[120px] w-full rounded-md border p-3 text-sm"
+          data-testid="intake-paste"
+          placeholder="วางข้อความร่าง TOR หรือรายละเอียดโครงการที่นี่"
+          value={draftText}
+          onChange={(event) => setDraftText(event.target.value)}
+        />
+        <Button
+          type="button"
+          className="mt-2"
+          data-testid="intake-analyze-text"
+          disabled={busy}
+          onClick={() => {
+            submitText().catch(() => undefined);
+          }}
+        >
+          วิเคราะห์ข้อความ
+        </Button>
         <label className="mt-3 flex cursor-pointer flex-col items-center rounded-lg border-2 border-dashed p-6 text-sm">
-          <span>{busy ? "กำลังประมวลผล..." : "คลิกหรือวางไฟล์ PDF / Word / สแกน"}</span>
+          <span>{busy ? "กำลังประมวลผล..." : "หรือคลิกอัปโหลดไฟล์ PDF / Word / สแกน"}</span>
           <input
             type="file"
             multiple
@@ -163,12 +204,15 @@ export function IntakeChatPanel({
             type="button"
             className="mt-3"
             data-testid="intake-confirm-ready"
-            disabled={busy}
+            disabled={busy || !coverage.some((row) => row.fact_required && row.filled)}
             onClick={confirmReady}
           >
             พร้อมร่าง TOR แล้ว
           </Button>
           {ready ? <p className="mt-2 text-sm text-green-800">ยืนยันพร้อมร่างแล้ว</p> : null}
+          <p className="mt-2 text-xs text-muted-foreground">
+            ปุ่มพร้อมร่างใช้ได้เมื่อช่องข้อเท็จจริงบังคับ (ชื่อโครงการ วัตถุประสงค์ วงเงิน ระยะเวลา สถานที่ สรุปงาน) เป็น filled
+          </p>
         </div>
       ) : null}
 
@@ -177,7 +221,11 @@ export function IntakeChatPanel({
         projectId={projectId}
         streamPath={() => `${apiBase}/projects/${projectId}/intake/chat`}
         onReady={() => {
-          refreshCoverage().catch(() => undefined);
+          refreshCoverage()
+            .then((rows) => {
+              if (rows.some((row) => row.filled)) onAnalyzed();
+            })
+            .catch(() => undefined);
         }}
       />
     </div>

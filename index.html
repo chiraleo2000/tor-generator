@@ -105,6 +105,7 @@ tr:hover td{background:#f9fafb}
 .phase-dot{width:52px;height:52px;margin:0 auto 8px;border-radius:50%;border:3px solid #e5e7eb;background:#e5e7eb;color:#4b5563;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
 .phase-dot.active{transform:scale(1.1);border-color:var(--crimson);background:var(--orange);color:var(--navy)}
 .phase-dot.done{border-color:#0f5c22;background:var(--green);color:#fff}
+.phase-dot.locked{opacity:.4;cursor:not-allowed}
 .phase-line{width:30px;height:3px;background:#e5e7eb;margin-top:26px;flex-shrink:0}
 .phase-line.done{background:var(--green)}
 .sec{display:flex;gap:14px}
@@ -315,10 +316,11 @@ const state = {
   kbType:"law",
   kbOpen:"",
   phase:0,
+  readyCompose:false,
   expanded:"s1",
   openSub:"",
   projects:[
-    {id:"p1",name:"ระบบคลังพัสดุกลาง",ministry:"กรมบัญชีกลาง",budget:8500000,status:"draft",updated:"2026-08-12",phase:2},
+    {id:"p1",name:"ระบบคลังพัสดุกลาง",ministry:"กรมบัญชีกลาง",budget:8500000,status:"draft",updated:"2026-08-12",phase:0},
     {id:"p2",name:"จ้างพัฒนาระบบ e-Document",ministry:"สำนักงบประมาณ",budget:12500000,status:"in_review",updated:"2026-08-15",phase:3},
     {id:"p3",name:"จัดซื้อเครื่องแม่ข่ายศูนย์ข้อมูล",ministry:"กระทรวงดิจิทัลฯ",budget:4200000,status:"approved",updated:"2026-08-10",phase:4}
   ],
@@ -609,10 +611,30 @@ function kbHtml(){
   <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารที่ผู้ใช้อัปโหลด</h2><span class="pill pill-draft">${state.files.filter(f=>f.user).length} ไฟล์</span></div>`;
 }
 
+function unlockedPhase(){
+  if (state.readyCompose) return 2;
+  if ((state.files||[]).length) return 1;
+  if ((state.coverage||[]).some(r=>r.status==="filled")) return 1;
+  return 0;
+}
+function canSelectMockPhase(target){
+  const current=state.phase, u=unlockedPhase();
+  if (target<0||target>4) return false;
+  if (target<=current) return true;
+  if (target<=u) return true;
+  return u>=2 && target===current+1;
+}
+function applyIntakeMaterial(){
+  const fact=new Set(["s1","s2","s5","s6","s7","s4.1"]);
+  state.coverage=emptyCoverage().map(r=>({...r,status:fact.has(r.key)?"filled":"gap"}));
+  state.phase=1;
+}
+
 function phaseFlow(){
   return `<div class="phase-flow">${PHASES.map(([id,title],i)=>{
     const done = id < state.phase;
     const active = id === state.phase;
+    const locked = !canSelectMockPhase(id);
 
     let lineHtml = "";
     if (i) {
@@ -624,11 +646,12 @@ function phaseFlow(){
     let dotClass = "";
     if (done) dotClass = "done";
     else if (active) dotClass = "active";
+    if (locked) dotClass = (dotClass+" locked").trim();
 
     const dotText = done ? "✓" : String(id);
 
     return `${lineHtml}
-      <div class="phase-col"><button type="button" class="phase-dot ${dotClass}" data-phase="${id}">${dotText}</button>
+      <div class="phase-col"><button type="button" class="phase-dot ${dotClass}" data-phase="${id}" ${locked?"aria-disabled=\"true\"":""}>${dotText}</button>
       <strong style="display:block;font-size:13px">Phase ${id}</strong><span class="muted">${title}</span></div>`;
   }).join("")}</div>`;
 }
@@ -636,6 +659,9 @@ function phaseFlow(){
 function draftHtml(){
   const p=active();
   if(!p) return `<p class="muted">ยังไม่มีโครงการ — สร้างจากแดชบอร์ด</p>`;
+  if (!state.readyCompose && state.phase >= 2) {
+    state.phase = unlockedPhase();
+  }
   let phaseBody = "";
   if (state.phase === 0) phaseBody = phase0();
   else if (state.phase === 1) phaseBody = phase1();
@@ -644,7 +670,7 @@ function draftHtml(){
   else phaseBody = phase4();
 
   return `${phaseFlow()}
-    <p class="muted" style="margin-bottom:12px">${esc(p.name)} · ${esc(p.ministry)} · ${baht(p.budget)} บาท · ${pill(p.status)}</p>
+    <p class="muted" style="margin-bottom:12px">${esc(p.name)} · ${esc(p.ministry)} · ${baht(p.budget)} บาท · ${pill(p.status)} — เริ่มที่ Phase 0 วางข้อความหรืออัปโหลดเอกสารก่อน</p>
     ${phaseBody}`;
 }
 
@@ -658,8 +684,10 @@ function intakeChatHtml(phase){
   const title=phase===0?"Phase 0: อัปโหลดชุดเอกสาร":"Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง";
   return `<div class="gov-card">
     <h3 style="color:var(--navy);margin-bottom:8px">${title}</h3>
-    <p class="muted" style="margin-bottom:12px">ลากวางหลายไฟล์ได้ ไม่ต้องเลือกประเภทก่อน ต้นฉบับเก็บใน Mongo แล้วจัดเข้า s1–s13 / s4.1–s4.14</p>
-    <label class="upload"><input type="file" hidden multiple id="intakeUp"><p>คลิกหรือวางไฟล์ PDF / Word / สแกน</p><span>ต้นฉบับเก็บใน Mongo แล้วฝังด้วย EmbeddingGemma</span></label>
+    <p class="muted" style="margin-bottom:12px">วางข้อความร่างหรืออัปโหลดเอกสารก่อน จึงจะไป Phase 2 ได้ — ไม่ต้องเลือกประเภทไฟล์</p>
+    <textarea id="intakePaste" rows="5" placeholder="วางข้อความร่าง TOR หรือรายละเอียดโครงการที่นี่"></textarea>
+    <p style="margin-top:8px"><button type="button" class="btn btn-primary" id="intakePasteGo">วิเคราะห์ข้อความ</button></p>
+    <label class="upload"><input type="file" hidden multiple id="intakeUp"><p>หรือคลิกอัปโหลดไฟล์ PDF / Word / สแกน</p><span>ต้นฉบับเก็บใน Mongo แล้วฝังด้วย EmbeddingGemma</span></label>
     ${state.intakeMsg?`<p style="margin-top:8px">${esc(state.intakeMsg)}</p>`:""}
     ${state.files.map(f=>`<p class="muted" style="margin-top:6px">${esc(f.name)} · ${f.chars} ตัวอักษร</p>`).join("")}
   </div>
@@ -1089,16 +1117,24 @@ function bindView(){
     renderShell();
   });
   v.querySelector("#p0next")?.addEventListener("click",()=>{state.phase=1;renderShell();});
+  v.querySelector("#intakePasteGo")?.addEventListener("click",()=>{
+    const text=(document.getElementById("intakePaste")||{}).value||"";
+    if(text.trim().length<20){state.intakeMsg="วางข้อความร่างหรือรายละเอียดโครงการอย่างน้อย 20 ตัวอักษร";renderShell();return;}
+    state.files.push({name:"ข้อความผู้ใช้.txt",docClass:"pack",chars:text.trim().length,status:"success"});
+    applyIntakeMaterial();
+    state.intakeMsg="แกะข้อความแล้ว — บอทจะถามส่วนที่ยังขาด";
+    state.intakeMsgs=state.intakeMsgs||[];
+    state.intakeMsgs.push({role:"assistant",text:"อ่านข้อความที่วางแล้ว — จัดเข้า s1–s13 แล้วจะถามส่วนขาด",cites:["document: ข้อความผู้ใช้"]});
+    renderShell();
+  });
   v.querySelector("#intakeUp")?.addEventListener("change",()=>{
     const inp=document.getElementById("intakeUp");
     const files=[...(inp?.files||[])];
     files.forEach(f=>state.files.push({name:f.name,docClass:"pack",chars:Math.max(1200,Math.round(f.size/4)),status:"success"}));
-    const fact=new Set(["s1","s2","s5","s6","s7","s4.1"]);
-    state.coverage=emptyCoverage().map(r=>({...r,status:fact.has(r.key)?"filled":"gap"}));
+    applyIntakeMaterial();
     state.intakeMsg="แกะเอกสารแล้ว — บอทจะถามส่วนที่ยังขาด";
     state.intakeMsgs=state.intakeMsgs||[];
     state.intakeMsgs.push({role:"assistant",text:"อ่านไฟล์แล้ว "+files.map(f=>f.name).join(", ")+" — จัดเข้า s1–s13 และ s4.1–s4.14 แล้วจะถามส่วนขาด",cites:["document: ไฟล์ที่อัปโหลด"]});
-    state.phase=1;
     renderShell();
   });
   v.querySelector("#intakeSend")?.addEventListener("click",()=>{
@@ -1118,7 +1154,7 @@ function bindView(){
     if(row) row.status="reference_only";
     renderShell();
   }));
-  v.querySelector("#readyDraft")?.addEventListener("click",()=>{state.phase=2;renderShell();});
+  v.querySelector("#readyDraft")?.addEventListener("click",()=>{state.readyCompose=true;state.phase=2;renderShell();});
   v.querySelectorAll("[data-scope]").forEach(b=>b.addEventListener("click",()=>{state.chatScope=b.dataset.scope;renderShell();}));
   v.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{
     const box=document.getElementById(b.dataset.qid);
@@ -1151,7 +1187,9 @@ function bindView(){
   });
   v.querySelector("#p1back")?.addEventListener("click",()=>{state.phase=0;renderShell();});
   v.querySelector("#p1next")?.addEventListener("click",()=>{
+    if(!canSelectMockPhase(2)) return;
     state.availability=document.getElementById("av").value; state.security=document.getElementById("sec").value; state.performance=document.getElementById("perf").value;
+    state.readyCompose=true;
     state.phase=2; renderShell();
   });
   v.querySelectorAll("[data-exp]").forEach(b=>b.addEventListener("click",()=>{state.expanded=state.expanded===b.dataset.exp?"":b.dataset.exp;renderShell();}));
@@ -1170,7 +1208,12 @@ function bindView(){
   v.querySelector("#p4back")?.addEventListener("click",()=>{state.phase=3;renderShell();});
   v.querySelector("#expDocx")?.addEventListener("click",()=>fakeExport("Word (.docx)"));
   v.querySelector("#expPdf")?.addEventListener("click",()=>fakeExport("PDF"));
-  v.querySelectorAll("[data-phase]").forEach(b=>b.addEventListener("click",()=>{state.phase=+b.dataset.phase;renderShell();}));
+  v.querySelectorAll("[data-phase]").forEach(b=>b.addEventListener("click",()=>{
+    const next=+b.dataset.phase;
+    if(!canSelectMockPhase(next)) return;
+    state.phase=next;
+    renderShell();
+  }));
   v.querySelector("#revFile")?.addEventListener("change",e=>{state.reviewFile=e.target.files[0]?.name||null;renderShell();});
   v.querySelector("#addCmp")?.addEventListener("click",()=>{state.compares.push({name:"",file:null});renderShell();});
   v.querySelectorAll("[data-cdel]").forEach(b=>b.addEventListener("click",()=>{state.compares.splice(+b.dataset.cdel,1);renderShell();}));
@@ -1282,7 +1325,7 @@ function openNewProject(){
     if(!name||!ministry||!/^\d+$/.test(raw)||+raw<1){document.getElementById("npErr").textContent="กรุณากรอกชื่อโครงการ หน่วยงาน และงบประมาณ"; document.getElementById("npErr").classList.remove("hidden"); return;}
     const id="p"+Date.now();
     state.projects.unshift({id,name,ministry,budget:+raw,status:"draft",updated:today(),phase:0});
-    state.activeId=id; state.phase=0; state.sections=emptySections(); state.files=[]; state.coverage=[]; state.intakeMsg=""; state.intakeMsgs=[]; state.mapping=[]; state.proposed={}; state.score=null;
+    state.activeId=id; state.phase=0; state.readyCompose=false; state.sections=emptySections(); state.files=[]; state.coverage=[]; state.intakeMsg=""; state.intakeMsgs=[]; state.mapping=[]; state.proposed={}; state.score=null;
     m.classList.add("hidden"); location.hash="#/draft";
   };
 }

@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.constants import PROJECT_NOT_FOUND, PROJECT_UUID_DESC
+from app.domain.section_text import section_plain_text
 from app.config import get_settings
 from app.deps import get_current_user, get_db
 from app.exceptions import NotFoundError, ValidationError
@@ -98,7 +99,7 @@ async def draft_section(
 
     existing_sections: dict[str, str] = {}
     for s in all_sections:
-        existing_sections[s.section_key] = s.content
+        existing_sections[s.section_key] = section_plain_text(s.content)
 
     # Build user_input from project metadata and existing sections
     user_input: dict = {
