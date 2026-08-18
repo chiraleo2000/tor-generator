@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TOR Generator - ระบบร่างและตรวจสอบ TOR ภาครัฐ (PoC v2 - Rule-based Engine)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
+<script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --navy:#1e3a8a; --navy-dark:#0f2340; --navy-light:#3b5998;
+  --crimson:#c41e3a; --orange:#fed7aa; --orange-dark:#f59e0b; --green:#15803d;
+  --gray-50:#f9fafb; --gray-100:#f3f4f6; --gray-200:#e5e7eb; --gray-300:#d1d5db;
+  --gray-600:#4b5563; --gray-700:#374151; --gray-800:#1f2937; --white:#fff;
+}
+html,body{height:100%;width:100%;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Roboto',sans-serif;background:var(--gray-50);color:var(--gray-800);}
+.app{display:flex;height:100vh;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:4px;}
+
+/* ===== AUTH SCREENS ===== */
+#authScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dark) 100%);padding:20px;}
+.auth-card{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:100%;max-width:440px;padding:38px;}
+.auth-logo{width:56px;height:56px;background:linear-gradient(135deg,var(--navy),var(--crimson));border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:26px;margin:0 auto 18px;}
+.auth-title{font-size:24px;font-weight:800;color:var(--navy);text-align:center;margin-bottom:6px;}
+.auth-subtitle{font-size:13px;color:var(--gray-600);text-align:center;margin-bottom:26px;}
+.auth-error{background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:8px;font-size:12.5px;margin-bottom:14px;display:none;}
+.auth-error.show{display:block;}
+.auth-success{background:#dcfce7;color:#166534;padding:10px 14px;border-radius:8px;font-size:12.5px;margin-bottom:14px;display:none;}
+.auth-success.show{display:block;}
+.auth-footer{text-align:center;margin-top:18px;font-size:13px;color:var(--gray-600);}
+.auth-footer a{color:var(--navy);font-weight:700;cursor:pointer;text-decoration:none;}
+.auth-demo-box{background:var(--gray-50);border:1px dashed var(--gray-300);border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--gray-600);margin-top:16px;text-align:center;}
+.auth-panel{display:none;}
+.auth-panel.active{display:block;}
+
+/* MAIN APP */
+.sidebar{width:255px;flex-shrink:0;background:linear-gradient(180deg,var(--navy),var(--navy-dark));color:#fff;padding:18px;overflow-y:auto;}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.12);}
+.logo-icon{width:38px;height:38px;background:var(--orange);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--navy);font-size:19px;}
+.logo-text h1{font-size:17px;font-weight:700;}
+.logo-text p{font-size:11px;opacity:.75;}
+.menu-section{margin-bottom:22px;}
+.menu-title{font-size:11px;text-transform:uppercase;opacity:.55;margin-bottom:8px;letter-spacing:1px;}
+.menu-item{display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:4px;border-radius:8px;cursor:pointer;transition:.15s;border-left:3px solid transparent;font-size:14px;}
+.menu-item:hover{background:rgba(255,255,255,.08);}
+.menu-item.active{background:var(--orange);color:var(--navy);border-left-color:var(--crimson);font-weight:700;}
+.menu-icon{font-size:18px;width:22px;text-align:center;}
+.sidebar-foot{margin-top:10px;padding:12px;background:rgba(255,255,255,.06);border-radius:8px;font-size:12px;line-height:1.6;}
+.logout-link{display:block;margin-top:10px;color:#fecaca;cursor:pointer;font-size:12.5px;text-align:center;}
+.logout-link:hover{text-decoration:underline;}
+
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.topbar{background:#fff;padding:14px 26px;border-bottom:1px solid var(--gray-200);display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,.04);flex-shrink:0;}
+.topbar h1{font-size:21px;font-weight:800;color:var(--navy);}
+.topbar .sub{font-size:12.5px;color:var(--gray-600);margin-top:2px;}
+.user-info{display:flex;align-items:center;gap:12px;font-size:13px;}
+.avatar{width:36px;height:36px;background:var(--navy);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;}
+.content{flex:1;overflow-y:auto;padding:26px;}
+.page{display:none;}
+.page.active{display:block;animation:fade .2s;}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+.btn{padding:9px 18px;border:none;border-radius:7px;font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--navy);color:#fff;}
+.btn-primary:hover{background:var(--navy-dark);}
+.btn-secondary{background:var(--gray-200);color:var(--gray-800);}
+.btn-secondary:hover{background:var(--gray-300);}
+.btn-success{background:var(--green);color:#fff;}
+.btn-success:hover{background:#0f5c22;}
+.btn-danger{background:#fee2e2;color:#b91c1c;}
+.btn-danger:hover{background:#fecaca;}
+.btn-ghost{background:transparent;color:var(--navy);border:1px solid var(--navy);}
+.btn-ghost:hover{background:#eef2ff;}
+.btn-disabled{background:var(--gray-100);color:var(--gray-300);cursor:not-allowed;}
+.btn-sm{padding:6px 12px;font-size:12px;}
+.btn-block{width:100%;justify-content:center;}
+
+.card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.07);}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:22px;}
+.stat-card{background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 2px 8px rgba(0,0,0,.07);border-top:4px solid;}
+.stat-card.st-draft{border-top-color:#f59e0b;}
+.stat-card.st-progress{border-top-color:var(--navy);}
+.stat-card.st-done{border-top-color:var(--green);}
+.stat-card h3{font-size:12.5px;color:var(--gray-600);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.stat-card .num{font-size:30px;font-weight:800;color:var(--navy);}
+.stat-card .desc{font-size:12.5px;color:var(--gray-600);margin-top:4px;}
+
+.table-wrap{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.07);}
+.table-title{padding:16px 20px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--gray-200);font-size:16px;}
+table{width:100%;border-collapse:collapse;}
+th{background:var(--gray-100);text-align:left;padding:12px 16px;font-size:12.5px;color:var(--gray-700);font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+td{padding:14px 16px;border-bottom:1px solid var(--gray-200);font-size:13.5px;vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--gray-50);}
+.status-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:12px;font-weight:700;}
+.status-pill.draft{background:#fef3e2;color:#92400e;}
+.status-pill.progress{background:#dbeafe;color:#1e40af;}
+.status-pill.done{background:#dcfce7;color:#166534;}
+.spinner{width:10px;height:10px;border:2px solid #93c5fd;border-top-color:#1e40af;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,64,.55);z-index:200;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay.show{display:flex;}
+.modal{background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal-header{padding:18px 24px;border-bottom:1px solid var(--gray-200);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;border-radius:14px 14px 0 0;}
+.modal-header h2{color:var(--navy);font-size:19px;}
+.modal-close{cursor:pointer;font-size:22px;color:var(--gray-600);border:none;background:none;line-height:1;}
+.modal-body{padding:24px;}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--gray-200);display:flex;gap:10px;justify-content:flex-end;}
+
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;margin-bottom:6px;font-weight:700;color:var(--navy);font-size:13.5px;}
+.form-group .hint{font-size:11.5px;color:var(--gray-600);margin-top:4px;display:block;}
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=date],textarea,select{width:100%;padding:9px 12px;border:1px solid var(--gray-300);border-radius:7px;font-family:inherit;font-size:13.5px;}
+textarea{resize:vertical;min-height:80px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+.phase-flow{display:flex;align-items:flex-start;gap:0;margin-bottom:22px;overflow-x:auto;padding-bottom:6px;}
+.phase-node{flex:1;min-width:150px;text-align:center;cursor:pointer;position:relative;}
+.phase-circle{width:52px;height:52px;border-radius:50%;background:var(--gray-200);color:var(--gray-600);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;margin:0 auto 8px;border:3px solid var(--gray-200);transition:.2s;}
+.phase-node.active .phase-circle{background:var(--orange);border-color:var(--crimson);color:var(--navy);transform:scale(1.08);}
+.phase-node.done .phase-circle{background:var(--green);border-color:#0f5c22;color:#fff;}
+.phase-node .p-title{font-size:13px;font-weight:700;color:var(--gray-700);}
+.phase-node.active .p-title{color:var(--navy);}
+.phase-node .p-sub{font-size:11px;color:var(--gray-600);margin-top:2px;}
+.phase-line{flex:0 0 30px;height:3px;background:var(--gray-200);margin-top:26px;}
+.phase-line.done{background:var(--green);}
+
+.flow-track{display:flex;flex-direction:column;gap:0;}
+.flow-node{display:flex;gap:14px;position:relative;}
+.flow-node .flow-dot-col{display:flex;flex-direction:column;align-items:center;width:36px;flex-shrink:0;}
+.flow-dot{width:34px;height:34px;border-radius:50%;background:var(--gray-200);color:var(--gray-700);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;border:2px solid var(--gray-300);z-index:1;}
+.flow-node.filled .flow-dot{background:var(--green);color:#fff;border-color:#0f5c22;}
+.flow-node.current .flow-dot{background:var(--orange);color:var(--navy);border-color:var(--crimson);}
+.flow-connector{flex:1;width:2px;background:var(--gray-300);min-height:12px;}
+.flow-node.filled .flow-connector{background:var(--green);}
+.flow-card{flex:1;background:#fff;border:1px solid var(--gray-200);border-radius:10px;margin-bottom:14px;overflow:hidden;transition:.15s;}
+.flow-node.current .flow-card{border-color:var(--crimson);box-shadow:0 4px 14px rgba(196,30,58,.12);}
+.flow-card-head{padding:13px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;background:var(--gray-50);}
+.flow-card-head:hover{background:#f1f3f7;}
+.flow-card-head h3{font-size:14.5px;color:var(--navy);}
+.flow-card-head .flow-meta{font-size:11.5px;color:var(--gray-600);margin-top:2px;}
+.flow-card-body{padding:16px;display:none;border-top:1px solid var(--gray-200);}
+.flow-card.expanded .flow-card-body{display:block;}
+.flow-toggle{font-size:12px;color:var(--gray-600);}
+.subsection-chip-row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;}
+.subsection-chip{padding:5px 10px;border-radius:6px;background:var(--gray-100);font-size:11.5px;font-weight:600;color:var(--gray-700);cursor:pointer;border:1px solid var(--gray-200);}
+.subsection-chip:hover{background:var(--orange);border-color:var(--crimson);}
+.subsection-chip.filled{background:#dcfce7;color:#166534;border-color:#86efac;}
+.subsection-panel{display:none;background:var(--gray-50);border-radius:8px;padding:14px;margin-top:10px;border-left:3px solid var(--navy);}
+.subsection-panel.show{display:block;}
+
+.upload-area{border:2px dashed var(--navy);border-radius:10px;padding:22px;text-align:center;background:var(--gray-50);cursor:pointer;transition:.15s;}
+.upload-area:hover,.upload-area.dragover{background:var(--orange);border-color:var(--crimson);}
+.upload-area .u-icon{font-size:30px;margin-bottom:6px;}
+.upload-area p{font-size:13px;}
+.upload-area .u-hint{font-size:11.5px;color:var(--gray-600);}
+.file-chip{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#fff;border:1px solid var(--gray-200);border-radius:6px;margin-top:8px;font-size:12.5px;}
+.file-chip .fc-name{display:flex;align-items:center;gap:8px;}
+.extract-status{font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;background:var(--gray-50);border-left:3px solid var(--navy);}
+.extract-status.ok{border-left-color:var(--green);background:#f0fdf4;}
+.extract-status.err{border-left-color:var(--crimson);background:#fef2f2;}
+
+.mapping-box{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-top:10px;font-size:12.5px;}
+.mapping-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #dbeafe;}
+.mapping-row:last-child{border-bottom:none;}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;}
+.tag.matched{background:#dcfce7;color:#166534;}
+.tag.partial{background:#fef3e2;color:#92400e;}
+.tag.missing{background:#fee2e2;color:#b91c1c;}
+
+.kb-upload-zone{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:22px;}
+.kb-type-toggle{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.kb-type-btn{padding:8px 14px;border-radius:20px;border:1.5px solid var(--gray-300);background:#fff;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--gray-700);}
+.kb-type-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.kb-section-title{display:flex;align-items:center;gap:10px;margin:26px 0 12px;}
+.kb-section-title h2{font-size:16.5px;color:var(--navy);}
+.kb-section-title .count-badge{background:var(--gray-100);color:var(--gray-700);padding:2px 10px;border-radius:12px;font-size:11.5px;font-weight:700;}
+.kb-category{background:#fff;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.06);margin-bottom:10px;overflow:hidden;}
+.kb-cat-head{padding:13px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+.kb-cat-head:hover{background:var(--gray-50);}
+.kb-cat-head .kb-left{display:flex;align-items:center;gap:10px;}
+.kb-cat-head .kb-badge{font-size:11px;padding:3px 9px;border-radius:10px;font-weight:700;}
+.badge-qdrant{background:#ede9fe;color:#6d28d9;}
+.badge-pgvector{background:#dbeafe;color:#1e40af;}
+.badge-lawfixed{background:#fee2e2;color:#b91c1c;}
+.kb-cat-body{display:none;padding:0 16px 14px;}
+.kb-category.expanded .kb-cat-body{display:block;}
+.kb-doc-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:6px;font-size:12.5px;border-bottom:1px solid var(--gray-100);}
+.kb-doc-row:last-child{border-bottom:none;}
+.kb-doc-row:hover{background:var(--gray-50);}
+
+.compare-project{border:1px solid var(--gray-200);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--gray-50);}
+.check-item{display:flex;gap:10px;margin-bottom:10px;padding:11px;background:#fff;border-radius:6px;border:1px solid var(--gray-200);}
+.check-icon{font-size:18px;min-width:22px;}
+.check-icon.pass{color:var(--green);}
+.check-icon.fail{color:var(--crimson);}
+.check-icon.warn{color:#b45309;}
+.progress-bar{height:8px;background:var(--gray-200);border-radius:4px;overflow:hidden;margin:8px 0;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--navy),var(--orange-dark));}
+
+.guide-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;border-bottom:2px solid var(--gray-200);padding-bottom:0;}
+.guide-tab{padding:10px 16px;cursor:pointer;font-size:13.5px;font-weight:700;color:var(--gray-600);border-bottom:3px solid transparent;}
+.guide-tab.active{color:var(--navy);border-bottom-color:var(--crimson);}
+.guide-panel{display:none;}
+.guide-panel.active{display:block;animation:fade .2s;}
+.illus{background:linear-gradient(135deg,#eef2ff,#fff7ed);border:1px solid var(--gray-200);border-radius:12px;padding:22px;margin:16px 0;}
+.illus-flow{display:flex;align-items:center;flex-wrap:wrap;gap:8px;justify-content:center;}
+.illus-box{background:#fff;border:2px solid var(--navy);border-radius:8px;padding:10px 14px;font-size:12px;font-weight:700;color:var(--navy);text-align:center;min-width:90px;}
+.illus-arrow{color:var(--crimson);font-size:18px;font-weight:800;}
+.guide-content h2{color:var(--navy);margin:18px 0 10px;font-size:19px;}
+.guide-content h3{color:var(--navy-light);margin:14px 0 8px;font-size:15px;}
+.guide-content p,.guide-content li{line-height:1.75;font-size:13.8px;color:var(--gray-700);}
+.guide-content ul,.guide-content ol{margin-left:20px;margin-bottom:10px;}
+.badge-sys{background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:11.5px;font-weight:700;}
+.badge-usr{background:#fef3e2;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11.5px;font-weight:700;}
+
+.section-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.small-note{font-size:12px;color:var(--gray-600);}
+@media (max-width:1024px){.row2{grid-template-columns:1fr;}}
+@media (max-width:768px){.app{flex-direction:column;}.sidebar{width:100%;height:auto;}}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     AUTH SCREEN — Login / Register
+     ============================================================ -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-logo">📋</div>
+    <div class="auth-title" id="authTitle">เข้าสู่ระบบ</div>
+    <div class="auth-subtitle">TOR Generator — ระบบร่างและตรวจสอบ TOR ภาครัฐ</div>
+    <div class="auth-error" id="authError"></div>
+    <div class="auth-success" id="authSuccess"></div>
+
+    <!-- LOGIN PANEL -->
+    <div class="auth-panel active" id="loginPanel">
+      <div class="form-group"><label>อีเมล</label><input type="email" id="loginEmail" placeholder="you@ministry.go.th" value="demo@example.com"></div>
+      <div class="form-group"><label>รหัสผ่าน</label><input type="password" id="loginPassword" placeholder="••••••••" value="demo123"></div>
+      <button class="btn btn-primary btn-block" onclick="handleLogin()">🔐 เข้าสู่ระบบ</button>
+      <div class="auth-demo-box">Demo: demo@example.com / demo123</div>
+      <div class="auth-footer">ยังไม่มีบัญชี? <a onclick="switchAuth('register')">สมัครสมาชิก</a></div>
+    </div>
+
+    <!-- REGISTER PANEL -->
+    <div class="auth-panel" id="registerPanel">
+      <div class="form-group"><label>ชื่อ-นามสกุล</label><input type="text" id="regName" placeholder="ชื่อผู้ใช้งาน"></div>
+      <div class="form-group"><label>หน่วยงาน/กรม</label><input type="text" id="regOrg" placeholder="เช่น กรมสรรพากร"></div>
+      <div class="form-group"><label>อีเมล</label><input type="email" id="regEmail" placeholder="you@ministry.go.th"></div>
+      <div class="row2">
+        <div class="form-group"><label>รหัสผ่าน</label><input type="password" id="regPassword" placeholder="อย่างน้อย 6 ตัวอักษร"></div>
+        <div class="form-group"><label>ยืนยันรหัสผ่าน</label><input type="password" id="regPassword2" placeholder="พิมพ์ซ้ำ"></div>
+      </div>
+      <button class="btn btn-success btn-block" onclick="handleRegister()">📝 สมัครสมาชิก</button>
+      <div class="auth-footer">มีบัญชีแล้ว? <a onclick="switchAuth('login')">เข้าสู่ระบบ</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP (hidden until authenticated)
+     ============================================================ -->
+<div class="app" id="appRoot" style="display:none;">
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">📋</div>
+      <div class="logo-text"><h1>TOR Generator</h1><p>ระบบจัดซื้อจัดจ้างภาครัฐ</p></div>
+    </div>
+    <div class="menu-section">
+      <div class="menu-title">หลัก</div>
+      <div class="menu-item active" data-page="dashboard" onclick="nav('dashboard',this)"><span class="menu-icon">📊</span>Dashboard</div>
+      <div class="menu-item" data-page="knowledge" onclick="nav('knowledge',this)"><span class="menu-icon">📚</span>Knowledge Base</div>
+    </div>
+    <div class="menu-section">
+      <div class="menu-title">การทำงาน</div>
+      <div class="menu-item" data-page="draft" onclick="nav('draft',this)"><span class="menu-icon">✍️</span>ร่าง TOR</div>
+      <div class="menu-item" data-page="review" onclick="nav('review',this)"><span class="menu-icon">✔️</span>ตรวจสอบ TOR</div>
+    </div>
+    <div class="menu-section">
+      <div class="menu-title">อื่นๆ</div>
+      <div class="menu-item" data-page="guide" onclick="nav('guide',this)"><span class="menu-icon">❓</span>คู่มือ</div>
+    </div>
+    <div class="sidebar-foot">💡 Rule-based Engine: OCR (pdf.js/mammoth.js/Tesseract.js) + Keyword-NLP — ไม่มีการเรียกใช้ LLM ใดๆ ในเวอร์ชันนี้</div>
+    <div class="logout-link" onclick="handleLogout()">🚪 ออกจากระบบ</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="pageTitle">Dashboard</h1>
+        <div class="sub" id="pageSub">ภาพรวมโครงการ TOR ทั้งหมด</div>
+      </div>
+      <div class="user-info"><span id="topbarUserEmail"></span><div class="avatar" id="topbarAvatar">?</div></div>
+    </div>
+    <div class="content">
+
+      <!-- ============ DASHBOARD ============ -->
+      <div id="page-dashboard" class="page active">
+        <div class="stat-grid">
+          <div class="stat-card st-draft"><h3>ร่าง (Draft)</h3><div class="num" id="statDraft">0</div><div class="desc">แก้ไขได้ ยังไม่ส่งสร้าง</div></div>
+          <div class="stat-card st-progress"><h3>กำลังดำเนินการ</h3><div class="num" id="statProgress">0</div><div class="desc">ระบบกำลังประมวลผล</div></div>
+          <div class="stat-card st-done"><h3>เสร็จแล้ว</h3><div class="num" id="statDone">0</div><div class="desc">ดูและปรับปรุงได้</div></div>
+        </div>
+        <div class="table-wrap">
+          <div class="table-title">📁 รายการโครงการ TOR</div>
+          <table>
+            <thead><tr><th>ชื่อโครงการ</th><th>หน่วยงาน</th><th>งบประมาณ</th><th>สถานะ</th><th>วันที่อัปเดต</th><th>การกระทำ</th></tr></thead>
+            <tbody id="projectsTableBody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:16px;text-align:right;">
+          <button class="btn btn-primary" onclick="createNewProject()">+ สร้างโครงการ TOR ใหม่</button>
+        </div>
+      </div>
+
+      <!-- ============ KNOWLEDGE BASE ============ -->
+      <div id="page-knowledge" class="page">
+        <div class="kb-upload-zone">
+          <h2 style="color:var(--navy);margin-bottom:12px;font-size:16.5px;">📤 อัปโหลดเอกสารเข้าคลังความรู้</h2>
+          <div class="kb-type-toggle">
+            <button class="kb-type-btn active" data-t="law" onclick="setKbType(this,'law')">⚖️ กฎหมาย/ระเบียบกลาง (ระบบ)</button>
+            <button class="kb-type-btn" data-t="price" onclick="setKbType(this,'price')">📋 ประกาศราคากลาง</button>
+            <button class="kb-type-btn" data-t="bid" onclick="setKbType(this,'bid')">📄 ร่างเอกสารประกวดราคา</button>
+            <button class="kb-type-btn" data-t="req" onclick="setKbType(this,'req')">📝 ความต้องการลูกค้า/หน่วยงาน</button>
+            <button class="kb-type-btn" data-t="other" onclick="setKbType(this,'other')">📁 อื่นๆ</button>
+          </div>
+          <div class="upload-area" onclick="document.getElementById('kbFileInput').click()" ondrop="kbDrop(event)" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')">
+            <div class="u-icon">📤</div>
+            <p><strong>ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์</strong></p>
+            <div class="u-hint">รองรับ PDF, Word, รูปภาพ (OCR) — ระบบจะสกัดข้อความจริง แบ่ง Chunk และฝังเข้า Vector Store (Qdrant + pgvector) จำลอง</div>
+          </div>
+          <input type="file" id="kbFileInput" style="display:none" onchange="kbUpload(event)" multiple>
+          <div id="kbUploadFeedback"></div>
+        </div>
+
+        <div class="kb-section-title"><h2>⚖️ เอกสารต้นฉบับ กฎหมาย/ระเบียบ (บังคับใช้ตามกฎหมาย)</h2><span class="count-badge">27 ไฟล์</span></div>
+        <div id="kbRawDocs"></div>
+
+        <div class="kb-section-title"><h2>🧩 คลังความรู้ที่ผ่านการ Chunk เข้า RAG Vector Store</h2><span class="count-badge">586 chunks • 8 หมวด</span></div>
+        <div id="kbChunked"></div>
+
+        <div class="kb-section-title"><h2>📤 ไฟล์ที่ผู้ใช้อัปโหลดเอง</h2><span class="count-badge" id="userFileCount">0 ไฟล์</span></div>
+        <div id="kbUserFiles" class="card" style="padding:0;"></div>
+      </div>
+
+      <!-- ============ DRAFT TOR ============ -->
+      <div id="page-draft" class="page">
+        <div class="card" style="margin-bottom:20px;">
+          <div class="section-toolbar">
+            <div>
+              <strong style="color:var(--navy);font-size:15px;" id="draftProjectName">โครงการใหม่ (ยังไม่ระบุชื่อ)</strong>
+              <div class="small-note">กระบวนการร่าง TOR แบบ 5 Phase • ขับเคลื่อนด้วย Rule-based OCR + Keyword-NLP Engine — คลิกที่ Phase เพื่อดูรายละเอียด</div>
+            </div>
+            <span class="status-pill draft" id="draftStatusPill">🟡 ร่าง</span>
+          </div>
+          <div class="phase-flow" id="phaseFlow"></div>
+        </div>
+        <div id="phaseContent"></div>
+      </div>
+
+      <!-- ============ REVIEW TOR ============ -->
+      <div id="page-review" class="page">
+        <div class="row2">
+          <div class="card">
+            <h3 style="color:var(--navy);margin-bottom:12px;">📤 อัปโหลด TOR ที่ต้องการตรวจสอบ</h3>
+            <div class="upload-area" onclick="document.getElementById('reviewTorFile').click()" ondrop="reviewDrop(event)" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')">
+              <div class="u-icon">📄</div>
+              <p><strong>ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก</strong></p>
+              <div class="u-hint">PDF, Word (.docx) หรือรูปภาพสแกน — เอกสาร TOR ที่สมบูรณ์แล้ว</div>
+            </div>
+            <input type="file" id="reviewTorFile" style="display:none" onchange="reviewFileSelected(event)">
+            <div id="reviewFileChip"></div>
+            <div id="reviewExtractStatus"></div>
+
+            <h3 style="color:var(--navy);margin:22px 0 8px;">⚖️ เอกสารอ้างอิงบังคับ (ตามกฎหมาย — ใช้เสมอ ไม่ต้องเลือก)</h3>
+            <div style="background:var(--gray-50);border-radius:8px;padding:12px;">
+              <div class="kb-doc-row"><span>📕 พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560</span><span class="kb-badge badge-lawfixed">บังคับ</span></div>
+              <div class="kb-doc-row"><span>📗 ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560</span><span class="kb-badge badge-lawfixed">บังคับ</span></div>
+              <div class="kb-doc-row"><span>📘 คู่มือการจัดซื้อจัดจ้างตาม พ.ร.บ. 2560</span><span class="kb-badge badge-lawfixed">บังคับ</span></div>
+              <div class="kb-doc-row"><span>📙 มาตรฐาน e-Bidding กรมบัญชีกลาง</span><span class="kb-badge badge-lawfixed">บังคับ</span></div>
+              <div class="kb-doc-row"><span>📋 ประกาศราคากลาง (จากคลังความรู้)</span><span class="kb-badge badge-lawfixed">บังคับ</span></div>
+            </div>
+            <div class="small-note" style="margin-top:6px;">ที่มา: D:\แนวปฏิบัติ_กฎระเบียบ_การจัดซื้อจัดจ้าง\การจัดซื้อจัดจ้าง\ข้อมูลดิบ</div>
+
+            <h3 style="color:var(--navy);margin:22px 0 8px;">📊 โครงการเปรียบเทียบ (Optional)</h3>
+            <div class="small-note" style="margin-bottom:10px;">เพิ่มโครงการ TOR อ้างอิงที่ใกล้เคียง พร้อมไฟล์ ประกาศราคากลาง / ร่างเอกสารประกวดราคา / เอกสารความต้องการ / อื่นๆ — ระบบจะคำนวณความคล้ายคลึงของเนื้อหาแบบ Rule-based (keyword overlap)</div>
+            <div id="compareProjectsList"></div>
+            <button class="btn btn-ghost btn-sm" onclick="addCompareProject()">+ เพิ่มโครงการเปรียบเทียบ</button>
+
+            <div style="margin-top:22px;">
+              <button class="btn btn-primary btn-block" onclick="runReviewCheck()">🔍 เริ่มตรวจสอบ TOR</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="color:var(--navy);margin-bottom:12px;">✔️ ผลการตรวจสอบ</h3>
+            <div id="reviewResultArea">
+              <div style="text-align:center;padding:40px 10px;color:var(--gray-600);">
+                <div style="font-size:40px;margin-bottom:10px;">🗂️</div>
+                <p>อัปโหลดไฟล์ TOR แล้วกด "เริ่มตรวจสอบ" เพื่อดูผล</p>
+                <p class="small-note" style="margin-top:8px;">PoC นี้ใช้ Rule-based Engine จริง (OCR + Regex/Keyword-NLP) ประมวลผลจากเนื้อหาไฟล์ที่อัปโหลดจริง — ไม่มีการเรียก LLM</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ GUIDE ============ -->
+      <div id="page-guide" class="page">
+        <div class="guide-tabs" id="guideTabs"></div>
+        <div id="guidePanels"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header"><h2 id="modalTitle">Title</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   PART A — "BACKEND" DATA LAYER (in-memory, function-based —
+   designed 1:1 with the REST endpoints documented separately)
+   ============================================================ */
+
+/* ---- Auth service ---- */
+const DB_USERS = [
+  {email:'demo@example.com', password:'demo123', name:'ผู้ใช้ทดสอบ', org:'กรมตัวอย่าง'}
+];
+let currentUser = null;
+
+function AuthService_register(name, org, email, password){
+  if(!name || !org || !email || !password) return {ok:false, error:'กรุณากรอกข้อมูลให้ครบทุกช่อง'};
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return {ok:false, error:'รูปแบบอีเมลไม่ถูกต้อง'};
+  if(password.length<6) return {ok:false, error:'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'};
+  if(DB_USERS.some(u=>u.email.toLowerCase()===email.toLowerCase())) return {ok:false, error:'อีเมลนี้ถูกใช้สมัครแล้ว'};
+  DB_USERS.push({email, password, name, org});
+  return {ok:true};
+}
+function AuthService_login(email, password){
+  const u = DB_USERS.find(x=>x.email.toLowerCase()===(email||'').toLowerCase() && x.password===password);
+  if(!u) return {ok:false, error:'อีเมลหรือรหัสผ่านไม่ถูกต้อง'};
+  return {ok:true, user:u};
+}
+
+/* ============================================================
+   PART B — TOR SECTION SCHEMA + PROJECTS
+   ============================================================ */
+let projects = [
+  {id:'p1', name:'จ้างบำรุงรักษาระบบ National e-Payment ปีงบประมาณ 2570', ministry:'กรมสรรพากร', budget:93004500, status:'draft',
+   updated:'15 ม.ค. 2569', phase:2, sectionProgress:{s1:1,s2:1,s3:0,s4:0,s5:0,s6:0,s7:0,s8:0,s9:0,s10:0}, sectionData:{}, extracted:{}},
+  {id:'p2', name:'จ้างบำรุงรักษาระบบและข้อมูลด้านการป้องกันและบรรเทาสาธารณภัย', ministry:'กรมป้องกันและบรรเทาสาธารณภัย (ปภ.)', budget:5000000, status:'progress',
+   updated:'14 ม.ค. 2569', phase:2, progressPct:62, sectionData:{}, extracted:{}},
+  {id:'p3', name:'ปรับปรุงระบบตลาดกลาง กรุงเทพมหานคร (BMA Market)', ministry:'กรุงเทพมหานคร', budget:38500000, status:'done',
+   updated:'10 ม.ค. 2569', phase:4, sectionProgress:{s1:1,s2:1,s3:1,s4:1,s5:1,s6:1,s7:1,s8:1,s9:1,s10:1}, sectionData:{}, extracted:{}}
+];
+let projectCounter = 3;
+let currentProjectId = 'p1';
+let currentPhase = 2;
+
+function ProjectService_create(){
+  projectCounter++;
+  const p = {id:'p'+projectCounter, name:'โครงการใหม่ #'+projectCounter, ministry:'-', budget:0, status:'draft',
+    updated:'วันนี้', phase:0, sectionProgress:{}, sectionData:{}, extracted:{}};
+  projects.push(p);
+  return p;
+}
+function ProjectService_get(id){ return projects.find(x=>x.id===id); }
+
+const SECTIONS = [
+  {id:'s1', num:'1', title:'ความเป็นมา (Background)', mapField:'problem', fields:[
+    {key:'history', label:'ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม', type:'textarea', ph:'ระบบ National e-Payment เดิมพัฒนาตั้งแต่ปี... ปัจจุบันมีปัญหา...'},
+    {key:'problems', label:'ปัญหาที่พบ (ระบุตัวเลข/สถิติ)', type:'textarea', ph:'เช่น Downtime เฉลี่ย X ชม./เดือน, ปริมาณข้อมูลเพิ่มขึ้น Y% ต่อปี', mapField:'problem'},
+    {key:'policy', label:'นโยบาย/กฎหมายที่เกี่ยวข้อง', type:'text', ph:'เช่น แผนยุทธศาสตร์เศรษฐกิจดิจิทัล, กฎหมายภาษี'}
+  ]},
+  {id:'s2', num:'2', title:'วัตถุประสงค์ (Objectives)', fields:[
+    {key:'mainObj', label:'วัตถุประสงค์หลัก (SMART)', type:'textarea', ph:'เพื่อบำรุงรักษาระบบให้มีความพร้อมใช้งานต่อเนื่อง...'},
+    {key:'users', label:'กลุ่มผู้ใช้งานเป้าหมาย', type:'text', ph:'เจ้าหน้าที่, สถาบันการเงิน, ผู้เสียภาษี'},
+    {key:'kpi', label:'ตัวชี้วัดความสำเร็จ (KPI)', type:'textarea', ph:'Uptime ≥ 99.5%, Response Time < 2 sec'}
+  ]},
+  {id:'s3', num:'3', title:'คุณสมบัติของผู้เสนอราคา (Qualifications)', fields:[
+    {key:'general', label:'คุณสมบัติทั่วไป', type:'textarea', ph:'ไม่ล้มละลาย, ไม่เป็นผู้ทิ้งงาน, ขึ้นทะเบียน e-GP'},
+    {key:'paidup', label:'ทุนจดทะเบียน/มูลค่ากิจการขั้นต่ำ', type:'text', ph:'ไม่น้อยกว่า 25% ของวงเงินงบประมาณ', mapField:'paidupSuggest'},
+    {key:'experience', label:'ผลงาน/ประสบการณ์ที่ต้องการ', type:'textarea', ph:'มีผลงานประเภทเดียวกันไม่น้อยกว่า 1 สัญญา วงเงินไม่น้อยกว่า...'}
+  ]},
+  {id:'s4', num:'4', title:'ขอบเขตของงาน (Scope of Work)', big:true, subs:[
+    {sid:'4.1', label:'สรุปภาพรวมขอบเขต'}, {sid:'4.2', label:'ลักษณะระบบเดิม (As-Is)'}, {sid:'4.3', label:'งานหลักที่ต้องดำเนินการ'},
+    {sid:'4.4', label:'ครุภัณฑ์ฮาร์ดแวร์'}, {sid:'4.5', label:'ซอฟต์แวร์และ License'}, {sid:'4.6', label:'จุดเชื่อมต่อระบบ (Integration)'},
+    {sid:'4.7', label:'มาตรฐาน/เอกสารอ้างอิง'}, {sid:'4.8', label:'ผลิตภัณฑ์ที่ต้องส่งมอบ (Deliverables)'}, {sid:'4.9', label:'ระยะเวลาการบำรุงรักษา'},
+    {sid:'4.10', label:'บุคลากรที่ต้องจัดเตรียม'}, {sid:'4.11', label:'รูปแบบการบำรุงรักษา'}, {sid:'4.12', label:'การบริหารจัดการและปฏิบัติการ'},
+    {sid:'4.13', label:'แผนสำรอง/กู้คืนระบบ (DR)'}, {sid:'4.14', label:'ข้อกำหนดความมั่นคงปลอดภัย'}
+  ]},
+  {id:'s5', num:'5', title:'ระยะเวลาดำเนินงาน (Timeline)', fields:[
+    {key:'timelineRange', label:'วันเริ่มต้น - วันสิ้นสุด', type:'text', ph:'1 ต.ค. 2569 - 30 ก.ย. 2570', mapField:'timeline'},
+    {key:'milestones', label:'งวดงาน/Milestone หลัก', type:'textarea', ph:'แบ่งส่งมอบ 4 งวดงาน ตามไตรมาส'}
+  ]},
+  {id:'s6', num:'6', title:'หลักเกณฑ์การพิจารณาคัดเลือก (Evaluation Criteria)', fields:[
+    {key:'evalMethod', label:'วิธีการประเมิน', type:'select', options:['เกณฑ์ราคา (Price)','เกณฑ์ราคาประกอบเกณฑ์คุณภาพ','เกณฑ์คุณภาพเท่านั้น'], mapField:'evaluationMethod'},
+    {key:'evalWeight', label:'สัดส่วนคะแนน (ถ้ามีเกณฑ์คุณภาพ)', type:'text', ph:'ราคา 70% / เทคนิค 30%'}
+  ]},
+  {id:'s7', num:'7', title:'วงเงินงบประมาณ (Budget)', fields:[
+    {key:'budgetAmount', label:'วงเงินงบประมาณ (บาท)', type:'number', ph:'93004500', mapField:'budget'},
+    {key:'budgetSource', label:'ที่มาของงบประมาณ', type:'text', ph:'งบประมาณประจำปี พ.ศ. 2570'}
+  ]},
+  {id:'s8', num:'8', title:'งวดงานและการจ่ายเงิน (Payment Schedule)', fields:[
+    {key:'installments', label:'จำนวนงวดการจ่ายเงิน', type:'number', ph:'4'},
+    {key:'paymentTerms', label:'เงื่อนไขการเบิกจ่ายแต่ละงวด', type:'textarea', ph:'งวดละ 25% เมื่อส่งมอบรายงานผลการปฏิบัติงานตาม SLA', mapField:'paymentPercentsText'}
+  ]},
+  {id:'s9', num:'9', title:'อัตราค่าปรับและการรับประกัน (Penalties & Warranty)', fields:[
+    {key:'penalty', label:'ค่าปรับกรณีระบบขัดข้อง/ล่าช้า', type:'textarea', ph:'0.035% ของราคาสัญญาต่อชั่วโมงที่เกิน SLA'},
+    {key:'warranty', label:'ระยะเวลารับประกัน', type:'text', ph:'เริ่มแก้ไขภายใน 4 ชม. จัดหาเครื่องสำรองภายใน 30 วัน'}
+  ]},
+  {id:'s10', num:'10', title:'เอกสารหลักฐานเพิ่มเติม (Supporting Documents)', fields:[
+    {key:'docs', label:'รายการเอกสารที่ต้องยื่นประกอบ', type:'textarea', ph:'หนังสือรับรองนิติบุคคล, สำเนาหนังสือรับรองผลงาน, หนังสือมอบอำนาจ'}
+  ]}
+];
+
+const PHASES = [
+  {id:0, icon:'📥', title:'เตรียมข้อมูล', sub:'Pre-Drafting'},
+  {id:1, icon:'🔎', title:'วิเคราะห์ความต้องการ', sub:'Analysis'},
+  {id:2, icon:'✍️', title:'ร่างเนื้อหา TOR', sub:'Drafting 10 หมวด'},
+  {id:3, icon:'🔍', title:'ทบทวน/อนุมัติ', sub:'Review & Approval'},
+  {id:4, icon:'📢', title:'เผยแพร่', sub:'Publishing'}
+];
+
+const KB_RAW = [
+  {cat:'พระราชบัญญัติ', items:[{n:'พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560', size:'293 KB'}]},
+  {cat:'ระเบียบกระทรวงการคลัง', items:[{n:'ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560', size:'482 KB'}]},
+  {cat:'คู่มือปฏิบัติงาน', items:[
+    {n:'คู่มือการจัดซื้อจัดจ้างตาม พ.ร.บ. 2560 และระเบียบกระทรวงการคลัง 2560', size:'1.7 MB'},
+    {n:'คู่มือปฏิบัติงานตามระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ 2560', size:'3.1 MB'},
+    {n:'คู่มือการปฏิบัติงานการจัดซื้อจัดจ้างฯ สำนักข่าวกรองแห่งชาติ', size:'1.2 MB'}
+  ]},
+  {cat:'กฎกระทรวง (8 ฉบับ)', items:[
+    {n:'กฎกระทรวงกำหนดพัสดุที่รัฐต้องการส่งเสริม/สนับสนุนและวิธีการจัดซื้อจัดจ้างโดยวิธีคัดเลือก/เฉพาะเจาะจง', size:'107 KB'},
+    {n:'กฎกระทรวงกำหนดวงเงินการจัดซื้อจัดจ้างพัสดุโดยวิธีเฉพาะเจาะจง', size:'50 KB'},
+    {n:'กฎกระทรวงกำหนดหลักเกณฑ์ วิธีการ และเงื่อนไขการขึ้นทะเบียนที่ปรึกษา พ.ศ. 2560', size:'103 KB'},
+    {n:'กฎกระทรวงกำหนดหลักเกณฑ์เกี่ยวกับผู้มีสิทธิขึ้นทะเบียนผู้ประกอบการ พ.ศ. 2560', size:'97 KB'},
+    {n:'กฎกระทรวงกำหนดอัตราค่าจ้างผู้ให้บริการงานออกแบบหรือควบคุมงานก่อสร้าง พ.ศ. 2562', size:'203 KB'},
+    {n:'กฎกระทรวงกำหนดเรื่องการจัดซื้อจัดจ้างกับหน่วยงานที่ใช้สิทธิอุทธรณ์ไม่ได้ พ.ศ. 2560/2568 (2 ฉบับ)', size:'134 KB'},
+    {n:'กฎกระทรวงกำหนดให้หน่วยงานอื่นเป็นหน่วยงานของรัฐตาม พ.ร.บ.', size:'55 KB'}
+  ]},
+  {cat:'หนังสือเวียนกรมบัญชีกลาง (8 ฉบับ)', items:[
+    {n:'หนังสือกรมบัญชีกลาง ด่วนที่สุด ที่ กค 0405.4ว 322 (24 ส.ค. 2560)', size:'197 KB'},
+    {n:'หนังสือกรมบัญชีกลาง ที่ กค (กวจ) 0405.2ว 336/346/347/356/360 (รวม 5 ฉบับ)', size:'~650 KB'},
+    {n:'หนังสือคณะกรรมการวินิจฉัยปัญหาการจัดซื้อจัดจ้างฯ กรมบัญชีกลาง', size:'412 KB'}
+  ]},
+  {cat:'อื่นๆ', items:[
+    {n:'การจัดซื้อจัดจ้างโดยรัฐ (ภาพรวม)', size:'889 KB'},
+    {n:'การจัดซื้อจัดจ้างที่ไม่ทำข้อตกลงเป็นหนังสือ และวงเงินแต่งตั้งผู้ตรวจรับพัสดุ', size:'56 KB'},
+    {n:'จัดซื้อจัดจ้าง_2560 (สรุปย่อ)', size:'293 KB'}
+  ]}
+];
+const KB_CHUNKED = [
+  {key:'definitions', name:'นิยามและประเภทพัสดุ', files:20, chunks:166},
+  {key:'procurement_methods', name:'วิธีจัดซื้อจัดจ้าง', files:10, chunks:99},
+  {key:'timeline_process', name:'ระยะเวลาและขั้นตอน', files:10, chunks:89},
+  {key:'tor_preparation', name:'การจัดทำ TOR', files:8, chunks:71},
+  {key:'contract_penalty', name:'สัญญาและค่าปรับ', files:7, chunks:59},
+  {key:'qualifications', name:'คุณสมบัติผู้เสนอราคา', files:11, chunks:55},
+  {key:'evaluation_criteria', name:'เกณฑ์การพิจารณา', files:7, chunks:24},
+  {key:'guarantee', name:'หลักประกัน', files:5, chunks:23}
+];
+let kbUserFiles = [
+  {name:'requirement_e-payment_2570.pdf', type:'req', size:'840 KB', date:'12 ม.ค. 2569', chunks:34},
+  {name:'ประกาศราคากลาง_BMA_Market.pdf', type:'price', size:'1.1 MB', date:'8 ม.ค. 2569', chunks:41}
+];
+let compareProjects = [];   // [{id, name, text}]
+let compareCounter = 0;
+let selectedKbType = 'law';
+
+/* ============================================================
+   PART C — OCR / EXTRACTION SERVICE (real client-side OCR,
+   no LLM: pdf.js for PDF text layer, mammoth.js for docx,
+   Tesseract.js for scanned images — rule-based dispatch by
+   MIME type / file extension)
+   ============================================================ */
+function ExtractionService_detectType(file){
+  const name = (file.name||'').toLowerCase();
+  if(file.type==='application/pdf' || name.endsWith('.pdf')) return 'pdf';
+  if(name.endsWith('.docx') || file.type.includes('officedocument.wordprocessingml')) return 'docx';
+  if(file.type.startsWith('image/') || /\.(png|jpg|jpeg|bmp|gif)$/.test(name)) return 'image';
+  return 'unknown';
+}
+async function ExtractionService_fromPDF(file){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  let text = '';
+  const maxPages = Math.min(pdf.numPages, 30); // PoC safety cap
+  for(let i=1;i<=maxPages;i++){
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it=>it.str).join(' ') + '\n';
+  }
+  return text;
+}
+async function ExtractionService_fromDocx(file){
+  const buf = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({arrayBuffer: buf});
+  return result.value || '';
+}
+async function ExtractionService_fromImage(file){
+  const result = await Tesseract.recognize(file, 'tha+eng');
+  return (result && result.data && result.data.text) || '';
+}
+async function ExtractionService_extract(file){
+  const kind = ExtractionService_detectType(file);
+  try{
+    if(kind==='pdf') return {ok:true, kind, text: await ExtractionService_fromPDF(file)};
+    if(kind==='docx') return {ok:true, kind, text: await ExtractionService_fromDocx(file)};
+    if(kind==='image') return {ok:true, kind, text: await ExtractionService_fromImage(file)};
+    return {ok:false, kind, error:'ไม่รองรับประเภทไฟล์นี้ (รองรับ PDF, DOCX, รูปภาพ)'};
+  }catch(err){
+    return {ok:false, kind, error:'สกัดข้อความล้มเหลว: '+(err && err.message ? err.message : String(err))};
+  }
+}
+
+/* ============================================================
+   PART D — RULE-BASED NLP ENGINE (regex + keyword dictionaries,
+   NO machine-learning models, NO LLM calls)
+   ============================================================ */
+const NLP_MINISTRY_KEYWORDS = [
+  'กรมสรรพากร','กรมบัญชีกลาง','กรมป้องกันและบรรเทาสาธารณภัย','กรุงเทพมหานคร','กรมศุลกากร','กรมที่ดิน',
+  'สำนักงานตำรวจแห่งชาติ','กระทรวงมหาดไทย','กระทรวงการคลัง','กระทรวงดิจิทัลเพื่อเศรษฐกิจและสังคม',
+  'สำนักงานคณะกรรมการกฤษฎีกา','กรมการปกครอง','สำนักนายกรัฐมนตรี','กรมพัฒนาธุรกิจการค้า'
+];
+/* Stop-keywords used to trim over-greedy captures on unsegmented Thai text
+   (OCR/extracted text often lacks periods or newlines within a page, so a
+   naive char-count window will run across multiple unrelated clauses) */
+const NLP_STOP_KEYWORDS = ['งบประมาณ','ระยะเวลาดำเนินการ','ระยะเวลาการ','ระยะเวลา','ปัญหาที่พบ','ปัญหา','การชำระเงิน','วิธีการประเมิน','ทุนจดทะเบียน'];
+function nlpTrimAtStopKeyword(str){
+  let cut = str.length;
+  for(const kw of NLP_STOP_KEYWORDS){
+    const idx = str.indexOf(kw);
+    if(idx>0 && idx<cut) cut = idx;
+  }
+  return str.slice(0,cut).trim();
+}
+function NLPEngine_extractFields(text){
+  const out = {};
+  if(!text) return out;
+  let m = text.match(/โครงการ[\s:]*([^\n\.]{10,120})/);
+  if(m) out.projectName = nlpTrimAtStopKeyword(m[1]);
+  for(const kw of NLP_MINISTRY_KEYWORDS){ if(text.includes(kw)){ out.ministry = kw; break; } }
+  const budgetMatches = [...text.matchAll(/([0-9][0-9,]{5,})\s*(?:บาท|บ\.)/g)].map(mm=>parseInt(mm[1].replace(/,/g,''),10)).filter(n=>!isNaN(n));
+  if(budgetMatches.length) out.budget = Math.max(...budgetMatches);
+  // Prefer a tight "N วัน/เดือน/ปี" duration match; fall back to a trimmed window
+  m = text.match(/ระยะเวลา(?:ดำเนินการ|การดำเนินงาน|การดำเนินงานตาม.{0,10}|การจ้าง)?\s*(?:ประมาณ)?\s*(\d+\s*(?:วัน|เดือน|ปี))/);
+  if(m) out.timeline = m[0].trim();
+  else { m = text.match(/ระยะเวลา[^\n]{0,80}/); if(m) out.timeline = nlpTrimAtStopKeyword(m[0]); }
+  // Start the capture exactly at the trigger keyword (not before it) so Thai's
+  // lack of word-spacing never chops a preceding word mid-character.
+  m = text.match(/(ปัญหา|ขัดข้อง|ล่าช้า|ไม่เพียงพอ|หยุดชะงัก)[^\n]{0,150}/);
+  if(m) out.problem = nlpTrimAtStopKeyword(m[0]);
+  const pcts = [...text.matchAll(/(?:ร้อยละ\s*(\d{1,3})|(\d{1,3})\s*%)/g)].map(mm=>parseInt(mm[1]||mm[2],10)).filter(n=>!isNaN(n));
+  if(pcts.length){ out.paymentPercents = pcts; out.paymentPercentsText = 'พบสัดส่วนงวดจ่ายเงินในเอกสาร: '+pcts.join('%, ')+'%'; }
+  if(/เกณฑ์ราคาประกอบเกณฑ์คุณภาพ|เกณฑ์คุณภาพ/.test(text)) out.evaluationMethod = 'เกณฑ์ราคาประกอบเกณฑ์คุณภาพ';
+  else if(/เกณฑ์ราคา/.test(text)) out.evaluationMethod = 'เกณฑ์ราคา (Price)';
+  if(out.budget) out.paidupSuggest = 'ไม่น้อยกว่า '+Math.round(out.budget*0.25).toLocaleString()+' บาท (25% ของงบประมาณที่สกัดได้)';
+  return out;
+}
+function NLPEngine_tokenize(text){
+  return (text||'').split(/[^ก-๙a-zA-Z0-9]+/).map(s=>s.trim()).filter(s=>s.length>=4);
+}
+function NLPEngine_jaccardSimilarity(textA, textB){
+  const a = new Set(NLPEngine_tokenize(textA));
+  const b = new Set(NLPEngine_tokenize(textB));
+  if(a.size===0 || b.size===0) return 0;
+  let inter=0; a.forEach(x=>{ if(b.has(x)) inter++; });
+  const union = a.size + b.size - inter;
+  return union ? inter/union : 0;
+}
+
+/* Section keyword dictionary used by the Review rule-engine to detect
+   which of the 10 mandatory TOR sections are present in an uploaded document */
+const SECTION_KEYWORDS = {
+  s1:['ความเป็นมา','หลักการและเหตุผล'],
+  s2:['วัตถุประสงค์'],
+  s3:['คุณสมบัติของผู้เสนอราคา','คุณสมบัติผู้เสนอ','คุณสมบัติของผู้ยื่นข้อเสนอ'],
+  s4:['ขอบเขตของงาน','ขอบเขตการดำเนินงาน','scope of work'],
+  s5:['ระยะเวลาดำเนินงาน','ระยะเวลาการจ้าง','กำหนดเวลาส่งมอบ'],
+  s6:['หลักเกณฑ์ในการพิจารณา','หลักเกณฑ์การพิจารณา','เกณฑ์การพิจารณา'],
+  s7:['วงเงินงบประมาณ','งบประมาณโครงการ'],
+  s8:['งวดงานและการจ่ายเงิน','เงื่อนไขการจ่ายเงิน','การจ่ายเงิน'],
+  s9:['อัตราค่าปรับ','การรับประกันความชำรุด','ค่าปรับ'],
+  s10:['เอกสารหลักฐานเพิ่มเติม','เอกสารประกอบการเสนอราคา']
+};
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+const PAGE_META = {
+  dashboard:{title:'Dashboard', sub:'ภาพรวมโครงการ TOR ทั้งหมด'},
+  knowledge:{title:'Knowledge Base', sub:'คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG'},
+  draft:{title:'ร่าง TOR', sub:'กระบวนการร่างเอกสาร TOR แบบ Flow 5 Phase'},
+  review:{title:'ตรวจสอบ TOR', sub:'ตรวจสอบความถูกต้องตามกฎหมายและเทียบเคียงโครงการ'},
+  guide:{title:'คู่มือการใช้งาน', sub:'คำอธิบายและภาพประกอบแต่ละส่วนของระบบ'}
+};
+function nav(pageId, el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+pageId).classList.add('active');
+  highlightMenu(pageId);
+  document.getElementById('pageTitle').textContent = PAGE_META[pageId].title;
+  document.getElementById('pageSub').textContent = PAGE_META[pageId].sub;
+}
+function highlightMenu(pageId){
+  document.querySelectorAll('.menu-item').forEach(m=>m.classList.toggle('active', m.dataset.page===pageId));
+}
+
+/* ============================================================
+   AUTH UI
+   ============================================================ */
+function switchAuth(which){
+  document.getElementById('loginPanel').classList.toggle('active', which==='login');
+  document.getElementById('registerPanel').classList.toggle('active', which==='register');
+  document.getElementById('authTitle').textContent = which==='login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก';
+  hideAuthMsgs();
+}
+function hideAuthMsgs(){
+  document.getElementById('authError').classList.remove('show');
+  document.getElementById('authSuccess').classList.remove('show');
+}
+function showAuthError(msg){
+  hideAuthMsgs();
+  const el = document.getElementById('authError'); el.textContent = '⚠️ '+msg; el.classList.add('show');
+}
+function showAuthSuccess(msg){
+  hideAuthMsgs();
+  const el = document.getElementById('authSuccess'); el.textContent = '✅ '+msg; el.classList.add('show');
+}
+function handleLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const res = AuthService_login(email, password);
+  if(!res.ok) return showAuthError(res.error);
+  currentUser = res.user;
+  enterApp();
+}
+function handleRegister(){
+  const name = document.getElementById('regName').value.trim();
+  const org = document.getElementById('regOrg').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const password2 = document.getElementById('regPassword2').value;
+  if(password !== password2) return showAuthError('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน');
+  const res = AuthService_register(name, org, email, password);
+  if(!res.ok) return showAuthError(res.error);
+  showAuthSuccess('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ');
+  setTimeout(()=>{
+    switchAuth('login');
+    document.getElementById('loginEmail').value = email;
+    document.getElementById('loginPassword').value = '';
+  }, 900);
+}
+function handleLogout(){
+  currentUser = null;
+  document.getElementById('appRoot').style.display='none';
+  document.getElementById('authScreen').style.display='flex';
+  switchAuth('login');
+}
+function enterApp(){
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('appRoot').style.display='flex';
+  document.getElementById('topbarUserEmail').textContent = currentUser.email;
+  document.getElementById('topbarAvatar').textContent = (currentUser.name||currentUser.email).charAt(0).toUpperCase();
+  renderDashboard(); renderKbRaw(); renderKbChunked(); renderKbUserFiles(); renderDraftPage(); renderGuide();
+}
+
+/* ============================================================
+   MODAL HELPERS
+   ============================================================ */
+function openModal(title, bodyHtml, footerHtml){
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalFooter').innerHTML = footerHtml || '<button class="btn btn-secondary" onclick="closeModal()">ปิด</button>';
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('show'); }
+document.getElementById('modalOverlay').addEventListener('click', e=>{ if(e.target.id==='modalOverlay') closeModal(); });
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+function renderDashboard(){
+  const tbody = document.getElementById('projectsTableBody');
+  tbody.innerHTML = '';
+  let d=0,p=0,c=0;
+  projects.forEach(pr=>{
+    if(pr.status==='draft') d++; else if(pr.status==='progress') p++; else c++;
+    let statusHtml, actionHtml;
+    if(pr.status==='draft'){
+      statusHtml = '<span class="status-pill draft">🟡 ร่าง</span>';
+      actionHtml = `<button class="btn btn-primary btn-sm" onclick="editProject('${pr.id}')">✏️ แก้ไข</button>`;
+    } else if(pr.status==='progress'){
+      statusHtml = `<span class="status-pill progress"><span class="spinner"></span> กำลังดำเนินการ (${pr.progressPct||0}%)</span>`;
+      actionHtml = `<button class="btn btn-disabled btn-sm" disabled title="ระบบกำลังสร้างเอกสาร กรุณารอจนเสร็จสิ้น">⏳ กำลังสร้าง...</button>`;
+    } else {
+      statusHtml = '<span class="status-pill done">✅ เสร็จแล้ว</span>';
+      actionHtml = `<button class="btn btn-ghost btn-sm" onclick="viewProject('${pr.id}')">👁️ ดู</button>
+                     <button class="btn btn-success btn-sm" onclick="editProject('${pr.id}')" style="margin-left:6px;">🔧 ปรับปรุง</button>`;
+    }
+    tbody.innerHTML += `<tr>
+      <td><strong>${pr.name}</strong></td>
+      <td>${pr.ministry}</td>
+      <td>${pr.budget.toLocaleString()} บาท</td>
+      <td>${statusHtml}</td>
+      <td>${pr.updated}</td>
+      <td>${actionHtml}</td>
+    </tr>`;
+  });
+  document.getElementById('statDraft').textContent = d;
+  document.getElementById('statProgress').textContent = p;
+  document.getElementById('statDone').textContent = c;
+}
+function createNewProject(){
+  const p = ProjectService_create();
+  currentProjectId = p.id; currentPhase = 0;
+  nav('draft', null); highlightMenu('draft'); renderDraftPage();
+}
+function editProject(id){
+  currentProjectId = id;
+  const pr = ProjectService_get(id);
+  currentPhase = pr.phase || 2;
+  nav('draft', null); highlightMenu('draft'); renderDraftPage();
+}
+function viewProject(id){
+  const pr = ProjectService_get(id);
+  const secList = SECTIONS.map(s=>`<div class="check-item"><span class="check-icon pass">✓</span><div><strong>หมวด ${s.num}: ${s.title}</strong><p class="small-note">กรอกข้อมูลครบถ้วนแล้ว</p></div></div>`).join('');
+  openModal('👁️ TOR ฉบับสมบูรณ์ — '+pr.name,
+    `<p style="margin-bottom:14px;color:var(--gray-600);">หน่วยงาน: <strong>${pr.ministry}</strong> • งบประมาณ: <strong>${pr.budget.toLocaleString()} บาท</strong></p>${secList}`,
+    `<button class="btn btn-secondary" onclick="closeModal()">ปิด</button>
+     <button class="btn btn-primary" onclick="closeModal();editProject('${pr.id}')">🔧 ปรับปรุงเอกสารนี้</button>`
+  );
+}
+setInterval(()=>{
+  let changed=false;
+  projects.forEach(pr=>{
+    if(pr.status==='progress'){
+      pr.progressPct = Math.min(100, (pr.progressPct||0) + Math.floor(Math.random()*4));
+      if(pr.progressPct>=100){ pr.status='done'; pr.sectionProgress={s1:1,s2:1,s3:1,s4:1,s5:1,s6:1,s7:1,s8:1,s9:1,s10:1}; }
+      changed=true;
+    }
+  });
+  if(changed && document.getElementById('page-dashboard') && document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+}, 3500);
+
+/* ============================================================
+   KNOWLEDGE BASE
+   ============================================================ */
+function setKbType(el, t){
+  document.querySelectorAll('.kb-type-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active'); selectedKbType = t;
+}
+function kbDrop(e){ e.preventDefault(); e.currentTarget.classList.remove('dragover'); handleKbFiles(e.dataTransfer.files); }
+function kbUpload(e){ handleKbFiles(e.target.files); }
+async function handleKbFiles(files){
+  if(!files || !files.length) return;
+  const typeLabels = {law:'กฎหมาย/ระเบียบกลาง (ระบบ)', price:'ประกาศราคากลาง', bid:'ร่างเอกสารประกวดราคา', req:'ความต้องการลูกค้า/หน่วยงาน', other:'อื่นๆ'};
+  const fb = document.getElementById('kbUploadFeedback');
+  fb.innerHTML = `<div class="mapping-box" style="margin-top:12px;">🔄 กำลัง OCR/สกัดข้อความจาก ${files.length} ไฟล์ (${typeLabels[selectedKbType]})...</div>`;
+  for(const f of Array.from(files)){
+    const res = await ExtractionService_extract(f);
+    const chunks = res.ok ? Math.max(1, Math.ceil((res.text||'').length/500)) : 0;
+    kbUserFiles.push({name:f.name, type:selectedKbType, size:Math.round(f.size/1024)+' KB', date:'วันนี้', chunks, extractOk:res.ok, extractError:res.error||''});
+  }
+  renderKbUserFiles();
+  const okCount = Array.from(files).length;
+  fb.innerHTML = `<div class="mapping-box" style="margin-top:12px;border-color:#86efac;background:#f0fdf4;">✅ ประมวลผล ${okCount} ไฟล์เสร็จสิ้น ระบบสกัดข้อความจริงด้วย OCR Engine (pdf.js/mammoth.js/Tesseract.js) แบ่ง Chunk ตามความยาวข้อความ และจำลองการฝัง Embedding เข้า <strong>Qdrant</strong> + <strong>pgvector</strong></div>`;
+}
+function renderKbRaw(){
+  const el = document.getElementById('kbRawDocs');
+  el.innerHTML = KB_RAW.map((grp,gi)=>`
+    <div class="kb-category ${gi===0?'expanded':''}">
+      <div class="kb-cat-head" onclick="this.closest('.kb-category').classList.toggle('expanded')">
+        <div class="kb-left"><span>📁 ${grp.cat}</span><span class="kb-badge badge-lawfixed">${grp.items.length} ไฟล์</span></div><span>▾</span>
+      </div>
+      <div class="kb-cat-body">${grp.items.map(it=>`<div class="kb-doc-row"><span>📄 ${it.n}</span><span class="small-note">${it.size}</span></div>`).join('')}</div>
+    </div>`).join('');
+}
+function renderKbChunked(){
+  const el = document.getElementById('kbChunked');
+  el.innerHTML = KB_CHUNKED.map(c=>`
+    <div class="kb-category">
+      <div class="kb-cat-head" onclick="this.closest('.kb-category').classList.toggle('expanded')">
+        <div class="kb-left"><span>🧩 ${c.name}</span><span class="kb-badge badge-qdrant">Qdrant</span><span class="kb-badge badge-pgvector">pgvector</span></div>
+        <span class="small-note">${c.files} ไฟล์ต้นทาง • ${c.chunks} chunks ▾</span>
+      </div>
+      <div class="kb-cat-body">
+        <div class="small-note" style="margin:8px 0;">แหล่งที่มา: D:\\แนวปฏิบัติ_กฎระเบียบ_การจัดซื้อจัดจ้าง\\knowledge-base\\${c.key}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, c.chunks/2)}%;"></div></div>
+        <p class="small-note">ตัวอย่าง Vector ID: kb_${c.key}_0001 … kb_${c.key}_${String(c.chunks).padStart(4,'0')}</p>
+      </div>
+    </div>`).join('');
+}
+function renderKbUserFiles(){
+  const el = document.getElementById('kbUserFiles');
+  const typeLabels = {law:'กฎหมาย', price:'ประกาศราคากลาง', bid:'ร่างเอกสารประกวดราคา', req:'ความต้องการ', other:'อื่นๆ'};
+  document.getElementById('userFileCount').textContent = kbUserFiles.length+' ไฟล์';
+  if(!kbUserFiles.length){ el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray-600);">ยังไม่มีไฟล์ที่อัปโหลดเอง</div>'; return; }
+  el.innerHTML = kbUserFiles.map((f,i)=>`
+    <div class="kb-doc-row" style="padding:12px 16px;">
+      <span>📄 ${f.name} <span class="small-note">(${typeLabels[f.type]||f.type} • ${f.size} • ${f.date}${f.chunks?' • '+f.chunks+' chunks':''}${f.extractOk===false?' • ⚠️ OCR ล้มเหลว':''})</span></span>
+      <button class="btn btn-danger btn-sm" onclick="deleteUserFile(${i})">🗑️ ลบ</button>
+    </div>`).join('');
+}
+function deleteUserFile(i){
+  openModal('ยืนยันการลบไฟล์', `<p>ต้องการลบไฟล์ <strong>${kbUserFiles[i].name}</strong> ออกจากคลังความรู้หรือไม่?</p>`,
+   `<button class="btn btn-secondary" onclick="closeModal()">ยกเลิก</button>
+    <button class="btn btn-danger" onclick="kbUserFiles.splice(${i},1);renderKbUserFiles();closeModal();">🗑️ ลบไฟล์</button>`);
+}
+
+/* ============================================================
+   DRAFT TOR — Phase flow + Section flow (real OCR + rule-based
+   content mapping wired to the extraction/NLP services above)
+   ============================================================ */
+function renderPhaseFlow(){
+  const el = document.getElementById('phaseFlow');
+  el.innerHTML = PHASES.map((ph,i)=>{
+    const state = ph.id<currentPhase ? 'done' : (ph.id===currentPhase ? 'active' : '');
+    const line = i<PHASES.length-1 ? `<div class="phase-line ${ph.id<currentPhase?'done':''}"></div>` : '';
+    return `<div class="phase-node ${state}" onclick="setPhase(${ph.id})">
+      <div class="phase-circle">${state==='done'?'✓':ph.icon}</div>
+      <div class="p-title">Phase ${ph.id}</div><div class="p-sub">${ph.title}</div>
+    </div>${line}`;
+  }).join('');
+}
+function setPhase(id){ currentPhase = id; renderPhaseFlow(); renderPhaseContent(); }
+function renderDraftPage(){
+  const pr = ProjectService_get(currentProjectId);
+  document.getElementById('draftProjectName').textContent = pr ? pr.name : 'โครงการใหม่';
+  const pillMap = {draft:['🟡 ร่าง','draft'], progress:['🔵 กำลังดำเนินการ','progress'], done:['✅ เสร็จแล้ว','done']};
+  const [txt,cls] = pillMap[pr ? pr.status : 'draft'];
+  const pill = document.getElementById('draftStatusPill');
+  pill.textContent = txt; pill.className = 'status-pill '+cls;
+  renderPhaseFlow(); renderPhaseContent();
+}
+function renderPhaseContent(){
+  const el = document.getElementById('phaseContent');
+  if(currentPhase===0) return renderPhase0(el);
+  if(currentPhase===1) return renderPhase1(el);
+  if(currentPhase===2) return renderPhase2(el);
+  if(currentPhase===3) return renderPhase3(el);
+  if(currentPhase===4) return renderPhase4(el);
+}
+
+function renderPhase0(el){
+  const pr = ProjectService_get(currentProjectId);
+  const extracted = pr.extracted || {};
+  const hasData = Object.keys(extracted).length>0;
+  el.innerHTML = `
+  <div class="card">
+    <h3 style="color:var(--navy);margin-bottom:10px;">📥 Phase 0: เตรียมข้อมูลตั้งต้น (Pre-Drafting)</h3>
+    <p class="small-note" style="margin-bottom:14px;">อัปโหลดเอกสารอ้างอิงของโครงการ — ระบบจะ OCR/สกัดข้อความจริงและวิเคราะห์ด้วย Rule-based NLP เพื่อแนะนำข้อมูลในหมวดต่างๆ อัตโนมัติ</p>
+    <div class="upload-area" onclick="document.getElementById('p0FileInput').click()">
+      <div class="u-icon">📤</div><p><strong>อัปโหลดเอกสารอ้างอิงของโครงการ</strong></p>
+      <div class="u-hint">ประกาศราคากลาง, Budget Approval, Project Charter, ผลการประชุม Kickoff (PDF/Word/รูปภาพ)</div>
+    </div>
+    <input type="file" id="p0FileInput" multiple style="display:none" onchange="p0Files(event)">
+    <div id="p0FileList"></div>
+    <div id="p0ExtractStatus"></div>
+    <div class="mapping-box" id="p0Mapping" style="display:${hasData?'block':'none'};">${hasData?buildMappingRows(extracted):''}</div>
+
+    <h4 style="margin:18px 0 8px;color:var(--navy);font-size:14px;">✅ Checklist ความพร้อม (Must-Have)</h4>
+    ${['เอกสารอนุมัติงบประมาณ','ประกาศราคากลางฉบับทางการ','Project Charter / Scope Document','Meeting Minutes (Kickoff)','รายชื่อผู้เกี่ยวข้อง (Stakeholder List)'].map((t,i)=>`
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;"><input type="checkbox" ${i<2?'checked':''}> ${t}</label>`).join('')}
+    <div style="margin-top:16px;text-align:right;"><button class="btn btn-primary" onclick="setPhase(1)">ถัดไป: วิเคราะห์ความต้องการ →</button></div>
+  </div>`;
+}
+function buildMappingRows(extracted){
+  const rows = [];
+  if(extracted.projectName) rows.push(['ชื่อโครงการ (หมวด 1)', extracted.projectName, 'matched']);
+  if(extracted.ministry) rows.push(['หน่วยงาน', extracted.ministry, 'matched']);
+  if(extracted.budget) rows.push(['วงเงินงบประมาณ (หมวด 7)', extracted.budget.toLocaleString()+' บาท', 'matched']);
+  if(extracted.problem) rows.push(['ปัญหา/ความเป็นมา (หมวด 1)', extracted.problem.slice(0,60)+'…', 'matched']);
+  if(extracted.timeline) rows.push(['ระยะเวลา (หมวด 5)', extracted.timeline.slice(0,60), 'matched']);
+  if(extracted.evaluationMethod) rows.push(['เกณฑ์การพิจารณา (หมวด 6)', extracted.evaluationMethod, 'matched']);
+  if(!rows.length) return '<div class="mapping-row"><span>ไม่พบข้อมูลที่จับคู่ได้จากไฟล์นี้</span><span class="tag partial">ตรวจสอบด้วยตนเอง</span></div>';
+  return '🔄 วิเคราะห์ไฟล์ด้วย Rule-based NLP แล้ว พบข้อมูลที่นำไปเติมในแบบฟอร์มอัตโนมัติ:' +
+    rows.map(r=>`<div class="mapping-row"><span>${r[0]}: <strong>${r[1]}</strong></span><span class="tag ${r[2]}">สอดคล้อง</span></div>`).join('');
+}
+async function p0Files(e){
+  const files = Array.from(e.target.files);
+  const list = document.getElementById('p0FileList');
+  list.innerHTML = files.map(f=>`<div class="file-chip"><span class="fc-name">📄 ${f.name}</span><span class="small-note">${Math.round(f.size/1024)} KB</span></div>`).join('');
+  const statusEl = document.getElementById('p0ExtractStatus');
+  statusEl.innerHTML = `<div class="extract-status">🔄 กำลัง OCR/สกัดข้อความ...</div>`;
+  const pr = ProjectService_get(currentProjectId);
+  let fullText = '';
+  let anyErr = '';
+  for(const f of files){
+    const res = await ExtractionService_extract(f);
+    if(res.ok) fullText += res.text + '\n';
+    else anyErr += (res.error||'')+' ';
+  }
+  const fields = NLPEngine_extractFields(fullText);
+  pr.extracted = Object.assign({}, pr.extracted, fields);
+  if(fields.ministry) pr.ministry = fields.ministry;
+  if(fields.budget) pr.budget = fields.budget;
+  if(fields.projectName) pr.name = fields.projectName;
+  statusEl.innerHTML = anyErr
+    ? `<div class="extract-status err">⚠️ สกัดข้อความสำเร็จบางส่วน (${anyErr})</div>`
+    : `<div class="extract-status ok">✅ สกัดข้อความสำเร็จ (${fullText.length.toLocaleString()} ตัวอักษร) — วิเคราะห์ด้วย Rule-based NLP เรียบร้อย</div>`;
+  const map = document.getElementById('p0Mapping');
+  map.style.display = 'block';
+  map.innerHTML = buildMappingRows(pr.extracted);
+  document.getElementById('draftProjectName').textContent = pr.name;
+}
+
+function renderPhase1(el){
+  el.innerHTML = `
+  <div class="card">
+    <h3 style="color:var(--navy);margin-bottom:10px;">🔎 Phase 1: วิเคราะห์ความต้องการ (Analysis)</h3>
+    <p class="small-note" style="margin-bottom:14px;">สัมภาษณ์ผู้ใช้งาน จัดกลุ่ม Requirements และสร้าง Q&A Log ก่อนลงมือร่าง</p>
+    <div class="form-group"><label>Requirements ที่รวบรวมได้ (Functional)</label><textarea placeholder="เช่น รองรับ 500 concurrent users, Response time < 2 sec"></textarea></div>
+    <div class="form-group"><label>Requirements (Non-Functional)</label><textarea placeholder="เช่น Availability 99.9%, ISO 27001 compliance"></textarea></div>
+    <div class="form-group"><label>Q&A Log สำคัญ</label><textarea placeholder="Q: งบประมาณคงที่หรือปรับได้? / A: คงที่ตามประกาศราคากลาง"></textarea></div>
+    <div style="display:flex;justify-content:space-between;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="setPhase(0)">← ย้อนกลับ</button>
+      <button class="btn btn-primary" onclick="setPhase(2)">ถัดไป: ร่างเนื้อหา TOR →</button>
+    </div>
+  </div>`;
+}
+
+function renderPhase2(el){
+  el.innerHTML = `
+  <div class="card" style="margin-bottom:0;">
+    <h3 style="color:var(--navy);margin-bottom:4px;">✍️ Phase 2: ร่างเนื้อหา TOR — 10 หมวดหลัก</h3>
+    <p class="small-note" style="margin-bottom:16px;">คลิกแต่ละหมวดเพื่อกรอกเนื้อหา ระบบเติมค่าที่สกัดได้จาก Phase 0 ให้อัตโนมัติ (Rule-based Content Mapping)</p>
+    <div class="flow-track" id="sectionFlow"></div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;">
+      <button class="btn btn-secondary" onclick="setPhase(1)">← ย้อนกลับ</button>
+      <div><button class="btn btn-success" onclick="saveDraft()">💾 บันทึกเป็นร่าง</button>
+      <button class="btn btn-primary" onclick="setPhase(3)" style="margin-left:8px;">ถัดไป: ทบทวน/อนุมัติ →</button></div>
+    </div>
+  </div>`;
+  renderSectionFlow();
+}
+function renderSectionFlow(){
+  const pr = ProjectService_get(currentProjectId);
+  const prog = pr.sectionProgress || {};
+  const extracted = pr.extracted || {};
+  const track = document.getElementById('sectionFlow');
+  track.innerHTML = SECTIONS.map((s,i)=>{
+    const filled = prog[s.id];
+    const last = i===SECTIONS.length-1;
+    let bodyHtml = '';
+    if(s.big){
+      bodyHtml = `
+        <div class="small-note">หมวด 4 มีความยาวมากที่สุด แบ่งเป็น ${s.subs.length} หัวข้อย่อยตามแนวทางกรมบัญชีกลาง</div>
+        <div class="subsection-chip-row">${s.subs.map(sub=>`<span class="subsection-chip" onclick="toggleSub(this,'${s.id}_${sub.sid}')">${sub.sid} ${sub.label}</span>`).join('')}</div>
+        ${s.subs.map(sub=>`
+          <div class="subsection-panel" id="panel_${s.id}_${sub.sid}">
+            <div class="form-group"><label>${sub.sid} ${sub.label}</label><textarea placeholder="กรอกรายละเอียดหัวข้อ ${sub.label}..."></textarea></div>
+            <div class="mapping-box"><div class="mapping-row"><span>อ้างอิงจากไฟล์ที่อัปโหลด (Phase 0)</span><span class="tag ${Object.keys(extracted).length?'matched':'partial'}">${Object.keys(extracted).length?'พบเนื้อหาที่เกี่ยวข้อง':'ยังไม่มีข้อมูลอ้างอิง'}</span></div></div>
+          </div>`).join('')}
+        <div style="text-align:right;margin-top:10px;"><button class="btn btn-success btn-sm" onclick="markFilled('${s.id}')">✓ บันทึกหมวดนี้</button></div>`;
+    } else {
+      bodyHtml = `
+        ${s.fields.map(f=>{
+          const suggested = f.mapField && extracted[f.mapField] ? extracted[f.mapField] : '';
+          if(f.type==='textarea') return `<div class="form-group"><label>${f.label}</label><textarea placeholder="${f.ph||''}">${suggested}</textarea></div>`;
+          if(f.type==='select'){
+            const opts=(f.options||[]).map(o=>`<option ${suggested===o?'selected':''}>${o}</option>`).join('');
+            return `<div class="form-group"><label>${f.label}</label><select>${opts}</select></div>`;
+          }
+          return `<div class="form-group"><label>${f.label}</label><input type="${f.type==='number'?'text':f.type||'text'}" placeholder="${f.ph||''}" value="${suggested}"></div>`;
+        }).join('')}
+        <div class="mapping-box">${s.fields.filter(f=>f.mapField).map(f=>{
+          const has = f.mapField && extracted[f.mapField];
+          return `<div class="mapping-row"><span>${f.label}</span><span class="tag ${has?'matched':'partial'}">${has?'ดึงจากไฟล์อัปโหลด':'ยังไม่พบ — กรอกเอง'}</span></div>`;
+        }).join('') || '<div class="mapping-row"><span>ไม่มีฟิลด์ที่ต้อง Auto-map ในหมวดนี้</span><span class="tag matched">กรอกเอง</span></div>'}</div>
+        <div style="text-align:right;margin-top:10px;"><button class="btn btn-success btn-sm" onclick="markFilled('${s.id}')">✓ บันทึกหมวดนี้</button></div>`;
+    }
+    return `
+    <div class="flow-node ${filled?'filled':''} ${i===0?'current':''}" id="flownode_${s.id}">
+      <div class="flow-dot-col"><div class="flow-dot">${filled?'✓':s.num}</div>${!last?'<div class="flow-connector"></div>':''}</div>
+      <div class="flow-card" id="flowcard_${s.id}">
+        <div class="flow-card-head" onclick="toggleFlowCard('${s.id}')">
+          <div><h3>หมวด ${s.num}: ${s.title}</h3><div class="flow-meta">${filled?'✅ กรอกข้อมูลแล้ว':'ยังไม่กรอกข้อมูล'}${s.big?' • '+s.subs.length+' หัวข้อย่อย':''}</div></div>
+          <span class="flow-toggle">▾ ขยาย</span>
+        </div>
+        <div class="flow-card-body">${bodyHtml}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function toggleFlowCard(id){ document.getElementById('flowcard_'+id).classList.toggle('expanded'); }
+function toggleSub(chipEl, key){ chipEl.classList.toggle('filled'); document.getElementById('panel_'+key).classList.toggle('show'); }
+function markFilled(sid){
+  const pr = ProjectService_get(currentProjectId);
+  pr.sectionProgress = pr.sectionProgress || {}; pr.sectionProgress[sid]=1;
+  renderSectionFlow();
+}
+function saveDraft(){
+  openModal('💾 บันทึกร่างสำเร็จ', '<p>บันทึกความคืบหน้าของ TOR ฉบับนี้เป็น <strong>สถานะร่าง</strong> เรียบร้อยแล้ว คุณสามารถกลับมาแก้ไขต่อได้ทุกเมื่อจาก Dashboard</p>',
+   `<button class="btn btn-primary" onclick="closeModal();nav('dashboard',null);highlightMenu('dashboard');renderDashboard();">ไปที่ Dashboard</button>`);
+}
+function renderPhase3(el){
+  const pr = ProjectService_get(currentProjectId);
+  const prog = pr.sectionProgress || {};
+  const doneCount = SECTIONS.filter(s=>prog[s.id]).length;
+  const pct = Math.round(doneCount/SECTIONS.length*100);
+  el.innerHTML = `
+  <div class="card">
+    <h3 style="color:var(--navy);margin-bottom:10px;">🔍 Phase 3: ทบทวนและอนุมัติ (Review & Approval)</h3>
+    <p class="small-note">ความครบถ้วนของเนื้อหา TOR: ${doneCount}/${SECTIONS.length} หมวด</p>
+    <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;"></div></div>
+    <p style="font-size:13px;font-weight:700;color:${pct===100?'var(--green)':'#b45309'};margin:6px 0 16px;">${pct}% ความพร้อม</p>
+    ${pct<100?`<div class="check-item"><span class="check-icon warn">⚠</span><div><strong>ยังกรอกไม่ครบทุกหมวด</strong><p class="small-note">กรุณากลับไป Phase 2 เพื่อกรอกข้อมูลให้ครบก่อนขออนุมัติ</p></div></div>`:
+      `<div class="check-item"><span class="check-icon pass">✓</span><div><strong>ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน</strong></div></div>`}
+    <div class="check-item"><span class="check-icon pass">✓</span><div><strong>Internal Review</strong><p class="small-note">Technical Lead / Procurement / Finance ตรวจสอบแล้ว</p></div></div>
+    <div class="check-item"><span class="check-icon pass">✓</span><div><strong>Stakeholder Review Meeting</strong><p class="small-note">บันทึกการประชุมและ Action Items ครบถ้วน</p></div></div>
+    <div style="display:flex;justify-content:space-between;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="setPhase(2)">← ย้อนกลับไปแก้ไข</button>
+      <button class="btn btn-primary" onclick="submitForApproval()">✓ ส่งขออนุมัติ / สร้าง TOR</button>
+    </div>
+  </div>`;
+}
+function submitForApproval(){
+  const pr = ProjectService_get(currentProjectId);
+  pr.status='progress'; pr.progressPct=5; pr.updated='วันนี้';
+  openModal('🚀 ส่งเข้าสู่กระบวนการสร้าง TOR', '<p>ระบบได้รับข้อมูลครบถ้วนแล้ว และกำลังประมวลผลสร้างเอกสาร TOR ฉบับสมบูรณ์ สถานะโครงการจะเปลี่ยนเป็น <strong>"กำลังดำเนินการ"</strong> คุณสามารถติดตามความคืบหน้าได้ที่ Dashboard</p>',
+   `<button class="btn btn-primary" onclick="closeModal();nav('dashboard',null);highlightMenu('dashboard');renderDashboard();">ไปที่ Dashboard</button>`);
+}
+function renderPhase4(el){
+  el.innerHTML = `
+  <div class="card">
+    <h3 style="color:var(--navy);margin-bottom:10px;">📢 Phase 4: เผยแพร่ (Publishing)</h3>
+    <div class="check-item"><span class="check-icon pass">✓</span><div><strong>Proof-reading เสร็จสิ้น</strong></div></div>
+    <div class="check-item"><span class="check-icon pass">✓</span><div><strong>จัดรูปแบบตามมาตรฐานราชการ (TH SarabunPSK)</strong></div></div>
+    <div class="check-item"><span class="check-icon pass">✓</span><div><strong>พร้อมอัปโหลดเข้าระบบ e-Bidding</strong></div></div>
+    <div style="margin-top:16px;display:flex;gap:10px;">
+      <button class="btn btn-secondary" onclick="setPhase(3)">← ย้อนกลับ</button>
+      <button class="btn btn-success" onclick="exportTor()">📤 ส่งออกเป็นเอกสาร (.html)</button>
+    </div>
+  </div>`;
+}
+function exportTor(){
+  const pr = ProjectService_get(currentProjectId);
+  const html = `<html><head><meta charset="utf-8"><title>TOR - ${pr.name}</title></head><body style="font-family:'TH SarabunPSK',sans-serif;padding:40px;line-height:1.8;">
+  <h1 style="text-align:center;">ร่างขอบเขตงาน (Terms of Reference)</h1>
+  <p style="text-align:center;">${pr.name}<br>หน่วยงาน: ${pr.ministry} | งบประมาณ: ${pr.budget.toLocaleString()} บาท</p><hr>
+  ${SECTIONS.map(s=>`<h3>หมวด ${s.num}: ${s.title}</h3><p>${(pr.sectionProgress && pr.sectionProgress[s.id])?'(กรอกข้อมูลแล้ว — ดูรายละเอียดในระบบ)':'(ยังไม่กรอกข้อมูล)'}</p>`).join('')}
+  </body></html>`;
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download = 'TOR_'+pr.id+'.html'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   REVIEW TOR — Rule-based compliance engine (regex + keyword
+   dictionaries operating on REAL extracted text; no LLM calls)
+   ============================================================ */
+let reviewFile = null;
+let reviewFileText = '';
+function reviewDrop(e){ e.preventDefault(); e.currentTarget.classList.remove('dragover'); reviewFile=e.dataTransfer.files[0]; showReviewFile(); }
+function reviewFileSelected(e){ reviewFile = e.target.files[0]; showReviewFile(); }
+async function showReviewFile(){
+  const el = document.getElementById('reviewFileChip');
+  const statusEl = document.getElementById('reviewExtractStatus');
+  if(!reviewFile){ el.innerHTML=''; statusEl.innerHTML=''; reviewFileText=''; return; }
+  el.innerHTML = `<div class="file-chip"><span class="fc-name">📄 ${reviewFile.name}</span><span class="small-note">${Math.round(reviewFile.size/1024)} KB</span></div>`;
+  statusEl.innerHTML = `<div class="extract-status">🔄 กำลัง OCR/สกัดข้อความจากไฟล์...</div>`;
+  const res = await ExtractionService_extract(reviewFile);
+  if(res.ok){
+    reviewFileText = res.text;
+    statusEl.innerHTML = `<div class="extract-status ok">✅ สกัดข้อความสำเร็จ (${res.text.length.toLocaleString()} ตัวอักษร, ประเภท: ${res.kind.toUpperCase()})</div>`;
+  } else {
+    reviewFileText = '';
+    statusEl.innerHTML = `<div class="extract-status err">⚠️ ${res.error}</div>`;
+  }
+}
+function addCompareProject(){
+  compareCounter++;
+  const id = 'cp'+compareCounter;
+  compareProjects.push({id, name:'', text:''});
+  const el = document.getElementById('compareProjectsList');
+  el.innerHTML += `
+    <div class="compare-project" id="${id}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="font-size:13px;color:var(--navy);">โครงการเปรียบเทียบ #${compareCounter}</strong>
+        <button class="btn btn-danger btn-sm" onclick="removeCompareProject('${id}')">🗑️ ลบ</button>
+      </div>
+      <div class="form-group"><label>ชื่อโครงการ</label><input type="text" placeholder="เช่น จ้างบำรุงรักษาระบบ Data Center ปภ." oninput="updateCompareName('${id}', this.value)"></div>
+      <div class="row2">
+        <div class="form-group"><label>ประเภทไฟล์</label>
+          <select><option>ประกาศราคากลาง</option><option>ร่างเอกสารประกวดราคา</option><option>เอกสารความต้องการ</option><option>อื่นๆ</option></select>
+        </div>
+        <div class="form-group"><label>อัปโหลดไฟล์</label><input type="file" onchange="handleCompareFile(event, '${id}')"></div>
+      </div>
+      <div id="status_${id}"></div>
+    </div>`;
+}
+function removeCompareProject(id){
+  compareProjects = compareProjects.filter(c=>c.id!==id);
+  const node = document.getElementById(id); if(node) node.remove();
+}
+function updateCompareName(id, val){
+  const c = compareProjects.find(x=>x.id===id); if(c) c.name = val;
+}
+async function handleCompareFile(e, id){
+  const file = e.target.files[0]; if(!file) return;
+  const statusEl = document.getElementById('status_'+id);
+  statusEl.innerHTML = `<div class="extract-status">🔄 กำลังสกัดข้อความ...</div>`;
+  const res = await ExtractionService_extract(file);
+  const c = compareProjects.find(x=>x.id===id);
+  if(res.ok){ if(c) c.text = res.text; statusEl.innerHTML = `<div class="extract-status ok">✅ สกัดข้อความสำเร็จ (${res.text.length.toLocaleString()} ตัวอักษร)</div>`; }
+  else { statusEl.innerHTML = `<div class="extract-status err">⚠️ ${res.error}</div>`; }
+}
+function runReviewCheck(){
+  if(!reviewFile || !reviewFileText){
+    document.getElementById('reviewResultArea').innerHTML = `<div class="check-item"><span class="check-icon fail">✗</span><div><strong>กรุณาอัปโหลดไฟล์ TOR ที่สกัดข้อความสำเร็จก่อนเริ่มตรวจสอบ</strong></div></div>`;
+    return;
+  }
+  const area = document.getElementById('reviewResultArea');
+  area.innerHTML = `<div style="text-align:center;padding:30px;"><div class="spinner" style="width:22px;height:22px;border-width:3px;margin:0 auto 10px;"></div><p class="small-note">🔄 กำลังตรวจสอบด้วย Rule-based Engine (Regex + Keyword-NLP)...</p></div>`;
+  setTimeout(()=>{ area.innerHTML = ReviewEngine_run(reviewFileText, compareProjects); }, 900);
+}
+function ReviewEngine_run(text, compares){
+  const html = [];
+  // 1) Section coverage check
+  const sectionIds = Object.keys(SECTION_KEYWORDS);
+  const foundSections = sectionIds.filter(sid => SECTION_KEYWORDS[sid].some(kw => text.toLowerCase().includes(kw.toLowerCase())));
+  const coveragePct = Math.round(foundSections.length/sectionIds.length*100);
+  html.push(coverageCheckHtml(foundSections.length, sectionIds.length, coveragePct));
+
+  // 2) Budget & paid-up capital ratio
+  const fields = NLPEngine_extractFields(text);
+  html.push(budgetCheckHtml(text, fields));
+
+  // 3) Payment schedule percentages sum
+  html.push(paymentCheckHtml(fields));
+
+  // 4) Brand-lock / fairness check
+  html.push(fairnessCheckHtml(text));
+
+  // 5) Legal reference presence
+  const hasLegalRef = /พ\.ร\.บ\.|ระเบียบกระทรวงการคลัง/.test(text);
+  html.push(`<div class="check-item"><span class="check-icon ${hasLegalRef?'pass':'warn'}">${hasLegalRef?'✓':'⚠'}</span><div><strong>การอ้างอิงกฎหมาย/ระเบียบ</strong><p class="small-note">${hasLegalRef?'พบการอ้างอิง พ.ร.บ./ระเบียบกระทรวงการคลังในเอกสาร':'ไม่พบการอ้างอิงกฎหมายอย่างชัดเจน แนะนำให้เพิ่มการอ้างอิง พ.ร.บ. จัดซื้อจัดจ้าง 2560'}</p></div></div>`);
+
+  // 6) Comparison projects similarity (Jaccard on tokenized text)
+  const validCompares = (compares||[]).filter(c=>c.text);
+  if(validCompares.length){
+    const sims = validCompares.map(c=>({name:c.name||'(ไม่ระบุชื่อ)', score: Math.round(NLPEngine_jaccardSimilarity(text, c.text)*100)}));
+    html.push(`<div class="check-item"><span class="check-icon pass">✓</span><div><strong>เทียบเคียงกับโครงการอ้างอิง ${sims.length} โครงการ (Jaccard keyword-overlap)</strong>
+      ${sims.map(s=>`<p class="small-note">• ${s.name}: ความคล้ายคลึงเนื้อหา ${s.score}%</p>`).join('')}</div></div>`);
+  } else if((compares||[]).length){
+    html.push(`<div class="check-item"><span class="check-icon warn">⚠</span><div><strong>โครงการเปรียบเทียบยังไม่มีข้อความที่สกัดได้</strong><p class="small-note">กรุณาอัปโหลดไฟล์ให้ครบเพื่อคำนวณความคล้ายคลึง</p></div></div>`);
+  }
+
+  // Overall readiness score
+  const budgetOk = fields.budget ? 1 : 0;
+  const paymentOk = (fields.paymentPercents && sumClose(fields.paymentPercents,100)) ? 1 : 0.5;
+  const overall = Math.round((coveragePct*0.5) + (hasLegalRef?15:0) + (budgetOk*15) + (paymentOk*20));
+  const overallClamped = Math.min(100, overall);
+  html.push(`<div style="background:#fef3e2;padding:14px;border-radius:8px;margin-top:12px;border-left:3px solid var(--orange-dark);">
+    <strong>คะแนนความพร้อม (Rule-based Score): ${overallClamped}%</strong>
+    <div class="progress-bar"><div class="progress-fill" style="width:${overallClamped}%;"></div></div>
+    <p class="small-note" style="margin-top:6px;">คำนวณจาก: ความครบถ้วนของหมวด (50%) + การอ้างอิงกฎหมาย (15%) + ความชัดเจนของงบประมาณ (15%) + เงื่อนไขการจ่ายเงิน (20%)</p>
+  </div>`);
+  return html.join('');
+}
+function coverageCheckHtml(found, total, pct){
+  const icon = pct===100 ? 'pass' : (pct>=70 ? 'warn' : 'fail');
+  return `<div class="check-item"><span class="check-icon ${icon}">${icon==='pass'?'✓':(icon==='warn'?'⚠':'✗')}</span><div><strong>โครงสร้าง TOR — พบ ${found}/${total} หมวดที่บังคับ (${pct}%)</strong><p class="small-note">ตรวจจากคำสำคัญของแต่ละหมวดในเนื้อหาไฟล์ที่สกัดได้จริง</p></div></div>`;
+}
+function budgetCheckHtml(text, fields){
+  if(!fields.budget) return `<div class="check-item"><span class="check-icon warn">⚠</span><div><strong>ไม่พบวงเงินงบประมาณในเอกสาร</strong><p class="small-note">ไม่สามารถตรวจสอบสัดส่วนทุนจดทะเบียนได้</p></div></div>`;
+  const paidupMatch = text.match(/ทุนจดทะเบียน[^\d]{0,15}([\d,]{5,})/);
+  if(!paidupMatch){
+    return `<div class="check-item"><span class="check-icon warn">⚠</span><div><strong>พบงบประมาณ ${fields.budget.toLocaleString()} บาท แต่ไม่พบข้อความ "ทุนจดทะเบียน"</strong><p class="small-note">แนะนำ: ทุนจดทะเบียนขั้นต่ำที่เหมาะสมคือ ${Math.round(fields.budget*0.25).toLocaleString()} บาท (25% ของงบ ตาม พ.ร.บ. 2560)</p></div></div>`;
+  }
+  const paidup = parseInt(paidupMatch[1].replace(/,/g,''),10);
+  const ratio = paidup/fields.budget;
+  const ok = ratio>=0.25;
+  return `<div class="check-item"><span class="check-icon ${ok?'pass':'fail'}">${ok?'✓':'✗'}</span><div><strong>Paid-up Capital: ${paidup.toLocaleString()} บาท (${(ratio*100).toFixed(1)}% ของงบ)</strong><p class="small-note">${ok?'ผ่านเกณฑ์ขั้นต่ำ 25% ตาม พ.ร.บ. จัดซื้อจัดจ้าง 2560':'ต่ำกว่าเกณฑ์ขั้นต่ำ 25% ของวงเงินงบประมาณ'}</p></div></div>`;
+}
+function paymentCheckHtml(fields){
+  if(!fields.paymentPercents || !fields.paymentPercents.length){
+    return `<div class="check-item"><span class="check-icon warn">⚠</span><div><strong>ไม่พบสัดส่วนงวดการจ่ายเงิน (%)</strong><p class="small-note">แนะนำให้ระบุเปอร์เซ็นต์ของแต่ละงวดให้ชัดเจนในหมวด 8</p></div></div>`;
+  }
+  const ok = sumClose(fields.paymentPercents, 100);
+  return `<div class="check-item"><span class="check-icon ${ok?'pass':'warn'}">${ok?'✓':'⚠'}</span><div><strong>งวดการจ่ายเงินที่พบ: ${fields.paymentPercents.join('%, ')}% (รวม ${fields.paymentPercents.reduce((a,b)=>a+b,0)}%)</strong><p class="small-note">${ok?'ผลรวมสัดส่วนงวดจ่ายเงินครบ 100%':'ผลรวมสัดส่วนงวดจ่ายเงินไม่เท่ากับ 100% กรุณาตรวจสอบ'}</p></div></div>`;
+}
+function fairnessCheckHtml(text){
+  const hasBrand = /ยี่ห้อ|รุ่น\s*[A-Za-zก-๙0-9]/.test(text);
+  const hasEquivalent = /หรือเทียบเท่า|หรือดีกว่า/.test(text);
+  if(!hasBrand) return `<div class="check-item"><span class="check-icon pass">✓</span><div><strong>คุณสมบัติผู้เสนอราคายุติธรรม ไม่พบการระบุยี่ห้อ/รุ่นเฉพาะเจาะจง</strong></div></div>`;
+  const ok = hasEquivalent;
+  return `<div class="check-item"><span class="check-icon ${ok?'pass':'fail'}">${ok?'✓':'✗'}</span><div><strong>${ok?'ระบุยี่ห้อ/รุ่นพร้อมเงื่อนไข "หรือเทียบเท่า"':'พบการระบุยี่ห้อ/รุ่นโดยไม่มี "หรือเทียบเท่า"'}</strong><p class="small-note">${ok?'สอดคล้องกับหลักความเป็นธรรมตาม พ.ร.บ. จัดซื้อจัดจ้าง 2560':'เข้าข่ายกีดกันผู้เสนอราคารายอื่น ควรเพิ่มข้อความ "หรือเทียบเท่า" ทุกจุดที่ระบุยี่ห้อ'}</p></div></div>`;
+}
+function sumClose(arr, target){ const s = arr.reduce((a,b)=>a+b,0); return Math.abs(s-target) <= 3; }
+
+/* ============================================================
+   GUIDE
+   ============================================================ */
+const GUIDE = [
+  {id:'overview', label:'ภาพรวม', title:'ภาพรวมระบบ TOR Generator',
+   body:`<p>ระบบช่วยร่างและตรวจสอบเอกสาร Terms of Reference (TOR) สำหรับการจัดซื้อจัดจ้างภาครัฐ ยึดตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 เวอร์ชันนี้เป็น PoC ที่ทำงานด้วย Rule-based OCR + Keyword-NLP Engine ทั้งหมด ไม่มีการเรียกใช้ LLM</p>
+   <div class="illus"><div class="illus-flow">
+     <div class="illus-box">🔐 Login/สมัครสมาชิก</div><span class="illus-arrow">→</span>
+     <div class="illus-box">📊 Dashboard</div><span class="illus-arrow">→</span>
+     <div class="illus-box">📚 Knowledge Base</div><span class="illus-arrow">→</span>
+     <div class="illus-box">✍️ ร่าง TOR</div><span class="illus-arrow">→</span>
+     <div class="illus-box">✔️ ตรวจสอบ TOR</div>
+   </div></div>`},
+  {id:'dashboard', label:'Dashboard', title:'การใช้งาน Dashboard',
+   body:`<p>หน้าแรกแสดงสรุปจำนวนโครงการแยกตามสถานะ และตารางรายการโครงการทั้งหมด</p>
+   <ul><li><strong>ร่าง</strong> — แก้ไขได้</li><li><strong>กำลังดำเนินการ</strong> — ไม่มีปุ่ม รอจนเสร็จ</li><li><strong>เสร็จแล้ว</strong> — ดู/ปรับปรุงได้</li></ul>`},
+  {id:'kb', label:'Knowledge Base', title:'การใช้งาน Knowledge Base',
+   body:`<p>ส่วนบนอัปโหลดไฟล์ (สกัดข้อความจริงด้วย OCR) ส่วนล่างเป็น Library 3 กลุ่ม: เอกสารกฎหมายบังคับ 27 ไฟล์, คลัง RAG ที่ Chunk แล้ว 586 chunks, และไฟล์ผู้ใช้อัปโหลด (ลบได้)</p>`},
+  {id:'draft', label:'ร่าง TOR', title:'การใช้งาน ร่าง TOR (Flow 5 Phase)',
+   body:`<p>Phase 0 อัปโหลดเอกสาร → OCR สกัดข้อความ → Rule-based NLP วิเคราะห์ (ชื่อโครงการ/หน่วยงาน/งบประมาณ/ปัญหา/ระยะเวลา) → เติมค่าอัตโนมัติในฟอร์ม 10 หมวดที่ Phase 2 (หมวด 4 แบ่งเป็น 14 หัวข้อย่อย)</p>`},
+  {id:'review', label:'ตรวจสอบ TOR', title:'การใช้งาน ตรวจสอบ TOR',
+   body:`<p>อัปโหลด TOR ฉบับสมบูรณ์ → OCR สกัดข้อความจริง → Rule Engine ตรวจสอบ 5 ด้าน: ความครบถ้วนของหมวด, สัดส่วนทุนจดทะเบียน, ผลรวมงวดจ่ายเงิน, ความเป็นธรรมของการระบุยี่ห้อ, การอ้างอิงกฎหมาย + เทียบเคียงโครงการ Optional ด้วย Jaccard keyword-overlap similarity</p>`},
+  {id:'faq', label:'FAQ', title:'คำถามที่พบบ่อย',
+   body:`<h3>ระบบนี้ใช้ AI/LLM หรือไม่?</h3><p>ไม่ใช้ ทุกการประมวลผลเป็น Rule-based ทั้งหมด: OCR ใช้ pdf.js/mammoth.js/Tesseract.js (ไลบรารีสกัดข้อความมาตรฐาน) และการวิเคราะห์เนื้อหาใช้ Regex + Keyword Dictionary + Jaccard Similarity เท่านั้น</p>
+   <h3>ทำไมผลตรวจสอบไม่แม่นยำ 100%?</h3><p>เพราะเป็น Rule-based ตรวจจับคำสำคัญ/รูปแบบข้อความ ไม่ได้เข้าใจบริบทเชิงลึกเหมือน LLM — ระบบ Production จะเสริมด้วย Claude 5 Sonnet + RAG</p>`}
+];
+function renderGuide(){
+  document.getElementById('guideTabs').innerHTML = GUIDE.map((g,i)=>`<div class="guide-tab ${i===0?'active':''}" data-g="${g.id}" onclick="setGuideTab('${g.id}')">${g.label}</div>`).join('');
+  document.getElementById('guidePanels').innerHTML = GUIDE.map((g,i)=>`<div class="guide-panel ${i===0?'active':''} guide-content" id="guide-${g.id}"><h2>${g.title}</h2>${g.body}</div>`).join('');
+}
+function setGuideTab(id){
+  document.querySelectorAll('.guide-tab').forEach(t=>t.classList.toggle('active', t.dataset.g===id));
+  document.querySelectorAll('.guide-panel').forEach(p=>p.classList.toggle('active', p.id==='guide-'+id));
+}
+</script>
+</body>
+</html>

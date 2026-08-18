@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --navy: 221 66% 33%;
+    --navy-dark: 214 62% 15%;
+    --navy-light: 221 45% 42%;
+    --crimson: 351 73% 44%;
+    --orange: 32 98% 83%;
+    --orange-dark: 38 92% 50%;
+    --green: 142 64% 29%;
+
+    --background: 210 20% 98%;
+    --foreground: 215 28% 17%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+
+    --primary: 221 66% 33%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 215 28% 17%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 32 98% 83%;
+    --accent-foreground: 221 66% 33%;
+
+    --destructive: 351 73% 44%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 221 66% 33%;
+
+    --radius: 0.7rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  dialog {
+    margin: auto;
+  }
+}
+
+@layer components {
+  .gov-card {
+    @apply rounded-xl bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.07)];
+  }
+}

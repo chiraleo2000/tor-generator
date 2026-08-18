@@ -1,0 +1,24 @@
+{
+  "name": "TOR Advisor - ที่ปรึกษาร่าง TOR จัดซื้อจัดจ้างภาครัฐ",
+  "description": "ผู้เชี่ยวชาญร่างและตรวจสอบ TOR (Terms of Reference) ตามกฎหมายจัดซื้อจัดจ้างภาครัฐไทย พ.ร.บ. 2560",
+  "instructions_file": "instructions.md",
+  "knowledge_files": [
+    "knowledge/tor_writing_guide.md",
+    "knowledge/tor_reference_complete.md",
+    "knowledge/method_selection.json",
+    "knowledge/template_selection.json",
+    "knowledge/document_checklist.json",
+    "knowledge/tor_base_template.md"
+  ],
+  "capabilities": {
+    "web_browsing": false,
+    "dall_e": false,
+    "code_interpreter": true
+  },
+  "conversation_starters": [
+    "ร่าง TOR จ้างพัฒนาระบบสารสนเทศ วงเงิน 2 ล้าน",
+    "ตรวจสอบ TOR ฉบับนี้ให้หน่อย",
+    "วงเงิน 3 แสน ต้องใช้วิธีจัดซื้อแบบไหน?",
+    "อยากร่าง TOR งานก่อสร้างอาคาร วงเงิน 10 ล้าน"
+  ]
+}

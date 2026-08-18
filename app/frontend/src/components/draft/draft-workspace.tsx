@@ -1,0 +1,1093 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { StatusPill } from "@/components/brand/status-pill";
+import { PhaseFlow } from "@/components/brand/phase-flow";
+import { UploadArea } from "@/components/brand/upload-area";
+import { MappingBox, type MappingRow } from "@/components/brand/mapping-box";
+import { CheckItem } from "@/components/brand/check-item";
+import { apiClient } from "@/lib/api-client";
+import { unwrapData } from "@/lib/api-unwrap";
+import { useProjectStore } from "@/stores/project-store";
+import {
+  DOC_CLASSES,
+  HITL_SECTIONS,
+  PHASE0_CHECKLIST,
+  SCOPE_SUBSECTIONS,
+  SECTION_FIELDS,
+  TOR_SECTION_ORDER,
+  type SectionField,
+} from "@/lib/tor-sections";
+import { cn } from "@/lib/utils";
+
+interface SectionPayload {
+  key: string;
+  title: string;
+  filled: boolean;
+  content: string;
+  human_confirmed: boolean;
+  hitl: boolean;
+  matchStatus: string;
+  big?: boolean;
+  subs?: { key: string; title: string; content: string; filled: boolean }[];
+}
+
+interface RequirementItem {
+  id: string;
+  text: string;
+  source: string;
+}
+
+interface QaItem {
+  id: string;
+  q: string;
+  a: string;
+  source: string;
+}
+
+interface AnalysisState {
+  functional: RequirementItem[];
+  availability: string;
+  security: string;
+  performance: string;
+  qa: QaItem[];
+  stakeholders: { id: string; name: string; role: string; org: string }[];
+  checklist: Record<string, boolean>;
+}
+
+const EMPTY_ANALYSIS: AnalysisState = {
+  functional: [],
+  availability: "",
+  security: "",
+  performance: "",
+  qa: [],
+  stakeholders: [],
+  checklist: {},
+};
+
+function parseFields(content: string): Record<string, string> {
+  if (!content) return {};
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+  } catch {
+    return { body: content };
+  }
+  return { body: content };
+}
+
+function displayExtracted(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+  return "";
+}
+
+function sectionCircleClass(filled: boolean, expanded: boolean): string {
+  if (filled) return "border-[#0f5c22] bg-brand-green text-white";
+  if (expanded) return "border-crimson bg-brand-orange text-navy";
+  return "border-gray-300 bg-gray-200 text-gray-700";
+}
+
+export function DraftWorkspace() {
+  const params = useParams();
+  const router = useRouter();
+  const projectId = (params.id as string) || "";
+  const { activeProject, fetchProject, updateProject } = useProjectStore();
+  const [phase, setPhase] = useState(0);
+  const [sections, setSections] = useState<SectionPayload[]>([]);
+  const [expanded, setExpanded] = useState<string>("s1");
+  const [openSub, setOpenSub] = useState<string>("");
+  const [mapping, setMapping] = useState<MappingRow[]>([]);
+  const [extracted, setExtracted] = useState<Record<string, unknown>>({});
+  const [proposed, setProposed] = useState<Record<string, string>>({});
+  const [intakeFiles, setIntakeFiles] = useState<
+    { name: string; docClass: string; chars: number; status: string }[]
+  >([]);
+  const [analysis, setAnalysis] = useState<AnalysisState>(EMPTY_ANALYSIS);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [reviewScore, setReviewScore] = useState<number | null>(null);
+
+  const loadSections = useCallback(async () => {
+    const response = await apiClient.get(`/projects/${projectId}/sections`);
+    const payload = unwrapData<{ sections?: SectionPayload[] }>(response);
+    setSections(payload.sections || []);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetchProject(projectId)
+      .then((project) => {
+        setPhase(project.currentPhase ?? 0);
+        const stored = project.analysisJson as unknown as
+          | (AnalysisState & {
+              intakeFiles?: { name: string; docClass: string; chars: number; status: string }[];
+            })
+          | undefined;
+        if (stored && typeof stored === "object") {
+          setAnalysis({ ...EMPTY_ANALYSIS, ...stored });
+          if (Array.isArray(stored.intakeFiles)) setIntakeFiles(stored.intakeFiles);
+        }
+        if (project.extractedFields) {
+          setExtracted(project.extractedFields);
+        }
+      })
+      .catch(() => undefined);
+    loadSections().catch(() => undefined);
+  }, [projectId, fetchProject, loadSections]);
+
+  async function persistPhase(next: number) {
+    setPhase(next);
+    await apiClient.patch(`/projects/${projectId}/phase`, { phase: next });
+  }
+
+  async function saveAnalysis(next: AnalysisState) {
+    setAnalysis(next);
+    await apiClient.put(`/projects/${projectId}/analysis`, {
+      analysis: { ...next, intakeFiles },
+    });
+  }
+
+  async function uploadClassified(docClass: string, files: FileList) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const nextFiles = [...intakeFiles];
+      for (const file of Array.from(files)) {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("doc_class", docClass);
+        const response = await apiClient.post(
+          `/projects/${projectId}/extraction`,
+          body
+        );
+        const payload = unwrapData<{
+          extracted?: Record<string, unknown>;
+          mapping?: MappingRow[];
+          proposed?: Record<string, string>;
+          char_count?: number;
+          extractionStatus?: string;
+          filename?: string;
+        }>(response);
+        setExtracted((prev) =>
+          payload.extracted ? { ...prev, ...payload.extracted } : prev
+        );
+        setProposed((prev) =>
+          payload.proposed ? { ...prev, ...payload.proposed } : prev
+        );
+        setMapping(payload.mapping || []);
+        nextFiles.push({
+          name: payload.filename || file.name,
+          docClass,
+          chars: payload.char_count || 0,
+          status: payload.extractionStatus || "success",
+        });
+      }
+      setIntakeFiles(nextFiles);
+      await apiClient.put(`/projects/${projectId}/analysis`, {
+        analysis: { ...analysis, intakeFiles: nextFiles },
+      });
+    } catch {
+      setMessage("อ่านไฟล์ไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeIntakeFile(index: number) {
+    const nextFiles = intakeFiles.filter((_, i) => i !== index);
+    setIntakeFiles(nextFiles);
+    await apiClient.put(`/projects/${projectId}/analysis`, {
+      analysis: { ...analysis, intakeFiles: nextFiles },
+    });
+  }
+
+  async function confirmMapping() {
+    if (!Object.keys(proposed).length && !Object.keys(extracted).length) return;
+    setBusy(true);
+    try {
+      await apiClient.post(`/projects/${projectId}/extraction/apply`, {
+        sections: proposed,
+        extracted,
+        confirm: true,
+      });
+      if (typeof extracted.projectName === "string") {
+        await updateProject(projectId, {
+          name: extracted.projectName,
+          ministry:
+            typeof extracted.ministry === "string" && extracted.ministry
+              ? extracted.ministry
+              : (activeProject?.ministry ?? "ยังไม่ระบุ"),
+          budget: Number(extracted.budget || activeProject?.budget || 1),
+        });
+      }
+      await loadSections();
+      setMessage("ยืนยันการจับคู่แล้ว — ข้อมูลถูกเติมในหมวด TOR");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveSection(
+    key: string,
+    content: string,
+    humanConfirmed = false
+  ) {
+    await apiClient.put(`/projects/${projectId}/sections/${key}`, {
+      content,
+      filled: Boolean(content.trim()),
+      human_confirmed: humanConfirmed,
+    });
+    await loadSections();
+  }
+
+  async function draftSection(key: string) {
+    setBusy(true);
+    try {
+      await apiClient.post(`/projects/${projectId}/draft-section`, {
+        section_key: key,
+      });
+      await loadSections();
+    } catch {
+      setMessage("ร่างด้วย AI ไม่สำเร็จ — ตรวจการเชื่อมต่อโมเดล");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const filledCount = sections.filter((s) => s.filled).length;
+  const hitlReady = HITL_SECTIONS.every((key) =>
+    sections.find((s) => s.key === key && s.human_confirmed)
+  );
+  const requiredDocs = DOC_CLASSES.filter((item) => item.required).every((item) =>
+    intakeFiles.some((file) => file.docClass === item.id)
+  );
+
+  if (!projectId) {
+    return (
+      <div className="py-16 text-center">
+        <p>กรุณาเลือกโครงการจากแดชบอร์ด</p>
+        <Button className="mt-3" onClick={() => router.push("/projects")}>
+          ไปที่แดชบอร์ด
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="draft-page">
+      <div className="gov-card mb-5">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[15px] font-bold text-navy">
+              {activeProject?.name || "โครงการใหม่"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              กระบวนการร่าง TOR แบบ 5 Phase — คลิกที่ Phase เพื่อดูรายละเอียด
+            </p>
+          </div>
+          <StatusPill status={activeProject?.status || "draft"} />
+        </div>
+        <PhaseFlow current={phase} onSelect={(next) => persistPhase(next)} />
+      </div>
+
+      {phase === 0 ? (
+        <Phase0
+          files={intakeFiles}
+          mapping={mapping}
+          proposed={proposed}
+          checklist={analysis.checklist}
+          stakeholders={analysis.stakeholders}
+          busy={busy}
+          message={message}
+          requiredOk={requiredDocs}
+          onUpload={uploadClassified}
+          onRemove={removeIntakeFile}
+          onConfirm={confirmMapping}
+          onChecklist={(key, checked) =>
+            saveAnalysis({
+              ...analysis,
+              checklist: { ...analysis.checklist, [key]: checked },
+            })
+          }
+          onStakeholder={(row) =>
+            saveAnalysis({
+              ...analysis,
+              stakeholders: [...analysis.stakeholders, row],
+            })
+          }
+          onNext={() => persistPhase(1)}
+        />
+      ) : null}
+
+      {phase === 1 ? (
+        <Phase1
+          analysis={analysis}
+          onChange={saveAnalysis}
+          onBack={() => persistPhase(0)}
+          onNext={() => persistPhase(2)}
+        />
+      ) : null}
+
+      {phase === 2 ? (
+        <Phase2
+          sections={sections}
+          expanded={expanded}
+          openSub={openSub}
+          extracted={extracted}
+          busy={busy}
+          onExpand={setExpanded}
+          onOpenSub={setOpenSub}
+          onSave={saveSection}
+          onDraft={draftSection}
+          onBack={() => persistPhase(1)}
+          onNext={() => persistPhase(3)}
+        />
+      ) : null}
+
+      {phase === 3 ? (
+        <Phase3
+          filledCount={filledCount}
+          total={TOR_SECTION_ORDER.length}
+          hitlReady={hitlReady}
+          score={reviewScore}
+          onBack={() => persistPhase(2)}
+          onReview={async () => {
+            const response = await apiClient.post(`/projects/${projectId}/review`);
+            const payload = unwrapData<{ quality_score?: number }>(response);
+            setReviewScore(payload.quality_score ?? null);
+          }}
+          onSubmit={async () => {
+            await apiClient.post(`/projects/${projectId}/submit`);
+            await persistPhase(4);
+            router.push("/projects");
+          }}
+        />
+      ) : null}
+
+      {phase === 4 ? (
+        <Phase4
+          exporting={exporting}
+          onBack={() => persistPhase(3)}
+          onExport={async (format: "docx" | "pdf") => {
+            setExporting(true);
+            try {
+              await apiClient.post(`/projects/${projectId}/export`);
+              for (let attempt = 0; attempt < 30; attempt += 1) {
+                const statusRes = await apiClient.get(
+                  `/projects/${projectId}/export/status`
+                );
+                const status = unwrapData<{ status?: string }>(statusRes).status;
+                if (status === "completed") break;
+                if (status === "failed") {
+                  setMessage("สร้างเอกสารไม่สำเร็จ");
+                  return;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+              }
+              const download = await apiClient.get(
+                `/projects/${projectId}/export/download/${format}`,
+                { responseType: "blob" }
+              );
+              const url = URL.createObjectURL(download.data as Blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `TOR.${format}`;
+              link.click();
+              URL.revokeObjectURL(url);
+            } finally {
+              setExporting(false);
+            }
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function Phase0({
+  files,
+  mapping,
+  proposed,
+  checklist,
+  stakeholders,
+  busy,
+  message,
+  requiredOk,
+  onUpload,
+  onRemove,
+  onConfirm,
+  onChecklist,
+  onStakeholder,
+  onNext,
+}: Readonly<{
+  files: { name: string; docClass: string; chars: number; status: string }[];
+  mapping: MappingRow[];
+  proposed: Record<string, string>;
+  checklist: Record<string, boolean>;
+  stakeholders: AnalysisState["stakeholders"];
+  busy: boolean;
+  message: string | null;
+  requiredOk: boolean;
+  onUpload: (docClass: string, files: FileList) => void;
+  onRemove: (index: number) => void;
+  onConfirm: () => void;
+  onChecklist: (key: string, checked: boolean) => void;
+  onStakeholder: (row: AnalysisState["stakeholders"][0]) => void;
+  onNext: () => void;
+}>) {
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [org, setOrg] = useState("");
+  return (
+    <div className="gov-card space-y-5">
+      <h3 className="text-navy">Phase 0: เตรียมข้อมูลตั้งต้น (Pre-Drafting)</h3>
+      <p className="text-xs text-muted-foreground">
+        อัปโหลดเอกสารตามประเภท ระบบจะสกัดข้อความแล้วเสนอการจับคู่ — ต้องกดยืนยันก่อนเขียนทับหมวด TOR
+      </p>
+      {DOC_CLASSES.map((item) => (
+        <div key={item.id}>
+          <p className="mb-2 text-sm font-bold text-navy">
+            {item.label}
+            {item.required ? " *" : ""}
+          </p>
+          <UploadArea
+            label="ลากไฟล์วาง หรือคลิกเพื่อเลือก"
+            hint="PDF, Word, รูปสแกน — ตรวจชนิดไฟล์จากลายเซ็น ไม่เชื่อนามสกุลอย่างเดียว"
+            onFiles={(list) => onUpload(item.id, list)}
+          />
+        </div>
+      ))}
+      {files.map((file, index) => (
+        <div
+          key={`${file.docClass}-${file.name}-${index}`}
+          className="flex justify-between rounded-md border bg-white px-3 py-2 text-[12.5px]"
+        >
+          <span>
+            {file.name} ({file.docClass})
+          </span>
+          <span className="flex items-center gap-2 text-muted-foreground">
+            {file.status} · {file.chars.toLocaleString("th-TH")} ตัวอักษร
+            <button type="button" className="text-crimson" onClick={() => onRemove(index)}>
+              ลบ
+            </button>
+          </span>
+        </div>
+      ))}
+      <MappingBox rows={mapping} />
+      {Object.keys(proposed).length ? (
+        <p className="text-sm text-navy">
+          จะเติมหมวดหลังยืนยัน: {Object.keys(proposed).join(", ")}
+        </p>
+      ) : null}
+      {message ? <p className="text-sm text-navy">{message}</p> : null}
+      <Button
+        onClick={onConfirm}
+        disabled={busy || mapping.length === 0}
+        data-testid="confirm-mapping"
+      >
+        ยืนยันการจับคู่และเติมหมวด TOR
+      </Button>
+
+      <h4 className="text-sm font-bold text-navy">Checklist ความพร้อม</h4>
+      {PHASE0_CHECKLIST.map((label) => (
+        <label key={label} className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(checklist[label])}
+            onChange={(event) => onChecklist(label, event.target.checked)}
+          />
+          {label}
+        </label>
+      ))}
+
+      <h4 className="text-sm font-bold text-navy">รายชื่อผู้เกี่ยวข้อง</h4>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Input placeholder="ชื่อ" value={name} onChange={(e) => setName(e.target.value)} />
+        <Input placeholder="บทบาท" value={role} onChange={(e) => setRole(e.target.value)} />
+        <Input placeholder="หน่วยงาน" value={org} onChange={(e) => setOrg(e.target.value)} />
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          if (!name.trim()) return;
+          onStakeholder({
+            id: crypto.randomUUID(),
+            name: name.trim(),
+            role: role.trim(),
+            org: org.trim(),
+          });
+          setName("");
+          setRole("");
+          setOrg("");
+        }}
+      >
+        เพิ่มรายชื่อ
+      </Button>
+      {stakeholders.map((person) => (
+        <p key={person.id} className="text-sm">
+          {person.name} · {person.role} · {person.org}
+        </p>
+      ))}
+
+      <div className="text-right">
+        <Button onClick={onNext} disabled={!requiredOk} data-testid="phase0-next">
+          ถัดไป: วิเคราะห์ความต้องการ
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Phase1({
+  analysis,
+  onChange,
+  onBack,
+  onNext,
+}: Readonly<{
+  analysis: AnalysisState;
+  onChange: (next: AnalysisState) => void;
+  onBack: () => void;
+  onNext: () => void;
+}>) {
+  const [reqText, setReqText] = useState("");
+  const [reqSource, setReqSource] = useState("");
+  const [q, setQ] = useState("");
+  const [a, setA] = useState("");
+  const [qaSource, setQaSource] = useState("");
+  return (
+    <div className="gov-card space-y-4">
+      <h3 className="text-navy">Phase 1: วิเคราะห์ความต้องการ</h3>
+      <div className="flex gap-2">
+        <Input
+          placeholder="ข้อกำหนดเชิงหน้าที่"
+          value={reqText}
+          onChange={(e) => setReqText(e.target.value)}
+        />
+        <Input
+          placeholder="แหล่งไฟล์ต้นทาง"
+          value={reqSource}
+          onChange={(e) => setReqSource(e.target.value)}
+        />
+        <Button
+          onClick={() => {
+            if (!reqText.trim()) return;
+            onChange({
+              ...analysis,
+              functional: [
+                ...analysis.functional,
+                { id: crypto.randomUUID(), text: reqText.trim(), source: reqSource.trim() },
+              ],
+            });
+            setReqText("");
+            setReqSource("");
+          }}
+        >
+          เพิ่ม
+        </Button>
+      </div>
+      {analysis.functional.map((item) => (
+        <p key={item.id} className="text-sm">
+          {item.text}
+          {item.source ? <span className="text-muted-foreground"> · จาก {item.source}</span> : null}
+        </p>
+      ))}
+      <Label>ความพร้อมใช้งาน</Label>
+      <Textarea
+        maxLength={8000}
+        value={analysis.availability}
+        onChange={(e) => onChange({ ...analysis, availability: e.target.value })}
+      />
+      <Label>ความมั่นคงปลอดภัย</Label>
+      <Textarea
+        maxLength={8000}
+        value={analysis.security}
+        onChange={(e) => onChange({ ...analysis, security: e.target.value })}
+      />
+      <Label>ประสิทธิภาพ</Label>
+      <Textarea
+        maxLength={8000}
+        value={analysis.performance}
+        onChange={(e) => onChange({ ...analysis, performance: e.target.value })}
+      />
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Input placeholder="คำถาม" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input placeholder="คำตอบ" value={a} onChange={(e) => setA(e.target.value)} />
+        <Input
+          placeholder="แหล่งที่มา"
+          value={qaSource}
+          onChange={(e) => setQaSource(e.target.value)}
+        />
+      </div>
+      <Button
+        variant="outline"
+        onClick={() => {
+          if (!q.trim()) return;
+          onChange({
+            ...analysis,
+            qa: [
+              ...analysis.qa,
+              { id: crypto.randomUUID(), q: q.trim(), a: a.trim(), source: qaSource.trim() },
+            ],
+          });
+          setQ("");
+          setA("");
+          setQaSource("");
+        }}
+      >
+        เพิ่มคำถาม-คำตอบ
+      </Button>
+      {analysis.qa.map((item) => (
+        <p key={item.id} className="text-sm">
+          Q: {item.q} / A: {item.a}
+          {item.source ? <span className="text-muted-foreground"> · จาก {item.source}</span> : null}
+        </p>
+      ))}
+      <div className="flex justify-between">
+        <Button variant="secondary" onClick={onBack} data-testid="phase1-back">
+          ย้อนกลับ
+        </Button>
+        <Button onClick={onNext} data-testid="phase1-next">
+          ถัดไป: ร่างเนื้อหา TOR
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Phase2({
+  sections,
+  expanded,
+  openSub,
+  extracted,
+  busy,
+  onExpand,
+  onOpenSub,
+  onSave,
+  onDraft,
+  onBack,
+  onNext,
+}: Readonly<{
+  sections: SectionPayload[];
+  expanded: string;
+  openSub: string;
+  extracted: Record<string, unknown>;
+  busy: boolean;
+  onExpand: (key: string) => void;
+  onOpenSub: (key: string) => void;
+  onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
+  onDraft: (key: string) => void;
+  onBack: () => void;
+  onNext: () => void;
+}>) {
+  return (
+    <div className="gov-card">
+      <h3 className="mb-1 text-navy">Phase 2: ร่างเนื้อหา TOR — 13 หมวดหลัก</h3>
+      <p className="mb-4 text-xs text-muted-foreground">
+        คลิกแต่ละหมวดเพื่อกรอก ระบบแสดงแท็กจับคู่จาก Phase 0 — หมวดกฎหมายต้องกดยืนยันโดยเจ้าหน้าที่
+      </p>
+      <div className="flex flex-col">
+        {sections.map((section, index) => (
+          <SectionCard
+            key={section.key}
+            section={section}
+            index={index}
+            last={index === sections.length - 1}
+            expanded={expanded === section.key}
+            openSub={openSub}
+            extracted={extracted}
+            busy={busy}
+            onToggle={() => onExpand(expanded === section.key ? "" : section.key)}
+            onOpenSub={onOpenSub}
+            onSave={onSave}
+            onDraft={onDraft}
+          />
+        ))}
+      </div>
+      <div className="mt-4 flex justify-between">
+        <Button variant="secondary" onClick={onBack} data-testid="phase2-back">
+          ย้อนกลับ
+        </Button>
+        <Button onClick={onNext} data-testid="phase2-next">
+          ถัดไป: ทบทวน/อนุมัติ
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({
+  section,
+  index,
+  last,
+  expanded,
+  openSub,
+  extracted,
+  busy,
+  onToggle,
+  onOpenSub,
+  onSave,
+  onDraft,
+}: Readonly<{
+  section: SectionPayload;
+  index: number;
+  last: boolean;
+  expanded: boolean;
+  openSub: string;
+  extracted: Record<string, unknown>;
+  busy: boolean;
+  onToggle: () => void;
+  onOpenSub: (key: string) => void;
+  onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
+  onDraft: (key: string) => void;
+}>) {
+  const fields = SECTION_FIELDS[section.key] || [
+    { key: "body", label: section.title, type: "textarea" as const },
+  ];
+  const values = parseFields(section.content);
+  const [draft, setDraft] = useState(values);
+  useEffect(() => {
+    setDraft(parseFields(section.content));
+  }, [section.content]);
+
+  function suggested(mapField?: string) {
+    if (!mapField) return "";
+    return displayExtracted(extracted[mapField]);
+  }
+
+  return (
+    <div className="flex gap-3.5">
+      <div className="flex w-9 shrink-0 flex-col items-center">
+        <div
+          className={cn(
+            "z-[1] flex h-[34px] w-[34px] items-center justify-center rounded-full border-2 text-[13px] font-extrabold",
+            sectionCircleClass(section.filled, expanded)
+          )}
+        >
+          {section.filled ? "✓" : index + 1}
+        </div>
+        {!last ? (
+          <div className={cn("w-0.5 flex-1", section.filled ? "bg-brand-green" : "bg-gray-300")} />
+        ) : null}
+      </div>
+      <div
+        className={cn(
+          "mb-3.5 flex-1 overflow-hidden rounded-[10px] border",
+          expanded ? "border-crimson shadow-[0_4px_14px_rgba(196,30,58,0.12)]" : "border-gray-200"
+        )}
+      >
+        <button
+          type="button"
+          className="flex w-full items-center justify-between bg-gray-50 px-4 py-3 text-left"
+          onClick={onToggle}
+        >
+          <div>
+            <h3 className="text-[14.5px] text-navy">
+              หมวด {section.key.replace("s", "")}: {section.title}
+            </h3>
+            <p className="text-[11.5px] text-muted-foreground">
+              {section.filled ? "กรอกแล้ว" : "ยังไม่กรอก"}
+              {section.hitl ? " · ต้องให้เจ้าหน้าที่ยืนยัน" : ""}
+            </p>
+          </div>
+          <span className="text-xs text-muted-foreground">{expanded ? "▴ ย่อ" : "▾ ขยาย"}</span>
+        </button>
+        {expanded ? (
+          <div className="space-y-3 border-t p-4">
+            {section.big ? (
+              <ScopeSubsectionEditor
+                subs={section.subs}
+                openSub={openSub}
+                onOpenSub={onOpenSub}
+                onSave={onSave}
+              />
+            ) : (
+              <StandardSectionFields
+                fields={fields}
+                draft={draft}
+                extracted={extracted}
+                suggested={suggested}
+                onChange={(key, next) =>
+                  setDraft((prev) => ({ ...prev, [key]: next }))
+                }
+              />
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                data-testid={`draft-ai-${section.key}`}
+                onClick={() => onDraft(section.key)}
+              >
+                ร่างด้วย AI
+              </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid={`save-section-${section.key}`}
+                  onClick={() => onSave(section.key, JSON.stringify(draft), false)}
+                >
+                  บันทึกหมวดนี้
+                </Button>
+              {HITL_SECTIONS.includes(section.key) ? (
+                <Button
+                  size="sm"
+                  data-testid={`hitl-confirm-${section.key}`}
+                  onClick={() => onSave(section.key, JSON.stringify(draft), true)}
+                >
+                  เจ้าหน้าที่ยืนยันแล้ว
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function Phase3({
+  filledCount,
+  total,
+  hitlReady,
+  score,
+  onBack,
+  onReview,
+  onSubmit,
+}: Readonly<{
+  filledCount: number;
+  total: number;
+  hitlReady: boolean;
+  score: number | null;
+  onBack: () => void;
+  onReview: () => Promise<void>;
+  onSubmit: () => Promise<void>;
+}>) {
+  const pct = Math.round((filledCount / total) * 100);
+  return (
+    <div className="gov-card">
+      <h3 className="mb-2 text-navy">Phase 3: ทบทวนและอนุมัติ</h3>
+      <p className="text-sm">ความครบถ้วน: {filledCount}/{total} หมวด</p>
+      <div className="my-2 h-2 overflow-hidden rounded bg-gray-200">
+        <div
+          className="h-full bg-gradient-to-r from-navy to-brand-orange-dark"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {pct < 100 ? (
+        <CheckItem tone="warn" title="ยังกรอกไม่ครบทุกหมวด" detail="กลับไป Phase 2 เพื่อกรอกให้ครบ" />
+      ) : (
+        <CheckItem tone="pass" title="ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน" />
+      )}
+      {hitlReady ? (
+        <CheckItem tone="pass" title="หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน" />
+      ) : (
+        <CheckItem tone="warn" title="ยังไม่ได้ยืนยันหมวด HITL" />
+      )}
+      {score != null ? (
+        <CheckItem tone="pass" title={`คะแนนคุณภาพ ${score}/100`} />
+      ) : null}
+      <div className="mt-4 flex justify-between">
+        <Button variant="secondary" onClick={onBack} data-testid="phase3-back">
+          ย้อนกลับไปแก้ไข
+        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onReview}>
+            รัน Rule Engine
+          </Button>
+          <Button onClick={onSubmit} disabled={pct < 100 || !hitlReady}>
+            ส่งขออนุมัติ / สร้าง TOR
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Phase4({
+  exporting,
+  onBack,
+  onExport,
+}: Readonly<{
+  exporting: boolean;
+  onBack: () => void;
+  onExport: (format: "docx" | "pdf") => Promise<void>;
+}>) {
+  return (
+    <div className="gov-card space-y-3">
+      <h3 className="text-navy">Phase 4: เผยแพร่</h3>
+      <p className="text-sm text-muted-foreground">
+        ส่งออก Word หรือ PDF ตามมาตรฐานราชการ (TH Sarabun, พ.ศ.) การอัปโหลดเข้าระบบ e-Bidding
+        เป็นขั้นตอนของเจ้าหน้าที่นอกแอปนี้
+      </p>
+      <div className="flex gap-2">
+        <Button variant="secondary" onClick={onBack} data-testid="phase4-back">
+          ย้อนกลับ
+        </Button>
+        <Button disabled={exporting} data-testid="export-docx" onClick={() => onExport("docx")}>
+          ส่งออก Word
+        </Button>
+        <Button disabled={exporting} data-testid="export-pdf" onClick={() => onExport("pdf")}>
+          ส่งออก PDF
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ScopeSubsectionEditor({
+  subs,
+  openSub,
+  onOpenSub,
+  onSave,
+}: Readonly<{
+  subs: SectionPayload["subs"];
+  openSub: string;
+  onOpenSub: (key: string) => void;
+  onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
+}>) {
+  const chips = subs || SCOPE_SUBSECTIONS.map((item) => ({
+    ...item,
+    content: "",
+    filled: false,
+  }));
+  const openItem = (subs || []).find((sub) => sub.key === openSub);
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">
+        หมวด 4 แบ่งเป็น {SCOPE_SUBSECTIONS.length} หัวข้อย่อย
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map((sub) => (
+          <button
+            key={sub.key}
+            type="button"
+            className={cn(
+              "rounded-md border px-2.5 py-1 text-[11.5px] font-semibold",
+              sub.filled
+                ? "border-green-300 bg-green-50 text-green-800"
+                : "border-gray-200 bg-gray-100"
+            )}
+            onClick={() => onOpenSub(openSub === sub.key ? "" : sub.key)}
+          >
+            {sub.key.replace("s4.", "4.")} {sub.title}
+          </button>
+        ))}
+      </div>
+      {openItem ? (
+        <div className="rounded-lg border-l-[3px] border-navy bg-gray-50 p-3">
+          <Label>{openItem.title}</Label>
+          <Textarea
+            className="mt-1"
+            defaultValue={openItem.content}
+            onBlur={(event) => onSave(openItem.key, event.target.value)}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function StandardSectionFields({
+  fields,
+  draft,
+  extracted,
+  suggested,
+  onChange,
+}: Readonly<{
+  fields: SectionField[];
+  draft: Record<string, string>;
+  extracted: Record<string, unknown>;
+  suggested: (mapField?: string) => string;
+  onChange: (key: string, next: string) => void;
+}>) {
+  return (
+    <>
+      {fields.map((field) => {
+        const value = draft[field.key] || suggested(field.mapField);
+        const tag = field.mapField && extracted[field.mapField] ? "matched" : "partial";
+        return (
+          <div key={field.key}>
+            <Label>{field.label}</Label>
+            <SectionFieldControl
+              field={field}
+              value={value}
+              onChange={(next) => onChange(field.key, next)}
+            />
+            {field.mapField ? (
+              <MappingBox
+                rows={[
+                  {
+                    field: field.mapField,
+                    label: field.label,
+                    value: suggested(field.mapField),
+                    tag,
+                  },
+                ]}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function SectionFieldControl({
+  field,
+  value,
+  onChange,
+}: Readonly<{
+  field: SectionField;
+  value: string;
+  onChange: (next: string) => void;
+}>) {
+  if (field.type === "textarea") {
+    return (
+      <Textarea
+        className="mt-1"
+        value={value}
+        maxLength={50000}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
+  if (field.type === "select") {
+    return (
+      <select
+        className="mt-1 h-10 w-full rounded-md border px-3 text-sm"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">เลือก</option>
+        {(field.options || []).map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <Input
+      className="mt-1"
+      type={field.type === "number" ? "text" : field.type}
+      value={value}
+      maxLength={2000}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+}
+
+

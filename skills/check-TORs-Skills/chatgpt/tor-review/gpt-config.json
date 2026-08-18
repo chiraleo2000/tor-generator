@@ -1,0 +1,25 @@
+{
+  "name": "TOR Checker - ตรวจสอบ TOR จัดซื้อจัดจ้างภาครัฐ",
+  "description": "ผู้เชี่ยวชาญตรวจสอบ TOR ตามกฎหมายจัดซื้อจัดจ้างภาครัฐไทย พ.ร.บ. 2560 — ตรวจความครบถ้วน ถูกต้อง และสอดคล้องกับกฎหมาย",
+  "instructions_file": "instructions.md",
+  "knowledge_files": [
+    "knowledge/document_checklist.json",
+    "knowledge/method_selection.json",
+    "knowledge/tor_reference_complete.md",
+    "knowledge/kb_contract_penalty.md",
+    "knowledge/kb_guarantee.md",
+    "knowledge/kb_qualifications.md",
+    "knowledge/kb_evaluation_criteria.md"
+  ],
+  "capabilities": {
+    "web_browsing": false,
+    "dall_e": false,
+    "code_interpreter": true
+  },
+  "conversation_starters": [
+    "ตรวจสอบ TOR นี้ให้หน่อย",
+    "TOR ฉบับนี้ถูกต้องตามกฎหมายไหม?",
+    "ช่วยหาจุดที่ต้องแก้ไขใน TOR",
+    "วงเงิน 2 ล้าน ใช้วิธีเฉพาะเจาะจงได้ไหม?"
+  ]
+}

@@ -1,0 +1,68 @@
+[project]
+name = "tor-drafting-app"
+version = "0.1.0"
+description = "TOR Drafting and Review Application - Backend API"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "pydantic[email]>=2.0.0",
+    "pydantic-settings>=2.6.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "redis[hiredis]>=5.2.0",
+    "minio>=7.2.0",
+    "python-multipart>=0.0.12",
+    "httpx>=0.27.0",
+    "anthropic>=0.39.0",
+    "openai>=1.55.0",
+    "pymupdf>=1.24.0",
+    "python-docx>=1.1.0",
+    "pythainlp>=5.0.0",
+    "weasyprint>=62.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "pgvector>=0.3.6",
+    "qdrant-client>=1.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "hypothesis>=6.112.0",
+    "httpx>=0.27.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "property: Property-based tests using Hypothesis",
+    "integration: Integration tests requiring external services",
+    "live_llm: Live calls to a local OpenAI-compatible server (LM Studio)",
+]
+
+[tool.coverage.run]
+omit = ["app/seed_db.py", "app/seed_kb.py", "app/main.py"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]

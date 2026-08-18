@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "isolatedModules": true
+  },
+  "files": [".vscode/tsconfig-placeholder.ts"],
+  "exclude": [
+    "frontend",
+    "backend",
+    "documents",
+    "node_modules",
+    "app"
+  ]
+}

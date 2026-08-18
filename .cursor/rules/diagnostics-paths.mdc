@@ -1,0 +1,12 @@
+---
+description: Problems on frontend/ or backend/ at the repo root are stale; live code is app/frontend and app/backend
+alwaysApply: true
+---
+
+# Diagnostics paths
+
+The running app is only `app/frontend` and `app/backend`. Folders named `frontend/` or `backend/` at the repository root **do not exist**.
+
+If the Problems panel lists `/frontend/...` or `/backend/...` (no `app/` prefix), those entries are leftover IDE/SonarLint diagnostics. Do not “fix” them by creating those folders. Reload the window after switching TypeScript to the workspace SDK (`app/frontend/node_modules/typescript/lib`).
+
+Do not add `"ignoreDeprecations": "6.0"` to `app/frontend/tsconfig.json` — Next.js 14’s TypeScript 5.4 rejects it. Date regexes must keep `[0-9]`, not `\\d` (Python `\\d` matches Thai digits).

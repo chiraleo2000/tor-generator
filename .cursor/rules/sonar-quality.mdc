@@ -1,0 +1,16 @@
+---
+description: Keep SonarQube for IDE clean on files we touch in app/frontend and app/backend
+alwaysApply: true
+---
+
+# SonarQube for IDE (code quality)
+
+Analyze only `app/frontend/src` and `app/backend/app`. Do not create `frontend/` or `backend/` at the repository root — leftover Problems on those paths are stale.
+
+When editing a file:
+
+- Fix Blocker and Critical issues in that file before moving on
+- Do not hardcode passwords, API keys, or JWT secrets
+- Prefer early returns over deep nesting (cognitive complexity)
+- Date regexes must use `[0-9]`, not `\\d` (Python `\\d` matches Thai digits)
+- Do not use `dangerouslySetInnerHTML` for extracted or user TOR text

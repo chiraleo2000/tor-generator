@@ -1,0 +1,13 @@
+# Kiro / Claude TOR Skills (offline)
+
+These skills draft and review TOR documents **without** the Docker web stack. They are not loaded by the FastAPI/Next.js app.
+
+| Skill | File | Role |
+|-------|------|------|
+| TOR Intake | `.kiro/skills/tor-intake.md` | Collect requirements + procurement method |
+| TOR Draft | `.kiro/skills/tor-draft.md` | Draft in ภาษาราชการ |
+| TOR Review | `.kiro/skills/tor-review.md` | Checklist 40+ items |
+
+Related packs: `skills/Draft-TORs-Skills/`, `skills/check-TORs-Skills/`.
+
+The web application lives in [app/](app/) and is documented in [README.md](README.md).
