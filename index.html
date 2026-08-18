@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TOR Generator — ระบบจัดซื้อจัดจ้างภาครัฐ (จำลอง)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#1d468b; --navy-dark:#0f2340; --navy-light:#3b5c98;
+  --crimson:#c41e3a; --orange:#fed7aa; --orange-dark:#f59e0b; --green:#1b7a3d;
+  --bg:#f7f9fb; --fg:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+  --white:#fff; --radius:0.7rem;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:"Noto Sans Thai",system-ui,sans-serif;background:var(--bg);color:var(--fg);font-size:14px}
+button,input,select,textarea{font-family:inherit}
+button{cursor:pointer}
+a{color:var(--navy)}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
+
+.hidden{display:none !important}
+
+/* Auth */
+#auth{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy),var(--navy-dark));padding:20px}
+.auth-card{width:100%;max-width:440px;background:#fff;border-radius:14px;padding:38px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.auth-logo{width:56px;height:56px;margin:0 auto 16px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy),var(--crimson));color:#fff}
+.auth-card h1{text-align:center;font-size:24px;font-weight:800;color:var(--navy);margin-bottom:6px}
+.auth-sub{text-align:center;font-size:13px;color:var(--muted);margin-bottom:24px}
+.auth-error{background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:8px;font-size:12.5px;margin-bottom:14px}
+.auth-ok{background:#dcfce7;color:#166534;padding:10px 14px;border-radius:8px;font-size:12.5px;margin-bottom:14px}
+.demo-box{margin-top:16px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px;background:var(--bg);font-size:11.5px;color:var(--muted);text-align:center}
+.auth-foot{margin-top:16px;text-align:center;font-size:13px;color:var(--muted)}
+.auth-foot a{font-weight:700;cursor:pointer;text-decoration:none}
+
+/* Shell */
+#app{display:none;min-height:100vh}
+.sidebar{position:fixed;inset:0 auto 0 0;width:255px;background:linear-gradient(#1d468b,#0f2340);color:#fff;padding:18px;overflow-y:auto;z-index:30}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.12)}
+.logo-icon{width:38px;height:38px;border-radius:8px;background:var(--orange);color:var(--navy);display:flex;align-items:center;justify-content:center;font-weight:800}
+.logo h1{font-size:17px;font-weight:700;line-height:1.2}
+.logo p{font-size:11px;opacity:.75}
+.menu-title{font-size:11px;text-transform:uppercase;letter-spacing:.06em;opacity:.55;margin:0 0 8px}
+.menu-item{display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:4px;border-radius:8px;border-left:3px solid transparent;font-size:14px;color:#fff;text-decoration:none}
+.menu-item:hover{background:rgba(255,255,255,.08)}
+.menu-item.active{background:var(--orange);color:var(--navy);border-left-color:var(--crimson);font-weight:700}
+.menu-item svg{width:18px;height:18px;flex-shrink:0}
+.sidebar-foot{margin-top:12px;padding:12px;background:rgba(255,255,255,.06);border-radius:8px;font-size:12px;line-height:1.6;color:rgba(255,255,255,.8)}
+.logout{display:block;width:100%;margin-top:10px;background:none;border:0;color:#fecaca;font-size:12.5px;text-align:center}
+.logout:hover{text-decoration:underline}
+.main{margin-left:255px;min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:#fff;padding:14px 26px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,.04)}
+.topbar h1{font-size:21px;font-weight:800;color:var(--navy)}
+.topbar .sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.user-chip{display:flex;align-items:center;gap:12px;font-size:13px}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+.content{flex:1;padding:26px}
+.sim-banner{background:#fff7ed;border-bottom:1px solid #fdba74;color:#9a3412;font-size:12.5px;padding:8px 26px;text-align:center}
+
+/* Forms / cards */
+label.lbl{display:block;font-weight:700;color:var(--navy);margin-bottom:6px;font-size:13.5px}
+.field{margin-bottom:14px}
+input[type=text],input[type=email],input[type=password],input[type=number],select,textarea{
+  width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff
+}
+textarea{min-height:88px;resize:vertical}
+.btn{padding:9px 18px;border:0;border-radius:7px;font-size:13.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px}
+.btn:disabled{background:#f3f4f6;color:#d1d5db;cursor:not-allowed}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--navy-dark)}
+.btn-secondary{background:#e5e7eb;color:#1f2937}
+.btn-outline{background:#fff;color:var(--navy);border:1px solid var(--navy)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-danger{background:#fee2e2;color:#b91c1c}
+.gov-card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.07)}
+.grid-3{display:grid;gap:16px;grid-template-columns:repeat(3,1fr)}
+.stat{border-top:4px solid;padding:18px 20px}
+.stat.draft{border-top-color:var(--orange-dark)}
+.stat.progress{border-top-color:var(--navy)}
+.stat.done{border-top-color:var(--green)}
+.stat h3{font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px}
+.stat .n{font-size:30px;font-weight:800;color:var(--navy)}
+.stat p{font-size:12.5px;color:var(--muted);margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;background:#f3f4f6;padding:12px 16px;font-size:12.5px;text-transform:uppercase;color:#374151}
+td{padding:14px 16px;border-top:1px solid var(--border)}
+tr:hover td{background:#f9fafb}
+.pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
+.pill-draft{background:#fef3e2;color:#92400e}
+.pill-review{background:#dbeafe;color:#1e40af}
+.pill-ok{background:#dcfce7;color:#166534}
+.pill-rej{background:#fee2e2;color:#b91c1c}
+.right{text-align:right;margin-top:16px}
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:480px;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,.2)}
+.modal h2{color:var(--navy);font-size:18px;margin-bottom:6px}
+.modal .desc{font-size:13px;color:var(--muted);margin-bottom:14px}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.phase-flow{display:flex;align-items:flex-start;overflow-x:auto;margin-bottom:20px;padding-bottom:4px}
+.phase-col{flex:1;min-width:140px;text-align:center}
+.phase-dot{width:52px;height:52px;margin:0 auto 8px;border-radius:50%;border:3px solid #e5e7eb;background:#e5e7eb;color:#4b5563;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
+.phase-dot.active{transform:scale(1.1);border-color:var(--crimson);background:var(--orange);color:var(--navy)}
+.phase-dot.done{border-color:#0f5c22;background:var(--green);color:#fff}
+.phase-line{width:30px;height:3px;background:#e5e7eb;margin-top:26px;flex-shrink:0}
+.phase-line.done{background:var(--green)}
+.sec{display:flex;gap:14px}
+.sec-rail{width:36px;display:flex;flex-direction:column;align-items:center}
+.sec-num{width:34px;height:34px;border-radius:50%;border:2px solid #d1d5db;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;z-index:1}
+.sec-num.on{border-color:var(--crimson);background:var(--orange);color:var(--navy)}
+.sec-num.ok{border-color:#0f5c22;background:var(--green);color:#fff}
+.sec-line{width:2px;flex:1;background:#d1d5db}
+.sec-line.ok{background:var(--green)}
+.sec-card{flex:1;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px;background:#fff}
+.sec-card.open{border-color:var(--crimson);box-shadow:0 4px 14px rgba(196,30,58,.12)}
+.sec-head{width:100%;background:#f9fafb;padding:12px 16px;border:0;display:flex;justify-content:space-between;text-align:left}
+.sec-head h3{font-size:14.5px;color:var(--navy)}
+.sec-body{padding:16px;border-top:1px solid var(--border)}
+.upload{display:block;border:2px dashed var(--navy);background:#f9fafb;border-radius:10px;padding:22px;text-align:center;cursor:pointer;margin-bottom:10px}
+.upload:hover{border-color:var(--crimson);background:var(--orange)}
+.upload p{font-weight:600;color:var(--navy)}
+.upload span{display:block;font-size:11.5px;color:var(--muted);margin-top:4px}
+.check{display:flex;gap:10px;border:1px solid var(--border);border-radius:8px;padding:12px;background:#fff;margin-bottom:10px}
+.check.pass{color:var(--green)}
+.check.warn{color:#b45309}
+.check.fail{color:var(--crimson)}
+.chip{border:1px solid #d1d5db;background:#f3f4f6;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;margin:0 6px 6px 0}
+.chip.on{border-color:#86efac;background:#f0fdf4;color:#166534}
+.chip.sel{border-color:var(--navy);background:#eef2ff}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:2px solid var(--border);margin-bottom:18px}
+.tab{border:0;background:none;padding:10px 16px;font-weight:700;font-size:13.5px;color:var(--muted);border-bottom:3px solid transparent}
+.tab.on{color:var(--navy);border-bottom-color:var(--crimson)}
+.flow{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.flow span{background:#eef2ff;color:var(--navy);padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700}
+.two{display:grid;gap:16px;grid-template-columns:1fr 1fr}
+.bar{height:8px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin:8px 0 14px}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--navy),var(--orange-dark))}
+.row-btns{display:flex;flex-wrap:wrap;gap:6px}
+.muted{color:var(--muted);font-size:12.5px}
+.err{color:#b91c1c;font-size:13px;margin-bottom:8px}
+.okmsg{color:var(--green);font-size:13px;margin:8px 0}
+.badge-req{background:#fef2f2;color:#b91c1c;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}
+.kb-row{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:10px}
+.kb-row button.head{width:100%;display:flex;justify-content:space-between;padding:12px 16px;border:0;background:none;font-weight:600;color:var(--navy)}
+.flex-end{display:flex;justify-content:space-between;gap:8px;margin-top:16px}
+.type-chip{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:700;color:#374151}
+.type-chip.on{background:var(--navy);border-color:var(--navy);color:#fff}
+@media (max-width:960px){
+  .grid-3,.two{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .main{margin-left:0}
+}
+</style>
+</head>
+<body>
+<div id="auth">
+  <div class="auth-card" id="loginPanel">
+    <div class="auth-logo"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="16" height="20" rx="2"/><path d="M10 10h8M10 14h8M10 18h5"/></svg></div>
+    <h1>เข้าสู่ระบบ</h1>
+    <p class="auth-sub">TOR Generator — ระบบร่างและตรวจสอบ TOR ภาครัฐ</p>
+    <div class="auth-error hidden" id="loginErr"></div>
+    <form id="loginForm">
+      <div class="field"><label class="lbl" for="email">อีเมล</label><input id="email" type="email" placeholder="you@ministry.go.th" autocomplete="email"></div>
+      <div class="field"><label class="lbl" for="password">รหัสผ่าน</label><input id="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+      <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center">เข้าสู่ระบบ</button>
+    </form>
+    <div class="demo-box">Demo: officer@example.go.th / Passw0rd!<br>admin@example.go.th · reviewer@example.go.th</div>
+    <p class="auth-foot">ยังไม่มีบัญชี? <a id="toRegister">สมัครสมาชิก</a></p>
+    <p class="auth-foot" style="margin-top:8px;font-size:11.5px">หน้านี้เป็น GitHub Pages จำลอง UI ของแอปจริง — ไม่เรียก API / LLM</p>
+  </div>
+  <div class="auth-card hidden" id="registerPanel">
+    <h1>สมัครสมาชิก</h1>
+    <p class="auth-sub">บัญชีจำลองเก็บในเบราว์เซอร์นี้เท่านั้น</p>
+    <div class="auth-error hidden" id="regErr"></div>
+    <form id="regForm">
+      <div class="field"><label class="lbl">ชื่อ-นามสกุล</label><input id="regName" type="text" lang="th"></div>
+      <div class="field"><label class="lbl">อีเมล</label><input id="regEmail" type="email"></div>
+      <div class="field"><label class="lbl">รหัสผ่าน</label><input id="regPass" type="password"></div>
+      <div class="field"><label class="lbl">ยืนยันรหัสผ่าน</label><input id="regPass2" type="password"></div>
+      <div class="field"><label class="lbl">หน่วยงาน</label><input id="regOrg" type="text" lang="th"></div>
+      <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center">สมัครสมาชิก</button>
+    </form>
+    <p class="auth-foot">มีบัญชีแล้ว? <a id="toLogin">เข้าสู่ระบบ</a></p>
+  </div>
+</div>
+
+<div id="app">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="12" height="14" rx="1.5"/><path d="M7 7h6M7 10h6M7 13h4"/></svg></div>
+      <div><h1>TOR Generator</h1><p>ระบบจัดซื้อจัดจ้างภาครัฐ</p></div>
+    </div>
+    <nav id="nav"></nav>
+    <p class="sidebar-foot">OCR/NLP + RAG + Gemma ในเครื่อง — โหมด on-prem ไม่ส่งข้อมูลออก</p>
+    <button class="logout" type="button" id="logoutBtn">ออกจากระบบ</button>
+  </aside>
+  <div class="main">
+    <div class="sim-banner">จำลองบน GitHub Pages — หน้าตาตามแอป Docker จริง (5 Phase / 13 หมวด / ร่างด้วย AI) ไม่ใช้ไฟล์ mockup เดิม และไม่เชื่อมต่อเซิร์ฟเวอร์</div>
+    <header class="topbar">
+      <div><h1 id="pageTitle">แดชบอร์ด</h1><p class="sub" id="pageSub">ภาพรวมโครงการ TOR ทั้งหมด</p></div>
+      <div class="user-chip"><span id="userEmail"></span><div class="avatar" id="userAv">?</div></div>
+    </header>
+    <main class="content" id="view"></main>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="modal"></div>
+
+<script>
+const ICONS = {
+  dash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>',
+  book:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+  pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
+  scan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/><path d="M8 11h6"/></svg>',
+  help:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  cpu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>'
+};
+
+const TOR = [
+  ["s1","ความเป็นมา"],["s2","วัตถุประสงค์"],["s3","คุณสมบัติของผู้เสนอราคา"],["s4","ขอบเขตของงาน"],
+  ["s5","ระยะเวลาดำเนินการ"],["s6","วงเงินงบประมาณ"],["s7","สถานที่ดำเนินการ"],["s8","งวดงานและการจ่ายเงิน"],
+  ["s9","การรับประกัน"],["s10","อัตราค่าปรับ"],["s11","หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ"],
+  ["s12","เอกสารและหลักฐานที่ผู้เสนอราคาต้องนำมายื่น"],["s13","เงื่อนไขอื่น ๆ"]
+];
+const HITL = ["s3","s6","s8","s10","s13"];
+const SCOPE = [
+  ["s4.1","สรุปขอบเขตงาน"],["s4.2","ระบบงานปัจจุบัน (As-Is)"],["s4.3","งานหลักและกิจกรรม"],
+  ["s4.4","ข้อกำหนดด้านฮาร์ดแวร์"],["s4.5","ข้อกำหนดด้านซอฟต์แวร์และลิขสิทธิ์"],["s4.6","จุดเชื่อมโยงระบบ"],
+  ["s4.7","มาตรฐานและแบบอ้างอิง"],["s4.8","ผลงานส่งมอบ"],["s4.9","ระยะเวลาการสนับสนุนและบำรุงรักษา"],
+  ["s4.10","บุคลากรและทีมงาน"],["s4.11","รูปแบบการบำรุงรักษา"],["s4.12","การดำเนินงานและการบริหารจัดการ"],
+  ["s4.13","แผนสำรองและกู้คืนระบบ"],["s4.14","ข้อกำหนดด้านความมั่นคงปลอดภัย"]
+];
+const DOC_CLASSES = [
+  ["announced_price","ประกาศราคากลาง",true],["budget_approval","หนังสืออนุมัติงบประมาณ",true],
+  ["fiscal_year","เอกสารปีงบประมาณ",false],["charter","เอกสารโครงการ (Charter / Brief)",false],
+  ["as_is","เอกสารระบบเดิม (As-Is)",false],["stakeholders","รายชื่อผู้เกี่ยวข้อง",false],
+  ["policy","นโยบายที่เกี่ยวข้อง",false],["tender_draft","ร่างเอกสารประกวดราคา",false],
+  ["kickoff","รายงานประชุม Kickoff",false]
+];
+const CHECKLIST = ["เอกสารอนุมัติงบประมาณ","ประกาศราคากลางฉบับทางการ","เอกสารโครงการ (Charter / Brief)","รายงานการประชุม","รายชื่อผู้เกี่ยวข้อง"];
+const PHASES = [
+  [0,"เตรียมข้อมูล","Pre-Drafting"],[1,"วิเคราะห์ความต้องการ","Analysis"],
+  [2,"ร่างเนื้อหา TOR","Drafting 13 หมวด"],[3,"ทบทวน/อนุมัติ","Review & Approval"],
+  [4,"เผยแพร่","Publishing"]
+];
+const META = {
+  projects:["แดชบอร์ด","ภาพรวมโครงการ TOR ทั้งหมด"],
+  kb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG"],
+  draft:["ร่าง TOR","กระบวนการร่างเอกสาร TOR แบบ Flow 5 Phase"],
+  review:["ตรวจสอบ TOR","ตรวจสอบความถูกต้องตามกฎหมายและเทียบเคียงโครงการ"],
+  help:["คู่มือการใช้งาน","คำอธิบายและภาพประกอบแต่ละส่วนของระบบ"],
+  templates:["แม่แบบ","โครงร่าง TOR ตามประเภทงาน"],
+  adminkb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG"],
+  users:["ผู้ใช้","บัญชีเจ้าหน้าที่และสิทธิ์"],
+  ai:["การตั้งค่า AI","โหมด on-prem / cloud / hybrid"]
+};
+const ACCOUNTS = {
+  "officer@example.go.th":{name:"เจ้าหน้าที่พัสดุ",role:"officer",org:"กรมบัญชีกลาง"},
+  "admin@example.go.th":{name:"ผู้ดูแลระบบ",role:"admin",org:"กรมบัญชีกลาง"},
+  "reviewer@example.go.th":{name:"ผู้ตรวจสอบ",role:"reviewer",org:"กรมบัญชีกลาง"}
+};
+const DEMO_PASS = "Passw0rd!";
+const AI_DRAFT = {
+  s1:"หน่วยงานมีระบบจัดซื้อจัดจ้างเดิมที่ใช้เอกสารกระดาษเป็นหลัก ทำให้จัดทำ TOR ล่าช้าและตกหล่นหัวข้อตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 จำเป็นต้องพัฒนาระบบช่วยร่างและตรวจสอบ TOR",
+  s2:"เพื่อให้เจ้าหน้าที่พัสดุจัดทำ TOR ครบ 13 หมวด ตรวจด้วย Rule Engine และส่งออก Word/PDF ตามมาตรฐานราชการ ภายในวงเงินและระยะเวลาที่กำหนด",
+  s3:"ผู้เสนอราคาต้องเป็นนิติบุคคลจดทะเบียนในประเทศไทย มีทุนจดทะเบียนชำระแล้วไม่ต่ำกว่าที่หน่วยงานกำหนด และมีผลงานพัฒนาระบบสารสนเทศภาครัฐย้อนหลัง 5 ปี",
+  s4:"พัฒนาระบบร่าง TOR แบบ 5 Phase เชื่อม RAG กฎหมาย ตรวจคุณภาพ และส่งออกเอกสารราชการ รวมหัวข้อย่อยฮาร์ดแวร์ ซอฟต์แวร์ ความมั่นคงปลอดภัย และการบำรุงรักษา",
+  s5:"ระยะเวลาดำเนินการ 270 วัน นับจากวันลงนามในสัญญา แบ่งเป็นวิเคราะห์ 60 วัน พัฒนา 150 วัน ทดสอบและส่งมอบ 60 วัน",
+  s6:"วงเงินงบประมาณ 12,500,000 บาท รวมภาษีมูลค่าเพิ่ม จากงบประมาณรายจ่ายประจำปี",
+  s7:"หน่วยงานผู้ว่าจ้าง และศูนย์ข้อมูลหลักของหน่วยงาน ครอบคลุมการติดตั้ง on-prem",
+  s8:"จ่ายเป็น 4 งวด ตามผลงานส่งมอบ ได้แก่ วิเคราะห์ 20% ระบบต้นแบบ 30% ระบบสมบูรณ์ 40% และบำรุงรักษาปีแรก 10%",
+  s9:"รับประกันผลงานไม่น้อยกว่า 1 ปี หลังส่งมอบ และมีบริการซ่อมบำรุงตาม SLA ที่ตกลง",
+  s10:"ค่าปรับกรณีส่งมอบล่าช้าร้อยละ 0.10 ต่อวัน ของวงเงินตามสัญญา แต่ไม่เกินร้อยละ 10 ตามระเบียบพัสดุ",
+  s11:"ใช้เกณฑ์ราคาประกอบเกณฑ์คุณภาพ สัดส่วนคุณภาพ 30 : ราคา 70 ตามหลักเกณฑ์ที่หน่วยงานประกาศ",
+  s12:"สำเนาหนังสือรับรองบริษัท ภ.พ.20 ผลงานอ้างอิง เอกสารบุคลากรหลัก และข้อเสนอด้านเทคนิค",
+  s13:"ผู้รับจ้างต้องไม่ส่งข้อมูลออกนอกเครื่องเมื่อหน่วยงานใช้โหมด on-prem และต้องปฏิบัติตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล"
+};
+
+function emptySections(){
+  return TOR.map(([key,title])=>({
+    key,title,filled:false,hitl:HITL.includes(key),confirmed:!HITL.includes(key),content:"",
+    subs: key==="s4" ? SCOPE.map(([k,t])=>({key:k,title:t,content:"",filled:false})) : null
+  }));
+}
+
+const state = {
+  user:null,
+  extraUsers:[],
+  page:"projects",
+  helpTab:"overview",
+  kbType:"law",
+  kbOpen:"",
+  phase:0,
+  expanded:"s1",
+  openSub:"",
+  projects:[
+    {id:"p1",name:"ระบบคลังพัสดุกลาง",ministry:"กรมบัญชีกลาง",budget:8500000,status:"draft",updated:"2026-08-12",phase:2},
+    {id:"p2",name:"จ้างพัฒนาระบบ e-Document",ministry:"สำนักงบประมาณ",budget:12500000,status:"in_review",updated:"2026-08-15",phase:3},
+    {id:"p3",name:"จัดซื้อเครื่องแม่ข่ายศูนย์ข้อมูล",ministry:"กระทรวงดิจิทัลฯ",budget:4200000,status:"approved",updated:"2026-08-10",phase:4}
+  ],
+  activeId:"p1",
+  sections: emptySections(),
+  files:[],
+  mapping:[],
+  proposed:{},
+  checklist:{},
+  stakeholders:[],
+  functional:[],
+  availability:"ระบบพร้อมใช้งานไม่น้อยกว่า 99.5% ในเวลาทำการ",
+  security:"เข้ารหัสข้อมูลขณะพักและขณะส่ง ตามมาตรฐานหน่วยงาน",
+  performance:"ตอบสนองหน้าจอร่าง TOR ภายใน 2 วินาที หลังประมวลผลในเครื่อง",
+  qa:[],
+  reviewFile:null,
+  compares:[],
+  reviewResult:null,
+  templates:[{id:"t1",name:"แม่แบบงาน IT ภาครัฐ",industry:"it",status:"published"},{id:"t2",name:"แม่แบบจัดซื้อทั่วไป",industry:"general",status:"draft"}],
+  users:[
+    {name:"เจ้าหน้าที่พัสดุ",email:"officer@example.go.th",role:"officer",org:"กรมบัญชีกลาง",disabled:false},
+    {name:"ผู้ตรวจสอบ",email:"reviewer@example.go.th",role:"reviewer",org:"กรมบัญชีกลาง",disabled:false},
+    {name:"ผู้ดูแลระบบ",email:"admin@example.go.th",role:"admin",org:"กรมบัญชีกลาง",disabled:false}
+  ],
+  ai:{mode:"on_prem",llm:"lm_studio",embed:"local",vector:"pgvector",
+    lm:"http://host.docker.internal:1234/v1",ollama:"http://host.docker.internal:11434/v1",
+    llama:"http://host.docker.internal:8080/v1",chat:"google/gemma-4-e4b",emb:"text-embedding-embeddinggemma-300m",timeout:180},
+  aiMsg:"",
+  busy:false,
+  score:null,
+  message:""
+};
+
+function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]))}
+function baht(n){return Number(n).toLocaleString("th-TH")}
+function pill(st){
+  const m={draft:["ร่าง","pill-draft"],in_review:["กำลังดำเนินการ","pill-review"],approved:["เสร็จแล้ว","pill-ok"],rejected:["ส่งกลับ","pill-rej"]};
+  const x=m[st]||m.draft; return `<span class="pill ${x[1]}">${x[0]}</span>`;
+}
+function canDecide(){return state.user && (state.user.role==="reviewer"||state.user.role==="admin")}
+function active(){return state.projects.find(p=>p.id===state.activeId) || state.projects[0]}
+function filledCount(){return state.sections.filter(s=>s.filled).length}
+function hitlReady(){return state.sections.filter(s=>s.hitl).every(s=>s.confirmed && s.filled)}
+
+function navHtml(){
+  const p=state.page;
+  const item=(id,href,icon,label)=>`<a class="menu-item ${p===id?"active":""}" href="#/${href}">${ICONS[icon]}${label}</a>`;
+  let h=`<div class="menu-section"><p class="menu-title">หลัก</p>${item("projects","projects","dash","แดชบอร์ด")}${item("kb","knowledge-base","book","ฐานความรู้")}</div>`;
+  h+=`<div class="menu-section"><p class="menu-title">การทำงาน</p>${item("draft","draft","pen","ร่าง TOR")}${item("review","review","scan","ตรวจสอบ TOR")}</div>`;
+  h+=`<div class="menu-section"><p class="menu-title">อื่นๆ</p>${item("help","help","help","คู่มือ")}</div>`;
+  if(state.user?.role==="admin"){
+    h+=`<div class="menu-section"><p class="menu-title">ผู้ดูแลระบบ</p>${item("templates","admin/templates","file","แม่แบบ")}${item("adminkb","admin/knowledge-base","book","ฐานความรู้ (จัดการ)")}${item("users","admin/users","users","ผู้ใช้")}${item("ai","admin/ai-settings","cpu","การตั้งค่า AI")}</div>`;
+  }
+  return h;
+}
+
+function renderShell(){
+  document.getElementById("nav").innerHTML=navHtml();
+  const m=META[state.page]||META.projects;
+  document.getElementById("pageTitle").textContent=m[0];
+  document.getElementById("pageSub").textContent=m[1];
+  document.getElementById("userEmail").textContent=state.user?.email||"";
+  document.getElementById("userAv").textContent=(state.user?.name||"?").slice(0,1);
+  document.getElementById("view").innerHTML=viewHtml();
+  bindView();
+}
+
+function viewHtml(){
+  switch(state.page){
+    case "kb": return kbHtml();
+    case "draft": return draftHtml();
+    case "review": return reviewHtml();
+    case "help": return helpHtml();
+    case "templates": return templatesHtml();
+    case "adminkb": return adminKbHtml();
+    case "users": return usersHtml();
+    case "ai": return aiHtml();
+    default: return dashHtml();
+  }
+}
+
+function dashHtml(){
+  const d=state.projects.filter(p=>p.status==="draft").length;
+  const r=state.projects.filter(p=>p.status==="in_review").length;
+  const a=state.projects.filter(p=>p.status==="approved").length;
+  const rows=state.projects.map(p=>{
+    let acts="";
+    if(p.status==="in_review" && canDecide()){
+      acts=`<button class="btn btn-primary btn-sm" data-act="approve" data-id="${p.id}">อนุมัติ</button>
+            <button class="btn btn-outline btn-sm" data-act="reject" data-id="${p.id}">ส่งกลับ</button>`;
+    } else {
+      if(p.status==="approved") acts+=`<button class="btn btn-outline btn-sm" data-act="view" data-id="${p.id}">ดู</button>`;
+      acts+=`<button class="btn ${p.status==="in_review"?"btn-secondary":"btn-primary"} btn-sm" data-act="edit" data-id="${p.id}" ${p.status==="in_review"?"disabled":""}>${p.status==="approved"?"ปรับปรุง":"แก้ไข"}</button>
+             <button class="btn btn-outline btn-sm" data-act="arch" data-id="${p.id}">ลบ</button>`;
+    }
+    return `<tr><td style="font-weight:600">${esc(p.name)}</td><td>${esc(p.ministry)}</td><td>${baht(p.budget)} บาท</td><td>${pill(p.status)}</td><td>${esc(p.updated)}</td><td><div class="row-btns">${acts}</div></td></tr>`;
+  }).join("");
+  return `<div class="grid-3">
+    <div class="gov-card stat draft"><h3>ร่าง (Draft)</h3><div class="n">${d}</div><p>แก้ไขได้ ยังไม่ส่งสร้าง</p></div>
+    <div class="gov-card stat progress"><h3>กำลังดำเนินการ</h3><div class="n">${r}</div><p>ระบบกำลังประมวลผล</p></div>
+    <div class="gov-card stat done"><h3>เสร็จแล้ว</h3><div class="n">${a}</div><p>ดูและปรับปรุงได้</p></div>
+  </div>
+  <div class="gov-card" style="padding:0;margin-top:16px;overflow:hidden">
+    <div style="border-bottom:1px solid var(--border);padding:16px 20px;font-weight:800;color:var(--navy)">รายการโครงการ TOR</div>
+    <table><thead><tr><th>ชื่อโครงการ</th><th>หน่วยงาน</th><th>งบประมาณ</th><th>สถานะ</th><th>วันที่อัปเดต</th><th>การกระทำ</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">ยังไม่มีโครงการ</td></tr>`}</tbody></table>
+  </div>
+  <div class="right"><button class="btn btn-primary" id="btnNew">+ สร้างโครงการ TOR ใหม่</button></div>`;
+}
+
+function kbHtml(){
+  const types=[["law","กฎหมาย/ระเบียบกลาง"],["guideline","ประกาศราคากลาง / ระเบียบ"],["example_tor","ร่างเอกสารประกวดราคา"],["manual","ความต้องการ/คู่มือ"],["regulation","กฎกระทรวง"]];
+  const cats=[
+    ["พระราชบัญญัติและระเบียบ",[{n:"พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:48},{n:"ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:62}]],
+    ["หนังสือกรมบัญชีกลาง",[{n:"หนังสือ กค (กวจ) 0405.2 ว 360",c:12},{n:"หนังสือ กค 0405.4 ว 322",c:9}]]
+  ];
+  const chunked=[["กฎหมายกลาง",3,110],["คุณสมบัติผู้เสนอราคา",2,44],["งวดจ่ายและค่าปรับ",2,31],["หลักเกณฑ์การพิจารณา",1,18]];
+  const admin=state.user?.role==="admin";
+  return `<div class="gov-card" style="margin-bottom:20px">
+    <h2 style="color:var(--navy);font-size:16.5px;margin-bottom:12px">อัปโหลดเอกสารเข้าคลังความรู้</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${types.map(([id,l])=>`<button type="button" class="type-chip ${state.kbType===id?"on":""}" data-kbt="${id}">${l}</button>`).join("")}</div>
+    <label class="upload"><input type="file" hidden multiple accept=".pdf,.docx"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์</p><span>รองรับ PDF, Word — ระบบแบ่ง chunk และฝังเข้า Vector Store</span></label>
+    <p class="muted" id="kbMsg">${admin?"":"การอัปโหลดคลังกฎหมายสงวนไว้สำหรับผู้ดูแลระบบ"}</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารต้นฉบับ กฎหมาย/ระเบียบ</h2><span class="pill pill-draft">4 ไฟล์</span></div>
+  ${cats.map(([name,items])=>`<div class="kb-row"><button type="button" class="head" data-kbo="${esc(name)}"><span>${esc(name)}</span><span class="badge-req">บังคับ</span></button>
+    ${state.kbOpen===name?items.map(d=>`<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding:8px 16px;font-size:12.5px"><span>${esc(d.n)}</span><span class="muted">${d.c} chunks</span></div>`).join(""):""}
+  </div>`).join("")}
+  <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">คลังความรู้ที่ผ่านการ Chunk เข้า RAG</h2><span class="pill pill-draft">203 chunks</span></div>
+  ${chunked.map(([n,f,c])=>`<div class="kb-row" style="display:flex;justify-content:space-between;padding:12px 16px"><span style="font-weight:600;color:var(--navy)">${n}</span><span class="muted">${f} ไฟล์ · ${c} chunks</span></div>`).join("")}
+  <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารที่ผู้ใช้อัปโหลด</h2><span class="pill pill-draft">${state.files.filter(f=>f.user).length} ไฟล์</span></div>`;
+}
+
+function phaseFlow(){
+  return `<div class="phase-flow">${PHASES.map(([id,title],i)=>{
+    const done=id<state.phase, active=id===state.phase;
+    return `${i?`<span class="phase-line ${id-1<state.phase?"done":""}"></span>`:""}
+      <div class="phase-col"><button type="button" class="phase-dot ${done?"done":active?"active":""}" data-phase="${id}">${done?"✓":id}</button>
+      <strong style="display:block;font-size:13px">Phase ${id}</strong><span class="muted">${title}</span></div>`;
+  }).join("")}</div>`;
+}
+
+function draftHtml(){
+  const p=active();
+  if(!p) return `<p class="muted">ยังไม่มีโครงการ — สร้างจากแดชบอร์ด</p>`;
+  return `${phaseFlow()}
+    <p class="muted" style="margin-bottom:12px">${esc(p.name)} · ${esc(p.ministry)} · ${baht(p.budget)} บาท · ${pill(p.status)}</p>
+    ${state.phase===0?phase0():state.phase===1?phase1():state.phase===2?phase2():state.phase===3?phase3():phase4()}`;
+}
+
+function phase0(){
+  const reqOk=state.files.some(f=>f.docClass==="announced_price") && state.files.some(f=>f.docClass==="budget_approval");
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">Phase 0: เตรียมข้อมูลตั้งต้น (Pre-Drafting)</h3>
+    <p class="muted" style="margin-bottom:16px">อัปโหลดเอกสารตามประเภท ระบบจะสกัดข้อความแล้วเสนอการจับคู่ — ต้องกดยืนยันก่อนเขียนทับหมวด TOR</p>
+    ${DOC_CLASSES.map(([id,label,req])=>`<div style="margin-bottom:12px"><p style="font-weight:700;color:var(--navy);margin-bottom:8px">${label}${req?" *":""}</p>
+      <label class="upload"><input type="file" hidden data-doc="${id}"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือก</p><span>PDF, Word, รูปสแกน — ตรวจชนิดไฟล์จากลายเซ็น ไม่เชื่อนามสกุลอย่างเดียว</span></label></div>`).join("")}
+    ${state.files.map((f,i)=>`<div style="display:flex;justify-content:space-between;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:6px"><span>${esc(f.name)} (${f.docClass})</span><span class="muted">${f.status} · ${f.chars.toLocaleString("th-TH")} ตัวอักษร <a href="#" data-rm="${i}" style="color:var(--crimson)">ลบ</a></span></div>`).join("")}
+    ${state.mapping.length?`<div class="gov-card" style="box-shadow:none;border:1px solid var(--border);margin:12px 0"><strong style="color:var(--navy)">การจับคู่ที่เสนอ</strong>${state.mapping.map(r=>`<p class="muted">${esc(r.from)} → ${esc(r.to)}</p>`).join("")}</div>`:""}
+    ${Object.keys(state.proposed).length?`<p style="color:var(--navy);font-size:13px">จะเติมหมวดหลังยืนยัน: ${Object.keys(state.proposed).join(", ")}</p>`:""}
+    <button class="btn btn-primary" id="confirmMap" ${state.mapping.length?"":"disabled"}>ยืนยันการจับคู่และเติมหมวด TOR</button>
+    <h4 style="margin:18px 0 8px;color:var(--navy)">Checklist ความพร้อม</h4>
+    ${CHECKLIST.map(l=>`<label style="display:flex;gap:8px;margin:6px 0;font-size:13.5px"><input type="checkbox" data-ck="${esc(l)}" ${state.checklist[l]?"checked":""}> ${l}</label>`).join("")}
+    <h4 style="margin:18px 0 8px;color:var(--navy)">รายชื่อผู้เกี่ยวข้อง</h4>
+    <div class="grid-3" style="margin-bottom:8px"><input id="stName" placeholder="ชื่อ"><input id="stRole" placeholder="บทบาท"><input id="stOrg" placeholder="หน่วยงาน"></div>
+    <button class="btn btn-outline btn-sm" id="addSt">เพิ่มรายชื่อ</button>
+    ${state.stakeholders.map(s=>`<p style="font-size:13px;margin-top:6px">${esc(s.name)} · ${esc(s.role)} · ${esc(s.org)}</p>`).join("")}
+    <div class="right"><button class="btn btn-primary" id="p0next" ${reqOk?"":"disabled"}>ถัดไป: วิเคราะห์ความต้องการ</button></div>
+  </div>`;
+}
+
+function phase1(){
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:12px">Phase 1: วิเคราะห์ความต้องการ</h3>
+    <div style="display:flex;gap:8px;margin-bottom:8px"><input id="reqT" placeholder="ข้อกำหนดเชิงหน้าที่"><input id="reqS" placeholder="แหล่งไฟล์ต้นทาง"><button class="btn btn-primary" id="addReq">เพิ่ม</button></div>
+    ${state.functional.map(i=>`<p style="font-size:13px">${esc(i.text)}${i.source?`<span class="muted"> · จาก ${esc(i.source)}</span>`:""}</p>`).join("")}
+    <label class="lbl">ความพร้อมใช้งาน</label><textarea id="av">${esc(state.availability)}</textarea>
+    <label class="lbl" style="margin-top:10px">ความมั่นคงปลอดภัย</label><textarea id="sec">${esc(state.security)}</textarea>
+    <label class="lbl" style="margin-top:10px">ประสิทธิภาพ</label><textarea id="perf">${esc(state.performance)}</textarea>
+    <div class="grid-3" style="margin:12px 0 8px"><input id="q" placeholder="คำถาม"><input id="a" placeholder="คำตอบ"><input id="qs" placeholder="แหล่งที่มา"></div>
+    <button class="btn btn-outline" id="addQa">เพิ่มคำถาม-คำตอบ</button>
+    ${state.qa.map(i=>`<p style="font-size:13px;margin-top:6px">Q: ${esc(i.q)} / A: ${esc(i.a)}</p>`).join("")}
+    <div class="flex-end"><button class="btn btn-secondary" id="p1back">ย้อนกลับ</button><button class="btn btn-primary" id="p1next">ถัดไป: ร่างเนื้อหา TOR</button></div>
+  </div>`;
+}
+
+function phase2(){
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy)">Phase 2: ร่างเนื้อหา TOR — 13 หมวดหลัก</h3>
+    <p class="muted" style="margin:4px 0 16px">คลิกแต่ละหมวดเพื่อกรอก ระบบแสดงแท็กจับคู่จาก Phase 0 — หมวดกฎหมายต้องกดยืนยันโดยเจ้าหน้าที่</p>
+    ${state.sections.map((s,i)=>{
+      const open=state.expanded===s.key;
+      const numCls=s.filled?"ok":open?"on":"";
+      return `<div class="sec"><div class="sec-rail"><div class="sec-num ${numCls}">${s.filled?"✓":i+1}</div>${i<12?`<div class="sec-line ${s.filled?"ok":""}"></div>`:""}</div>
+        <div class="sec-card ${open?"open":""}"><button type="button" class="sec-head" data-exp="${s.key}"><div>
+          <h3>หมวด ${s.key.slice(1)}: ${s.title}</h3>
+          <p class="muted">${s.filled?"กรอกแล้ว":"ยังไม่กรอก"}${s.hitl?" · ต้องให้เจ้าหน้าที่ยืนยัน":""}${s.hitl&&s.confirmed?" · ยืนยันแล้ว":""}</p>
+        </div><span class="muted">${open?"▴ ย่อ":"▾ ขยาย"}</span></button>
+        ${open?`<div class="sec-body">${s.subs?scopeHtml(s):`<label class="lbl">${s.title}</label><textarea data-body="${s.key}">${esc(s.content)}</textarea>`}
+          <div class="right" style="display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn btn-outline btn-sm" data-ai="${s.key}" ${state.busy?"disabled":""}>ร่างด้วย AI</button>
+            <button class="btn btn-outline btn-sm" data-save="${s.key}">บันทึกหมวดนี้</button>
+            ${s.hitl?`<button class="btn btn-primary btn-sm" data-hitl="${s.key}">เจ้าหน้าที่ยืนยันแล้ว</button>`:""}
+          </div></div>`:""}
+      </div></div>`;
+    }).join("")}
+    <div class="flex-end"><button class="btn btn-secondary" id="p2back">ย้อนกลับ</button><button class="btn btn-primary" id="p2next">ถัดไป: ทบทวน/อนุมัติ</button></div>
+  </div>`;
+}
+
+function scopeHtml(s){
+  return `<p class="muted">หมวด 4 แบ่งเป็น ${SCOPE.length} หัวข้อย่อย</p>
+    <div style="margin:8px 0">${s.subs.map(sub=>`<button type="button" class="chip ${sub.filled?"on":""} ${state.openSub===sub.key?"sel":""}" data-sub="${sub.key}">${sub.key.replace("s4.","4.")} ${sub.title}</button>`).join("")}</div>
+    ${(()=>{const open=s.subs.find(x=>x.key===state.openSub); return open?`<div style="border-left:3px solid var(--navy);background:#f9fafb;padding:12px;border-radius:8px"><label class="lbl">${open.title}</label><textarea data-subbody="${open.key}">${esc(open.content)}</textarea></div>`:""})()}`;
+}
+
+function phase3(){
+  const n=filledCount(), pct=Math.round(n/13*100), ready=pct===100 && hitlReady();
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">Phase 3: ทบทวนและอนุมัติ</h3>
+    <p>ความครบถ้วน: ${n}/13 หมวด</p>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="check ${pct===100?"pass":"warn"}"><strong>${pct===100?"ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน":"ยังกรอกไม่ครบทุกหมวด"}</strong></div>
+    <div class="check ${hitlReady()?"pass":"warn"}"><strong>${hitlReady()?"หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน":"ยังไม่ได้ยืนยันหมวด HITL"}</strong></div>
+    ${state.score!=null?`<div class="check pass"><strong>คะแนนคุณภาพ ${state.score}/100</strong></div>`:""}
+    <div class="flex-end"><button class="btn btn-secondary" id="p3back">ย้อนกลับไปแก้ไข</button>
+      <div style="display:flex;gap:8px"><button class="btn btn-outline" id="runRules">รัน Rule Engine</button>
+      <button class="btn btn-primary" id="submitRev" ${ready?"":"disabled"}>ส่งขออนุมัติ / สร้าง TOR</button></div></div>
+  </div>`;
+}
+
+function phase4(){
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">Phase 4: เผยแพร่</h3>
+    <p class="muted" style="margin-bottom:14px">ส่งออก Word หรือ PDF ตามมาตรฐานราชการ (TH Sarabun, พ.ศ.) การอัปโหลดเข้าระบบ e-Bidding เป็นขั้นตอนของเจ้าหน้าที่นอกแอปนี้</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" id="p4back">ย้อนกลับ</button>
+      <button class="btn btn-primary" id="expDocx">ส่งออก Word</button>
+      <button class="btn btn-primary" id="expPdf">ส่งออก PDF</button>
+    </div>
+    <p class="okmsg" id="expMsg"></p>
+  </div>`;
+}
+
+function reviewHtml(){
+  const laws=["พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560","ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560","คู่มือการจัดซื้อจัดจ้างตาม พ.ร.บ. 2560","มาตรฐาน e-Bidding กรมบัญชีกลาง","ประกาศราคากลาง (จากคลังความรู้)"];
+  return `<div class="two">
+    <div class="gov-card">
+      <h3 style="color:var(--navy);margin-bottom:12px">อัปโหลด TOR ที่ต้องการตรวจสอบ</h3>
+      <label class="upload"><input type="file" hidden id="revFile" accept=".pdf,.docx,.png,.jpg"><p>ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก</p><span>PDF, Word (.docx) หรือรูปภาพสแกน</span></label>
+      ${state.reviewFile?`<p class="muted">${esc(state.reviewFile)}</p>`:""}
+      <h3 style="color:var(--navy);margin:20px 0 8px">เอกสารอ้างอิงบังคับ</h3>
+      <div style="background:#f9fafb;border-radius:8px;padding:12px">${laws.map(n=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px"><span>${n}</span><span class="badge-req">บังคับ</span></div>`).join("")}</div>
+      <h3 style="color:var(--navy);margin:20px 0 8px">โครงการเปรียบเทียบ (Optional)</h3>
+      ${state.compares.map((c,i)=>`<div style="border:1px solid var(--border);background:#f9fafb;border-radius:10px;padding:12px;margin-bottom:10px">
+        <input data-cn="${i}" placeholder="ชื่อโครงการเปรียบเทียบ" value="${esc(c.name)}">
+        <label class="upload" style="margin-top:8px"><input type="file" hidden data-cf="${i}"><p>อัปโหลดไฟล์โครงการเปรียบเทียบ</p><span>PDF หรือ Word</span></label>
+        ${c.file?`<p class="muted">${esc(c.file)}</p>`:""}
+        <button class="btn btn-outline btn-sm" data-cdel="${i}">ลบ #${i+1}</button></div>`).join("")}
+      <button class="btn btn-outline btn-sm" id="addCmp">+ เพิ่มโครงการเปรียบเทียบ</button>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px" id="runRev" ${state.reviewFile?"":"disabled"}>เริ่มตรวจสอบ TOR</button>
+    </div>
+    <div class="gov-card">
+      <h3 style="color:var(--navy);margin-bottom:12px">ผลการตรวจสอบ</h3>
+      ${!state.reviewResult?`<p class="muted" style="text-align:center;padding:40px 0">อัปโหลดไฟล์ TOR แล้วกดเริ่มตรวจสอบเพื่อดูผล</p>`:
+        `<div class="check pass"><strong>คะแนนความพร้อม ${state.reviewResult.score}/100</strong></div>
+         ${state.reviewResult.findings.map(f=>`<div class="check ${f.tone}"><div><p style="font-weight:600">${esc(f.title)}</p><p class="muted">${esc(f.detail||"")}</p></div></div>`).join("")}`}
+    </div>
+  </div>`;
+}
+
+function helpHtml(){
+  const tabs=[["overview","ภาพรวม"],["dashboard","แดชบอร์ด"],["kb","ฐานความรู้"],["draft","ร่าง TOR"],["review","ตรวจสอบ"],["faq","FAQ"]];
+  const body={
+    overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3><p>ระบบช่วยเจ้าหน้าที่พัสดุร่างและตรวจสอบ TOR ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มี 13 หมวด และรองรับร่างด้วย AI (Gemma ในเครื่อง หรือคลาวด์)</p><div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>ฐานความรู้</span><span>ร่าง 5 Phase</span><span>ตรวจสอบ</span></div>`,
+    dashboard:`<h3 style="color:var(--navy);margin-bottom:8px">แดชบอร์ด</h3><p>การ์ดสถานะสามใบ: ร่าง / กำลังดำเนินการ / เสร็จแล้ว และตารางโครงการ</p><p>กดสร้างโครงการใหม่แล้วกรอกฟอร์มสร้างโครงการ แล้วเข้า Phase 0</p>`,
+    kb:`<h3 style="color:var(--navy);margin-bottom:8px">ฐานความรู้</h3><p>คลังกฎหมายกลาง เอกสารที่ผ่านการ chunk เข้า RAG และไฟล์ที่ผู้ใช้อัปโหลด</p>`,
+    draft:`<h3 style="color:var(--navy);margin-bottom:8px">กระบวนการร่าง 5 Phase</h3><div class="flow"><span>Phase 0 อัปโหลด</span><span>Phase 1 วิเคราะห์</span><span>Phase 2 13 หมวด</span><span>Phase 3 ทบทวน</span><span>Phase 4 ส่งออก</span></div><p>กดร่างด้วย AI ในแต่ละหมวด ช่องที่ระบบเติมจากไฟล์มีแท็กจับคู่ หมวดคุณสมบัติ งบ งวดจ่าย ค่าปรับ และเงื่อนไขอื่นต้องให้เจ้าหน้าที่ยืนยัน</p>`,
+    review:`<h3 style="color:var(--navy);margin-bottom:8px">ตรวจสอบ TOR</h3><p>อัปโหลดไฟล์ที่มีอยู่แล้ว ระบบอ้างอิงกฎหมายบังคับเสมอ เทียบเคียงไฟล์อื่นด้วย Jaccard และแสดงผลเป็นรายการผ่าน/เตือน/ไม่ผ่าน</p>`,
+    faq:`<h3 style="color:var(--navy);margin-bottom:8px">FAQ</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p>`
+  };
+  return `<div class="tabs">${tabs.map(([id,l])=>`<button type="button" class="tab ${state.helpTab===id?"on":""}" data-ht="${id}">${l}</button>`).join("")}</div>
+    <div class="gov-card">${body[state.helpTab]}</div>`;
+}
+
+function templatesHtml(){
+  return `<h1 style="color:var(--navy);font-size:24px;font-weight:800;margin-bottom:16px">จัดการแม่แบบ</h1>
+    <div class="gov-card" style="margin-bottom:16px"><h2 style="color:var(--navy);margin-bottom:10px">สร้างแม่แบบ</h2>
+      <label class="lbl">ชื่อ</label><input id="tn" lang="th">
+      <label class="lbl">ประเภท</label><select id="ti"><option value="it">IT</option><option value="construction">งานก่อสร้าง</option><option value="consulting">งานจ้างที่ปรึกษา</option><option value="general">จัดซื้อจัดจ้างทั่วไป</option></select>
+      <div class="right"><button class="btn btn-primary" id="saveTpl">บันทึกแม่แบบ</button></div></div>
+    ${state.templates.map(t=>`<div class="gov-card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><strong>${esc(t.name)}</strong><p class="muted">${t.industry} · ${t.status}</p></div>
+      <button class="btn btn-outline btn-sm" data-pub="${t.id}">${t.status==="published"?"เลิกเผยแพร่":"เผยแพร่"}</button></div>`).join("")}`;
+}
+
+function adminKbHtml(){
+  return `<h1 style="color:var(--navy);font-size:24px;font-weight:800;margin-bottom:16px">ฐานความรู้</h1>
+    <div class="gov-card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+      <select id="akbCat"><option value="law">กฎหมาย</option><option value="regulation">กฎกระทรวง</option><option value="guideline">ระเบียบ/หนังสือ</option><option value="manual">คู่มือ</option><option value="example_tor">ตัวอย่าง TOR</option></select>
+      <button class="btn btn-outline" id="reingest">ประมวลผลใหม่ทั้งชุด</button></div>
+      <label class="upload"><input type="file" hidden multiple id="akbUp"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือก</p><span>ผู้ดูแลอัปโหลดเข้าคลังแล้วแบ่ง chunk</span></label>
+      <p class="okmsg" id="akbMsg"></p></div>`;
+}
+
+function usersHtml(){
+  return `<h1 style="color:var(--navy);font-size:24px;font-weight:800;margin-bottom:16px">ผู้ใช้ระบบ</h1>
+    <div class="gov-card" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label class="lbl">ชื่อ</label><input id="un"></div><div><label class="lbl">อีเมล</label><input id="ue" type="email"></div>
+      <div><label class="lbl">รหัสผ่าน</label><input id="up" type="password" value="Passw0rd!"></div>
+      <div><label class="lbl">หน่วยงาน</label><input id="uo"></div>
+      <div><label class="lbl">บทบาท</label><select id="ur"><option value="officer">เจ้าหน้าที่</option><option value="reviewer">ผู้ตรวจสอบ</option><option value="admin">ผู้ดูแลระบบ</option></select></div>
+      <div style="display:flex;align-items:end"><button class="btn btn-primary" id="addUser">สร้างผู้ใช้</button></div>
+    </div>
+    ${state.users.map((u,i)=>`<div class="gov-card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><p style="font-weight:600">${esc(u.name)} ${u.disabled?"(ปิดใช้งาน)":""}</p><p class="muted">${esc(u.email)} · ${u.role} · ${esc(u.org)}</p></div>
+      <div style="display:flex;gap:8px"><select data-role="${i}"><option ${u.role==="officer"?"selected":""} value="officer">เจ้าหน้าที่</option><option ${u.role==="reviewer"?"selected":""} value="reviewer">ผู้ตรวจสอบ</option><option ${u.role==="admin"?"selected":""} value="admin">ผู้ดูแลระบบ</option></select>
+      <button class="btn btn-outline btn-sm" data-dis="${i}">${u.disabled?"เปิดใช้":"ปิดใช้"}</button></div></div>`).join("")}`;
+}
+
+function aiHtml(){
+  const local=state.ai.mode==="on_prem"||(state.ai.mode==="hybrid"&&["lm_studio","ollama","llama_cpp"].includes(state.ai.llm));
+  const cloud=state.ai.mode==="cloud"||state.ai.mode==="hybrid";
+  const llm=state.ai.mode==="on_prem"?[["lm_studio","LM Studio"],["ollama","Ollama"],["llama_cpp","llama.cpp / เซิร์ฟเวอร์กำหนดเอง"]]:state.ai.mode==="cloud"?[["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"]]:[["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"],["lm_studio","LM Studio"],["ollama","Ollama"]];
+  return `<div class="gov-card" style="margin-bottom:16px"><h1 style="color:var(--navy);font-size:24px;font-weight:800">การตั้งค่า AI</h1>
+    <p class="muted" style="margin-top:6px">ค่าเริ่มต้นคือรันในเครื่องผ่าน LM Studio ที่พอร์ต 1234 (Gemma + EmbeddingGemma-300M) การบันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend หากเปลี่ยนผู้ให้บริการหรือโมเดล embeddings ต้องประมวลผลฐานความรู้ใหม่</p></div>
+    ${state.aiMsg?`<div class="gov-card" style="background:#f0fdf4;color:#14532d;margin-bottom:16px">${esc(state.aiMsg)}</div>`:""}
+    <div class="gov-card" style="margin-bottom:16px">
+      <label class="lbl">โหมด</label><select id="aiMode"><option value="on_prem">รันในเครื่อง (Local)</option><option value="cloud">คลาวด์ (Cloud API)</option><option value="hybrid">ผสม (Hybrid)</option></select>
+      <label class="lbl" style="margin-top:10px">โมเดลแชท</label><select id="aiLlm">${llm.map(([v,l])=>`<option value="${v}" ${state.ai.llm===v?"selected":""}>${l}</option>`).join("")}</select>
+      <label class="lbl" style="margin-top:10px">Embeddings</label><select id="aiEmb"><option value="local">ในเครื่อง (OpenAI-compatible)</option><option value="openai">OpenAI embeddings</option><option value="gemini">Gemini embeddings</option></select>
+      <label class="lbl" style="margin-top:10px">คลังเวกเตอร์</label><select id="aiVec"><option value="pgvector">pgvector</option><option value="qdrant">Qdrant</option></select>
+    </div>
+    ${local?`<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">เซิร์ฟเวอร์ในเครื่อง</h2>
+      <label class="lbl">LM Studio URL</label><input id="lmUrl" value="${esc(state.ai.lm)}">
+      <label class="lbl">Ollama URL</label><input id="olUrl" value="${esc(state.ai.ollama)}">
+      <label class="lbl">llama.cpp / custom URL</label><input id="llUrl" value="${esc(state.ai.llama)}">
+      <label class="lbl">ชื่อโมเดลแชท</label><input id="chatM" value="${esc(state.ai.chat)}">
+      <label class="lbl">ชื่อโมเดล embeddings</label><input id="embM" value="${esc(state.ai.emb)}">
+      <label class="lbl">Timeout (วินาที)</label><input id="tmo" type="number" value="${state.ai.timeout}"></div>`:""}
+    ${cloud?`<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์</h2>
+      <label class="lbl">Anthropic API key</label><input type="password" placeholder="จำลอง — ไม่ส่งออก">
+      <label class="lbl">OpenAI API key</label><input type="password">
+      <label class="lbl">Gemini API key</label><input type="password"></div>`:""}
+    <div style="display:flex;gap:8px"><button class="btn btn-outline" id="aiTest">ทดสอบการเชื่อมต่อ</button><button class="btn btn-primary" id="aiSave">บันทึก</button></div>`;
+}
+
+function bindView(){
+  const v=document.getElementById("view");
+  v.querySelector("#btnNew")?.addEventListener("click",openNewProject);
+  v.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>projectAct(b.dataset.act,b.dataset.id)));
+  v.querySelectorAll("[data-kbt]").forEach(b=>b.addEventListener("click",()=>{state.kbType=b.dataset.kbt;renderShell();}));
+  v.querySelectorAll("[data-kbo]").forEach(b=>b.addEventListener("click",()=>{state.kbOpen=state.kbOpen===b.dataset.kbo?"":b.dataset.kbo;renderShell();}));
+  v.querySelectorAll(".upload input[data-doc]").forEach(inp=>inp.addEventListener("change",()=>{
+    const f=inp.files[0]; if(!f) return;
+    state.files.push({name:f.name,docClass:inp.dataset.doc,chars:Math.max(1200,Math.round(f.size/4)),status:"success"});
+    state.mapping=[{from:"วงเงิน",to:"s6"},{from:"ระยะเวลา",to:"s5"}];
+    state.proposed={s6:"12500000",s5:"270 วัน"};
+    renderShell();
+  }));
+  v.querySelectorAll("[data-rm]").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();state.files.splice(+a.dataset.rm,1);renderShell();}));
+  v.querySelector("#confirmMap")?.addEventListener("click",()=>{
+    const s6=state.sections.find(s=>s.key==="s6"); const s5=state.sections.find(s=>s.key==="s5");
+    if(s6){s6.content="วงเงินงบประมาณ 12,500,000 บาท รวมภาษีมูลค่าเพิ่ม"; s6.filled=true;}
+    if(s5){s5.content="ระยะเวลาดำเนินการ 270 วัน นับจากวันลงนามในสัญญา"; s5.filled=true;}
+    state.message="ยืนยันการจับคู่แล้ว"; renderShell();
+  });
+  v.querySelectorAll("[data-ck]").forEach(c=>c.addEventListener("change",()=>{state.checklist[c.dataset.ck]=c.checked;}));
+  v.querySelector("#addSt")?.addEventListener("click",()=>{
+    const name=document.getElementById("stName").value.trim(); if(!name) return;
+    state.stakeholders.push({name,role:document.getElementById("stRole").value,org:document.getElementById("stOrg").value});
+    renderShell();
+  });
+  v.querySelector("#p0next")?.addEventListener("click",()=>{state.phase=1;renderShell();});
+  v.querySelector("#addReq")?.addEventListener("click",()=>{
+    const t=document.getElementById("reqT").value.trim(); if(!t) return;
+    state.functional.push({text:t,source:document.getElementById("reqS").value}); renderShell();
+  });
+  v.querySelector("#addQa")?.addEventListener("click",()=>{
+    const q=document.getElementById("q").value.trim(); if(!q) return;
+    state.qa.push({q,a:document.getElementById("a").value,source:document.getElementById("qs").value}); renderShell();
+  });
+  v.querySelector("#p1back")?.addEventListener("click",()=>{state.phase=0;renderShell();});
+  v.querySelector("#p1next")?.addEventListener("click",()=>{
+    state.availability=document.getElementById("av").value; state.security=document.getElementById("sec").value; state.performance=document.getElementById("perf").value;
+    state.phase=2; renderShell();
+  });
+  v.querySelectorAll("[data-exp]").forEach(b=>b.addEventListener("click",()=>{state.expanded=state.expanded===b.dataset.exp?"":b.dataset.exp;renderShell();}));
+  v.querySelectorAll("[data-sub]").forEach(b=>b.addEventListener("click",()=>{state.openSub=state.openSub===b.dataset.sub?"":b.dataset.sub;renderShell();}));
+  v.querySelectorAll("[data-ai]").forEach(b=>b.addEventListener("click",()=>draftAi(b.dataset.ai)));
+  v.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>saveSec(b.dataset.save,false)));
+  v.querySelectorAll("[data-hitl]").forEach(b=>b.addEventListener("click",()=>saveSec(b.dataset.hitl,true)));
+  v.querySelector("#p2back")?.addEventListener("click",()=>{state.phase=1;renderShell();});
+  v.querySelector("#p2next")?.addEventListener("click",()=>{state.phase=3;renderShell();});
+  v.querySelector("#p3back")?.addEventListener("click",()=>{state.phase=2;renderShell();});
+  v.querySelector("#runRules")?.addEventListener("click",()=>{state.score=filledCount()===13?88:64;renderShell();});
+  v.querySelector("#submitRev")?.addEventListener("click",()=>{
+    const p=active(); if(p){p.status="in_review"; p.phase=3; p.updated=today();}
+    state.phase=4; renderShell();
+  });
+  v.querySelector("#p4back")?.addEventListener("click",()=>{state.phase=3;renderShell();});
+  v.querySelector("#expDocx")?.addEventListener("click",()=>fakeExport("Word (.docx)"));
+  v.querySelector("#expPdf")?.addEventListener("click",()=>fakeExport("PDF"));
+  v.querySelectorAll("[data-phase]").forEach(b=>b.addEventListener("click",()=>{state.phase=+b.dataset.phase;renderShell();}));
+  v.querySelector("#revFile")?.addEventListener("change",e=>{state.reviewFile=e.target.files[0]?.name||null;renderShell();});
+  v.querySelector("#addCmp")?.addEventListener("click",()=>{state.compares.push({name:"",file:null});renderShell();});
+  v.querySelectorAll("[data-cdel]").forEach(b=>b.addEventListener("click",()=>{state.compares.splice(+b.dataset.cdel,1);renderShell();}));
+  v.querySelectorAll("[data-cn]").forEach(i=>i.addEventListener("input",()=>{state.compares[+i.dataset.cn].name=i.value;}));
+  v.querySelectorAll("[data-cf]").forEach(i=>i.addEventListener("change",()=>{state.compares[+i.dataset.cf].file=i.files[0]?.name||null;renderShell();}));
+  v.querySelector("#runRev")?.addEventListener("click",()=>{
+    state.reviewResult={score:82,findings:[
+      {tone:"pass",title:"อ้างอิง พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 ครบ",detail:"s1"},
+      {tone:"warn",title:"งวดจ่ายรวมไม่เท่ากับ 100% หากไม่ระบุร้อยละ",detail:"แนะนำระบุร้อยละแต่ละงวดในหมวด 8"},
+      {tone:"pass",title:"เทียบเคียงโครงการตัวอย่าง Jaccard 0.61",detail:"สูงกว่าเกณฑ์ 0.50"}
+    ]}; renderShell();
+  });
+  v.querySelectorAll("[data-ht]").forEach(b=>b.addEventListener("click",()=>{state.helpTab=b.dataset.ht;renderShell();}));
+  v.querySelector("#saveTpl")?.addEventListener("click",()=>{
+    const n=document.getElementById("tn").value.trim(); if(!n) return;
+    state.templates.push({id:"t"+Date.now(),name:n,industry:document.getElementById("ti").value,status:"draft"}); renderShell();
+  });
+  v.querySelectorAll("[data-pub]").forEach(b=>b.addEventListener("click",()=>{
+    const t=state.templates.find(x=>x.id===b.dataset.pub); if(t) t.status=t.status==="published"?"draft":"published"; renderShell();
+  }));
+  v.querySelector("#reingest")?.addEventListener("click",()=>{document.getElementById("akbMsg").textContent="เริ่มประมวลผลทั้งคลัง (จำลอง)";});
+  v.querySelector("#akbUp")?.addEventListener("change",()=>{document.getElementById("akbMsg").textContent="อัปโหลดแล้ว — กำลังประมวลผล";});
+  v.querySelector("#addUser")?.addEventListener("click",()=>{
+    const name=document.getElementById("un").value.trim(), email=document.getElementById("ue").value.trim();
+    if(!name||!email) return;
+    state.users.push({name,email,role:document.getElementById("ur").value,org:document.getElementById("uo").value,disabled:false}); renderShell();
+  });
+  v.querySelectorAll("[data-role]").forEach(s=>s.addEventListener("change",()=>{state.users[+s.dataset.role].role=s.value;}));
+  v.querySelectorAll("[data-dis]").forEach(b=>b.addEventListener("click",()=>{state.users[+b.dataset.dis].disabled=!state.users[+b.dataset.dis].disabled;renderShell();}));
+  v.querySelector("#aiMode")?.addEventListener("change",e=>{state.ai.mode=e.target.value; if(e.target.value==="on_prem") state.ai.llm="lm_studio"; if(e.target.value==="cloud") state.ai.llm="claude"; renderShell();});
+  v.querySelector("#aiTest")?.addEventListener("click",()=>{state.aiMsg="เชื่อมต่อได้ (จำลอง) — LM Studio google/gemma-4-e4b"; renderShell();});
+  v.querySelector("#aiSave")?.addEventListener("click",()=>{
+    ["lmUrl","olUrl","llUrl","chatM","embM","tmo"].forEach(id=>{const el=document.getElementById(id); if(!el) return;});
+    if(document.getElementById("lmUrl")) state.ai.lm=document.getElementById("lmUrl").value;
+    if(document.getElementById("chatM")) state.ai.chat=document.getElementById("chatM").value;
+    state.aiMsg="บันทึกแล้ว (จำลองในเบราว์เซอร์)"; renderShell();
+  });
+  v.querySelectorAll("label.upload input").forEach(inp=>{
+    if(inp.id==="revFile"||inp.dataset.doc||inp.dataset.cf||inp.id==="akbUp") return;
+    inp.addEventListener("change",()=>{
+      if(state.user?.role!=="admin"){ const m=document.getElementById("kbMsg"); if(m) m.textContent="การอัปโหลดคลังกฎหมายสงวนไว้สำหรับผู้ดูแลระบบ"; return;}
+      const m=document.getElementById("kbMsg"); if(m) m.textContent="อัปโหลดแล้ว — กำลังประมวลผล";
+    });
+  });
+}
+
+function today(){return new Date().toISOString().slice(0,10)}
+function projectAct(act,id){
+  const p=state.projects.find(x=>x.id===id); if(!p) return;
+  if(act==="approve"){p.status="approved"; p.updated=today();}
+  if(act==="reject"){p.status="rejected"; p.updated=today();}
+  if(act==="arch"){state.projects=state.projects.filter(x=>x.id!==id);}
+  if(act==="edit"||act==="view"){state.activeId=id; location.hash="#/draft"; return;}
+  renderShell();
+}
+function saveSec(key,confirm){
+  const s=state.sections.find(x=>x.key===key); if(!s) return;
+  const ta=document.querySelector(`[data-body="${key}"]`);
+  if(ta) s.content=ta.value;
+  if(s.subs){
+    s.subs.forEach(sub=>{const t=document.querySelector(`[data-subbody="${sub.key}"]`); if(t){sub.content=t.value; sub.filled=!!t.value.trim();}});
+    s.content=s.subs.filter(x=>x.filled).map(x=>x.title+": "+x.content).join("\n");
+    s.filled=s.subs.some(x=>x.filled);
+  } else s.filled=!!(s.content||"").trim();
+  if(confirm) s.confirmed=true;
+  renderShell();
+}
+function draftAi(key){
+  const s=state.sections.find(x=>x.key===key); if(!s) return;
+  state.busy=true; renderShell();
+  setTimeout(()=>{
+    if(s.subs){s.subs.forEach(sub=>{if(!sub.content){sub.content="(ร่างจำลอง) "+sub.title+" ของโครงการ "+(active()?.name||""); sub.filled=true;}});}
+    s.content=AI_DRAFT[key]||""; s.filled=true; state.busy=false; state.expanded=key; renderShell();
+  },600);
+}
+function fakeExport(kind){
+  const el=document.getElementById("expMsg"); if(el) el.textContent="จำลองการส่งออก "+kind+" — ไฟล์จริงสร้างจากแอป Docker เท่านั้น";
+}
+function openNewProject(){
+  const m=document.getElementById("modal");
+  m.classList.remove("hidden");
+  m.innerHTML=`<div class="modal"><h2>สร้างโครงการใหม่</h2><p class="desc">กรอกข้อมูลพื้นฐานแล้วเข้าสู่กระบวนการร่าง TOR แบบ 5 Phase</p>
+    <p class="err hidden" id="npErr"></p>
+    <label class="lbl">ชื่อโครงการ</label><input id="npName" lang="th">
+    <label class="lbl">หน่วยงาน</label><input id="npMin" lang="th">
+    <label class="lbl">งบประมาณ (บาท)</label><input id="npBud" inputmode="numeric">
+    <label class="lbl">ประเภท</label><select id="npType"><option value="it">ระบบเทคโนโลยีสารสนเทศ</option><option value="construction">งานก่อสร้าง</option><option value="consulting">งานจ้างที่ปรึกษา</option><option value="general" selected>จัดซื้อจัดจ้างทั่วไป</option></select>
+    <label class="lbl">แม่แบบ</label><select id="npTpl"><option value="">-- ไม่เลือก --</option>${state.templates.filter(t=>t.status==="published").map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select>
+    <div class="modal-actions"><button class="btn btn-outline" id="npCancel">ยกเลิก</button><button class="btn btn-primary" id="npGo">สร้างและเริ่มร่าง</button></div></div>`;
+  m.querySelector("#npCancel").onclick=()=>m.classList.add("hidden");
+  m.onclick=e=>{if(e.target===m) m.classList.add("hidden");};
+  m.querySelector("#npGo").onclick=()=>{
+    const name=document.getElementById("npName").value.trim();
+    const ministry=document.getElementById("npMin").value.trim();
+    const raw=document.getElementById("npBud").value.replaceAll(",","").trim();
+    if(!name||!ministry||!/^[0-9]+$/.test(raw)||+raw<1){document.getElementById("npErr").textContent="กรุณากรอกชื่อโครงการ หน่วยงาน และงบประมาณ"; document.getElementById("npErr").classList.remove("hidden"); return;}
+    const id="p"+Date.now();
+    state.projects.unshift({id,name,ministry,budget:+raw,status:"draft",updated:today(),phase:0});
+    state.activeId=id; state.phase=0; state.sections=emptySections(); state.files=[]; state.mapping=[]; state.proposed={}; state.score=null;
+    m.classList.add("hidden"); location.hash="#/draft";
+  };
+}
+
+function ensureDraftProject(){
+  if(state.projects.length) return;
+  const id="p"+Date.now();
+  state.projects.push({id,name:"โครงการใหม่ #1",ministry:state.user?.org||"หน่วยงาน",budget:1,status:"draft",updated:today(),phase:0});
+  state.activeId=id;
+}
+
+function route(){
+  const h=(location.hash||"#/login").replace(/^#\//,"");
+  if(!state.user && h!=="login" && h!=="register"){ showAuth("login"); return; }
+  if(!state.user){ showAuth(h==="register"?"register":"login"); return; }
+  document.getElementById("auth").style.display="none";
+  document.getElementById("app").style.display="block";
+  const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","review":"review","help":"help",
+    "admin/templates":"templates","admin/knowledge-base":"adminkb","admin/users":"users","admin/ai-settings":"ai"};
+  state.page=map[h]||"projects";
+  if(state.page==="draft") ensureDraftProject();
+  if(state.page.startsWith("admin")||["templates","adminkb","users","ai"].includes(state.page)){
+    if(state.user.role!=="admin"){ location.hash="#/projects"; return; }
+  }
+  renderShell();
+}
+function showAuth(which){
+  document.getElementById("app").style.display="none";
+  document.getElementById("auth").style.display="flex";
+  document.getElementById("loginPanel").classList.toggle("hidden", which!=="login");
+  document.getElementById("registerPanel").classList.toggle("hidden", which!=="register");
+}
+
+document.getElementById("loginForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const email=document.getElementById("email").value.trim();
+  const password=document.getElementById("password").value;
+  const err=document.getElementById("loginErr");
+  if(!email){err.textContent="กรุณากรอกอีเมล"; err.classList.remove("hidden"); return;}
+  if(!password){err.textContent="กรุณากรอกรหัสผ่าน"; err.classList.remove("hidden"); return;}
+  const acc=ACCOUNTS[email] || state.extraUsers.find(u=>u.email===email);
+  if(!acc || password!==DEMO_PASS && password!==acc.password){err.textContent="อีเมลหรือรหัสผ่านไม่ถูกต้อง"; err.classList.remove("hidden"); return;}
+  state.user={email,name:acc.name,role:acc.role,org:acc.org}; location.hash="#/projects";
+});
+document.getElementById("regForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const err=document.getElementById("regErr");
+  const name=document.getElementById("regName").value.trim();
+  const email=document.getElementById("regEmail").value.trim();
+  const p=document.getElementById("regPass").value, p2=document.getElementById("regPass2").value;
+  const org=document.getElementById("regOrg").value.trim();
+  if(!name){err.textContent="กรุณากรอกชื่อ-นามสกุล"; err.classList.remove("hidden"); return;}
+  if(!email){err.textContent="กรุณากรอกอีเมล"; err.classList.remove("hidden"); return;}
+  if(p.length<8){err.textContent="รหัสผ่านไม่ตรงตามเงื่อนไขที่กำหนด"; err.classList.remove("hidden"); return;}
+  if(p!==p2){err.textContent="รหัสผ่านยืนยันไม่ตรงกัน"; err.classList.remove("hidden"); return;}
+  if(!org){err.textContent="กรุณากรอกหน่วยงาน"; err.classList.remove("hidden"); return;}
+  state.extraUsers.push({email,name,role:"officer",org,password:p});
+  showAuth("login");
+  document.getElementById("loginErr").classList.add("hidden");
+  const ok=document.createElement("div"); ok.className="auth-ok"; ok.textContent="สมัครสำเร็จ — เข้าสู่ระบบได้";
+  document.getElementById("loginPanel").insertBefore(ok, document.getElementById("loginForm"));
+});
+document.getElementById("toRegister").onclick=()=>{location.hash="#/register";};
+document.getElementById("toLogin").onclick=()=>{location.hash="#/login";};
+document.getElementById("logoutBtn").onclick=()=>{state.user=null; location.hash="#/login";};
+window.addEventListener("hashchange",route);
+if(!location.hash) location.hash="#/login";
+route();
+</script>
+</body>
+</html>
