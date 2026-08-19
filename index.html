@@ -185,7 +185,7 @@ tr:hover td{background:#f9fafb}
       <div class="field"><label class="lbl" for="password">รหัสผ่าน</label><input id="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
       <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center">เข้าสู่ระบบ</button>
     </form>
-    <div class="demo-box">Demo: officer@example.go.th / Passw0rd!<br>admin@example.go.th · reviewer@example.go.th</div>
+    <div class="demo-box">บัญชีทดลอง: officer@example.go.th / Passw0rd!<br>admin@example.go.th · reviewer@example.go.th</div>
     <p class="auth-foot">ยังไม่มีบัญชี? <a id="toRegister">สมัครสมาชิก</a></p>
     <p class="auth-foot" style="margin-top:8px;font-size:11.5px">หน้านี้เป็น GitHub Pages จำลอง UI ของแอปจริง — ไม่เรียก API / LLM</p>
   </div>
@@ -212,11 +212,11 @@ tr:hover td{background:#f9fafb}
       <div><h1>TOR Generator</h1><p>ระบบจัดซื้อจัดจ้างภาครัฐ</p></div>
     </div>
     <nav id="nav"></nav>
-    <p class="sidebar-foot">v0.2.1 — Gemma ในเครื่อง หรือคลาวด์เมื่อใส่ API key (Anthropic / OpenAI / Gemini / Bedrock / Azure)</p>
+    <p class="sidebar-foot">v0.2.2 — Gemma ในเครื่อง หรือคลาวด์เมื่อใส่ API key (Anthropic / OpenAI / Gemini / Bedrock / Azure)</p>
     <button class="logout" type="button" id="logoutBtn">ออกจากระบบ</button>
   </aside>
   <div class="main">
-    <div class="sim-banner">จำลองบน GitHub Pages v0.2.1 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, Agent API เอกสาร) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
+    <div class="sim-banner">จำลองบน GitHub Pages v0.2.2 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, Agent API เอกสาร) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
     <header class="topbar">
       <div><h1 id="pageTitle">แดชบอร์ด</h1><p class="sub" id="pageSub">ภาพรวมโครงการ TOR ทั้งหมด</p></div>
       <div class="user-chip"><span id="userEmail"></span><div class="avatar" id="userAv">?</div></div>
@@ -277,7 +277,7 @@ const META = {
   templates:["แม่แบบ","โครงร่าง TOR ตามประเภทงาน"],
   adminkb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG"],
   users:["ผู้ใช้","บัญชีเจ้าหน้าที่และสิทธิ์"],
-  ai:["การตั้งค่า AI","เลือกแชทและ embeddings อิสระ (ในเครื่อง / คลาวด์)"],
+  ai:["การตั้งค่า AI","เลือกแชทและฝังเวกเตอร์อิสระ (ในเครื่อง / คลาวด์)"],
   agent:["Agent API","เส้นทาง /api/v1/agent และ /kb-chat — ยังไม่มีหน้า Next.js"]
 };
 const ACCOUNTS = {
@@ -857,7 +857,7 @@ function phase3(){
     <p>ความครบถ้วน: ${n}/13 หมวด</p>
     <div class="bar"><i style="width:${pct}%"></i></div>
     <div class="check ${pct===100?"pass":"warn"}"><strong>${pct===100?"ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน":"ยังกรอกไม่ครบทุกหมวด"}</strong></div>
-    <div class="check ${hitlReady()?"pass":"warn"}"><strong>${hitlReady()?"หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน":"ยังไม่ได้ยืนยันหมวด HITL"}</strong></div>
+    <div class="check ${hitlReady()?"pass":"warn"}"><strong>${hitlReady()?"หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน":"ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ"}</strong></div>
     ${state.score!=null?`<div class="check pass"><strong>คะแนนคุณภาพ ${state.score}/100</strong></div>`:""}
     <div class="flex-end"><button class="btn btn-secondary" id="p3back">ย้อนกลับไปแก้ไข</button>
       <div style="display:flex;gap:8px"><button class="btn btn-outline" id="runRules">รัน Rule Engine</button>
@@ -953,29 +953,29 @@ function agentHtml(){
   </div>
   <div class="gov-card" style="margin-bottom:16px">
     <h3 style="color:var(--navy);margin-bottom:8px">ลำดับงาน</h3>
-    <div class="flow"><span>ingest</span><span>แผนที่ 27 ช่อง</span><span>ถามส่วนขาด</span><span>ร่าง s1–s13</span><span>HITL</span><span>ส่งออก</span></div>
+    <div class="flow"><span>รับเอกสาร</span><span>แผนที่ 27 ช่อง</span><span>ถามส่วนขาด</span><span>ร่าง s1–s13</span><span>เจ้าหน้าที่ตรวจ</span><span>ส่งออก</span></div>
     <p class="muted" style="margin-top:10px">สูงสุด 20 ไฟล์ / 50 MB, รองรับ PPTX, ถามครั้งละไม่เกิน 5 ข้อ, ยืนยัน s3 s6 s8 s10 s13 ก่อนส่งออก</p>
   </div>
   <div class="gov-card">
     <h3 style="color:var(--navy);margin-bottom:8px">โมเดลท้องถิ่นและคลาวด์</h3>
     <p>ค่าเริ่มต้น: LM Studio google/gemma-4-e4b + EmbeddingGemma-300M (ข้อมูลไม่ออกเครื่อง)</p>
-    <p>สลับคลาวด์จากหน้าผู้ดูแลเมื่อมี API key โดยไม่บังคับสลับ embeddings: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible</p>
+    <p>สลับคลาวด์จากหน้าผู้ดูแลเมื่อมี API key โดยไม่บังคับสลับฝังเวกเตอร์: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible</p>
     <p class="muted">ถาม-ตอบคลังแยก <code>/api/v1/kb-chat</code> ไม่แทนเมนูถาม-ตอบ <code>/chat</code></p>
   </div>`;
 }
 
 function helpHtml(){
-  const tabs=[["overview","ภาพรวม","dash"],["login","เข้าสู่ระบบ","users"],["dashboard","แดชบอร์ด","dash"],["draft","ร่าง TOR","pen"],["chat","ถาม-ตอบ","chat"],["kb","ฐานความรู้","book"],["review","ตรวจสอบ","scan"],["admin","ผู้ดูแล","cpu"],["faq","FAQ","help"]];
+  const tabs=[["overview","ภาพรวม","dash"],["login","เข้าสู่ระบบ","users"],["dashboard","แดชบอร์ด","dash"],["draft","ร่าง TOR","pen"],["chat","ถาม-ตอบ","chat"],["kb","ฐานความรู้","book"],["review","ตรวจสอบ","scan"],["admin","ผู้ดูแล","cpu"],["faq","คำถามที่พบบ่อย","help"]];
   const body={
     overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3><p>ระบบช่วยเจ้าหน้าที่พัสดุร่างและตรวจสอบ TOR ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มี 13 หมวด แชทร่างใน Phase 0–1 และถาม-ตอบคลังความรู้แยกต่างหาก v0.2 เพิ่มเส้นทาง API agent ขนาน (ยังไม่มีหน้าจอแอป)</p><div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>แชทร่าง 5 Phase</span><span>ถาม-ตอบ</span><span>ตรวจสอบ</span></div>`,
     login:`<h3 style="color:var(--navy);margin-bottom:8px">เข้าสู่ระบบ</h3><p>บัญชีทดลอง officer@example.go.th / Passw0rd! — ผู้ดูแล admin@ และผู้ตรวจ reviewer@ ใช้รหัสเดียวกัน</p><p class="muted">สมัครสมาชิกได้ที่หน้าสมัคร บัญชีใหม่ได้บทบาทเจ้าหน้าที่</p>`,
     dashboard:`<h3 style="color:var(--navy);margin-bottom:8px">แดชบอร์ด</h3><p>การ์ดสถานะสามใบ: ร่าง / กำลังดำเนินการ / เสร็จแล้ว และตารางโครงการ</p><p>กดสร้างโครงการใหม่แล้วกรอกฟอร์มสร้างโครงการ แล้วเข้า Phase 0 (แชทอัปโหลดชุดใหญ่)</p>`,
     kb:`<h3 style="color:var(--navy);margin-bottom:8px">ฐานความรู้</h3><p>คลังบังคับมาจากคู่มือแนวปฏิบัติและโฟลเดอร์ข้อมูลดิบ เจ้าหน้าที่อัปโหลดเอกสารของตนเองได้ที่หน้านี้ (เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลาง</p>`,
-    draft:`<h3 style="color:var(--navy);margin-bottom:8px">กระบวนการร่าง 5 Phase</h3><div class="flow"><span>Phase 0 อัปโหลดชุดใหญ่</span><span>Phase 1 แชทถามส่วนขาด</span><span>Phase 2 13 หมวด</span><span>Phase 3 ทบทวน HITL</span><span>Phase 4 ส่งออก</span></div><p>Phase 0–1 เป็นแชทโครงการ — อัปโหลดหลายไฟล์ได้โดยไม่ต้องเลือก 9 ประเภท บอทจัดเข้า s1–s13 และ s4.1–s4.14 เมื่อครบเกณฑ์กดพร้อมร่าง แล้วเข้า Phase 2</p>`,
+    draft:`<h3 style="color:var(--navy);margin-bottom:8px">กระบวนการร่าง 5 Phase</h3><div class="flow"><span>Phase 0 อัปโหลดชุดใหญ่</span><span>Phase 1 แชทถามส่วนขาด</span><span>Phase 2 13 หมวด</span><span>Phase 3 ทบทวนโดยเจ้าหน้าที่</span><span>Phase 4 ส่งออก</span></div><p>Phase 0–1 เป็นแชทโครงการ — อัปโหลดหลายไฟล์ได้โดยไม่ต้องเลือก 9 ประเภท บอทจัดเข้า s1–s13 และ s4.1–s4.14 เมื่อครบเกณฑ์กดพร้อมร่าง แล้วเข้า Phase 2</p>`,
     chat:`<h3 style="color:var(--navy);margin-bottom:8px">ถาม-ตอบ</h3><p>เมนูการทำงาน → ถาม-ตอบ เปิดห้องแชทรายคน ค้นคลังกลางและเอกสารของฉันด้วย RAG + กราฟกฎหมาย ประวัติไม่ปนกับแชทร่างโครงการ</p>`,
     review:`<h3 style="color:var(--navy);margin-bottom:8px">ตรวจสอบ TOR</h3><p>อัปโหลดไฟล์ที่มีอยู่แล้ว ระบบอ้างอิงกฎหมายบังคับเสมอ เทียบเคียงไฟล์อื่นด้วย Jaccard และแสดงผลเป็นรายการผ่าน/เตือน/ไม่ผ่าน</p>`,
-    admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3><p>หน้าแม่แบบ ผู้ใช้ และการตั้งค่า AI — เลือกแชทและ embeddings คนละตัวได้ เช่น Claude + EmbeddingGemma ในเครื่อง คีย์ใส่ในหน้านี้ บันทึกแล้วมีผลทันที</p>`,
-    faq:`<h3 style="color:var(--navy);margin-bottom:8px">FAQ</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p><p>LLM ไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลด google/gemma-4-e4b และ text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่การตั้งค่า AI โดยคง embeddings ในเครื่องได้</p><p>Agent API: POST /api/v1/agent/sessions (multipart) และ /api/v1/kb-chat — ใช้โมเดลในเครื่องหรือคีย์คลาวด์จากหน้าการตั้งค่า AI</p>`
+    admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3><p>หน้าแม่แบบ ผู้ใช้ และการตั้งค่า AI — เลือกแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude + EmbeddingGemma ในเครื่อง คีย์ใส่ในหน้านี้ บันทึกแล้วมีผลทันที</p>`,
+    faq:`<h3 style="color:var(--navy);margin-bottom:8px">คำถามที่พบบ่อย</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p><p>โมเดลไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลด google/gemma-4-e4b และ text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่การตั้งค่า AI โดยคงฝังเวกเตอร์ในเครื่องได้</p><p>เส้นทาง API ตัวแทน: POST /api/v1/agent/sessions (multipart) และ /api/v1/kb-chat — ใช้โมเดลในเครื่องหรือคีย์คลาวด์จากหน้าการตั้งค่า AI</p>`
   };
   const tabsHtml = tabs
     .map(([id, l, icon]) => {
@@ -1069,7 +1069,7 @@ function htmlOption(value, label, current){
 function aiLocalCardHtml(){
   const server=state.ai.embedServer||"lm_studio";
   return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">เซิร์ฟเวอร์ในเครื่อง</h2>'+
-    '<label class="lbl">เซิร์ฟเวอร์ embeddings ในเครื่อง</label>'+
+    '<label class="lbl">เซิร์ฟเวอร์ฝังเวกเตอร์ในเครื่อง</label>'+
     '<select id="embSrv">'+
       htmlOption("lm_studio","LM Studio",server)+
       htmlOption("ollama","Ollama",server)+
@@ -1079,7 +1079,7 @@ function aiLocalCardHtml(){
     '<label class="lbl">Ollama URL</label><input id="olUrl" value="'+esc(state.ai.ollama)+'">'+
     '<label class="lbl">llama.cpp / custom URL</label><input id="llUrl" value="'+esc(state.ai.llama)+'">'+
     '<label class="lbl">ชื่อโมเดลแชท</label><input id="chatM" value="'+esc(state.ai.chat)+'">'+
-    '<label class="lbl">ชื่อโมเดล embeddings</label><input id="embM" value="'+esc(state.ai.emb)+'">'+
+    '<label class="lbl">ชื่อโมเดลฝังเวกเตอร์</label><input id="embM" value="'+esc(state.ai.emb)+'">'+
     '<label class="lbl">Timeout (วินาที)</label><input id="tmo" type="number" value="'+state.ai.timeout+'"></div>';
 }
 function aiCloudCardHtml(){
@@ -1108,22 +1108,22 @@ function aiHtml(){
   if(!localChat||!localEmb) cloudHtml=aiCloudCardHtml();
   const llmOptionsHtml=llm.map(function(pair){return htmlOption(pair[0],pair[1],state.ai.llm);}).join("");
   return '<div class="gov-card" style="margin-bottom:16px"><h1 style="color:var(--navy);font-size:24px;font-weight:800">การตั้งค่า AI</h1>'+
-    '<p class="muted" style="margin-top:6px">เลือกโมเดลแชทและ embeddings คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ การบันทึกมีผลทันที หากเปลี่ยน embeddings ต้องประมวลผลฐานความรู้ใหม่</p></div>'+
+    '<p class="muted" style="margin-top:6px">เลือกโมเดลแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ การบันทึกมีผลทันที หากเปลี่ยนฝังเวกเตอร์ ต้องประมวลผลฐานความรู้ใหม่</p></div>'+
     aiMsgHtml+
     '<div class="gov-card" style="margin-bottom:16px">'+
       '<label class="lbl">โหมด</label><select id="aiMode">'+
-        htmlOption("on_prem","รันในเครื่อง (Local)",state.ai.mode)+
-        htmlOption("cloud","คลาวด์ (Cloud API)",state.ai.mode)+
-        htmlOption("hybrid","ผสม (Hybrid) — แนะนำเมื่อใช้คนละแหล่ง",state.ai.mode)+
+        htmlOption("on_prem","รันในเครื่อง",state.ai.mode)+
+        htmlOption("cloud","คลาวด์ (API ภายนอก)",state.ai.mode)+
+        htmlOption("hybrid","ผสม — แนะนำเมื่อใช้คนละแหล่ง",state.ai.mode)+
       '</select>'+
       '<label class="lbl" style="margin-top:10px">โมเดลแชท</label><select id="aiLlm">'+llmOptionsHtml+'</select>'+
-      '<label class="lbl" style="margin-top:10px">Embeddings</label><select id="aiEmb">'+
+      '<label class="lbl" style="margin-top:10px">ฝังเวกเตอร์</label><select id="aiEmb">'+
         htmlOption("local","ในเครื่อง (OpenAI-compatible)",state.ai.embed)+
-        htmlOption("openai","OpenAI embeddings",state.ai.embed)+
-        htmlOption("gemini","Gemini embeddings",state.ai.embed)+
-        htmlOption("bedrock","Bedrock (Titan)",state.ai.embed)+
-        htmlOption("azure_foundry","Azure Foundry embeddings",state.ai.embed)+
-        htmlOption("openai_compatible","OpenAI-compatible embeddings",state.ai.embed)+
+        htmlOption("openai","ฝังเวกเตอร์ OpenAI",state.ai.embed)+
+        htmlOption("gemini","ฝังเวกเตอร์ Gemini",state.ai.embed)+
+        htmlOption("bedrock","ฝังเวกเตอร์ Bedrock (Titan)",state.ai.embed)+
+        htmlOption("azure_foundry","ฝังเวกเตอร์ Azure Foundry",state.ai.embed)+
+        htmlOption("openai_compatible","ฝังเวกเตอร์แบบ OpenAI-compatible",state.ai.embed)+
       '</select>'+
       '<label class="lbl" style="margin-top:10px">คลังเวกเตอร์</label><select id="aiVec">'+
         htmlOption("pgvector","pgvector",state.ai.vector)+
@@ -1302,7 +1302,7 @@ function bindView(){
   v.querySelector("#aiTest")?.addEventListener("click",()=>{
     const chat=state.ai.llm;
     const emb=state.ai.embed;
-    state.aiMsg="เชื่อมต่อ: แชท "+chat+" · embeddings "+emb+" (จำลอง — ไม่เรียก API จริง)";
+    state.aiMsg="เชื่อมต่อ: แชท "+chat+" · ฝังเวกเตอร์ "+emb+" (จำลอง — ไม่เรียก API จริง)";
     renderShell();
   });
   v.querySelector("#aiSave")?.addEventListener("click",()=>{
@@ -1314,7 +1314,7 @@ function bindView(){
     if(document.getElementById("tmo")) state.ai.timeout=Number(document.getElementById("tmo").value)||180;
     if(document.getElementById("aiLlm")) state.ai.llm=document.getElementById("aiLlm").value;
     if(document.getElementById("aiEmb")) state.ai.embed=document.getElementById("aiEmb").value;
-    state.aiMsg="บันทึกแล้ว (จำลองในเบราว์เซอร์) — แชท "+state.ai.llm+" · embeddings "+state.ai.embed;
+    state.aiMsg="บันทึกแล้ว (จำลองในเบราว์เซอร์) — แชท "+state.ai.llm+" · ฝังเวกเตอร์ "+state.ai.embed;
     renderShell();
   });
   v.querySelector("#kbMineUp")?.addEventListener("change",()=>{
