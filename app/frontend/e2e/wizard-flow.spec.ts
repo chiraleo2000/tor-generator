@@ -22,14 +22,14 @@ test.describe("TOR 5-phase draft", () => {
   });
 
   test("Phase 2 AI draft uses LM Studio Gemma", async ({ page }) => {
-    test.setTimeout(360_000);
+    test.setTimeout(420_000);
     await login(page);
     await createProjectAndOpenDraft(page);
     await unlockPhase2ViaMockedIntake(page);
     const aiButton = page.getByTestId("draft-ai-s1");
     await expect(aiButton).toBeVisible();
     await aiButton.click();
-    await expect(aiButton).toBeEnabled({ timeout: 180_000 });
+    await expect(aiButton).toBeEnabled({ timeout: 360_000 });
     await expect(page.getByText("ร่างด้วย AI ไม่สำเร็จ")).toHaveCount(0);
     await saveEvidence(page, "08-phase-2-ai-draft");
   });

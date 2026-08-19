@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import infra as runtime
 from app.api.constants import MIME_DOCX, MIME_PDF, MIME_TXT
 from app.deps import get_current_user, get_db, get_minio
 from app.domain.corpus import (
@@ -35,8 +36,6 @@ from app.domain.corpus import (
 )
 from app.domain.file_magic import require_kb_upload
 from app.exceptions import NotFoundError, ValidationError
-from app.infra import mongo_client, neo4j_driver
-from app.infra import session_factory as infra_session_factory
 from app.io_temp import unlink_path, write_temp_bytes
 from app.models.kb_chunk import KBChunk
 from app.models.knowledge_base_document import KnowledgeBaseDocument
@@ -90,15 +89,15 @@ def _validate_kb_bytes(file_content: bytes, claimed_mime: str, filename: str) ->
 
 
 async def _purge_aux_stores(document: KnowledgeBaseDocument) -> None:
-    store = store_from_client(mongo_client)
+    store = store_from_client(runtime.mongo_client)
     if store is not None:
         try:
             store.delete_file(document.mongo_gridfs_id)
         except Exception:
             logger.warning("Mongo delete missed for document %s", document.id)
-    if neo4j_driver is not None:
+    if runtime.neo4j_driver is not None:
         try:
-            await GraphRAGStore(neo4j_driver).delete_document(str(document.id))
+            await GraphRAGStore(runtime.neo4j_driver).delete_document(str(document.id))
         except Exception:
             logger.warning("Neo4j delete missed for document %s", document.id)
 
@@ -436,7 +435,7 @@ async def upload_my_knowledge_base_document(
     )
     file_type = ALLOWED_MIME_TYPES[content_type]
     doc_name = name or file.filename or "Untitled Document"
-    factory = getattr(request.app.state, "db_session_factory", None) or infra_session_factory
+    factory = getattr(request.app.state, "db_session_factory", None) or runtime.session_factory
     doc = await ingest_file_bytes(
         db=db,
         filename=doc_name,

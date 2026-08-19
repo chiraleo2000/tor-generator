@@ -14,11 +14,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import infra as runtime
 from app.api.constants import PROJECT_NOT_FOUND
 from app.deps import get_current_user, get_db
 from app.domain.slots import INTAKE_SLOT_LABELS
 from app.exceptions import NotFoundError, ValidationError
-from app.infra import session_factory
 from app.io_temp import unlink_path, write_temp_bytes
 from app.models.chat_message import ChatMessage
 from app.models.chat_room import ChatRoom
@@ -163,7 +163,7 @@ async def intake_upload(
     files: Annotated[list[UploadFile], File()],
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
-    factory = session_factory or request.app.state.db_session_factory
+    factory = runtime.session_factory or request.app.state.db_session_factory
     saved: list[str] = []
     for upload in files:
         content = await upload.read()
@@ -202,7 +202,7 @@ async def intake_text(
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
     text = body.content.strip()
-    factory = session_factory or request.app.state.db_session_factory
+    factory = runtime.session_factory or request.app.state.db_session_factory
     await ingest_file_bytes(
         db=db,
         filename=INTAKE_PASTE_FILENAME,

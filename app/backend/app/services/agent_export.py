@@ -7,9 +7,8 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app import infra as runtime
 from app.domain.tor_sections import TOR_SECTION_ORDER
-from app.infra import minio_client as infra_minio
-from app.infra import session_factory
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.tor_section import TORSection
@@ -20,11 +19,11 @@ logger = logging.getLogger("tor_app.agent_export")
 
 
 async def persist_and_export(state: AgentWorkflowState) -> dict[str, str | None]:
-    if session_factory is None:
+    if runtime.session_factory is None:
         return {"docx": None, "pdf": None}
     project_id = UUID(str(state["project_id"]))
     drafts = state.get("section_drafts") or {}
-    async with session_factory() as db:
+    async with runtime.session_factory() as db:
         project = (
             await db.execute(select(Project).where(Project.id == project_id))
         ).scalar_one_or_none()
@@ -80,11 +79,11 @@ async def persist_and_export(state: AgentWorkflowState) -> dict[str, str | None]
 async def _trigger_export(db, project: Project) -> dict[str, str | None]:
     from app.services.export_service import ExportService
 
-    if infra_minio is None:
+    if runtime.minio_client is None:
         logger.warning("MinIO unavailable; export URLs omitted")
         return {"docx": None, "pdf": None}
     job = await ExportService.trigger_export(
-        db, infra_minio, project, session_factory=session_factory
+        db, runtime.minio_client, project, session_factory=runtime.session_factory
     )
     docx_url = None
     pdf_url = None

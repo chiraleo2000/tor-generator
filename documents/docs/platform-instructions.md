@@ -1,21 +1,21 @@
-# คู่มือการใช้ Skills ร่าง TOR / ตรวจสอบ TOR บน LLM Platforms
+# คู่มือการใช้สกิลร่าง TOR / ตรวจสอบ TOR บนแพลตฟอร์ม LLM
 
-## ภาพรวม Skills ที่มี
+## ภาพรวมสกิลที่มี
 
-| Skill | หน้าที่ | Input | Output |
-|-------|---------|-------|--------|
-| **tor-intake** | เก็บ requirement จากผู้ใช้ | Free-form text | Structured JSON |
-| **tor-draft** | ร่าง TOR ด้วยภาษาราชการ | Structured data จาก intake | TOR ฉบับเต็ม (.md → .docx) |
+| สกิล | หน้าที่ | ข้อมูลเข้า | ผลลัพธ์ |
+|-------|---------|------------|---------|
+| **tor-intake** | เก็บความต้องการจากผู้ใช้ | ข้อความอิสระ | JSON โครงสร้าง |
+| **tor-draft** | ร่าง TOR ด้วยภาษาราชการ | ข้อมูลโครงสร้างจาก intake | TOR ฉบับเต็ม (.md → .docx) |
 | **tor-review** | ตรวจสอบ TOR ที่ร่างแล้ว | ร่าง TOR + ข้อมูลโครงการ | รายงานผลตรวจ + ข้อแก้ไข |
 
 ## กระบวนการทำงาน 2 โหมด
 
-### โหมด A: ร่าง TOR (Drafting)
+### โหมด ก: ร่าง TOR
 ```
-ผู้ใช้ → [tor-intake] → structured data → [tor-draft] → TOR ฉบับร่าง → [tor-review] → TOR สมบูรณ์
+ผู้ใช้ → [tor-intake] → ข้อมูลโครงสร้าง → [tor-draft] → TOR ฉบับร่าง → [tor-review] → TOR สมบูรณ์
 ```
 
-### โหมด B: ตรวจสอบ TOR (Review)
+### โหมด ข: ตรวจสอบ TOR
 ```
 ผู้ใช้ + ร่าง TOR (จากภายนอก) → [tor-review] → รายงานผลตรวจ + ข้อเสนอแนะ
 ```
@@ -24,13 +24,13 @@
 
 ## 1. Kiro (AWS IDE)
 
-### Setup
+### การตั้งค่า
 ```
-โปรเจกต์นี้ → เปิดด้วย Kiro → Skills จะ activate อัตโนมัติจาก .kiro/skills/
+โปรเจกต์นี้ → เปิดด้วย Kiro → สกิลจะเปิดเองจาก .kiro/skills/
 ```
 
 ### ไฟล์ที่ Kiro อ่านอัตโนมัติ:
-- `.kiro/steering/procurement.md` — context เกี่ยวกับโปรเจกต์ (auto-inclusion)
+- `.kiro/steering/procurement.md` — บริบทโปรเจกต์ (แนบอัตโนมัติ)
 - `.kiro/skills/tor-intake.md` — skill เก็บ requirement
 - `.kiro/skills/tor-draft.md` — skill ร่าง TOR
 - `.kiro/skills/tor-review.md` — skill ตรวจสอบ TOR
@@ -45,12 +45,12 @@
 
 ### วิธีใช้ — ตรวจสอบ TOR:
 ```
-ผู้ใช้: "ตรวจสอบ TOR นี้ให้หน่อย" + แนบไฟล์ TOR หรือ paste เนื้อหา
-→ Kiro จะใช้ tor-review ตรวจตาม checklist 40+ ข้อ
+ผู้ใช้: "ตรวจสอบ TOR นี้ให้หน่อย" + แนบไฟล์ TOR หรือวางเนื้อหา
+→ Kiro จะใช้ tor-review ตรวจตามรายการตรวจกว่า 40 ข้อ
 → ส่งรายงานผลตรวจ + ข้อเสนอแนะ
 ```
 
-### Knowledge Files ที่อ้างอิง:
+### เอกสารความรู้ที่อ้างอิง:
 - `knowledge-base/05-reference-summary/tor_reference_complete.md`
 - `knowledge-base/04-decision-rules/method_selection.json`
 - `knowledge-base/04-decision-rules/template_selection.json`
@@ -60,16 +60,16 @@
 
 ## 2. Claude (Cowork / Projects)
 
-### Setup — Claude Projects
-1. สร้าง Project ใหม่ชื่อ "TOR จัดซื้อจัดจ้างภาครัฐ"
-2. ตั้ง **Project Instructions** → copy เนื้อหาจาก `prompts/claude_project_instructions.md`
-3. Upload **Knowledge Files** (ลำดับสำคัญ):
+### การตั้งค่า — Claude Projects
+1. สร้างโปรเจกต์ใหม่ชื่อ "TOR จัดซื้อจัดจ้างภาครัฐ"
+2. ตั้ง **คำสั่งโปรเจกต์** → คัดลอกเนื้อหาจาก `prompts/claude_project_instructions.md`
+3. อัปโหลด **เอกสารความรู้** (ลำดับสำคัญ):
    - `prompts/tor_writing_guide.md` ← ภาษาราชการ + สำนวน
    - `knowledge-base/05-reference-summary/tor_reference_complete.md` ← กฎหมาย/reference
    - `knowledge-base/04-decision-rules/method_selection.json` ← decision rules
    - `knowledge-base/04-decision-rules/template_selection.json` ← template matrix
    - `knowledge-base/04-decision-rules/document_checklist.json` ← เอกสารที่ต้องทำ
-   - `.kiro/skills/tor-review.md` ← checklist ตรวจสอบ (ใช้เป็น reference)
+   - `.kiro/skills/tor-review.md` ← รายการตรวจ (ใช้อ้างอิง)
 
 ### วิธีใช้ — ร่าง TOR:
 ```
@@ -84,52 +84,52 @@ Claude จะ:
 ### วิธีใช้ — ตรวจสอบ TOR:
 ```
 พิมพ์: "ตรวจสอบ TOR ฉบับนี้ให้ครบถ้วนและถูกต้องตามกฎหมาย"
-+ แนบไฟล์ TOR (.docx/.pdf) หรือ paste เนื้อหา
-+ (Optional) ระบุ: วงเงิน, ประเภทพัสดุ, วิธีจัดซื้อ
++ แนบไฟล์ TOR (.docx/.pdf) หรือวางเนื้อหา
++ (ถ้ามี) ระบุ: วงเงิน, ประเภทพัสดุ, วิธีจัดซื้อ
 
 Claude จะ:
 1. ระบุประเภทงาน/วิธีจัดซื้อ
-2. ตรวจตาม checklist 5 หมวด (A-E)
+2. ตรวจตามรายการ 5 หมวด (ก–จ)
 3. ส่งรายงานผล พร้อมข้อเสนอแนะเรียงตามความสำคัญ
 ```
 
-### Setup — Claude Cowork (Team)
-- เหมือน Claude Projects แต่แชร์ Project กับทีม
-- ทุกคนในทีมเข้าถึง knowledge files + instructions เดียวกัน
-- แนะนำ: ตั้ง naming convention สำหรับ conversation เช่น "[TOR-Draft] โครงการ X" หรือ "[TOR-Review] โครงการ Y"
+### การตั้งค่า — Claude Cowork (ทีม)
+- เหมือน Claude Projects แต่แชร์โปรเจกต์กับทีม
+- ทุกคนในทีมเข้าถึงเอกสารความรู้และคำสั่งเดียวกัน
+- แนะนำ: ตั้งชื่อบทสนทนา เช่น "[TOR-Draft] โครงการ X" หรือ "[TOR-Review] โครงการ Y"
 
 ---
 
 ## 3. ChatGPT (Works / Projects)
 
-### Setup — ChatGPT Projects (Plus/Team)
-1. สร้าง Project ใหม่ชื่อ "TOR จัดซื้อจัดจ้าง"
-2. ตั้ง **Custom Instructions** → copy จาก `prompts/chatgpt_system_prompt.md`
-3. Upload files เป็น **Project Knowledge**:
+### การตั้งค่า — ChatGPT Projects (Plus/Team)
+1. สร้างโปรเจกต์ใหม่ชื่อ "TOR จัดซื้อจัดจ้าง"
+2. ตั้ง **คำสั่งกำหนดเอง** → คัดลอกจาก `prompts/chatgpt_system_prompt.md`
+3. อัปโหลดไฟล์เป็น **ความรู้ของโปรเจกต์**:
    - `prompts/tor_writing_guide.md`
    - `knowledge-base/05-reference-summary/tor_reference_complete.md`
    - `knowledge-base/04-decision-rules/method_selection.json`
    - `knowledge-base/04-decision-rules/template_selection.json`
-   - `.kiro/skills/tor-review.md` (ใช้เป็น checklist reference)
+   - `.kiro/skills/tor-review.md` (ใช้อ้างอิงรายการตรวจ)
 
 ### วิธีใช้:
-เหมือน Claude — พิมพ์ request เป็นภาษาธรรมชาติ:
+เหมือน Claude — พิมพ์คำขอเป็นภาษาธรรมชาติ:
 - ร่าง: "ร่าง TOR จ้างบริการ cloud วงเงิน 800,000 บาท"
-- ตรวจ: "ตรวจ TOR นี้" + paste/upload เนื้อหา
+- ตรวจ: "ตรวจ TOR นี้" + วาง/อัปโหลดเนื้อหา
 
-### Setup — ChatGPT Works (Enterprise)
-- Admin สร้าง Custom GPT ชื่อ "TOR Advisor"
-- Upload knowledge files ทั้งหมดเข้า GPT
-- ตั้ง Instructions จาก `prompts/chatgpt_system_prompt.md`
+### การตั้งค่า — ChatGPT Works (องค์กร)
+- ผู้ดูแลสร้าง Custom GPT ชื่อ "TOR Advisor"
+- อัปโหลดเอกสารความรู้ทั้งหมดเข้า GPT
+- ตั้งคำสั่งจาก `prompts/chatgpt_system_prompt.md`
 - แชร์ GPT ให้ทุกคนในองค์กร
 
 ---
 
 ## 4. Cursor (AI IDE)
 
-### Setup
+### การตั้งค่า
 1. เปิดโปรเจกต์ด้วย Cursor
-2. สร้างไฟล์ `.cursorrules` ที่ root:
+2. สร้างไฟล์ `.cursorrules` ที่รากโปรเจกต์:
 
 ```
 # .cursorrules
@@ -162,56 +162,56 @@ When reviewing TOR:
 
 ---
 
-## 5. Platforms อื่นๆ (Gemini, Copilot, local LLM)
+## 5. แพลตฟอร์มอื่น (Gemini, Copilot, LLM ในเครื่อง)
 
 ### หลักการทั่วไป:
-1. **System Prompt**: ใช้ `prompts/chatgpt_system_prompt.md` เป็นฐาน (ปรับตาม platform)
-2. **Knowledge/Context**: Upload หรือ paste เนื้อหาจาก:
+1. **คำสั่งระบบ**: ใช้ `prompts/chatgpt_system_prompt.md` เป็นฐาน (ปรับตามแพลตฟอร์ม)
+2. **เอกสารความรู้/บริบท**: อัปโหลดหรือวางเนื้อหาจาก:
    - `prompts/tor_writing_guide.md` (ภาษา)
    - `knowledge-base/05-reference-summary/tor_reference_complete.md` (กฎหมาย)
-   - `.kiro/skills/tor-review.md` (checklist)
-3. **ข้อจำกัด context window**: ถ้า context จำกัด ให้ใช้ตามลำดับความสำคัญ:
-   - Priority 1: `tor_writing_guide.md` (ภาษาราชการ)
-   - Priority 2: `tor_reference_complete.md` บทที่ 2-4 (วิธีจัดซื้อ + กฎระเบียบ TOR)
-   - Priority 3: `tor-review.md` checklist (ถ้าใช้โหมดตรวจ)
-   - Priority 4: decision rules JSON files
+   - `.kiro/skills/tor-review.md` (รายการตรวจ)
+3. **ข้อจำกัดหน้าต่างบริบท**: ถ้าบริบทจำกัด ให้ใช้ตามลำดับความสำคัญ:
+   - ลำดับ 1: `tor_writing_guide.md` (ภาษาราชการ)
+   - ลำดับ 2: `tor_reference_complete.md` บทที่ 2-4 (วิธีจัดซื้อ + กฎระเบียบ TOR)
+   - ลำดับ 3: `tor-review.md` รายการตรวจ (ถ้าใช้โหมดตรวจ)
+   - ลำดับ 4: ไฟล์ JSON กฎตัดสินใจ
 
-### สำหรับ Local LLM (Ollama, LM Studio):
-- ใช้ RAG: embed knowledge-base/ ทั้งโฟลเดอร์
-- System prompt: ใช้ `chatgpt_system_prompt.md` ตัดสั้นลง
-- แนะนำ model: ขนาด ≥ 70B สำหรับภาษาไทย (Qwen2.5, Llama3.3)
+### สำหรับ LLM ในเครื่อง (Ollama, LM Studio):
+- ใช้ค้นหาคลังความรู้: ฝังเวกเตอร์ทั้งโฟลเดอร์ knowledge-base/
+- คำสั่งระบบ: ใช้ `chatgpt_system_prompt.md` ตัดสั้นลง
+- แนะนำโมเดล: ขนาดไม่ต่ำกว่า 70B สำหรับภาษาไทย (Qwen2.5, Llama3.3)
 
 ---
 
-## 6. เปรียบเทียบ Platforms
+## 6. เปรียบเทียบแพลตฟอร์ม
 
-| Feature | Kiro | Claude Projects | ChatGPT Projects | Cursor |
+| คุณสมบัติ | Kiro | Claude Projects | ChatGPT Projects | Cursor |
 |---------|------|-----------------|------------------|--------|
-| Auto-load skills | ✓ (steering) | ✗ (manual upload) | ✗ (manual upload) | ✗ (.cursorrules) |
-| Knowledge files | อ่าน repo ตรง | Upload ≤ 50 files | Upload ≤ 20 files | @file reference |
-| Max context | ~200K tokens | ~200K tokens | ~128K tokens | ~128K tokens |
+| โหลดสกิลอัตโนมัติ | ✓ (steering) | ✗ (อัปโหลดเอง) | ✗ (อัปโหลดเอง) | ✗ (.cursorrules) |
+| เอกสารความรู้ | อ่านรีโปตรง | อัปโหลดไม่เกิน 50 ไฟล์ | อัปโหลดไม่เกิน 20 ไฟล์ | อ้างด้วย @file |
+| บริบทสูงสุด | ประมาณ 200K โทเคน | ประมาณ 200K โทเคน | ประมาณ 128K โทเคน | ประมาณ 128K โทเคน |
 | ภาษาไทย | ดี (Claude) | ดีมาก | ดี | ดี (ใช้ Claude/GPT) |
-| File output (.docx) | ✓ (script) | ✗ (Markdown) | ✗ (Markdown) | ✓ (script) |
-| Team sharing | ✗ | ✓ (Cowork) | ✓ (Works) | ✗ |
-| Best for | Dev + TOR draft | Review + Draft | Quick draft | Inline edit |
+| ส่งออกไฟล์ (.docx) | ✓ (สคริปต์) | ✗ (Markdown) | ✗ (Markdown) | ✓ (สคริปต์) |
+| แชร์ทีม | ✗ | ✓ (Cowork) | ✓ (Works) | ✗ |
+| เหมาะกับ | พัฒนา + ร่าง TOR | ตรวจ + ร่าง | ร่างเร็ว | แก้ข้อความในไฟล์ |
 
 ---
 
-## 7. Tips การใช้งาน
+## 7. ข้อแนะนำการใช้งาน
 
 ### สำหรับร่าง TOR:
 1. **เตรียมข้อมูลก่อน**: ชื่อโครงการ, วงเงิน, ประเภทงาน, ขอบเขตคร่าวๆ
 2. **ให้ AI ถามกลับ**: อย่าพยายามใส่ข้อมูลทั้งหมดในครั้งเดียว
-3. **ตรวจ output**: ใช้ tor-review checklist ตรวจซ้ำเสมอ
+3. **ตรวจผลลัพธ์**: ใช้รายการตรวจ tor-review ซ้ำเสมอ
 4. **ปรับภาษา**: ถ้า AI ใช้ภาษาไม่เป็นทางการ ให้สั่ง "ปรับให้เป็นภาษาราชการ"
 
 ### สำหรับตรวจสอบ TOR:
-1. **ให้ context ครบ**: วงเงิน + ประเภทพัสดุ + วิธีจัดซื้อ
+1. **ให้บริบทครบ**: วงเงิน + ประเภทพัสดุ + วิธีจัดซื้อ
 2. **ส่ง TOR ทั้งฉบับ**: ไม่ตัดบางส่วน (AI ต้องดูความสอดคล้องระหว่างหัวข้อ)
 3. **ถามเจาะลึก**: "ข้อไหนมีความเสี่ยงสูงสุด?" หรือ "ข้อนี้ขัดกฎหมายตรงไหน?"
 4. **ให้ AI เสนอแก้ไข**: "ช่วยเขียนใหม่ให้ถูกต้อง" ในข้อที่ไม่ผ่าน
 
 ### ข้อควรระวัง:
-- AI อาจ hallucinate เลขมาตรา/ข้อ — ตรวจสอบอ้างอิงกับ reference document เสมอ
+- AI อาจแต่งเลขมาตรา/ข้อ — ตรวจสอบอ้างอิงกับเอกสารอ้างอิงเสมอ
 - ราคากลางต้องคำนวณจริง — AI ไม่สามารถกำหนดราคาให้ได้
-- คุณสมบัติเฉพาะหน่วยงาน — ต้อง input จากผู้ใช้ (AI ไม่รู้ระเบียบภายใน)
+- คุณสมบัติเฉพาะหน่วยงาน — ต้องให้ผู้ใช้ระบุ (AI ไม่รู้ระเบียบภายใน)

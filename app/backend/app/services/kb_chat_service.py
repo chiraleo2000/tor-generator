@@ -21,7 +21,7 @@ logger = logging.getLogger("tor_app.kb_chat")
 MAX_HISTORY = 20
 MAX_MESSAGE_LENGTH = 1000
 SESSION_TIMEOUT_MINUTES = 30
-RELEVANCE_THRESHOLD = 0.5
+RELEVANCE_THRESHOLD = 0.25
 NO_RESULTS = "ไม่พบข้อมูลที่เกี่ยวข้อง"
 
 
@@ -101,7 +101,8 @@ class KnowledgeChatService:
             cited.append(
                 {
                     "document": getattr(chunk, "source_document", None)
-                    or (chunk.metadata or {}).get("source_document"),
+                    or (chunk.metadata or {}).get("source_document")
+                    or (chunk.metadata or {}).get("document_name"),
                     "page": getattr(chunk, "page_number", None),
                     "section": getattr(chunk, "section_label", None),
                 }

@@ -5,12 +5,17 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.infra import neo4j_driver, session_factory
+from app import infra as runtime
 from app.providers.factory import ProviderFactory
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
 from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk
 
 logger = logging.getLogger(__name__)
+
+
+def _meta_source(metadata: dict | None) -> str | None:
+    data = metadata or {}
+    return data.get("source_document") or data.get("document_name")
 
 
 def owner_filter_dict(
@@ -38,11 +43,12 @@ async def hybrid_retrieve(
     The third value is True when Neo4j expansion was skipped (degraded).
     """
     empty = RetrievalResult(chunks=[], query=query, top_k=top_k, actual_count=0)
-    if session_factory is None:
+    db_factory = runtime.session_factory
+    if db_factory is None:
         return empty, [], True
 
     factory = ProviderFactory()
-    store = factory.get_vector_store(session_factory)
+    store = factory.get_vector_store(db_factory)
     query_vector = await factory.get_embedding().embed_query(query)
     merged_filter = owner_filter_dict(user_id=user_id, search_scope=search_scope)
     if extra_filter:
@@ -60,7 +66,7 @@ async def hybrid_retrieve(
             document_type=(item.metadata or {}).get("document_type"),
             legal_reference=(item.metadata or {}).get("legal_reference"),
             section_relevance=(item.metadata or {}).get("section_relevance"),
-            source_document=(item.metadata or {}).get("source_document"),
+            source_document=_meta_source(item.metadata),
             section_label=(item.metadata or {}).get("section_label"),
             page_number=(item.metadata or {}).get("page_number"),
             metadata=item.metadata or {},
@@ -85,9 +91,9 @@ async def hybrid_retrieve(
             citations.append({"type": "slot", "label": str(chunk.section_relevance)})
 
     graph_degraded = True
-    if neo4j_driver is not None:
+    if runtime.neo4j_driver is not None:
         try:
-            store_graph = GraphRAGStore(neo4j_driver)
+            store_graph = GraphRAGStore(runtime.neo4j_driver)
             rows = await store_graph.expand(
                 query_text=query,
                 slot_key=section_relevance,

@@ -100,7 +100,7 @@ export default function LoginPage() {
         </Button>
       </form>
       <div className="mt-4 rounded-lg border border-dashed bg-gray-50 p-2.5 text-center text-[11.5px] text-muted-foreground">
-        Demo: officer@example.go.th / Passw0rd!
+        บัญชีทดลอง: officer@example.go.th / Passw0rd!
       </div>
       <p className="mt-4 text-center text-[13px] text-muted-foreground">
         ยังไม่มีบัญชี?{" "}

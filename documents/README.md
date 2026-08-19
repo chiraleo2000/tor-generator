@@ -1,15 +1,31 @@
-# Documents — data, corpus, and research files
+# เอกสาร — คลังกฎหมาย แม่แบบ และงานวิจัย
 
-Legal PDFs, extracts, RAG seed, templates, and research pipelines. **Do not copy this tree into `app/frontend` or `app/backend`.**
+โฟลเดอร์นี้เก็บ **ข้อมูลและเอกสารอ้างอิงภาษาไทย** ไม่ใช่ซอร์สแอป อย่าคัดลอกต้นไม้นี้ไปไว้ใน `app/frontend` หรือ `app/backend`
 
-| Path | Role |
-|------|------|
-| `knowledge-base/` | RAG seed (markdown + JSON extracts). Compose mounts this read-only. |
-| `templates/` | Industry TOR markdown templates |
-| `sources/` | Original Thai source packs, sample files, and root manuals (PDF/DOCX) — omitted from GitHub (too large); keep locally |
-| `research/` | `analysis/`, `raw_text/`, `zip_output/` — extraction corpus |
-| `extract-scripts/` | PDF/DOCX/TOR extract helpers (not the FastAPI seed CLIs) |
-| `prompts/` | Offline writing prompts for Claude/ChatGPT |
-| `docs/` | Extra platform skill instructions |
+## คลังที่แอปใช้จริง กับ คลังงานวิจัย
 
-App seed CLIs stay in `app/backend/` (`python -m app.seed_db` / `python -m app.seed_kb`).
+แอปที่รันจริงฝังเวกเตอร์จาก **PDF ต้นฉบับ** ด้วย `python -m app.seed_raw_docs` จากโฟลเดอร์ `app/backend` บนเครื่องโฮสต์
+
+| กลุ่มคลัง | แหล่ง | ใครเห็น |
+|-----------|--------|---------|
+| คู่มือแนวปฏิบัติ (บังคับ) | `sources/คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf` | ทุกบัญชี |
+| ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ) | PDF ใน `sources/การจัดซื้อจัดจ้าง/ข้อมูลดิบ` | ทุกบัญชี |
+| เอกสารของฉัน | อัปโหลดในแอป (`POST /api/v1/knowledge-base/mine`) | เฉพาะเจ้าของ |
+
+โฟลเดอร์ `knowledge-base/` เป็น **สารสกัดงานวิจัย** (Markdown / JSON) — Compose ยัง mount เป็น `/knowledge-base` สำหรับ `python -m app.seed_kb` แต่**ไม่ใช่คลัง RAG หลักของแอป**
+
+อย่าส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ `docker compose` — ค่านี้ทับ `.env` แล้ว backend ใน Docker หา postgres ไม่เจอ
+
+## โครงสร้างโฟลเดอร์
+
+| เส้นทาง | หน้าที่ |
+|---------|---------|
+| `knowledge-base/` | สารสกัดงานวิจัย (Markdown + JSON) ไม่ใช่คลังฝังเวกเตอร์หลัก |
+| `templates/` | แม่แบบ TOR ตามประเภทงาน (Markdown ภาษาไทย) |
+| `sources/` | PDF/DOCX ต้นฉบับภาษาไทย — มักไม่ขึ้น GitHub เพราะไฟล์ใหญ่ เก็บไว้ในเครื่อง |
+| `research/` | `analysis/`, `raw_text/`, `zip_output/` — ผลสกัดข้อความจากเอกสาร |
+| `extract-scripts/` | สคริปต์สกัด PDF/DOCX (ไม่ใช่คำสั่ง seed ของ FastAPI) |
+| `prompts/` | คำสั่งเขียน TOR สำหรับ Claude / ChatGPT และคู่มือภาษาราชการ |
+| `docs/` | คู่มือใช้สกิลบนแพลตฟอร์ม LLM |
+
+คำสั่งใส่ข้อมูลแอปอยู่ใน `app/backend/` (`python -m app.seed_db` และ `python -m app.seed_raw_docs`)

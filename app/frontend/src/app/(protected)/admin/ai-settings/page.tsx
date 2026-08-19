@@ -111,9 +111,9 @@ export default function AdminAiSettingsPage() {
       <div className="gov-card">
         <h1 className="text-2xl font-extrabold text-navy">การตั้งค่า AI</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          เลือกโมเดลแชทและ embeddings คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง
-          หรือ Gemma ในเครื่อง + OpenAI embeddings โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ
-          การบันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend หากเปลี่ยนผู้ให้บริการหรือโมเดล embeddings
+          เลือกโมเดลแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง
+          หรือ Gemma ในเครื่อง + ฝังเวกเตอร์ OpenAI โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ
+          การบันทึกมีผลทันที ไม่ต้องรีสตาร์ทส่วนหลังบ้าน หากเปลี่ยนผู้ให้บริการหรือโมเดลฝังเวกเตอร์
           ต้องประมวลผลฐานความรู้ใหม่ (`python -m app.seed_raw_docs`)
         </p>
       </div>
@@ -144,9 +144,9 @@ export default function AdminAiSettingsPage() {
             value={form.deployment_mode}
             onChange={(event) => setForm((prev) => nextFormOnModeChange(prev, event.target.value))}
             options={[
-              { value: "on_prem", label: "รันในเครื่อง (Local)" },
-              { value: "cloud", label: "คลาวด์ (Cloud API)" },
-              { value: "hybrid", label: "ผสม (Hybrid) — แนะนำเมื่อใช้คนละแหล่ง" },
+              { value: "on_prem", label: "รันในเครื่อง" },
+              { value: "cloud", label: "คลาวด์ (API ภายนอก)" },
+              { value: "hybrid", label: "ผสม — แนะนำเมื่อใช้คนละแหล่ง" },
             ]}
           />
         </div>
@@ -162,7 +162,7 @@ export default function AdminAiSettingsPage() {
         </div>
 
         <div>
-          <Label htmlFor="ai-embed">Embeddings</Label>
+          <Label htmlFor="ai-embed">ฝังเวกเตอร์</Label>
           <Select
             id="ai-embed"
             value={form.embedding_provider}
@@ -186,7 +186,7 @@ export default function AdminAiSettingsPage() {
         <div className="gov-card space-y-3">
           <h2 className="font-semibold">เซิร์ฟเวอร์ในเครื่อง</h2>
           <div>
-            <Label htmlFor="local-embed-server">เซิร์ฟเวอร์ embeddings ในเครื่อง</Label>
+            <Label htmlFor="local-embed-server">เซิร์ฟเวอร์ฝังเวกเตอร์ในเครื่อง</Label>
             <Select
               id="local-embed-server"
               value={form.local_embedding_server || "lm_studio"}
@@ -195,7 +195,7 @@ export default function AdminAiSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="local-embed-url">URL embeddings (เว้นว่างใช้ URL ของเซิร์ฟเวอร์ด้านบน)</Label>
+            <Label htmlFor="local-embed-url">URL ฝังเวกเตอร์ (เว้นว่างใช้ URL ของเซิร์ฟเวอร์ด้านบน)</Label>
             <Input
               id="local-embed-url"
               value={form.local_embedding_base_url}
@@ -219,7 +219,7 @@ export default function AdminAiSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="llama-url">llama.cpp / custom URL</Label>
+            <Label htmlFor="llama-url">llama.cpp / URL ที่กำหนดเอง</Label>
             <Input
               id="llama-url"
               value={form.llama_cpp_base_url}
@@ -235,7 +235,7 @@ export default function AdminAiSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="embed-model">ชื่อโมเดล embeddings</Label>
+            <Label htmlFor="embed-model">ชื่อโมเดลฝังเวกเตอร์</Label>
             <Input
               id="embed-model"
               value={form.lm_studio_embedding_model}
@@ -243,7 +243,7 @@ export default function AdminAiSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="timeout">Timeout (วินาที)</Label>
+            <Label htmlFor="timeout">หมดเวลารอ (วินาที)</Label>
             <Input
               id="timeout"
               type="number"
@@ -301,7 +301,7 @@ export default function AdminAiSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="openai-embed-model">โมเดล OpenAI embeddings</Label>
+            <Label htmlFor="openai-embed-model">โมเดลฝังเวกเตอร์ OpenAI</Label>
             <Input
               id="openai-embed-model"
               value={form.openai_embedding_model}
@@ -317,7 +317,7 @@ export default function AdminAiSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="gemini-embed-model">โมเดล Gemini embeddings</Label>
+            <Label htmlFor="gemini-embed-model">โมเดลฝังเวกเตอร์ Gemini</Label>
             <Input
               id="gemini-embed-model"
               value={form.gemini_embedding_model}
@@ -330,19 +330,19 @@ export default function AdminAiSettingsPage() {
       {showCloud && showBedrockFields(form.llm_provider, form.embedding_provider) ? (
         <div className="gov-card space-y-3">
           <h2 className="font-semibold">Amazon Bedrock</h2>
-          <Label htmlFor="bedrock-region">Region</Label>
+          <Label htmlFor="bedrock-region">ภูมิภาค</Label>
           <Input
             id="bedrock-region"
             value={form.bedrock_region}
             onChange={(event) => patch("bedrock_region", event.target.value)}
           />
-          <Label htmlFor="bedrock-model">Model ID</Label>
+          <Label htmlFor="bedrock-model">รหัสโมเดลแชท</Label>
           <Input
             id="bedrock-model"
             value={form.bedrock_model_id}
             onChange={(event) => patch("bedrock_model_id", event.target.value)}
           />
-          <Label htmlFor="bedrock-embed-model">Embedding model ID</Label>
+          <Label htmlFor="bedrock-embed-model">รหัสโมเดลฝังเวกเตอร์</Label>
           <Input
             id="bedrock-embed-model"
             value={form.bedrock_embedding_model_id}
@@ -386,7 +386,7 @@ export default function AdminAiSettingsPage() {
             value={form.azure_foundry_deployment}
             onChange={(event) => patch("azure_foundry_deployment", event.target.value)}
           />
-          <Label htmlFor="azure-embed-deploy">Deployment (embeddings)</Label>
+          <Label htmlFor="azure-embed-deploy">ชื่อดีพลอยเมนต์ฝังเวกเตอร์</Label>
           <Input
             id="azure-embed-deploy"
             value={form.azure_foundry_embedding_deployment}
@@ -419,7 +419,7 @@ export default function AdminAiSettingsPage() {
             value={form.openai_compatible_model}
             onChange={(event) => patch("openai_compatible_model", event.target.value)}
           />
-          <Label htmlFor="compat-embed-model">ชื่อโมเดล embeddings</Label>
+          <Label htmlFor="compat-embed-model">ชื่อโมเดลฝังเวกเตอร์</Label>
           <Input
             id="compat-embed-model"
             value={form.openai_compatible_embedding_model}

@@ -65,11 +65,11 @@ export const LOCAL_EMBEDS = [
 ];
 
 export const CLOUD_EMBEDS = [
-  { value: "openai", label: "OpenAI embeddings" },
-  { value: "gemini", label: "Gemini embeddings" },
-  { value: "bedrock", label: "Bedrock (Titan)" },
-  { value: "azure_foundry", label: "Azure Foundry embeddings" },
-  { value: "openai_compatible", label: "OpenAI-compatible embeddings" },
+  { value: "openai", label: "ฝังเวกเตอร์ OpenAI" },
+  { value: "gemini", label: "ฝังเวกเตอร์ Gemini" },
+  { value: "bedrock", label: "ฝังเวกเตอร์ Bedrock (Titan)" },
+  { value: "azure_foundry", label: "ฝังเวกเตอร์ Azure Foundry" },
+  { value: "openai_compatible", label: "ฝังเวกเตอร์แบบ OpenAI-compatible" },
 ];
 
 export const VECTOR_STORES = [
@@ -153,9 +153,9 @@ export function nextFormOnModeChange(prev: AiSettings, mode: string): AiSettings
 
 export function saveSuccessMessage(reingestRequired: boolean): string {
   if (reingestRequired) {
-    return "บันทึกแล้ว — มีผลทันที เปลี่ยน embeddings แล้ว ต้องรัน python -m app.seed_raw_docs เพื่อฝังเวกเตอร์ใหม่";
+    return "บันทึกแล้ว — มีผลทันที เปลี่ยนฝังเวกเตอร์แล้ว ต้องรัน python -m app.seed_raw_docs เพื่อฝังเวกเตอร์ใหม่";
   }
-  return "บันทึกแล้ว — มีผลทันที ไม่ต้องรีสตาร์ท backend";
+  return "บันทึกแล้ว — มีผลทันที ไม่ต้องรีสตาร์ทส่วนหลังบ้าน";
 }
 
 export function showBedrockFields(llmProvider: string, embedProvider: string): boolean {

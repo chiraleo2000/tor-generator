@@ -1,11 +1,11 @@
-# App — TOR drafting / review web stack
+# แอป — ระบบร่างและตรวจสอบ TOR
 
 โฟลเดอร์นี้คือ **แอปที่รันจริงเท่านั้น** อย่าวาง PDF งานวิจัย, extracts กฎหมาย, หรือบันทึกออกแบบที่นี่
 
 แอปปัจจุบันเป็นกระบวนการร่าง **5 Phase (0–4)** ที่ `/projects/{id}/draft` ไม่ใช่วิซาร์ด 8 ขั้น
 
-| Path | Role |
-|------|------|
+| เส้นทาง | หน้าที่ |
+|---------|---------|
 | `frontend/` | Next.js 14 UI (แดชบอร์ด, ร่าง 5 Phase, แชท, ฐานความรู้, ตรวจสอบ, ผู้ดูแล) |
 | `backend/` | FastAPI + LangGraph + rule engine + RAG (pgvector + GraphRAG) |
 | `docker/` | Extra Docker assets (placeholder) |
@@ -16,19 +16,19 @@ Orchestration อยู่ระดับบน: `../docker-compose.yml`, `../.e
 
 แชท (`LLM_PROVIDER`) และ embeddings (`EMBEDDING_PROVIDER`) เลือกอิสระในทุกโหมด — ตัวอย่าง Claude API + EmbeddingGemma ในเครื่อง เจ้าหน้าที่อัปโหลดเอกสารส่วนตัวที่ `POST /knowledge-base/mine`
 
-## Local commands
+## คำสั่งบนเครื่อง
 
 จากรากรีโปที่แนะนำ: `docker compose -p tor-app --env-file .env up -d --build`
 
 รันแยกบริการ:
 
 ```bash
-# API
+# ส่วนหลังบ้าน
 cd backend
 pip install -e ".[dev]"
 uvicorn app.main:app --reload --port 4000
 
-# UI
+# ส่วนหน้าบ้าน
 cd frontend
 npm install
 npm run dev

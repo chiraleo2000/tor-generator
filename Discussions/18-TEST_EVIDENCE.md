@@ -21,8 +21,8 @@
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest ไม่รวม `live_llm` (v0.2.1) | **1447 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL เจ้าของไฟล์, `/knowledge-base/mine`; intake, `/chat`, wizard step APIs ยังผ่าน |
-| pytest `--cov=app` | **85%** (9524 stmts / 1426 miss) | HTML ที่ `app/backend/htmlcov/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| pytest ไม่รวม `live_llm` (v0.2.2) | **1448 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL เจ้าของไฟล์, `/knowledge-base/mine`; intake, `/chat`, wizard step APIs ยังผ่าน |
+| pytest `--cov=app` | **85%** (9527 stmts / 1399 miss) | HTML ที่ `app/backend/htmlcov/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
 | Vitest `--coverage` | **122 ผ่าน** / **89.8%** statements (660/735) | รวมหน้าฐานความรู้ของเจ้าหน้าที่; ตัดหน้าแอดมิน KB |
 | Playwright (แอป, 1 worker) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม | เวิร์กโฟลว์บน http://localhost:3000 รวมหน้าคลังความรู้เจ้าหน้าที่ (`อัปโหลดเอกสารของฉัน`) `/chat` และร่างด้วย AI (Gemma) — รันทีละเคสเพราะบัญชีทดลองร่วมกัน |
 | ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ หน้าแอดมิน `/chat` HITL |
@@ -272,7 +272,7 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **85%** (9524 statements, 1426 miss) — ลดจาก 87% เพราะโมดูล RAG/Graph/Mongo/`knowledge_base.mine` ที่เพิ่มในรอบนี้
+Backend `coverage.py`: **85%** (9527 statements, 1399 miss) — ลดจาก 87% เพราะโมดูล RAG/Graph/Mongo/`knowledge_base.mine` ที่เพิ่มในรอบนี้
 
 ![Coverage backend 87%](test-evidence/13-backend-coverage.png)
 

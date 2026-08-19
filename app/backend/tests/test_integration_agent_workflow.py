@@ -198,7 +198,7 @@ async def test_kb_chat_acl_and_threshold():
             return SimpleNamespace(chunks=[]), [], False
         chunk = SimpleNamespace(
             text="กฎหมาย",
-            score=0.2,
+            score=0.1,
             source_document="x",
             page_number=1,
             section_label="s1",
@@ -212,6 +212,26 @@ async def test_kb_chat_acl_and_threshold():
         assert response.no_results is True
         assert seen["scope"] == "both"
         assert seen["user_id"] == user_id
+
+    async def retrieve_hit(query, **kwargs):
+        del query, kwargs
+        chunk = SimpleNamespace(
+            text="วิธีเฉพาะเจาะจงใช้วงเงินไม่เกินห้าแสนบาท",
+            score=0.4,
+            source_document="กฎกระทรวงวงเงิน.pdf",
+            page_number=1,
+            section_label="s6",
+            metadata={"document_name": "กฎกระทรวงวงเงิน.pdf"},
+        )
+        return SimpleNamespace(chunks=[chunk]), [], False
+
+    with patch("app.services.kb_chat_service.hybrid_retrieve", new=retrieve_hit):
+        hit = await KnowledgeChatService(llm=FakeLLM("วงเงินไม่เกินห้าแสนบาท")).answer(
+            SESSION_ID, user_id, "วงเงินเท่าใด", []
+        )
+        assert hit.no_results is False
+        assert "ห้าแสน" in hit.answer
+        assert hit.citations[0]["document"] == "กฎกระทรวงวงเงิน.pdf"
 
     other_row = MagicMock()
     other_row.user_id = other

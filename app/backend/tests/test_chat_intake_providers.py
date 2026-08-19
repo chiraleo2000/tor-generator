@@ -36,14 +36,15 @@ def test_owner_filter_dict_scopes():
 
 @pytest.mark.asyncio
 async def test_hybrid_retrieve_degraded_without_session_factory():
+    from app import infra as runtime
     from app.rag import hybrid as hybrid_mod
 
-    previous = hybrid_mod.session_factory
-    hybrid_mod.session_factory = None
+    previous = runtime.session_factory
+    runtime.set_session_factory(None)
     try:
         result, citations, degraded = await hybrid_mod.hybrid_retrieve("งวดจ่าย")
     finally:
-        hybrid_mod.session_factory = previous
+        runtime.set_session_factory(previous)
     assert degraded is True
     assert result.actual_count == 0
     assert citations == []

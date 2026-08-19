@@ -8,8 +8,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import infra as runtime
 from app.domain.corpus import group_for_filename
-from app.infra import mongo_client, neo4j_driver
 from app.io_temp import unlink_path, write_temp_bytes
 from app.models.knowledge_base_document import KnowledgeBaseDocument
 from app.providers.factory import ProviderFactory
@@ -58,7 +58,7 @@ async def ingest_file_bytes(
 ) -> KnowledgeBaseDocument:
     """Store original, chunk/embed, and optionally extract a graph."""
     resolved_group = corpus_group or group_for_filename(filename, owner_id=owner_id)
-    store = store_from_client(mongo_client)
+    store = store_from_client(runtime.mongo_client)
     grid_id = None
     if store is not None:
         meta = store.put_file(
@@ -114,7 +114,7 @@ async def ingest_file_bytes(
         await unlink_path(tmp_path)
         return doc
 
-    if neo4j_driver is not None:
+    if runtime.neo4j_driver is not None:
         try:
             from app.rag.extraction import extract_text
 
@@ -123,7 +123,7 @@ async def ingest_file_bytes(
             nodes, rels = await extract_graph_from_text(
                 llm, extracted.text, document_name=filename
             )
-            graph = GraphRAGStore(neo4j_driver)
+            graph = GraphRAGStore(runtime.neo4j_driver)
             await graph.upsert_extraction(
                 document_id=str(doc.id),
                 document_name=filename,

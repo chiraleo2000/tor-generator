@@ -11,14 +11,15 @@ from typing import Annotated, Any, AsyncIterator
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import inspect as sa_inspect, select
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select
 from sqlalchemy.exc import NoInspectionAvailable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app import infra as runtime
 from app.deps import get_current_user, get_db
 from app.exceptions import AuthorizationError, NotFoundError, ValidationError
-from app.infra import session_factory
 from app.models.chat_message import ChatMessage
 from app.models.chat_prompt_template import ChatPromptTemplate
 from app.models.chat_room import ChatRoom
@@ -262,7 +263,7 @@ async def upload_attachment(
     if not content:
         raise ValidationError(message="ไฟล์ว่าง", field="file")
     mime = file.content_type or "application/pdf"
-    factory = session_factory or request.app.state.db_session_factory
+    factory = runtime.session_factory or request.app.state.db_session_factory
     doc = await ingest_file_bytes(
         db=db,
         filename=file.filename or "upload.bin",

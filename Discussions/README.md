@@ -6,7 +6,7 @@ Help text in the running app is under `/help` (`app/frontend`). The current oper
 
 Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.html` at repo root, branch `gh-pages`). `06-UXUI-Mockup.html` is the older PoC mock.
 
-เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–18** (ไม่มีแฟ้ม 19 หรือ 20). แอป **v0.2.1** เพิ่มเส้นทาง backend `/api/v1/agent` และ `/api/v1/kb-chat` คู่กับพื้นที่ทำงาน 5 Phase:
+เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–18** (ไม่มีแฟ้ม 19 หรือ 20). แอป **v0.2.2** เพิ่มเส้นทาง backend `/api/v1/agent` และ `/api/v1/kb-chat` คู่กับพื้นที่ทำงาน 5 Phase:
 
 | File | Topic |
 |------|--------|

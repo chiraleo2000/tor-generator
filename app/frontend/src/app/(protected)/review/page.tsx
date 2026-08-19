@@ -188,7 +188,7 @@ export default function StandaloneReviewPage() {
                 key={`${row.left}-${row.right}`}
                 tone={row.jaccard >= 0.5 ? "pass" : "warn"}
                 title={`เทียบเคียง ${row.left} กับ ${row.right}`}
-                detail={`Jaccard ${row.jaccard}`}
+                detail={`ความคล้าย ${row.jaccard}`}
               />
             ))}
           </div>

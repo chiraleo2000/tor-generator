@@ -23,7 +23,7 @@ const TABS = [
   { id: "kb", label: "ฐานความรู้", icon: BookOpen },
   { id: "review", label: "ตรวจสอบ", icon: ScanSearch },
   { id: "admin", label: "ผู้ดูแล", icon: Cpu },
-  { id: "faq", label: "FAQ", icon: CircleHelp },
+  { id: "faq", label: "คำถามที่พบบ่อย", icon: CircleHelp },
 ] as const;
 
 export default function HelpPage() {
@@ -65,7 +65,7 @@ export default function HelpPage() {
         <GuideBlock title="เข้าสู่ระบบ">
           <ol>
             <li>เปิด http://localhost:3000 — ระบบพาไป /login</li>
-            <li>บัญชีทดลอง: officer@example.go.th / Passw0rd! (รัน python -m app.seed_db ก่อน)</li>
+            <li>บัญชีทดลอง: officer@example.go.th / Passw0rd! (ใส่ข้อมูลเริ่มต้นด้วย python -m app.seed_db จากโฟลเดอร์ app/backend ก่อน)</li>
             <li>ผู้ดูแล admin@example.go.th และผู้ตรวจ reviewer@example.go.th ใช้รหัสเดียวกัน</li>
             <li>สมัครสมาชิกได้ที่ /register — บัญชีใหม่ได้บทบาทเจ้าหน้าที่</li>
           </ol>
@@ -116,7 +116,7 @@ export default function HelpPage() {
               "Phase 0 อัปโหลดชุดใหญ่",
               "Phase 1 แชทถามส่วนขาด",
               "Phase 2 ร่าง 13 หมวด",
-              "Phase 3 ทบทวน HITL",
+              "Phase 3 ทบทวนโดยเจ้าหน้าที่",
               "Phase 4 ส่งออก",
             ]}
           />
@@ -136,15 +136,15 @@ export default function HelpPage() {
             </thead>
             <tbody>
               <tr>
-                <td>filled</td>
+                <td>มีข้อมูล</td>
                 <td>มีข้อเท็จจริงจากเอกสารหรือคำตอบในแชท</td>
               </tr>
               <tr>
-                <td>gap</td>
+                <td>ส่วนขาด</td>
                 <td>ยังขาด — บอทจะถามต่อ</td>
               </tr>
               <tr>
-                <td>reference_only</td>
+                <td>อ้างกฎหมายเท่านั้น</td>
                 <td>อ้างกฎหมายได้ แต่ยังไม่ใช่ข้อเท็จจริงโครงการ (วงเงิน/ชื่อโครงการใช้สถานะนี้ไม่ได้)</td>
               </tr>
             </tbody>
@@ -189,8 +189,8 @@ export default function HelpPage() {
       {tab === "kb" ? (
         <GuideBlock title="ฐานความรู้">
           <p>
-            คลังกลาง seed จาก PDF ข้อมูลดิบด้วย python -m app.seed_raw_docs (EmbeddingGemma จริง)
-            ไม่ใช้ JSON extracts เก่าเป็นคลังใช้งาน
+            คลังกลางใส่จาก PDF ข้อมูลดิบด้วย python -m app.seed_raw_docs (ฝังเวกเตอร์จริงในเครื่อง)
+            ไม่ใช้สารสกัด JSON เก่าเป็นคลังใช้งาน
           </p>
           <p>
             เจ้าหน้าที่อัปโหลดเอกสารของฉันที่หน้านี้ (เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลาง
@@ -201,7 +201,7 @@ export default function HelpPage() {
       {tab === "review" ? (
         <GuideBlock title="ตรวจสอบ TOR">
           <p>
-            อัปโหลดไฟล์ที่มีอยู่แล้ว ระบบอ้างอิงกฎหมายบังคับเสมอ เทียบเคียงไฟล์อื่นด้วย Jaccard
+            อัปโหลดไฟล์ที่มีอยู่แล้ว ระบบอ้างอิงกฎหมายบังคับเสมอ เทียบเคียงไฟล์อื่นด้วยความคล้ายของข้อความ
             และแสดงผลเป็นรายการผ่าน/เตือน/ไม่ผ่าน
           </p>
         </GuideBlock>
@@ -210,7 +210,7 @@ export default function HelpPage() {
         <GuideBlock title="ผู้ดูแลระบบ">
           <p>หน้าแม่แบบ ผู้ใช้ และ การตั้งค่า AI — ค่าเริ่มต้น LM Studio ที่พอร์ต 1234</p>
           <p>
-            แชทและ embeddings เลือกอิสระในทุกโหมด เช่น Claude API + EmbeddingGemma ในเครื่อง
+            แชทและฝังเวกเตอร์เลือกอิสระในทุกโหมด เช่น Claude API + EmbeddingGemma ในเครื่อง
             คลาวด์: Anthropic / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible
             บันทึกแล้วมีผลทันที คีย์ไม่โชว์เต็ม
           </p>
@@ -220,15 +220,15 @@ export default function HelpPage() {
         <GuideBlock title="คำถามที่พบบ่อย">
           <p>ลืมรหัสผ่าน: ให้ผู้ดูแลระบบรีเซ็ตที่หน้าผู้ใช้</p>
           <p>
-            LLM ไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลดแชท google/gemma-4-e4b และ embeddings
-            text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่หน้าการตั้งค่า AI โดยคง embeddings ในเครื่องได้
+            LLM ไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลดแชท google/gemma-4-e4b และโมเดลฝังเวกเตอร์
+            text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่หน้าการตั้งค่า AI โดยคงฝังเวกเตอร์ในเครื่องได้
           </p>
           <p>
-            Seed คลังจากโฮสต์ถ้า bind-mount ไทยพัง: POSTGRES_HOST=127.0.0.1 และ
-            python -m app.seed_raw_docs
+            ใส่คลังจากเครื่องโฮสต์ถ้าเส้นทางภาษาไทยในคอนเทนเนอร์อ่านไม่ได้: ตั้ง POSTGRES_HOST=127.0.0.1 แล้วรัน
+            python -m app.seed_raw_docs จากโฟลเดอร์ app/backend
           </p>
           <p>
-            โหมด on-prem ค่าเริ่มต้นไม่เรียกคลาวด์ — ถ้าเลือกแชทคลาวด์ เนื้อหาแชทออกนอกเครื่อง ส่วน embeddings ในเครื่องยังอยู่ที่เซิร์ฟเวอร์ท้องถิ่น
+            โหมดในเครื่องค่าเริ่มต้นไม่เรียกคลาวด์ — ถ้าเลือกแชทคลาวด์ เนื้อหาแชทออกนอกเครื่อง ส่วนฝังเวกเตอร์ในเครื่องยังอยู่ที่เซิร์ฟเวอร์ท้องถิ่น
           </p>
         </GuideBlock>
       ) : null}
@@ -236,10 +236,12 @@ export default function HelpPage() {
   );
 }
 
-function GuideBlock({
-  title,
-  children,
-}: Readonly<{ title: string; children: React.ReactNode }>) {
+interface GuideBlockProps {
+  readonly title: string;
+  readonly children: React.ReactNode;
+}
+
+function GuideBlock({ title, children }: GuideBlockProps) {
   return (
     <div className="guide-content space-y-3">
       <h2 className="text-[19px] font-bold text-navy">{title}</h2>
@@ -250,7 +252,11 @@ function GuideBlock({
   );
 }
 
-function Flow({ steps }: Readonly<{ steps: string[] }>) {
+interface FlowProps {
+  readonly steps: string[];
+}
+
+function Flow({ steps }: FlowProps) {
   return (
     <div className="illus-flow my-4 flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-gradient-to-br from-indigo-50 to-orange-50 p-5">
       {steps.map((step, index) => (

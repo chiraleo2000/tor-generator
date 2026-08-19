@@ -30,7 +30,7 @@ export function pageMeta(pathname: string): { title: string; sub: string } {
     };
   }
   if (pathname.startsWith("/admin/ai-settings")) {
-    return { title: "การตั้งค่า AI", sub: "เลือกแชทและ embeddings อิสระ (ในเครื่อง / คลาวด์)" };
+    return { title: "การตั้งค่า AI", sub: "เลือกแชทและฝังเวกเตอร์อิสระ (ในเครื่อง / คลาวด์)" };
   }
   if (pathname.startsWith("/admin/users")) {
     return { title: "ผู้ใช้", sub: "บัญชีเจ้าหน้าที่และสิทธิ์" };

@@ -8,8 +8,8 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from app import infra as runtime
 from app.config import get_settings
-from app.infra import redis_client as infra_redis
 
 logger = logging.getLogger("tor_app.session_cache")
 
@@ -50,10 +50,10 @@ class SessionCacheService:
     """Cache agent intermediates in Redis. Writes never block the workflow."""
 
     def __init__(self, redis: Any | None = None) -> None:
-        self._redis = redis if redis is not None else infra_redis
+        self._redis = redis if redis is not None else runtime.redis_client
 
     def _client(self) -> Any | None:
-        return self._redis if self._redis is not None else infra_redis
+        return self._redis if self._redis is not None else runtime.redis_client
 
     def _ttl(self, hours: int) -> int:
         settings = get_settings()

@@ -553,7 +553,7 @@ function Phase3({
       {hitlReady ? (
         <CheckItem tone="pass" title="หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน" />
       ) : (
-        <CheckItem tone="warn" title="ยังไม่ได้ยืนยันหมวด HITL" />
+        <CheckItem tone="warn" title="ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ" />
       )}
       {score != null ? (
         <CheckItem

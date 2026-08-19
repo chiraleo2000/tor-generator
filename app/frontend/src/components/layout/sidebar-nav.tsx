@@ -75,7 +75,7 @@ export function SidebarNav() {
       </nav>
 
       <p className="mt-3 rounded-lg bg-white/5 p-3 text-[12px] leading-relaxed text-white/80">
-        OCR/NLP + RAG + Gemma ในเครื่อง — โหมด on-prem ไม่ส่งข้อมูลออก
+        ประมวลผลเอกสาร + ค้นหาคลังความรู้ + โมเดล Gemma ในเครื่อง — โหมดในเครื่องไม่ส่งข้อมูลออก
       </p>
       <button
         type="button"

@@ -38,11 +38,11 @@ describe("AdminAiSettingsPage", () => {
     fireEvent.change(screen.getByLabelText("Ollama URL"), {
       target: { value: "http://127.0.0.1:11434/v1" },
     });
-    fireEvent.change(screen.getByLabelText("llama.cpp / custom URL"), {
+    fireEvent.change(screen.getByLabelText("llama.cpp / URL ที่กำหนดเอง"), {
       target: { value: "http://127.0.0.1:8080/v1" },
     });
     fireEvent.change(screen.getByLabelText("ชื่อโมเดลแชท"), { target: { value: "google/gemma-4-e4b" } });
-    fireEvent.change(screen.getByLabelText("Timeout (วินาที)"), { target: { value: "120" } });
+    fireEvent.change(screen.getByLabelText("หมดเวลารอ (วินาที)"), { target: { value: "120" } });
 
     fireEvent.change(screen.getByLabelText("โหมด"), { target: { value: "cloud" } });
     expect(screen.getByLabelText("โมเดลแชท")).toHaveValue("ollama");
@@ -50,7 +50,7 @@ describe("AdminAiSettingsPage", () => {
 
     fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "claude" } });
     expect(screen.getByLabelText("Anthropic API key")).toBeInTheDocument();
-    expect(screen.getByLabelText("Embeddings")).toHaveValue("local");
+    expect(screen.getByLabelText("ฝังเวกเตอร์")).toHaveValue("local");
     expect(screen.getByLabelText("LM Studio URL")).toBeInTheDocument();
     expect(screen.getByLabelText("โมเดลแชท").querySelector("option[value='lm_studio']")).not.toBeNull();
     fireEvent.change(screen.getByLabelText("Anthropic API key"), { target: { value: "sk-ant" } });
