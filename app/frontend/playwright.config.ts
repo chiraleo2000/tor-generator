@@ -14,10 +14,11 @@ function ignoredSpecs(): string[] {
 export default defineConfig({
   testDir: "./e2e",
   testIgnore: ignoredSpecs(),
-  fullyParallel: !headed,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: headed ? 1 : undefined,
+  // Shared demo officer account on the live Docker stack — parallel workers collide.
+  workers: 1,
   timeout: 180_000,
   expect: { timeout: 15_000 },
   reporter: [

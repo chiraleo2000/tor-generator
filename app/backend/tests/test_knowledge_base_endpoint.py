@@ -23,7 +23,6 @@ from app.main import app
 from app.models.knowledge_base_document import KnowledgeBaseDocument
 from app.models.user import User
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -50,6 +49,9 @@ def _make_kb_document(
     processing_status="completed",
     chunk_count=42,
     error_message=None,
+    owner_id=None,
+    scope="baseline",
+    corpus_group="mandatory_raw",
 ):
     """Create a mock KnowledgeBaseDocument object."""
     doc = MagicMock(spec=KnowledgeBaseDocument)
@@ -63,6 +65,10 @@ def _make_kb_document(
     doc.error_message = error_message
     doc.uploaded_at = datetime(2024, 8, 15, 10, 0, 0, tzinfo=timezone.utc)
     doc.processed_at = datetime(2024, 8, 15, 10, 5, 0, tzinfo=timezone.utc)
+    doc.owner_id = owner_id
+    doc.scope = scope
+    doc.corpus_group = corpus_group
+    doc.mongo_gridfs_id = None
     return doc
 
 
@@ -212,6 +218,8 @@ class TestListKnowledgeBase:
         body = catalog.json()["data"]
         assert "raw" in body
         assert "chunked" in body
+        assert "groups" in body
+        assert "userFiles" in body
         assert client.get("/api/v1/knowledge-base/raw").status_code == 200
         assert client.get("/api/v1/knowledge-base/chunked").status_code == 200
 
@@ -611,6 +619,132 @@ class TestDocumentStatus:
         """Officers cannot access document status."""
         response = client.get(f"/api/v1/knowledge-base/{DOC_ID}/status")
         assert response.status_code == 403
+
+
+class TestCatalogGroupingAndAcl:
+    def test_catalog_splits_mandatory_and_owner_files(self, client, mock_officer_user):
+        other_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+        documents = [
+            _make_kb_document(
+                name="คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf",
+                category="manual",
+                corpus_group="mandatory_handbook",
+            ),
+            _make_kb_document(
+                doc_id=uuid.uuid4(),
+                name="พรบ.pdf",
+                category="law",
+                corpus_group="mandatory_raw",
+            ),
+            _make_kb_document(
+                doc_id=uuid.uuid4(),
+                name="ของฉัน.pdf",
+                category="example_tor",
+                owner_id=USER_ID,
+                scope="user",
+                corpus_group="user",
+            ),
+            _make_kb_document(
+                doc_id=uuid.uuid4(),
+                name="ของคนอื่น.pdf",
+                category="example_tor",
+                owner_id=other_id,
+                scope="user",
+                corpus_group="user",
+            ),
+        ]
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = documents
+        mock_db.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.get("/api/v1/knowledge-base/catalog")
+        assert response.status_code == 200
+        body = response.json()["data"]
+        assert "groups" in body
+        labels = {row["key"]: row["label"] for row in body["groups"]}
+        assert "mandatory_handbook" in labels
+        assert "mandatory_raw" in labels
+        user_names = {item["name"] for item in body["userFiles"]}
+        assert "ของฉัน.pdf" in user_names
+        assert "ของคนอื่น.pdf" not in user_names
+        user_group = next(row for row in body["groups"] if row["key"] == "user")
+        assert user_group["mandatory"] is False
+        group_names = {item["name"] for item in user_group["items"]}
+        assert "ของคนอื่น.pdf" not in group_names
+
+
+class TestMineUploads:
+    def test_officer_can_upload_private_file(self, client, mock_officer_user):
+        saved = _make_kb_document(
+            name="เงื่อนไขโครงการ.pdf",
+            category="guideline",
+            owner_id=USER_ID,
+            scope="user",
+            corpus_group="user",
+            processing_status="completed",
+            chunk_count=3,
+        )
+        mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        mock_db.flush = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        with patch(
+            "app.api.v1.endpoints.knowledge_base.ingest_file_bytes",
+            new_callable=AsyncMock,
+            return_value=saved,
+        ) as ingest:
+            response = client.post(
+                "/api/v1/knowledge-base/mine",
+                files={"file": ("mine.pdf", io.BytesIO(b"%PDF-1.4 private"), "application/pdf")},
+                data={"category": "guideline", "name": "เงื่อนไขโครงการ.pdf"},
+            )
+        assert response.status_code == 202
+        assert ingest.await_count == 1
+        kwargs = ingest.await_args.kwargs
+        assert kwargs["scope"] == "user"
+        assert kwargs["owner_id"] == USER_ID
+        assert kwargs["corpus_group"] == "user"
+        assert response.json()["data"]["name"] == "เงื่อนไขโครงการ.pdf"
+
+    def test_officer_deletes_own_file(self, client, mock_officer_user):
+        document = _make_kb_document(
+            owner_id=USER_ID, scope="user", corpus_group="user"
+        )
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = document
+        mock_db.execute = AsyncMock(return_value=result)
+        mock_db.delete = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.delete(f"/api/v1/knowledge-base/mine/{DOC_ID}")
+        assert response.status_code == 200
+        assert response.json()["data"]["id"] == str(DOC_ID)
+
+    def test_officer_cannot_delete_someone_elses_file(self, client, mock_officer_user):
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.delete(f"/api/v1/knowledge-base/mine/{DOC_ID}")
+        assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------

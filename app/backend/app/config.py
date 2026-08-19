@@ -79,11 +79,14 @@ class Settings(BaseSettings):
     lm_studio_timeout: float = 180.0
     ollama_base_url: str = LOCAL_LLM_DEFAULT_URLS["ollama"]
     llama_cpp_base_url: str = LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
+    local_embedding_server: str = "lm_studio"
+    local_embedding_base_url: str = ""
 
     # -------------------------------------------------------------------------
     # Cloud model ids
     # -------------------------------------------------------------------------
     openai_chat_model: str = "gpt-4o-mini"
+    openai_embedding_model: str = "text-embedding-3-small"
     gemini_model: str = "gemini-2.0-flash"
     gemini_embedding_model: str = "text-embedding-004"
     bedrock_region: str = "ap-southeast-1"
@@ -91,6 +94,7 @@ class Settings(BaseSettings):
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     azure_foundry_endpoint: str = ""
     azure_foundry_deployment: str = ""
+    azure_foundry_embedding_deployment: str = ""
     azure_foundry_api_version: str = "2024-10-21"
     openai_compatible_base_url: str = ""
     openai_compatible_model: str = ""
@@ -157,11 +161,20 @@ class Settings(BaseSettings):
         """Redis connection string."""
         return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/0"
 
+    agent_cache_extraction_ttl_hours: int = 24
+    agent_cache_mapping_ttl_hours: int = 24
+    agent_cache_draft_ttl_hours: int = 48
+    agent_local_storage_dir: str = ""
+
     def drafting_agent_timeout_seconds(self) -> int:
         """Per-section LLM timeout. Local Gemma needs more headroom than cloud."""
-        if self.llm_provider in LOCAL_LLM_PROVIDERS or self.deployment_mode == "on_prem":
+        if self.llm_provider in LOCAL_LLM_PROVIDERS:
             return max(1, min(300, int(self.lm_studio_timeout)))
         return 60
+
+    def cache_ttl_seconds(self, hours: int) -> int:
+        """Clamp cache TTL hours to 1–168 and convert to seconds."""
+        return max(1, min(168, int(hours))) * 3600
 
 
 def apply_runtime_overlay(data: dict[str, Any]) -> None:

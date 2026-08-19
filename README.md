@@ -1,52 +1,102 @@
 # TOR Generator
 
-ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560
+ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-**GitHub Pages คือ UI จำลองเท่านั้น** — เปิดจาก [`index.html`](index.html) ที่ root ของรีโป ให้หน้าตาและเมนูตรงกับแอปปัจจุบัน (แดชบอร์ดภาษาไทย, 5 Phase, 13 หมวด, ร่างด้วย AI, ตรวจสอบ, การตั้งค่า AI) แต่ไม่เรียก API/LLM จริง และ**ไม่ได้**ใช้ `discussions/06-UXUI-Mockup.html`
+แอปที่รันจริงคือ **v0.2.0**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ, และโหมด LLM ในเครื่อง (LM Studio / Ollama / llama.cpp) หรือคลาวด์จากหน้าผู้ดูแล
 
-ไซต์ที่เผยแพร่: **https://chiraleo2000.github.io/tor-generator/** (branch `gh-pages` มีแค่ mockup — ไม่ดึงคลังความรู้ทั้งก้อนขึ้น Pages)
+**GitHub Pages คือ UI จำลองเท่านั้น** — เปิดจาก [`index.html`](index.html) ที่ root ของรีโป ให้หน้าตาและเมนูตรงกับแอปปัจจุบัน แต่ไม่เรียก API/LLM จริง และ**ไม่ได้**ใช้ `discussions/06-UXUI-Mockup.html`
 
-แอปที่ใช้งานจริงอยู่ที่ `app/` รันด้วย Docker ตามด้านล่าง
+ไซต์ที่เผยแพร่: **https://chiraleo2000.github.io/tor-generator/** (branch `gh-pages` มีแค่ mockup)
 
-This repository is split into **three trees**. Put new files in the matching folder — do not drop PDFs, notes, or app code at the repo root (exception: `index.html` + `.nojekyll` for GitHub Pages).
+## โครงสร้างรีโป
 
-| Folder | What belongs here |
-|--------|-------------------|
-| **[app/](app/)** | The web application: Next.js UI, FastAPI backend, Docker image extras |
-| **[discussions/](discussions/)** | Design notes, architecture write-ups, API/UX docs (not loaded at runtime) |
-| **[documents/](documents/)** | Laws, PDFs, RAG corpus, TOR templates, research extracts, source packs |
+วางไฟล์ใหม่ในโฟลเดอร์ที่ตรงกัน — อย่าวาง PDF, บันทึกออกแบบ, หรือซอร์สแอปที่รากรีโป (ข้อยกเว้น: `index.html` + `.nojekyll` สำหรับ GitHub Pages)
 
-Related (not the web app):
+| Folder | ใส่ที่นี่ |
+|--------|-----------|
+| **[app/](app/)** | เว็บแอป: Next.js UI, FastAPI, extras ของ Docker image |
+| **[discussions/](discussions/)** | สถาปัตยกรรม, API, UX, หลักฐานเทสต์ (ไม่โหลดตอนรัน) |
+| **[documents/](documents/)** | กฎหมาย, PDF ต้นฉบับ, extracts งานวิจัย, แม่แบบ TOR |
 
-| Path | Role |
-|------|------|
-| [skills/](skills/) | Offline Claude / ChatGPT / Gemini / Hermes skill packs |
-| [.kiro/](.kiro/) | Kiro spec and in-IDE skills — see [SKILLS.md](SKILLS.md) |
-| `docker-compose.yml` | Runs **app/** with a read-only mount of `documents/knowledge-base` |
+ที่เกี่ยวข้อง (ไม่ใช่เว็บแอป):
 
-Canonical TOR keys are `s1`–`s13`. Shared definition: `app/backend/app/domain/tor_sections.py` and `app/frontend/src/lib/tor-sections.ts`.
+| Path | บทบาท |
+|------|--------|
+| [skills/](skills/) | Skill packs ออฟไลน์ (Claude / ChatGPT / Gemini / Hermes) |
+| [.kiro/](.kiro/) | สเปก Kiro และสกิลใน IDE — ดู [SKILLS.md](SKILLS.md) |
+| `docker-compose.yml` | รัน **app/** พร้อม Postgres, Redis, MinIO, Mongo, Neo4j |
 
-## Quick start (app)
+คีย์หมวด TOR ตามมาตรฐานคือ `s1`–`s13` — นิยามร่วม: `app/backend/app/domain/tor_sections.py` และ `app/frontend/src/lib/tor-sections.ts`
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
+## รันบนเครื่อง (Docker)
 
-- UI: http://localhost:3000
-- API: http://localhost:4000/api/v1
-- Health: http://localhost:4000/health
-
-Seed demo users, templates, and knowledge base:
+โฟลเดอร์รีโปเป็นภาษาไทย ต้องตั้งชื่อโปรเจกต์ Compose เป็น `tor-app`
 
 ```bash
-docker compose exec backend python -m app.seed_db
-docker compose exec backend python -m app.seed_kb
+copy .env.example .env
+docker compose -p tor-app --env-file .env up -d --build
 ```
 
-Demo logins (after seed): `admin@example.go.th`, `officer@example.go.th`, `reviewer@example.go.th` — password `Passw0rd!`.
+| บริการ | URL |
+|--------|-----|
+| UI | http://localhost:3000 |
+| API | http://localhost:4000/api/v1 |
+| Health | http://localhost:4000/health (`postgres` `redis` `minio` `mongo` `neo4j`) |
+| MinIO console | http://localhost:9001 |
+| Neo4j browser | http://localhost:7474 |
 
-Local backend (without Compose):
+รอจนทุกคอนเทนเนอร์ `healthy` แล้วใส่ข้อมูลเริ่มต้น:
+
+```bash
+docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
+```
+
+บัญชีทดลอง (รหัส `Passw0rd!`): `officer@example.go.th`, `admin@example.go.th`, `reviewer@example.go.th`
+
+### คลังความรู้ RAG (บังคับ)
+
+คลังใช้งานมาจาก PDF สองกลุ่ม — **ไม่** ingest JSON ใน `documents/knowledge-base` เป็นคลังหลัก รันจาก **โฮสต์** (bind-mount ชื่อไทยในคอนเทนเนอร์มัก Errno 5):
+
+```bash
+cd app/backend
+set POSTGRES_HOST=127.0.0.1
+set LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1
+set MONGO_URI=mongodb://127.0.0.1:27017
+set NEO4J_URI=bolt://127.0.0.1:7687
+python -m app.seed_raw_docs
+```
+
+| กลุ่ม | แหล่ง | ใครเห็น |
+|-------|--------|---------|
+| `mandatory_handbook` | `documents/sources/คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf` | ทุกบัญชี |
+| `mandatory_raw` | PDF ใน `documents/sources/การจัดซื้อจัดจ้าง/ข้อมูลดิบ` | ทุกบัญชี |
+| `user` | อัปโหลดที่หน้าฐานความรู้ (`POST /api/v1/knowledge-base/mine`) | **เฉพาะเจ้าของ** — เจ้าหน้าที่อื่นไม่เห็น |
+
+อย่าส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ `docker compose` — Compose จะทับ `.env` แล้ว backend หา postgres ในเครือข่าย Docker ไม่เจอ
+
+`python -m app.seed_kb` ยังมีสำหรับ extracts งานวิจัยเท่านั้น
+
+## โหมด LLM
+
+ค่าเริ่มต้น `DEPLOYMENT_MODE=on_prem` และ `LLM_PROVIDER=lm_studio`
+
+| โหมด | ความหมาย | แชท / embeddings |
+|------|----------|-------------------|
+| `on_prem` | ค่าเริ่มต้นในเครื่อง | เลือกอิสระ เช่น LM Studio แชท + EmbeddingGemma หรือ Claude + EmbeddingGemma |
+| `cloud` | เน้นคีย์ API | เลือกอิสระ เช่น Claude แชท + OpenAI embeddings หรือ Claude + embeddings ในเครื่อง |
+| `hybrid` | ผสมชัดเจน | เหมือนกัน — `LLM_PROVIDER` กับ `EMBEDDING_PROVIDER` ไม่ถูกสลับคู่ |
+
+ตัวอย่าง: `DEPLOYMENT_MODE=hybrid`, `LLM_PROVIDER=claude`, `EMBEDDING_PROVIDER=local`, `ANTHROPIC_API_KEY=...` — แชทใช้ Claude, ฝังเวกเตอร์ใช้ EmbeddingGemma บน LM Studio (`LOCAL_EMBEDDING_SERVER=lm_studio`)
+
+ผู้ดูแลสลับผู้ให้บริการได้ที่ **การตั้งค่า AI** — บันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend ถ้าเปลี่ยนโมเดล embeddings ต้อง `seed_raw_docs` ใหม่
+
+### LM Studio (ค่าเริ่มต้น)
+
+1. โหลดแชท **google/gemma-4-e4b** และ embeddings **text-embedding-embeddinggemma-300m**
+2. เปิดเซิร์ฟเวอร์ OpenAI-compatible ที่ `http://127.0.0.1:1234/v1`
+3. จาก Docker backend ใช้ `http://host.docker.internal:1234/v1`
+
+## รันโดยไม่ใช้ Compose
 
 ```bash
 cd app/backend
@@ -54,48 +104,69 @@ pip install -e ".[dev]"
 uvicorn app.main:app --reload --port 4000
 ```
 
-Local frontend:
-
 ```bash
 cd app/frontend
 npm install
-# NEXT_PUBLIC_API_URL=/api/v1 uses the Next.js rewrite to localhost:4000
 npm run dev
 ```
 
-## Deployment modes (Req 2)
+เบราว์เซอร์เรียก `/api/v1` ผ่าน rewrite ของ Next.js (อย่าตั้ง `NEXT_PUBLIC_API_URL` เป็นโฮสต์ Docker ชื่อ `backend`)
 
-Set `DEPLOYMENT_MODE` in `.env`:
+## ทดสอบ (coverage เต็มบนโฮสต์)
 
-| Mode | LLM | Embedding | Vector store |
-|------|-----|-----------|----------------|
-| `on_prem` | LM Studio / Ollama / llama.cpp (`LLM_PROVIDER`) | EmbeddingGemma-300M local (`EMBEDDING_PROVIDER=local`) | pgvector |
-| `cloud` | Claude / OpenAI / Gemini | OpenAI or Gemini embeddings (768-d) | pgvector or Qdrant |
-| `hybrid` | `LLM_PROVIDER` + `EMBEDDING_PROVIDER` + `VECTOR_STORE_PROVIDER` | same | same |
+Production image ไม่คัดลอกโฟลเดอร์ `tests/` — รันบนโฮสต์
 
-Operator docs: [discussions/13-USER_GUIDELINE.md](discussions/13-USER_GUIDELINE.md), [14-INSTALLATION.md](discussions/14-INSTALLATION.md), [15-APPLICATION_DESCRIPTION.md](discussions/15-APPLICATION_DESCRIPTION.md), [16-BACKEND_ARCHITECTURE.md](discussions/16-BACKEND_ARCHITECTURE.md), [17-FRONTEND_ARCHITECTURE.md](discussions/17-FRONTEND_ARCHITECTURE.md).
+```bash
+# Backend (ตัด live LLM)
+cd app/backend
+python -m pytest tests -q --tb=short --cov=app --cov-report=term-missing --cov-report=html -m "not live_llm"
 
-### LM Studio (on-prem)
+# Backend รวมยิง LM Studio จริง (ต้องโหลดแชท+embeddings ที่พอร์ต 1234)
+python -m pytest tests -q --tb=short --cov=app --cov-report=term-missing --cov-report=html
+```
 
-1. Load chat **google/gemma-4-e4b** and embeddings **text-embedding-embeddinggemma-300m** (768-d).
-2. Start the OpenAI-compatible server (default `http://127.0.0.1:1234/v1`).
-3. From Docker, the backend uses `http://host.docker.internal:1234/v1`.
-4. If the LLM is unreachable the API returns a structured error. No project data is sent off-host in `on_prem`.
-5. Admins can switch to Ollama, llama.cpp, or cloud Claude/OpenAI/Gemini from **การตั้งค่า AI** (restart backend after save).
+รายงาน HTML: `app/backend/htmlcov/index.html` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main` ตาม `pyproject.toml`)
 
-## Browser API URL
+```bash
+# Frontend unit + coverage
+cd app/frontend
+npm test
+npm run test:coverage
+```
 
-The browser cannot resolve the Docker hostname `backend`. Compose builds the frontend with `NEXT_PUBLIC_API_URL=/api/v1` and Next.js rewrites `/api/v1/*` to `http://backend:4000/api/v1` inside the container (or `http://localhost:4000` in local `next dev`).
+รายงาน HTML: `app/frontend/coverage/index.html`
 
-## Compose smoke (Req 1)
+```bash
+# E2E (สแตก Docker ต้องขึ้นที่ http://localhost:3000; รัน 1 worker เพราะบัญชีทดลองร่วมกัน)
+cd app/frontend
+npx playwright install chromium
+npm run test:e2e
+npm run test:e2e:headed
+```
 
-Health checks use 30s interval, 3 retries, 40s start period. After `docker compose up --build`:
+ชุดล่าสุดบนโฮสต์ (**19 ส.ค. 2026**):
 
-1. `curl http://localhost:4000/health` and open http://localhost:3000
-2. Seed users/templates/KB (`python -m app.seed_db` then `python -m app.seed_kb`)
-3. Log in as `officer@example.go.th` / `Passw0rd!` and create a project (browser must reach `/api/v1` via the Next.js rewrite)
-4. Optional drafting call if LM Studio is running; otherwise AI draft returns a structured error ≤10s
+| ชุด | ผล |
+|-----|-----|
+| pytest `-m "not live_llm"` + `--cov=app` | **1440 ผ่าน** / **85%** ของ `app/` |
+| pytest `-m live_llm` (LM Studio พอร์ต 1234) | **10 ผ่าน** |
+| Vitest `--coverage` | **122 ผ่าน** / **90.9%** statements |
+| Playwright `test:e2e` (1 worker, Docker :3000) | **15 ผ่าน** |
 
-Playwright (needs a running UI): `cd app/frontend && npm i && npx playwright install chromium && E2E=1 npm run test:e2e`
+รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
 
-Deferred: dual vector-store daily sync and Kubernetes/OCR HPA.
+## คู่มือเพิ่มเติม
+
+- ผู้ใช้: [discussions/13-USER_GUIDELINE.md](discussions/13-USER_GUIDELINE.md)
+- ติดตั้ง: [discussions/14-INSTALLATION.md](discussions/14-INSTALLATION.md)
+- คำอธิบายแอป: [discussions/15-APPLICATION_DESCRIPTION.md](discussions/15-APPLICATION_DESCRIPTION.md)
+- Backend: [discussions/16-BACKEND_ARCHITECTURE.md](discussions/16-BACKEND_ARCHITECTURE.md)
+- Frontend: [discussions/17-FRONTEND_ARCHITECTURE.md](discussions/17-FRONTEND_ARCHITECTURE.md)
+- หลักฐานเทสต์: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
+
+## หยุดสแตก
+
+```bash
+docker compose -p tor-app --env-file .env down      # เก็บ volume
+docker compose -p tor-app --env-file .env down -v   # ลบข้อมูลด้วย
+```

@@ -48,6 +48,12 @@ class User(Base):
     chat_rooms: Mapped[list["ChatRoom"]] = relationship(  # noqa: F821
         "ChatRoom", back_populates="user", lazy="selectin"
     )
+    agent_sessions: Mapped[list["AgentSession"]] = relationship(  # noqa: F821
+        "AgentSession", back_populates="user", lazy="selectin"
+    )
+    kb_chat_sessions: Mapped[list["KBChatSession"]] = relationship(  # noqa: F821
+        "KBChatSession", back_populates="user", lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email}, role={self.role})>"

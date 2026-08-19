@@ -36,6 +36,7 @@ COMPOSE_PROJECT_NAME=tor-app
 DEPLOYMENT_MODE=on_prem
 LLM_PROVIDER=lm_studio
 EMBEDDING_PROVIDER=local
+LOCAL_EMBEDDING_SERVER=lm_studio
 LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
 LM_STUDIO_MODEL=google/gemma-4-e4b
 LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m
@@ -50,6 +51,9 @@ NEO4J_PASSWORD=changeme_neo4j
 ```
 
 คีย์คลาวด์ (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, และคีย์ Bedrock / Azure Foundry / OpenAI-compatible) ว่างได้ถ้าใช้เฉพาะโมเดลท้องถิ่น — Compose ส่งค่าผ่านไปถ้ามี แต่ไม่บังคับว่างแล้ว คีย์ที่บันทึกจากหน้าผู้ดูแลอยู่ใน Postgres และมีผลทันทีหลังกดบันทึก (ไม่ต้องรีสตาร์ท backend)
+
+Alembic `005_agent_sessions` สร้างตาราง `agent_sessions`, `kb_chat_sessions` และคอลัมน์ `projects.workflow_mode` เมื่อ backend สตาร์ท (หรือ `alembic upgrade head` จาก `app/backend`)  
+Alembic `006_kb_corpus_group` เพิ่ม `knowledge_base_documents.corpus_group` (`mandatory_handbook` / `mandatory_raw` / `user`)
 
 ## 2. เปิด LM Studio (โหมดในเครื่อง)
 
@@ -112,7 +116,12 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 บัญชีทดลอง: `officer@example.go.th` / `admin@example.go.th` / `reviewer@example.go.th` รหัส `Passw0rd!`
 
-คลังกฎหมายใช้งานรอบนี้มาจาก PDF ใน `documents/sources/` ผ่าน `seed_raw_docs` ด้านบน ไม่ ingest JSON extracts ใน `documents/knowledge-base` เป็นคลังหลัก
+คลังกฎหมายใช้งานรอบนี้มาจาก PDF สองกลุ่มผ่าน `seed_raw_docs`:
+
+- `documents/sources/คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf`
+- ไฟล์ใน `documents/sources/การจัดซื้อจัดจ้าง/ข้อมูลดิบ`
+
+ไม่ ingest JSON extracts ใน `documents/knowledge-base` เป็นคลังหลัก เจ้าหน้าที่อัปโหลดไฟล์ส่วนตัวที่หน้าฐานความรู้ (`POST /knowledge-base/mine`) — ระบบ chunk/embed ให้เฉพาะบัญชีนั้น
 
 `python -m app.seed_kb` ยังมีถ้าต้องการชุด extracts เก่าสำหรับงานวิจัย — บน Windows ชื่อโฟลเดอร์ไทยอาจทำให้ bind-mount ล้ม (Errno 5)
 
@@ -120,11 +129,12 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 เข้าสู่ระบบด้วยบัญชี admin แล้วเปิด **การตั้งค่า AI**:
 
-- รันในเครื่อง: LM Studio / Ollama / llama.cpp เท่านั้น, URL, ชื่อโมเดลแชทและ embeddings, timeout
+- แชทและ embeddings เลือกอิสระในทุกโหมด ไม่สลับคู่อัตโนมัติ เช่น Claude API + EmbeddingGemma ในเครื่อง
+- รันในเครื่อง: LM Studio / Ollama / llama.cpp — เซิร์ฟเวอร์ embeddings แยกจากแชทได้ (`LOCAL_EMBEDDING_SERVER`)
 - คลาวด์: Claude / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible + API key (ใส่ในหน้านี้ได้ ไม่ต้องใส่ใน `.env`)
-- ผสม: เลือกแชท/embeddings/คลังเวกเตอร์ทีละส่วน (คลาวด์ต้องมีคีย์)
+- ผสม: ค่าที่เลือกในช่องแชท/embeddings คือแหล่งที่ใช้งานจริง (คลาวด์ต้องมีคีย์ของฝั่งนั้น)
 - คลังเวกเตอร์: `pgvector` หรือ `qdrant` (ใช้ได้ทั้งโหมดในเครื่อง)
-- **ทดสอบการเชื่อมต่อ** ไม่ต้องรีสตาร์ท
+- **ทดสอบการเชื่อมต่อ** ยิงทั้งแชทและ embeddings ไม่ต้องรีสตาร์ท
 - **บันทึก** มีผลทันทีในกระบวนการ — ไม่ต้อง `restart backend`
 
 ถ้าเปลี่ยนผู้ให้บริการ embeddings หรือชื่อโมเดลฝังตัว ต้อง `python -m app.seed_raw_docs` อีกครั้ง (หน้าผู้ดูแลจะเตือน `reingest_required`)
@@ -186,11 +196,12 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest รวม live LM Studio | **1378 ผ่าน** / ครอบคลุม **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
-| Vitest | **119 ผ่าน** / ครอบคลุม **91.39%** statements ของ lib+stores+หน้าตั้งค่า AI+chat SSE |
+| pytest ไม่รวม `live_llm` | **1440 ผ่าน** / ครอบคลุม **85%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) |
+| Vitest | **122 ผ่าน** / ครอบคลุม **90.9%** statements ของ lib+stores+หน้าตั้งค่า AI+หน้าฐานความรู้+chat SSE |
 | Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม — ฟอร์มสร้างโครงการ, แชทร่าง Phase 0–1, `/chat`, เดิน Phase 0–4, ร่างด้วย AI (Gemma ~2.7 นาที) |
 | Playwright รายงาน coverage | **3 ผ่าน** (`test:e2e:reports` ที่พอร์ต 8765/8766/8767) |
-| การตั้งค่า AI | โหมดในเครื่อง = LM Studio/Ollama/llama.cpp; โหมดคลาวด์ = Claude/OpenAI/Gemini + คีย์ในหน้า UI; บันทึกมีผลทันที |
+| การตั้งค่า AI | แชทและ embeddings เลือกอิสระ; คีย์คลาวด์ใส่ในหน้า UI; บันทึกมีผลทันที |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 
 ![Backend coverage 87%](test-evidence/13-backend-coverage.png)

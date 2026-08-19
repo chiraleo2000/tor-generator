@@ -11,6 +11,11 @@ Key components:
 - agents/review_agent.py: ReviewAgent for full-document analysis (task 10.5)
 """
 
+from app.orchestrator.agent_graph import (
+    build_agent_workflow_graph,
+    compile_agent_workflow_graph,
+)
+from app.orchestrator.agent_state import AgentWorkflowState
 from app.orchestrator.graph import (
     build_tor_drafting_graph,
     compile_tor_drafting_graph,
@@ -23,4 +28,7 @@ __all__ = [
     "SectionStateManager",
     "build_tor_drafting_graph",
     "compile_tor_drafting_graph",
+    "AgentWorkflowState",
+    "build_agent_workflow_graph",
+    "compile_agent_workflow_graph",
 ]

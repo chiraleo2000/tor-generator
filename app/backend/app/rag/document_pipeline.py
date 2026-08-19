@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.corpus import group_for_filename
 from app.infra import mongo_client, neo4j_driver
 from app.io_temp import unlink_path, write_temp_bytes
 from app.models.knowledge_base_document import KnowledgeBaseDocument
@@ -52,8 +53,11 @@ async def ingest_file_bytes(
     owner_id: UUID | None = None,
     project_id: str | None = None,
     session_factory,
+    corpus_group: str | None = None,
+    category: str | None = None,
 ) -> KnowledgeBaseDocument:
     """Store original, chunk/embed, and optionally extract a graph."""
+    resolved_group = corpus_group or group_for_filename(filename, owner_id=owner_id)
     store = store_from_client(mongo_client)
     grid_id = None
     if store is not None:
@@ -69,16 +73,22 @@ async def ingest_file_bytes(
 
     suffix = Path(filename).suffix or ".bin"
     tmp_path = await write_temp_bytes(content, suffix=suffix)
+    extra_metadata = {
+        "corpus_group": resolved_group,
+        "scope": scope,
+        "owner_id": str(owner_id) if owner_id else None,
+    }
     doc = KnowledgeBaseDocument(
         id=uuid4(),
         name=filename[:500],
-        category=_category_for(filename),
+        category=category or _category_for(filename),
         file_type=_file_type_for(mime_type),
         storage_path=str(tmp_path),
         processing_status="pending",
         owner_id=owner_id,
         mongo_gridfs_id=grid_id,
         scope=scope,
+        corpus_group=resolved_group,
     )
     db.add(doc)
     await db.flush()
@@ -95,6 +105,7 @@ async def ingest_file_bytes(
             embedding_provider=embedding,
             vector_store_provider=vector_store,
             session=db,
+            extra_metadata=extra_metadata,
         )
     except Exception as exc:
         doc.processing_status = "failed"
@@ -118,6 +129,8 @@ async def ingest_file_bytes(
                 document_name=filename,
                 nodes=nodes,
                 rels=rels,
+                owner_id=str(owner_id) if owner_id else None,
+                scope=scope,
             )
         except Exception:
             logger.exception("graph extract failed for %s (chunks still saved)", filename)

@@ -6,7 +6,9 @@ DELETE /knowledge-base/{id} — Remove document and its chunks
 POST /knowledge-base/batch-ingest — Full KB re-ingestion
 GET /knowledge-base/{id}/status — Processing status for a single document
 
-All authenticated users can list documents. Upload, delete, and batch ingest are admin-only.
+All authenticated users can list shared documents plus their own uploads.
+Admin upload/delete/batch-ingest remain global. Officers use POST /mine
+and DELETE /mine/{id} for private files (chunked and embedded, owner-only).
 
 Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5
 """
@@ -23,12 +25,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.constants import MIME_DOCX, MIME_PDF, MIME_TXT
 from app.deps import get_current_user, get_db, get_minio
+from app.domain.corpus import (
+    GROUP_LABELS,
+    GROUP_MANDATORY_HANDBOOK,
+    GROUP_MANDATORY_RAW,
+    GROUP_ORDER,
+    GROUP_USER,
+    group_for_filename,
+)
 from app.domain.file_magic import require_kb_upload
 from app.exceptions import NotFoundError, ValidationError
+from app.infra import mongo_client, neo4j_driver
+from app.infra import session_factory as infra_session_factory
 from app.io_temp import unlink_path, write_temp_bytes
 from app.models.kb_chunk import KBChunk
 from app.models.knowledge_base_document import KnowledgeBaseDocument
 from app.models.user import User
+from app.rag.document_pipeline import ingest_file_bytes
+from app.rag.graph_store import GraphRAGStore
 from app.rbac import Role, require_role
 from app.schemas.knowledge_base import (
     KBBatchIngestResponse,
@@ -40,6 +54,7 @@ from app.schemas.knowledge_base import (
     KBUploadResponse,
 )
 from app.schemas.responses import MetaInfo, SuccessResponse
+from app.storage.mongo_store import store_from_client
 
 logger = logging.getLogger("tor_app.knowledge_base")
 
@@ -54,6 +69,38 @@ ALLOWED_MIME_TYPES = {
 
 # Maximum file size: 20MB
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
+
+
+def _validate_kb_bytes(file_content: bytes, claimed_mime: str, filename: str) -> str:
+    if len(file_content) > MAX_FILE_SIZE_BYTES:
+        raise ValidationError(
+            message=f"ไฟล์มีขนาดใหญ่เกินไป (สูงสุด {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)",
+            field="file",
+        )
+    try:
+        content_type = require_kb_upload(file_content, claimed_mime, filename)
+    except ValueError as exc:
+        raise ValidationError(message=str(exc), field="file") from exc
+    if content_type not in ALLOWED_MIME_TYPES:
+        raise ValidationError(
+            message="ไฟล์ประเภทนี้ไม่รองรับ กรุณาอัปโหลดไฟล์ PDF, DOCX, หรือ TXT",
+            field="file",
+        )
+    return content_type
+
+
+async def _purge_aux_stores(document: KnowledgeBaseDocument) -> None:
+    store = store_from_client(mongo_client)
+    if store is not None:
+        try:
+            store.delete_file(document.mongo_gridfs_id)
+        except Exception:
+            logger.warning("Mongo delete missed for document %s", document.id)
+    if neo4j_driver is not None:
+        try:
+            await GraphRAGStore(neo4j_driver).delete_document(str(document.id))
+        except Exception:
+            logger.warning("Neo4j delete missed for document %s", document.id)
 
 
 def _build_success_response(
@@ -110,36 +157,79 @@ async def list_knowledge_base_documents(
     return _build_success_response(request, response_data)
 
 
-def _catalog_payload(documents: list) -> dict:
+def _doc_group(doc: KnowledgeBaseDocument) -> str:
+    group = getattr(doc, "corpus_group", None)
+    if group:
+        return group
+    if getattr(doc, "owner_id", None) is not None:
+        return GROUP_USER
+    return group_for_filename(getattr(doc, "name", "") or "")
+
+
+def _catalog_item(doc: KnowledgeBaseDocument) -> dict:
+    group = _doc_group(doc)
+    owner = getattr(doc, "owner_id", None)
+    return {
+        "id": str(doc.id),
+        "name": doc.name,
+        "file_type": doc.file_type,
+        "category": doc.category,
+        "chunk_count": doc.chunk_count or 0,
+        "processing_status": doc.processing_status,
+        "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else "",
+        "corpus_group": group,
+        "owner_id": str(owner) if owner else None,
+        "mandatory": group in {GROUP_MANDATORY_HANDBOOK, GROUP_MANDATORY_RAW},
+    }
+
+
+def _catalog_payload(documents: list, viewer_id: uuid.UUID | None = None) -> dict:
     grouped: dict[str, list[dict]] = {}
     chunked: dict[str, dict] = {}
+    by_group: dict[str, list[dict]] = {}
     for doc in documents:
-        grouped.setdefault(doc.category, []).append(
-            {
-                "id": str(doc.id),
-                "name": doc.name,
-                "file_type": doc.file_type,
-                "chunk_count": doc.chunk_count,
-                "processing_status": doc.processing_status,
-                "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else "",
-            }
-        )
+        item = _catalog_item(doc)
+        grouped.setdefault(doc.category, []).append(item)
         bucket = chunked.setdefault(
             doc.category,
             {"key": doc.category, "name": doc.category, "files": 0, "chunks": 0},
         )
         bucket["files"] += 1
         bucket["chunks"] += doc.chunk_count or 0
-    user_cats = {"example_tor"}
+        if item["corpus_group"] == GROUP_USER:
+            if viewer_id is None or doc.owner_id != viewer_id:
+                continue
+        by_group.setdefault(item["corpus_group"], []).append(item)
+
+    groups = []
+    extra_keys = [key for key in by_group if key not in GROUP_ORDER]
+    for key in list(GROUP_ORDER) + extra_keys:
+        items = by_group.get(key) or []
+        if not items:
+            continue
+        groups.append(
+            {
+                "key": key,
+                "label": GROUP_LABELS.get(key, key),
+                "mandatory": key != GROUP_USER,
+                "files": len(items),
+                "chunks": sum(row.get("chunk_count") or 0 for row in items),
+                "items": items,
+            }
+        )
+
+    user_files = [
+        _catalog_item(doc)
+        for doc in documents
+        if getattr(doc, "owner_id", None) is not None
+        and viewer_id is not None
+        and doc.owner_id == viewer_id
+    ]
     return {
         "raw": grouped,
         "chunked": list(chunked.values()),
-        "userFiles": [
-            item
-            for cat, items in grouped.items()
-            if cat in user_cats
-            for item in items
-        ],
+        "groups": groups,
+        "userFiles": user_files,
         "totals": {
             "files": len(documents),
             "chunks": sum(doc.chunk_count or 0 for doc in documents),
@@ -173,7 +263,9 @@ async def knowledge_base_catalog(
 ) -> JSONResponse:
     """Return raw documents grouped by category and chunked RAG totals."""
     documents = await _load_kb_docs(db, _current_user)
-    return _build_success_response(request, _catalog_payload(documents))
+    return _build_success_response(
+        request, _catalog_payload(documents, viewer_id=_current_user.id)
+    )
 
 
 @router.get("/raw", response_model=SuccessResponse, summary="Raw KB documents by category")
@@ -182,9 +274,16 @@ async def knowledge_base_raw(
     db: Annotated[AsyncSession, Depends(get_db)],
     _current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
-    payload = _catalog_payload(await _load_kb_docs(db, _current_user))
+    payload = _catalog_payload(
+        await _load_kb_docs(db, _current_user), viewer_id=_current_user.id
+    )
     return _build_success_response(
-        request, {"raw": payload["raw"], "totals": payload["totals"]}
+        request,
+        {
+            "raw": payload["raw"],
+            "groups": payload["groups"],
+            "totals": payload["totals"],
+        },
     )
 
 
@@ -194,9 +293,16 @@ async def knowledge_base_chunked(
     db: Annotated[AsyncSession, Depends(get_db)],
     _current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
-    payload = _catalog_payload(await _load_kb_docs(db, _current_user))
+    payload = _catalog_payload(
+        await _load_kb_docs(db, _current_user), viewer_id=_current_user.id
+    )
     return _build_success_response(
-        request, {"chunked": payload["chunked"], "totals": payload["totals"]}
+        request,
+        {
+            "chunked": payload["chunked"],
+            "groups": payload["groups"],
+            "totals": payload["totals"],
+        },
     )
 
 
@@ -229,22 +335,9 @@ async def upload_knowledge_base_document(
     Req 11.5: If processing fails, log error and mark as failed.
     """
     file_content = await file.read()
-    if len(file_content) > MAX_FILE_SIZE_BYTES:
-        raise ValidationError(
-            message=f"ไฟล์มีขนาดใหญ่เกินไป (สูงสุด {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)",
-            field="file",
-        )
-    try:
-        content_type = require_kb_upload(
-            file_content, file.content_type or "", file.filename or ""
-        )
-    except ValueError as exc:
-        raise ValidationError(message=str(exc), field="file") from exc
-    if content_type not in ALLOWED_MIME_TYPES:
-        raise ValidationError(
-            message="ไฟล์ประเภทนี้ไม่รองรับ กรุณาอัปโหลดไฟล์ PDF, DOCX, หรือ TXT",
-            field="file",
-        )
+    content_type = _validate_kb_bytes(
+        file_content, file.content_type or "", file.filename or ""
+    )
     file_type = ALLOWED_MIME_TYPES[content_type]
     doc_name = name or file.filename or "Untitled Document"
     doc_id = uuid.uuid4()
@@ -270,6 +363,7 @@ async def upload_knowledge_base_document(
         )
 
     # Create document record in database
+    corpus_group = group_for_filename(doc_name, owner_id=None)
     document = KnowledgeBaseDocument(
         id=doc_id,
         name=doc_name,
@@ -278,6 +372,9 @@ async def upload_knowledge_base_document(
         storage_path=storage_path,
         processing_status="pending",
         chunk_count=0,
+        owner_id=None,
+        scope="baseline",
+        corpus_group=corpus_group,
     )
     db.add(document)
     await db.flush()
@@ -291,6 +388,10 @@ async def upload_knowledge_base_document(
         file_content=file_content,
         mime_type=content_type,
         app=request.app,
+        extra_metadata={
+            "corpus_group": corpus_group,
+            "scope": "baseline",
+        },
     )
 
     response_data = KBUploadResponse(
@@ -307,6 +408,88 @@ async def upload_knowledge_base_document(
     )
 
     return _build_success_response(request, response_data, status_code=202)
+
+
+# ---------------------------------------------------------------------------
+# POST /knowledge-base/mine — Officer (or any user) private ingest
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/mine",
+    response_model=SuccessResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Upload a private knowledge-base document",
+    description="Chunk and embed a file visible only to the uploading user.",
+)
+async def upload_my_knowledge_base_document(
+    request: Request,
+    file: Annotated[UploadFile, File(..., description="Document file (PDF, DOCX, or TXT)")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    category: Annotated[KBCategory | None, Form(description="Optional category")] = None,
+    name: Annotated[str | None, Form(description="Optional display name")] = None,
+) -> JSONResponse:
+    file_content = await file.read()
+    content_type = _validate_kb_bytes(
+        file_content, file.content_type or "", file.filename or ""
+    )
+    file_type = ALLOWED_MIME_TYPES[content_type]
+    doc_name = name or file.filename or "Untitled Document"
+    factory = getattr(request.app.state, "db_session_factory", None) or infra_session_factory
+    doc = await ingest_file_bytes(
+        db=db,
+        filename=doc_name,
+        content=file_content,
+        mime_type=content_type,
+        scope="user",
+        owner_id=current_user.id,
+        session_factory=factory,
+        corpus_group=GROUP_USER,
+        category=category.value if category is not None else None,
+    )
+    response_data = KBUploadResponse(
+        id=doc.id,
+        name=doc.name,
+        category=doc.category,
+        file_type=file_type,
+        processing_status=doc.processing_status,
+        message="เอกสารถูกอัปโหลดเฉพาะบัญชีของคุณ กำลังประมวลผลเข้า RAG",
+    ).model_dump(mode="json")
+    logger.info(
+        "Private KB document uploaded: %s (id=%s) by user %s",
+        doc.name,
+        doc.id,
+        current_user.id,
+    )
+    return _build_success_response(request, response_data, status_code=202)
+
+
+@router.delete(
+    "/mine/{document_id}",
+    response_model=SuccessResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Remove my private knowledge-base document",
+)
+async def delete_my_knowledge_base_document(
+    request: Request,
+    document_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JSONResponse:
+    stmt = select(KnowledgeBaseDocument).where(
+        KnowledgeBaseDocument.id == document_id,
+        KnowledgeBaseDocument.owner_id == current_user.id,
+    )
+    document = (await db.execute(stmt)).scalar_one_or_none()
+    if document is None:
+        raise NotFoundError(message="ไม่พบเอกสารที่ต้องการลบ")
+    await db.execute(delete(KBChunk).where(KBChunk.document_id == document_id))
+    await _purge_aux_stores(document)
+    await db.delete(document)
+    return _build_success_response(
+        request, KBDeleteResponse(id=document_id).model_dump(mode="json")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +527,7 @@ async def delete_knowledge_base_document(
     await db.execute(
         delete(KBChunk).where(KBChunk.document_id == document_id)
     )
+    await _purge_aux_stores(document)
 
     # Try to delete file from MinIO (non-blocking on failure)
     try:
@@ -481,6 +665,7 @@ async def _run_ingestion(
     file_content: bytes,
     mime_type: str,
     app,
+    extra_metadata: dict | None = None,
 ) -> None:
     """Background task: run the full RAG ingestion pipeline for a single document.
 
@@ -519,6 +704,7 @@ async def _run_ingestion(
                 embedding_provider=embedding_provider,
                 vector_store_provider=vector_store_provider,
                 session=session,
+                extra_metadata=extra_metadata,
             )
 
             if result.success:
@@ -587,6 +773,7 @@ async def _run_batch_ingestion(
 
     for doc_id in document_ids:
         tmp_path = None
+        extra_metadata: dict | None = None
         try:
             async with session_factory() as session:
                 # Fetch document record
@@ -595,6 +782,12 @@ async def _run_batch_ingestion(
                 if doc is None:
                     logger.warning("Document %s not found for batch ingestion", doc_id)
                     continue
+
+                extra_metadata = {
+                    "corpus_group": getattr(doc, "corpus_group", None),
+                    "scope": getattr(doc, "scope", None),
+                    "owner_id": str(doc.owner_id) if doc.owner_id else None,
+                }
 
                 # Download file from MinIO
                 try:
@@ -635,6 +828,7 @@ async def _run_batch_ingestion(
                     embedding_provider=embedding_provider,
                     vector_store_provider=vector_store_provider,
                     session=session,
+                    extra_metadata=extra_metadata,
                 )
 
                 if result.success:

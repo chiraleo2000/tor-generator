@@ -82,14 +82,19 @@ def extract_text(file_path: str, mime_type: str) -> ExtractionResult:
 
     if mime_type == "application/pdf":
         return extract_pdf(file_path)
-    elif mime_type in (
+    if mime_type in (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/msword",
     ):
         return extract_docx(file_path)
-    elif mime_type.startswith("text/"):
+    if mime_type in (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.ms-powerpoint",
+    ):
+        return extract_pptx(file_path)
+    if mime_type.startswith("text/"):
         return extract_text_file(file_path)
-    elif mime_type in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+    if mime_type in ("image/png", "image/jpeg", "image/gif", "image/webp"):
         warnings: list[str] = []
         try:
             text = ocr_page(file_path)
@@ -105,13 +110,13 @@ def extract_text(file_path: str, mime_type: str) -> ExtractionResult:
             method="ocr",
             warnings=warnings,
         )
-    else:
-        raise ValueError(
-            f"Unsupported MIME type: {mime_type}. "
-            "Supported types: application/pdf, application/json, "
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document, "
-            "image/png, image/jpeg, text/*"
-        )
+    raise ValueError(
+        f"Unsupported MIME type: {mime_type}. "
+        "Supported types: application/pdf, application/json, "
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document, "
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation, "
+        "image/png, image/jpeg, text/*"
+    )
 
 
 def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> ExtractionResult:
@@ -366,6 +371,42 @@ def _deduplicate_adjacent(items: list[str]) -> list[str]:
         if item != result[-1]:
             result.append(item)
     return result
+
+
+def extract_pptx(file_path: str) -> ExtractionResult:
+    """Extract headings, lists, and tables from a PowerPoint file."""
+    warnings: list[str] = []
+    try:
+        from pptx import Presentation
+    except ImportError:
+        warnings.append("python-pptx is not installed")
+        return ExtractionResult(text="", page_count=0, method="direct", warnings=warnings)
+
+    presentation = Presentation(file_path)
+    sections: list[str] = []
+    for index, slide in enumerate(presentation.slides, start=1):
+        slide_parts: list[str] = [f"## Slide {index}"]
+        for shape in slide.shapes:
+            if getattr(shape, "has_table", False):
+                table_lines: list[str] = []
+                for row in shape.table.rows:
+                    cells = [cell.text.strip() for cell in row.cells]
+                    table_lines.append(" | ".join(cells))
+                if table_lines:
+                    slide_parts.append("\n".join(table_lines))
+                continue
+            text = getattr(shape, "text", "") or ""
+            stripped = text.strip()
+            if stripped:
+                slide_parts.append(stripped)
+        if len(slide_parts) > 1:
+            sections.append("\n".join(slide_parts))
+    return ExtractionResult(
+        text="\n\n".join(sections),
+        page_count=len(list(presentation.slides)),
+        method="direct",
+        warnings=warnings,
+    )
 
 
 def extract_text_file(file_path: str, encoding: str = "utf-8") -> ExtractionResult:

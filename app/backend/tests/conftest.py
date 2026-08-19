@@ -4,10 +4,17 @@ These fixtures provide sample model instances for testing instantiation
 and field defaults without requiring a real database connection.
 """
 
+import os
+import sys
 import uuid
 from datetime import datetime
 
 import pytest
+from hypothesis import settings as hypothesis_settings
+
+hypothesis_settings.register_profile("coverage", max_examples=8, deadline=None)
+if os.environ.get("COVERAGE_FILE") or any(arg.startswith("--cov") for arg in sys.argv):
+    hypothesis_settings.load_profile("coverage")
 
 
 @pytest.fixture

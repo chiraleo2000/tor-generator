@@ -79,10 +79,16 @@ async def lifespan(app: FastAPI):
         # Verify connectivity with a ping
         await redis_client.ping()
         app.state.redis = redis_client
+        from app.infra import set_redis_client
+
+        set_redis_client(redis_client)
         logger.info("Redis connected: %s:%d", settings.redis_host, settings.redis_port)
     except Exception as exc:
         logger.warning("Redis not reachable (app will start without caching): %s", exc)
         app.state.redis = None
+        from app.infra import set_redis_client as _clear_redis
+
+        _clear_redis(None)
 
     # --- MinIO ---
     try:
@@ -99,10 +105,16 @@ async def lifespan(app: FastAPI):
             minio_client.make_bucket(settings.minio_bucket)
             logger.info("MinIO bucket created: %s", settings.minio_bucket)
         app.state.minio = minio_client
+        from app.infra import set_minio_client
+
+        set_minio_client(minio_client)
         logger.info("MinIO connected: %s", settings.minio_endpoint)
     except Exception as exc:
         logger.warning("MinIO not reachable (app will start without file storage): %s", exc)
         app.state.minio = None
+        from app.infra import set_minio_client as _clear_minio
+
+        _clear_minio(None)
 
     # --- MongoDB (originals / GridFS) ---
     try:
@@ -198,6 +210,9 @@ async def lifespan(app: FastAPI):
     if app.state.redis is not None:
         await app.state.redis.close()
         logger.info("Redis connection closed")
+        from app.infra import set_redis_client as _shutdown_redis
+
+        _shutdown_redis(None)
 
     mongo = getattr(app.state, "mongo", None)
     if mongo is not None:
@@ -217,7 +232,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="TOR Drafting and Review API",
     description="API for drafting, reviewing, and exporting Terms of Reference documents compliant with Thai procurement law (พ.ร.บ. 2560)",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
     redirect_slashes=False,
 )

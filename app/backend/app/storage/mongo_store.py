@@ -85,6 +85,23 @@ class OriginalDocumentStore:
             query["owner_id"] = owner_id
         return list(self._meta.find(query))
 
+    def list_visible(self, *, owner_id: str) -> list[dict]:
+        """Baseline (shared) originals plus this user's own files — never another officer's."""
+        shared = list(self._meta.find({"owner_id": None}))
+        mine = list(self._meta.find({"owner_id": owner_id}))
+        return shared + mine
+
+    def delete_file(self, gridfs_id: str | None) -> None:
+        if not gridfs_id:
+            return
+        from bson import ObjectId
+
+        try:
+            self._fs.delete(ObjectId(gridfs_id))
+        except Exception:
+            logger.warning("GridFS delete missed %s", gridfs_id)
+        self._meta.delete_one({"gridfs_id": str(gridfs_id)})
+
     def wipe_baseline(self) -> int:
         docs = list(self._meta.find({"scope": "baseline"}))
         removed = 0

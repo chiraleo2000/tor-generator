@@ -27,7 +27,10 @@ test.describe("Help and standalone review", () => {
     await page.getByTestId("nav-knowledge-base").click();
     await expect(page).toHaveURL(/\/knowledge-base/);
     await expect(page.getByTestId("knowledge-base-page")).toBeVisible();
-    await expect(page.getByText("อัปโหลดเอกสารเข้าคลังความรู้")).toBeVisible();
+    await expect(page.getByText("อัปโหลดเอกสารของฉัน")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "เอกสารที่ผู้ใช้อัปโหลด (เฉพาะบัญชีนี้)" }),
+    ).toBeVisible();
     await saveEvidence(page, "11-knowledge-base");
   });
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TOR Generator - ระบบร่างและตรวจสอบ TOR ภาครัฐ (PoC v2 - Rule-based Engine)</title>
+<title>TOR Generator - ระบบร่างและตรวจสอบ TOR ภาครัฐ (PoC mock v0.2 — อ้างอิงแอป Docker)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
@@ -18,6 +18,8 @@
 }
 html,body{height:100%;width:100%;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Roboto',sans-serif;background:var(--gray-50);color:var(--gray-800);}
+.poc-banner{background:#0f2340;color:#fff;text-align:center;padding:10px 16px;font-size:13px;line-height:1.55;position:sticky;top:0;z-index:1000;}
+.poc-banner a{color:#fed7aa;font-weight:700;}
 .app{display:flex;height:100vh;}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:4px;}
@@ -227,6 +229,7 @@ textarea{resize:vertical;min-height:80px;}
 </style>
 </head>
 <body>
+<div class="poc-banner">ไฟล์นี้เป็นต้นแบบ PoC เก่า — เดโม UX/UI ที่คลิกได้คือ GitHub Pages <a href="https://chiraleo2000.github.io/tor-generator/">chiraleo2000.github.io/tor-generator</a> (ไฟล์ <code>index.html</code> ที่ราก) ไม่เรียก API/LLM จริง</div>
 
 <!-- ============================================================
      AUTH SCREEN — Login / Register
@@ -280,13 +283,14 @@ textarea{resize:vertical;min-height:80px;}
     <div class="menu-section">
       <div class="menu-title">การทำงาน</div>
       <div class="menu-item" data-page="draft" onclick="nav('draft',this)"><span class="menu-icon">✍️</span>ร่าง TOR</div>
+      <div class="menu-item" data-page="agent" onclick="nav('agent',this)"><span class="menu-icon">🤖</span>Agent API</div>
       <div class="menu-item" data-page="review" onclick="nav('review',this)"><span class="menu-icon">✔️</span>ตรวจสอบ TOR</div>
     </div>
     <div class="menu-section">
       <div class="menu-title">อื่นๆ</div>
       <div class="menu-item" data-page="guide" onclick="nav('guide',this)"><span class="menu-icon">❓</span>คู่มือ</div>
     </div>
-    <div class="sidebar-foot">💡 Rule-based Engine: OCR (pdf.js/mammoth.js/Tesseract.js) + Keyword-NLP — ไม่มีการเรียกใช้ LLM ใดๆ ในเวอร์ชันนี้</div>
+    <div class="sidebar-foot">💡 แอปจริง v0.2: 5 Phase · แชทและ embeddings เลือกอิสระ (เช่น Claude + EmbeddingGemma ในเครื่อง) · เจ้าหน้าที่อัปโหลดเอกสารของฉันได้ — เดโมคลิกได้ที่ GitHub Pages ไม่ใช่ไฟล์นี้</div>
     <div class="logout-link" onclick="handleLogout()">🚪 ออกจากระบบ</div>
   </div>
 
@@ -322,7 +326,8 @@ textarea{resize:vertical;min-height:80px;}
       <!-- ============ KNOWLEDGE BASE ============ -->
       <div id="page-knowledge" class="page">
         <div class="kb-upload-zone">
-          <h2 style="color:var(--navy);margin-bottom:12px;font-size:16.5px;">📤 อัปโหลดเอกสารเข้าคลังความรู้</h2>
+          <h2 style="color:var(--navy);margin-bottom:8px;font-size:16.5px;">📤 อัปโหลดเอกสารของฉัน</h2>
+          <p class="small-note" style="margin-bottom:12px;">แอปจริง: เจ้าหน้าที่อัปโหลดที่หน้านี้ (เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลางที่หัวข้อเดียวกันเมื่อล็อกอินแอดมิน — mock นี้ไม่เรียก API</p>
           <div class="kb-type-toggle">
             <button class="kb-type-btn active" data-t="law" onclick="setKbType(this,'law')">⚖️ กฎหมาย/ระเบียบกลาง (ระบบ)</button>
             <button class="kb-type-btn" data-t="price" onclick="setKbType(this,'price')">📋 ประกาศราคากลาง</button>
@@ -345,7 +350,7 @@ textarea{resize:vertical;min-height:80px;}
         <div class="kb-section-title"><h2>🧩 คลังความรู้ที่ผ่านการ Chunk เข้า RAG Vector Store</h2><span class="count-badge">586 chunks • 8 หมวด</span></div>
         <div id="kbChunked"></div>
 
-        <div class="kb-section-title"><h2>📤 ไฟล์ที่ผู้ใช้อัปโหลดเอง</h2><span class="count-badge" id="userFileCount">0 ไฟล์</span></div>
+        <div class="kb-section-title"><h2>📤 เอกสารที่ผู้ใช้อัปโหลด (เฉพาะบัญชีนี้)</h2><span class="count-badge" id="userFileCount">0 ไฟล์</span></div>
         <div id="kbUserFiles" class="card" style="padding:0;"></div>
       </div>
 
@@ -362,6 +367,21 @@ textarea{resize:vertical;min-height:80px;}
           <div class="phase-flow" id="phaseFlow"></div>
         </div>
         <div id="phaseContent"></div>
+      </div>
+
+      <div id="page-agent" class="page">
+        <div class="card" style="margin-bottom:16px;">
+          <h2 style="color:var(--navy);margin-bottom:10px;">เส้นทาง Agent TOR (API อย่างเดียว)</h2>
+          <p style="font-size:13.5px;line-height:1.7;color:var(--gray-700);">แอป Docker ที่รันอยู่ยังร่างด้วยพื้นที่ทำงาน 5 Phase ที่ /projects/{id}/draft Mock นี้ไม่แทนที่ UI นั้น — เพิ่มเอกสารเส้นทางขนาน /api/v1/agent สำหรับไคลเอนต์ในอนาคต</p>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <h3 style="color:var(--navy);margin-bottom:8px;">ลำดับงาน</h3>
+          <p style="font-size:13px;line-height:1.8;">ingest (ไม่เกิน 20 ไฟล์ / PPTX ได้) → แผนที่ 27 ช่อง → ถามส่วนขาด (สูงสุด 20 รอบ ครั้งละ 5 ข้อ) → ยืนยัน → ร่าง s1–s13 (900 วินาที, แก้ตามกฎไม่เกิน 3) → HITL (s3, s6, s8, s10, s13) → ส่งออก DOCX/PDF</p>
+        </div>
+        <div class="card">
+          <h3 style="color:var(--navy);margin-bottom:8px;">โมเดล</h3>
+          <p style="font-size:13px;line-height:1.8;">ค่าเริ่มต้นในเครื่อง: LM Studio google/gemma-4-e4b + EmbeddingGemma-300M<br>แชทและ embeddings เลือกอิสระในทุกโหมด เช่น Claude API + EmbeddingGemma ในเครื่อง — คีย์คลาวด์ใส่ที่หน้าผู้ดูแล<br>ถาม-ตอบคลังแยก: /api/v1/kb-chat (ไม่แทน /chat)</p>
+        </div>
       </div>
 
       <!-- ============ REVIEW TOR ============ -->
@@ -706,6 +726,7 @@ const PAGE_META = {
   dashboard:{title:'Dashboard', sub:'ภาพรวมโครงการ TOR ทั้งหมด'},
   knowledge:{title:'Knowledge Base', sub:'คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG'},
   draft:{title:'ร่าง TOR', sub:'กระบวนการร่างเอกสาร TOR แบบ Flow 5 Phase'},
+  agent:{title:'Agent API', sub:'เส้นทาง /api/v1/agent และ /kb-chat (ยังไม่มีหน้า Next.js)'},
   review:{title:'ตรวจสอบ TOR', sub:'ตรวจสอบความถูกต้องตามกฎหมายและเทียบเคียงโครงการ'},
   guide:{title:'คู่มือการใช้งาน', sub:'คำอธิบายและภาพประกอบแต่ละส่วนของระบบ'}
 };
@@ -1322,14 +1343,14 @@ const GUIDE = [
    body:`<p>หน้าแรกแสดงสรุปจำนวนโครงการแยกตามสถานะ และตารางรายการโครงการทั้งหมด</p>
    <ul><li><strong>ร่าง</strong> — แก้ไขได้</li><li><strong>กำลังดำเนินการ</strong> — ไม่มีปุ่ม รอจนเสร็จ</li><li><strong>เสร็จแล้ว</strong> — ดู/ปรับปรุงได้</li></ul>`},
   {id:'kb', label:'Knowledge Base', title:'การใช้งาน Knowledge Base',
-   body:`<p>ส่วนบนอัปโหลดไฟล์ (สกัดข้อความจริงด้วย OCR) ส่วนล่างเป็น Library 3 กลุ่ม: เอกสารกฎหมายบังคับ 27 ไฟล์, คลัง RAG ที่ Chunk แล้ว 586 chunks, และไฟล์ผู้ใช้อัปโหลด (ลบได้)</p>`},
+   body:`<p>แอปจริง: เจ้าหน้าที่อัปโหลดเอกสารของฉันที่หน้านี้ (POST /knowledge-base/mine เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลาง คลังบังคับมาจากคู่มือแนวปฏิบัติและโฟลเดอร์ข้อมูลดิบ</p><p>เดโมคลิกได้ที่ GitHub Pages (index.html) — ไฟล์ PoC นี้เป็นแบบออกแบบเก่า</p>`},
   {id:'draft', label:'ร่าง TOR', title:'การใช้งาน ร่าง TOR (Flow 5 Phase)',
    body:`<p>Phase 0 อัปโหลดเอกสาร → OCR สกัดข้อความ → Rule-based NLP วิเคราะห์ (ชื่อโครงการ/หน่วยงาน/งบประมาณ/ปัญหา/ระยะเวลา) → เติมค่าอัตโนมัติในฟอร์ม 10 หมวดที่ Phase 2 (หมวด 4 แบ่งเป็น 14 หัวข้อย่อย)</p>`},
   {id:'review', label:'ตรวจสอบ TOR', title:'การใช้งาน ตรวจสอบ TOR',
    body:`<p>อัปโหลด TOR ฉบับสมบูรณ์ → OCR สกัดข้อความจริง → Rule Engine ตรวจสอบ 5 ด้าน: ความครบถ้วนของหมวด, สัดส่วนทุนจดทะเบียน, ผลรวมงวดจ่ายเงิน, ความเป็นธรรมของการระบุยี่ห้อ, การอ้างอิงกฎหมาย + เทียบเคียงโครงการ Optional ด้วย Jaccard keyword-overlap similarity</p>`},
   {id:'faq', label:'FAQ', title:'คำถามที่พบบ่อย',
-   body:`<h3>ระบบนี้ใช้ AI/LLM หรือไม่?</h3><p>ไม่ใช้ ทุกการประมวลผลเป็น Rule-based ทั้งหมด: OCR ใช้ pdf.js/mammoth.js/Tesseract.js (ไลบรารีสกัดข้อความมาตรฐาน) และการวิเคราะห์เนื้อหาใช้ Regex + Keyword Dictionary + Jaccard Similarity เท่านั้น</p>
-   <h3>ทำไมผลตรวจสอบไม่แม่นยำ 100%?</h3><p>เพราะเป็น Rule-based ตรวจจับคำสำคัญ/รูปแบบข้อความ ไม่ได้เข้าใจบริบทเชิงลึกเหมือน LLM — ระบบ Production จะเสริมด้วย Claude 5 Sonnet + RAG</p>`}
+   body:`<h3>ระบบนี้ใช้ AI/LLM หรือไม่?</h3><p>ไฟล์ PoC นี้เป็น Rule-based (OCR + keyword) ไม่เรียก LLM แอปที่รันจริง (Docker v0.2) ใช้ Gemma ในเครื่องหรือคลาวด์ได้ และเลือกแชทกับ embeddings คนละแหล่งได้</p>
+   <h3>เดโม UX/UI อยู่ที่ไหน?</h3><p>https://chiraleo2000.github.io/tor-generator/ — ไม่ใช่ไฟล์ HTML นี้</p>`}
 ];
 function renderGuide(){
   document.getElementById('guideTabs').innerHTML = GUIDE.map((g,i)=>`<div class="guide-tab ${i===0?'active':''}" data-g="${g.id}" onclick="setGuideTab('${g.id}')">${g.label}</div>`).join('');

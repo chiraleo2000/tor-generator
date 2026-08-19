@@ -2,7 +2,8 @@
 ### ระบบ TOR Generator (ร่าง TOR + ตรวจสอบ TOR) — REST API สำหรับ Production
 
 > **เอกสารนี้เป็นสัญญา API จากยุค PoC (Rule-based ไม่มี LLM)**  
-> แอปที่รันอยู่ตอนนี้มี LLM + RAG แล้ว: FastAPI ที่ `http://localhost:4000/api/v1` ดูเส้นทางปัจจุบันใน `16-BACKEND_ARCHITECTURE.md` และตารางท้ายไฟล์นี้ (หมวด 10)
+> แอปที่รันอยู่ตอนนี้มี LLM + RAG แล้ว: FastAPI ที่ `http://localhost:4000/api/v1` ดูเส้นทางปัจจุบันใน `16-BACKEND_ARCHITECTURE.md` และตารางท้ายไฟล์นี้ (หมวด 10)  
+> แชทและ embeddings เลือกอิสระ — `PUT /admin/ai-settings` ไม่สลับคู่อัตโนมัติ; เจ้าหน้าที่อัปโหลดเอกสารส่วนตัวที่ `POST /knowledge-base/mine`
 
 เอกสารด้านล่างกำหนดสัญญา (contract) ของ REST API ที่แปลงมาจากตรรกะ Rule-based ที่พิสูจน์แล้วใน PoC (`06-UXUI-Mockup.html`) เพื่อให้อ่านประวัติการออกแบบได้ — **อย่าใช้ข้อความ “ไม่มี LLM” เป็นข้อเท็จจริงของระบบ Docker ปัจจุบัน**
 
@@ -516,8 +517,24 @@ Auth: cookie `tor_access_token` หรือ `Authorization: Bearer`
 | | `POST /projects/{id}/intake/confirm-ready` | ตั้ง `ready_to_compose` แล้วเข้า Phase 2 |
 | | `POST /projects/{id}/intake/chat` | SSE แชทร่างโครงการ |
 | ร่าง | `POST /projects/{id}/draft-section` | เอเจนต์หมวด + เขียน `content` และ `ai_draft` |
-| ผู้ดูแล AI | `GET/PUT /admin/ai-settings` | Local / Cloud / Hybrid มีผลทันที |
-| | `POST /admin/ai-settings/test` | ping LM Studio หรือรายการโมเดลคลาวด์ |
+| ผู้ดูแล AI | `GET/PUT /admin/ai-settings` | `llm_provider` และ `embedding_provider` อิสระในทุกโหมด; คีย์มีผลทันที |
+| | `POST /admin/ai-settings/test` | ping ทั้งแชทและ embeddings คนละปลายทางได้ (เช่น Claude + LM Studio embed) |
+| Agent drafting (v0.2, ไม่มี UI) | `POST /agent/sessions` | multipart: ไฟล์หรือข้อความ ≥50 ตัวอักษร สร้าง/ผูกโครงการ `workflow_mode=agent` |
+| | `POST /agent/sessions/{id}/ingest` | เพิ่มเอกสารระหว่างรอบ |
+| | `GET /agent/sessions/{id}/status` | phase, readiness, warnings |
+| | `DELETE /agent/sessions/{id}` | ยกเลิกเซสชัน |
+| | `GET /agent/sessions/{id}/coverage` | แผนที่ 27 ช่อง + readiness |
+| | `POST /agent/sessions/{id}/answer` | ตอบช่องว่าง (resume `fill_slot`) |
+| | `POST /agent/sessions/{id}/confirm` | ยืนยันแล้วร่าง s1–s13 |
+| | `GET /agent/sessions/{id}/draft` | ร่าง + คะแนน + findings |
+| | `POST /agent/sessions/{id}/review` | HITL s3/s6/s8/s10/s13 แล้วส่งออก |
+| | `GET /agent/sessions/{id}/export` | URL DOCX/PDF (ต้อง ack หมวดบังคับก่อน) |
+| KB chat แยกห้อง (v0.2) | `POST /kb-chat/sessions` | เซสชันถาม-ตอบคลัง (ไม่แทน `/chat`) |
+| | `POST /kb-chat/sessions/{id}/message` | RAG `search_scope=both` เกณฑ์ 0.5; ไม่พบข้อมูลไม่สังเคราะห์ LLM |
+| | `GET /kb-chat/sessions/{id}/history` | ประวัติ ≤20 คู่ หมดอายุ 30 นาที |
+| ฐานความรู้ | `GET /knowledge-base/catalog` | กลุ่ม `mandatory_handbook` / `mandatory_raw` / `user` + `userFiles` ของผู้เรียกเท่านั้น |
+| | `POST /knowledge-base/mine` | เจ้าหน้าที่อัปโหลดไฟล์ส่วนตัว → chunk/embed เฉพาะ `owner_id` ของตน |
+| | `DELETE /knowledge-base/mine/{id}` | ลบไฟล์ของตนเองเท่านั้น (บัญชีอื่นได้ 404) |
 
 รายละเอียดชั้นภายใน: `16-BACKEND_ARCHITECTURE.md`
 

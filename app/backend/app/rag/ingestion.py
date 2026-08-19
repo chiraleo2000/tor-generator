@@ -112,6 +112,7 @@ async def ingest_document(
     embedding_provider: "EmbeddingProvider",
     vector_store_provider: "VectorStoreProvider",
     session: "AsyncSession | None" = None,
+    extra_metadata: dict | None = None,
 ) -> IngestionResult:
     """Ingest a single document through the full RAG pipeline.
 
@@ -229,7 +230,7 @@ async def ingest_document(
             continue
 
         # Step 4: Upsert into vector store with metadata
-        metadata = _build_chunk_metadata(chunk, document_name)
+        metadata = _build_chunk_metadata(chunk, document_name, extra_metadata)
 
         try:
             await vector_store_provider.upsert(
@@ -394,23 +395,19 @@ def _generate_chunk_id(document_id: str, chunk_index: int) -> str:
     return str(uuid.uuid5(namespace, str(chunk_index)))
 
 
-def _build_chunk_metadata(chunk: TextChunk, document_name: str) -> dict:
-    """Build metadata dict for a chunk to store alongside its vector.
+def _build_chunk_metadata(
+    chunk: TextChunk, document_name: str, extra: dict | None = None
+) -> dict:
+    """Build metadata dict for a chunk to be stored in the vector store.
 
     Req 3.3: Metadata includes source document name, section, page number.
-
-    Args:
-        chunk: The TextChunk object with its metadata.
-        document_name: Human-readable name of the source document.
-
-    Returns:
-        Metadata dictionary for the vector store.
     """
     metadata = {
         "document_id": chunk.metadata.document_id,
         "document_name": document_name,
         "chunk_index": chunk.metadata.chunk_index,
         "chunk_text": chunk.text,
+        "source_document": document_name,
     }
 
     if chunk.metadata.section_label:
@@ -418,6 +415,11 @@ def _build_chunk_metadata(chunk: TextChunk, document_name: str) -> dict:
 
     if chunk.metadata.page_number is not None:
         metadata["page_number"] = chunk.metadata.page_number
+
+    if extra:
+        for key, value in extra.items():
+            if value is not None:
+                metadata[key] = value
 
     return metadata
 

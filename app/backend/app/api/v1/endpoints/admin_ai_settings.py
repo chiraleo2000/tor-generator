@@ -20,10 +20,10 @@ from app.models.ai_runtime_settings import AiRuntimeSettings
 from app.models.user import User
 from app.providers.constants import (
     AI_OVERLAY_FIELDS,
-    CLOUD_EMBEDDING_PROVIDERS,
-    CLOUD_LLM_PROVIDERS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_EMBEDDING_MODEL,
+    LOCAL_EMBEDDING_PROVIDERS,
+    LOCAL_EMBEDDING_SERVERS,
     LOCAL_LLM_DEFAULT_URLS,
     LOCAL_LLM_PROVIDERS,
 )
@@ -118,6 +118,8 @@ class AiSettingsUpdate(BaseModel):
     deployment_mode: str = Field(default="on_prem")
     llm_provider: str = Field(default="lm_studio")
     embedding_provider: str = Field(default="local")
+    local_embedding_server: str | None = None
+    local_embedding_base_url: str | None = None
     lm_studio_base_url: str | None = None
     lm_studio_model: str | None = None
     lm_studio_embedding_model: str | None = None
@@ -128,6 +130,7 @@ class AiSettingsUpdate(BaseModel):
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
     openai_chat_model: str | None = None
+    openai_embedding_model: str | None = None
     gemini_model: str | None = None
     gemini_embedding_model: str | None = None
     vector_store_provider: str | None = None
@@ -139,6 +142,7 @@ class AiSettingsUpdate(BaseModel):
     azure_foundry_endpoint: str | None = None
     azure_foundry_api_key: str | None = None
     azure_foundry_deployment: str | None = None
+    azure_foundry_embedding_deployment: str | None = None
     azure_foundry_api_version: str | None = None
     openai_compatible_base_url: str | None = None
     openai_compatible_api_key: str | None = None
@@ -150,6 +154,8 @@ class AiSettingsTest(BaseModel):
     deployment_mode: str = "on_prem"
     llm_provider: str = "lm_studio"
     embedding_provider: str = "local"
+    local_embedding_server: str | None = None
+    local_embedding_base_url: str | None = None
     lm_studio_base_url: str | None = None
     ollama_base_url: str | None = None
     llama_cpp_base_url: str | None = None
@@ -184,6 +190,123 @@ def _resolved_local_url(body: AiSettingsUpdate, existing: dict[str, Any]) -> str
     return str(body.lm_studio_base_url or existing.get("lm_studio_base_url") or "")
 
 
+def _resolved_embed_url(body: AiSettingsUpdate, existing: dict[str, Any]) -> str:
+    override = str(
+        body.local_embedding_base_url or existing.get("local_embedding_base_url") or ""
+    ).strip()
+    if override:
+        return override
+    server = str(
+        body.local_embedding_server or existing.get("local_embedding_server") or "lm_studio"
+    )
+    if server == "ollama":
+        return str(body.ollama_base_url or existing.get("ollama_base_url") or "")
+    if server == "llama_cpp":
+        return str(body.llama_cpp_base_url or existing.get("llama_cpp_base_url") or "")
+    return str(body.lm_studio_base_url or existing.get("lm_studio_base_url") or "")
+
+
+def _validate_local_fields(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
+    chat_is_local = body.llm_provider in LOCAL_LLM_PROVIDERS
+    embed_is_local = body.embedding_provider in LOCAL_EMBEDDING_PROVIDERS
+    if chat_is_local and not _resolved_local_url(body, existing):
+        raise ValidationError(
+            message="ต้องระบุ URL ของเซิร์ฟเวอร์แชทในเครื่อง",
+            field="lm_studio_base_url",
+        )
+    if chat_is_local and not (body.lm_studio_model or existing.get("lm_studio_model")):
+        raise ValidationError(message="ต้องระบุชื่อโมเดลแชท", field="lm_studio_model")
+    if embed_is_local and not _resolved_embed_url(body, existing):
+        raise ValidationError(
+            message="ต้องระบุ URL ของเซิร์ฟเวอร์ embeddings ในเครื่อง",
+            field="local_embedding_base_url",
+        )
+    if embed_is_local and not (
+        body.lm_studio_embedding_model or existing.get("lm_studio_embedding_model")
+    ):
+        raise ValidationError(
+            message="ต้องระบุชื่อโมเดล embeddings", field="lm_studio_embedding_model"
+        )
+
+
+def _validate_selected_cloud_keys(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
+    def resolved_key(name: str) -> str:
+        incoming = getattr(body, name)
+        if incoming and not _is_masked_secret(incoming):
+            return incoming
+        return str(existing.get(name) or "")
+
+    _require_cloud_key(
+        body.llm_provider,
+        "claude",
+        resolved_key("anthropic_api_key"),
+        _MSG_ANTHROPIC_KEY,
+        "anthropic_api_key",
+    )
+    _require_cloud_key(
+        body.llm_provider,
+        "openai",
+        resolved_key("openai_api_key"),
+        _MSG_OPENAI_KEY,
+        "openai_api_key",
+    )
+    _require_cloud_key(
+        body.llm_provider,
+        "gemini",
+        resolved_key("gemini_api_key"),
+        _MSG_GEMINI_KEY,
+        "gemini_api_key",
+    )
+    _require_cloud_key(
+        body.embedding_provider,
+        "openai",
+        resolved_key("openai_api_key"),
+        _MSG_OPENAI_KEY,
+        "openai_api_key",
+    )
+    _require_cloud_key(
+        body.embedding_provider,
+        "gemini",
+        resolved_key("gemini_api_key"),
+        _MSG_GEMINI_KEY,
+        "gemini_api_key",
+    )
+    _require_cloud_key(
+        body.llm_provider,
+        "azure_foundry",
+        resolved_key("azure_foundry_api_key"),
+        _MSG_AZURE_KEY,
+        "azure_foundry_api_key",
+    )
+    _require_cloud_key(
+        body.embedding_provider,
+        "azure_foundry",
+        resolved_key("azure_foundry_api_key"),
+        _MSG_AZURE_KEY,
+        "azure_foundry_api_key",
+    )
+    if body.llm_provider == "openai_compatible" and not (
+        body.openai_compatible_base_url or existing.get("openai_compatible_base_url")
+    ):
+        raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
+    if body.embedding_provider == "openai_compatible" and not (
+        body.openai_compatible_base_url or existing.get("openai_compatible_base_url")
+    ):
+        raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
+    if body.llm_provider == "azure_foundry" and not (
+        body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
+    ):
+        raise ValidationError(
+            message="ต้องใส่ Azure Foundry endpoint", field="azure_foundry_endpoint"
+        )
+    if body.embedding_provider == "azure_foundry" and not (
+        body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
+    ):
+        raise ValidationError(
+            message="ต้องใส่ Azure Foundry endpoint", field="azure_foundry_endpoint"
+        )
+
+
 def _validate_update(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
     if body.deployment_mode not in ("on_prem", "cloud", "hybrid"):
         raise ValidationError(message="โหมดการทำงานไม่ถูกต้อง", field="deployment_mode")
@@ -200,94 +323,16 @@ def _validate_update(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
         raise ValidationError(
             message="คลังเวกเตอร์ไม่ถูกต้อง", field="vector_store_provider"
         )
-    if body.deployment_mode == "on_prem" and body.llm_provider not in LOCAL_LLM_PROVIDERS:
-        raise ValidationError(
-            message="โหมดในเครื่องต้องเลือก LM Studio, Ollama หรือ llama.cpp",
-            field="llm_provider",
-        )
-    if body.deployment_mode == "cloud" and body.llm_provider not in CLOUD_LLM_PROVIDERS:
-        raise ValidationError(
-            message="โหมดคลาวด์ต้องเลือก Claude, OpenAI, Gemini, Bedrock, Azure Foundry หรือ OpenAI-compatible",
-            field="llm_provider",
-        )
-    if body.deployment_mode == "cloud" and body.embedding_provider not in CLOUD_EMBEDDING_PROVIDERS:
-        raise ValidationError(
-            message="โหมดคลาวด์ต้องเลือก embeddings ของ OpenAI, Gemini, Bedrock, Azure หรือ OpenAI-compatible",
-            field="embedding_provider",
-        )
-
-    needs_local = body.deployment_mode == "on_prem" or body.llm_provider in LOCAL_LLM_PROVIDERS
-    if needs_local and not _resolved_local_url(body, existing):
-        raise ValidationError(
-            message="ต้องระบุ URL ของเซิร์ฟเวอร์ในเครื่อง",
-            field="lm_studio_base_url",
-        )
-    if needs_local and not (body.lm_studio_model or existing.get("lm_studio_model")):
-        raise ValidationError(message="ต้องระบุชื่อโมเดลแชท", field="lm_studio_model")
     if (
-        body.deployment_mode == "on_prem" or body.embedding_provider in ("local", "qwen3")
-    ) and not (body.lm_studio_embedding_model or existing.get("lm_studio_embedding_model")):
+        body.local_embedding_server
+        and body.local_embedding_server not in LOCAL_EMBEDDING_SERVERS
+    ):
         raise ValidationError(
-            message="ต้องระบุชื่อโมเดล embeddings", field="lm_studio_embedding_model"
+            message="เซิร์ฟเวอร์ embeddings ในเครื่องไม่ถูกต้อง",
+            field="local_embedding_server",
         )
-
-    def resolved_key(name: str) -> str:
-        incoming = getattr(body, name)
-        if incoming and not _is_masked_secret(incoming):
-            return incoming
-        return str(existing.get(name) or "")
-
-    if body.deployment_mode in ("cloud", "hybrid"):
-        _require_cloud_key(
-            body.llm_provider,
-            "claude",
-            resolved_key("anthropic_api_key"),
-            _MSG_ANTHROPIC_KEY,
-            "anthropic_api_key",
-        )
-        _require_cloud_key(
-            body.llm_provider,
-            "openai",
-            resolved_key("openai_api_key"),
-            _MSG_OPENAI_KEY,
-            "openai_api_key",
-        )
-        _require_cloud_key(
-            body.llm_provider,
-            "gemini",
-            resolved_key("gemini_api_key"),
-            _MSG_GEMINI_KEY,
-            "gemini_api_key",
-        )
-        _require_cloud_key(
-            body.embedding_provider,
-            "openai",
-            resolved_key("openai_api_key"),
-            _MSG_OPENAI_KEY,
-            "openai_api_key",
-        )
-        _require_cloud_key(
-            body.embedding_provider,
-            "gemini",
-            resolved_key("gemini_api_key"),
-            _MSG_GEMINI_KEY,
-            "gemini_api_key",
-        )
-        _require_cloud_key(
-            body.llm_provider,
-            "azure_foundry",
-            resolved_key("azure_foundry_api_key"),
-            _MSG_AZURE_KEY,
-            "azure_foundry_api_key",
-        )
-        if body.llm_provider == "openai_compatible" and not (
-            body.openai_compatible_base_url or existing.get("openai_compatible_base_url")
-        ):
-            raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
-        if body.llm_provider == "azure_foundry" and not (
-            body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
-        ):
-            raise ValidationError(message="ต้องใส่ Azure Foundry endpoint", field="azure_foundry_endpoint")
+    _validate_selected_cloud_keys(body, existing)
+    _validate_local_fields(body, existing)
 
 
 def _embedding_changed(existing: dict[str, Any], merged: dict[str, Any]) -> bool:
@@ -295,15 +340,30 @@ def _embedding_changed(existing: dict[str, Any], merged: dict[str, Any]) -> bool
     new_vendor = str(merged.get("embedding_provider") or "")
     if old_vendor != new_vendor:
         return True
-    if new_vendor in ("local", "qwen3"):
-        return str(existing.get("lm_studio_embedding_model") or "") != str(
-            merged.get("lm_studio_embedding_model") or ""
-        )
-    if new_vendor == "gemini":
-        return str(existing.get("gemini_embedding_model") or "") != str(
-            merged.get("gemini_embedding_model") or ""
-        )
-    return False
+    keys_by_vendor = {
+        "local": (
+            "lm_studio_embedding_model",
+            "local_embedding_server",
+            "local_embedding_base_url",
+        ),
+        "qwen3": (
+            "lm_studio_embedding_model",
+            "local_embedding_server",
+            "local_embedding_base_url",
+        ),
+        "gemini": ("gemini_embedding_model",),
+        "openai": ("openai_embedding_model",),
+        "bedrock": ("bedrock_embedding_model_id",),
+        "openai_compatible": ("openai_compatible_embedding_model",),
+        "azure_foundry": (
+            "azure_foundry_embedding_deployment",
+            "azure_foundry_deployment",
+        ),
+    }
+    return any(
+        str(existing.get(key) or "") != str(merged.get(key) or "")
+        for key in keys_by_vendor.get(new_vendor, ())
+    )
 
 
 def _overlay_from_merged(merged: dict[str, Any]) -> dict[str, Any]:
@@ -365,6 +425,140 @@ def _local_base_url(body: AiSettingsTest) -> str:
     return body.lm_studio_base_url or LOCAL_LLM_DEFAULT_URLS["lm_studio"]
 
 
+def _embed_local_base_url(body: AiSettingsTest) -> str:
+    if body.local_embedding_base_url:
+        return body.local_embedding_base_url
+    server = body.local_embedding_server or "lm_studio"
+    if server == "ollama":
+        return body.ollama_base_url or LOCAL_LLM_DEFAULT_URLS["ollama"]
+    if server == "llama_cpp":
+        return body.llama_cpp_base_url or LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
+    return body.lm_studio_base_url or LOCAL_LLM_DEFAULT_URLS["lm_studio"]
+
+
+def _usable_secret(value: Any) -> str:
+    text = str(value or "")
+    if not text or text.startswith("****"):
+        return ""
+    return text
+
+
+async def _http_get_ok(url: str, headers: dict[str, str] | None = None) -> None:
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.get(url, headers=headers or {})
+        response.raise_for_status()
+
+
+async def _probe_local_models(base_url: str) -> str:
+    url = f"{base_url.rstrip('/')}/models"
+    await _http_get_ok(url)
+    return url
+
+
+async def _probe_cloud_chat(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    provider = body.llm_provider
+    if provider == "claude":
+        key = _usable_secret(body.anthropic_api_key or existing.get("anthropic_api_key"))
+        if not key:
+            raise ValidationError(message=_MSG_ANTHROPIC_KEY, field="anthropic_api_key")
+        await _http_get_ok(
+            "https://api.anthropic.com/v1/models",
+            {"x-api-key": key, "anthropic-version": "2023-06-01"},
+        )
+        return
+    if provider == "openai":
+        key = _usable_secret(body.openai_api_key or existing.get("openai_api_key"))
+        if not key:
+            raise ValidationError(message=_MSG_OPENAI_KEY, field="openai_api_key")
+        await _http_get_ok(
+            "https://api.openai.com/v1/models",
+            {"Authorization": f"Bearer {key}"},
+        )
+        return
+    if provider == "gemini":
+        key = _usable_secret(body.gemini_api_key or existing.get("gemini_api_key"))
+        if not key:
+            raise ValidationError(message=_MSG_GEMINI_KEY, field="gemini_api_key")
+        await _http_get_ok(
+            f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
+        )
+        return
+    if provider == "openai_compatible":
+        base = (
+            body.openai_compatible_base_url
+            or existing.get("openai_compatible_base_url")
+            or ""
+        ).rstrip("/")
+        if not base:
+            raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
+        key = _usable_secret(
+            body.openai_compatible_api_key or existing.get("openai_compatible_api_key")
+        )
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        await _http_get_ok(f"{base}/models", headers)
+        return
+    if provider == "azure_foundry":
+        endpoint = body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
+        key = _usable_secret(
+            body.azure_foundry_api_key or existing.get("azure_foundry_api_key")
+        )
+        version = (
+            body.azure_foundry_api_version
+            or existing.get("azure_foundry_api_version")
+            or "2024-10-21"
+        )
+        if not endpoint or not key:
+            raise ValidationError(message=_MSG_AZURE_KEY, field="azure_foundry_api_key")
+        url = f"{str(endpoint).rstrip('/')}/openai/models?api-version={version}"
+        await _http_get_ok(url, {"api-key": key})
+        return
+    if provider == "bedrock":
+        await _probe_bedrock(body, existing)
+        return
+    raise ValidationError(message="ผู้ให้บริการไม่ถูกต้อง", field="llm_provider")
+
+
+async def _probe_bedrock(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    region = body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1"
+    try:
+        import boto3
+
+        kwargs: dict[str, Any] = {"region_name": region}
+        access = body.aws_access_key_id or existing.get("aws_access_key_id")
+        secret = _usable_secret(
+            body.aws_secret_access_key or existing.get("aws_secret_access_key")
+        )
+        if access and secret:
+            kwargs["aws_access_key_id"] = access
+            kwargs["aws_secret_access_key"] = secret
+        boto3.client("sts", **kwargs).get_caller_identity()
+    except Exception as exc:
+        raise ValidationError(message=f"ทดสอบ Bedrock/STS ไม่สำเร็จ: {exc}") from exc
+
+
+async def _probe_cloud_embeddings(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    provider = body.embedding_provider
+    if provider == "openai":
+        key = _usable_secret(body.openai_api_key or existing.get("openai_api_key"))
+        if not key:
+            raise ValidationError(message=_MSG_OPENAI_KEY, field="openai_api_key")
+        await _http_get_ok(
+            "https://api.openai.com/v1/models",
+            {"Authorization": f"Bearer {key}"},
+        )
+        return
+    if provider == "gemini":
+        key = _usable_secret(body.gemini_api_key or existing.get("gemini_api_key"))
+        if not key:
+            raise ValidationError(message=_MSG_GEMINI_KEY, field="gemini_api_key")
+        await _http_get_ok(
+            f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
+        )
+        return
+    if provider in ("azure_foundry", "openai_compatible", "bedrock"):
+        return
+
+
 @router.post("/test")
 async def test_ai_settings(
     request: Request,
@@ -374,85 +568,33 @@ async def test_ai_settings(
 ) -> JSONResponse:
     existing = _merged_settings_dict(await _load_row(db))
     try:
-        if body.deployment_mode == "on_prem" or body.llm_provider in LOCAL_LLM_PROVIDERS:
-            base = _local_base_url(body).rstrip("/")
-            models_url = f"{base}/models"
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.get(models_url)
-                response.raise_for_status()
-            return _ok(
-                request,
-                {"ok": True, "message": "เชื่อมต่อเซิร์ฟเวอร์ในเครื่องได้", "url": models_url},
-            )
-        if body.llm_provider == "claude":
-            key = body.anthropic_api_key or existing.get("anthropic_api_key")
-            if not key or str(key).startswith("****"):
-                raise ValidationError(message=_MSG_ANTHROPIC_KEY, field="anthropic_api_key")
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.get(
-                    "https://api.anthropic.com/v1/models",
-                    headers={
-                        "x-api-key": str(key),
-                        "anthropic-version": "2023-06-01",
-                    },
-                )
-                response.raise_for_status()
-        elif body.llm_provider == "openai":
-            key = body.openai_api_key or existing.get("openai_api_key")
-            if not key or str(key).startswith("****"):
-                raise ValidationError(message=_MSG_OPENAI_KEY, field="openai_api_key")
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.get(
-                    "https://api.openai.com/v1/models",
-                    headers={"Authorization": f"Bearer {key}"},
-                )
-                response.raise_for_status()
-        elif body.llm_provider == "gemini":
-            key = body.gemini_api_key or existing.get("gemini_api_key")
-            if not key or str(key).startswith("****"):
-                raise ValidationError(message=_MSG_GEMINI_KEY, field="gemini_api_key")
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.get(
-                    f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
-                )
-                response.raise_for_status()
-        elif body.llm_provider == "openai_compatible":
-            base = (body.openai_compatible_base_url or existing.get("openai_compatible_base_url") or "").rstrip("/")
-            if not base:
-                raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
-            key = body.openai_compatible_api_key or existing.get("openai_compatible_api_key") or ""
-            headers = {"Authorization": f"Bearer {key}"} if key and not str(key).startswith("****") else {}
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.get(f"{base}/models", headers=headers)
-                response.raise_for_status()
-        elif body.llm_provider == "azure_foundry":
-            endpoint = body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
-            key = body.azure_foundry_api_key or existing.get("azure_foundry_api_key")
-            version = body.azure_foundry_api_version or existing.get("azure_foundry_api_version") or "2024-10-21"
-            if not endpoint or not key or str(key).startswith("****"):
-                raise ValidationError(message=_MSG_AZURE_KEY, field="azure_foundry_api_key")
-            url = f"{str(endpoint).rstrip('/')}/openai/models?api-version={version}"
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.get(url, headers={"api-key": str(key)})
-                response.raise_for_status()
-        elif body.llm_provider == "bedrock":
-            region = body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1"
-            # Connectivity check without live AWS: STS GetCallerIdentity if keys given.
-            try:
-                import boto3
-
-                kwargs = {"region_name": region}
-                access = body.aws_access_key_id or existing.get("aws_access_key_id")
-                secret = body.aws_secret_access_key or existing.get("aws_secret_access_key")
-                if access and secret and not str(secret).startswith("****"):
-                    kwargs["aws_access_key_id"] = access
-                    kwargs["aws_secret_access_key"] = secret
-                boto3.client("sts", **kwargs).get_caller_identity()
-            except Exception as exc:
-                raise ValidationError(message=f"ทดสอบ Bedrock/STS ไม่สำเร็จ: {exc}") from exc
+        parts: list[str] = []
+        chat_url = ""
+        embed_url = ""
+        if body.llm_provider in LOCAL_LLM_PROVIDERS:
+            chat_url = await _probe_local_models(_local_base_url(body))
+            parts.append("แชทในเครื่องได้")
         else:
-            raise ValidationError(message="ผู้ให้บริการไม่ถูกต้อง", field="llm_provider")
-        return _ok(request, {"ok": True, "message": "เชื่อมต่อคลาวด์ได้"})
+            await _probe_cloud_chat(body, existing)
+            parts.append("แชทคลาวด์ได้")
+        if body.embedding_provider in LOCAL_EMBEDDING_PROVIDERS:
+            embed_base = _embed_local_base_url(body)
+            embed_url = f"{embed_base.rstrip('/')}/models"
+            if embed_url != chat_url:
+                await _probe_local_models(embed_base)
+            parts.append("embeddings ในเครื่องได้")
+        else:
+            await _probe_cloud_embeddings(body, existing)
+            parts.append("embeddings คลาวด์ได้")
+        return _ok(
+            request,
+            {
+                "ok": True,
+                "message": "เชื่อมต่อ: " + " · ".join(parts),
+                "url": chat_url or embed_url,
+                "embedding_url": embed_url,
+            },
+        )
     except ValidationError:
         raise
     except Exception as exc:

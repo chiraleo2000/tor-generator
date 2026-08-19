@@ -47,16 +47,18 @@ test.describe("Admin pages", () => {
     await expect(page.locator("#vector-store")).toHaveValue("pgvector");
 
     await page.locator("#ai-mode").selectOption("cloud");
-    await expect(page.locator("#ai-llm")).toHaveValue("claude");
+    await expect(page.locator("#ai-llm")).toHaveValue("lm_studio");
+    await expect(page.locator("#ai-embed")).toHaveValue("local");
     await expect(page.locator("#ai-llm option[value='claude']")).toHaveCount(1);
     await expect(page.locator("#ai-llm option[value='openai']")).toHaveCount(1);
     await expect(page.locator("#ai-llm option[value='gemini']")).toHaveCount(1);
-    await expect(page.locator("#ai-llm option[value='lm_studio']")).toHaveCount(0);
-    await expect(page.locator("#anthropic-key")).toBeVisible();
-    await expect(page.locator("#openai-key")).toBeVisible();
-    await expect(page.locator("#gemini-key")).toBeVisible();
-    await expect(page.locator("#gemini-embed-model")).toBeVisible();
+    await expect(page.locator("#ai-llm option[value='lm_studio']")).toHaveCount(1);
 
+    await page.locator("#ai-llm").selectOption("claude");
+    await expect(page.locator("#anthropic-key")).toBeVisible();
+    await expect(page.locator("#embed-model")).toBeVisible();
+
+    await page.locator("#ai-llm").selectOption("lm_studio");
     await page.locator("#ai-mode").selectOption("on_prem");
     await expect(page.locator("#ai-llm")).toHaveValue("lm_studio");
     await expect(page.locator("#chat-model")).toBeVisible();

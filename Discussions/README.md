@@ -4,7 +4,9 @@ Architecture, API, UX, and product write-ups. **Not imported** by Next.js or Fas
 
 Help text in the running app is under `/help` (`app/frontend`). The current operator/install/architecture/test guides are `13`–`18` below (Docker + LM Studio Gemma). Files `01`–`12` are earlier design notes.
 
-เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–18** (ไม่มีแฟ้ม 19 หรือ 20):
+Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.html` at repo root, branch `gh-pages`). `06-UXUI-Mockup.html` is the older PoC mock.
+
+เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–18** (ไม่มีแฟ้ม 19 หรือ 20). แอป **v0.2.0** เพิ่มเส้นทาง backend `/api/v1/agent` และ `/api/v1/kb-chat` คู่กับพื้นที่ทำงาน 5 Phase:
 
 | File | Topic |
 |------|--------|
@@ -24,7 +26,7 @@ Help text in the running app is under `/help` (`app/frontend`). The current oper
 | `03_TOR_TECHNICAL_ARCHITECTURE_OVERVIEW_FULL_TH.md` | Technical architecture |
 | `04_SYSTEM_COMPONENTS_IMPLEMENTATION_GUIDE_FULL_TH.md` | Component implementation |
 | `05-Flow-Diagrams.html` | Flow diagrams |
-| `06-UXUI-Mockup.html` | UX mockups |
+| `06-UXUI-Mockup.html` | UX mockups (PoC เก่า — เดโมคลิกได้คือ GitHub Pages `index.html`) |
 | `07-COMPREHENSIVE-App-Architecture-Diagrams.md` | Architecture diagrams |
 | `08-COMPLETE_API_REFERENCE_DOCUMENTATION.md` | API reference |
 | `09-BACKEND-FRONTEND-DEVELOPMENT-Structure.md` | Frontend/backend structure |

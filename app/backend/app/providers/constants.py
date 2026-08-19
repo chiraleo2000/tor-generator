@@ -16,6 +16,7 @@ CLOUD_LLM_PROVIDERS = frozenset(
     {"claude", "openai", "gemini", "bedrock", "azure_foundry", "openai_compatible"}
 )
 LOCAL_EMBEDDING_PROVIDERS = frozenset({"local", "qwen3"})
+LOCAL_EMBEDDING_SERVERS = frozenset({"lm_studio", "ollama", "llama_cpp"})
 CLOUD_EMBEDDING_PROVIDERS = frozenset(
     {"openai", "gemini", "azure_foundry", "openai_compatible", "bedrock"}
 )
@@ -24,6 +25,8 @@ AI_OVERLAY_FIELDS = (
     "deployment_mode",
     "llm_provider",
     "embedding_provider",
+    "local_embedding_server",
+    "local_embedding_base_url",
     "lm_studio_base_url",
     "lm_studio_model",
     "lm_studio_embedding_model",
@@ -34,6 +37,7 @@ AI_OVERLAY_FIELDS = (
     "openai_api_key",
     "gemini_api_key",
     "openai_chat_model",
+    "openai_embedding_model",
     "gemini_model",
     "gemini_embedding_model",
     "vector_store_provider",
@@ -45,6 +49,7 @@ AI_OVERLAY_FIELDS = (
     "azure_foundry_endpoint",
     "azure_foundry_api_key",
     "azure_foundry_deployment",
+    "azure_foundry_embedding_deployment",
     "azure_foundry_api_version",
     "openai_compatible_base_url",
     "openai_compatible_api_key",

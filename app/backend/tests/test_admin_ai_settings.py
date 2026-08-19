@@ -132,11 +132,15 @@ def test_validate_cloud_accepts_existing_key_when_masked_incoming():
     _validate_update(body, {"openai_api_key": "sk-live-abcd"})
 
 
-def test_validate_on_prem_rejects_claude():
+def test_validate_on_prem_claude_requires_key():
     body = _local_body(llm_provider="claude")
     with pytest.raises(ValidationError) as exc:
         _validate_update(body, {})
-    assert exc.value.field == "llm_provider"
+    assert exc.value.field == "anthropic_api_key"
+
+
+def test_validate_on_prem_claude_with_key_ok():
+    _validate_update(_local_body(llm_provider="claude", anthropic_api_key="sk-ant-test"), {})
 
 
 def test_merged_settings_overlays_nonempty_payload():
@@ -200,16 +204,11 @@ def test_validate_invalid_vector_store():
     assert exc.value.field == "vector_store_provider"
 
 
-def test_validate_cloud_mode_rejects_lm_studio():
-    body = AiSettingsUpdate(
-        deployment_mode="cloud",
-        llm_provider="lm_studio",
-        embedding_provider="openai",
-        openai_api_key="sk-test",
+def test_validate_cloud_mode_allows_lm_studio():
+    _validate_update(
+        _local_body(deployment_mode="cloud", llm_provider="lm_studio"),
+        {},
     )
-    with pytest.raises(ValidationError) as exc:
-        _validate_update(body, {})
-    assert exc.value.field == "llm_provider"
 
 
 def _admin_user():
@@ -535,16 +534,18 @@ def test_validate_hybrid_local_does_not_need_cloud_key():
     )
 
 
-def test_validate_cloud_rejects_local_embeddings():
-    body = AiSettingsUpdate(
-        deployment_mode="cloud",
-        llm_provider="openai",
-        embedding_provider="local",
-        openai_api_key="sk-test",
+def test_validate_cloud_allows_local_embeddings():
+    _validate_update(
+        AiSettingsUpdate(
+            deployment_mode="cloud",
+            llm_provider="openai",
+            embedding_provider="local",
+            openai_api_key="sk-test",
+            lm_studio_base_url="http://127.0.0.1:1234/v1",
+            lm_studio_embedding_model="text-embedding-embeddinggemma-300m",
+        ),
+        {},
     )
-    with pytest.raises(ValidationError) as exc:
-        _validate_update(body, {})
-    assert exc.value.field == "embedding_provider"
 
 
 def test_test_ai_settings_ollama_and_llama(admin_client):

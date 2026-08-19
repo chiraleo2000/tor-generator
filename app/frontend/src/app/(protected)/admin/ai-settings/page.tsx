@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import {
   EMPTY_AI_SETTINGS,
+  LOCAL_LLMS,
   VECTOR_STORES,
   embedOptionsForMode,
   llmOptionsForMode,
@@ -71,6 +72,8 @@ export default function AdminAiSettingsPage() {
         lm_studio_base_url: form.lm_studio_base_url,
         ollama_base_url: form.ollama_base_url,
         llama_cpp_base_url: form.llama_cpp_base_url,
+        local_embedding_server: form.local_embedding_server,
+        local_embedding_base_url: form.local_embedding_base_url,
         anthropic_api_key: form.anthropic_api_key,
         openai_api_key: form.openai_api_key,
         gemini_api_key: form.gemini_api_key,
@@ -92,15 +95,24 @@ export default function AdminAiSettingsPage() {
     }
   }
 
-  const showLocal = showLocalServerFields(form.deployment_mode, form.llm_provider);
-  const showCloud = showCloudKeyFields(form.deployment_mode, form.llm_provider);
+  const showLocal = showLocalServerFields(
+    form.deployment_mode,
+    form.llm_provider,
+    form.embedding_provider,
+  );
+  const showCloud = showCloudKeyFields(
+    form.deployment_mode,
+    form.llm_provider,
+    form.embedding_provider,
+  );
 
   return (
     <div className="max-w-3xl mx-auto space-y-6" data-testid="admin-ai-settings-page">
       <div className="gov-card">
         <h1 className="text-2xl font-extrabold text-navy">การตั้งค่า AI</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          ค่าเริ่มต้นคือรันในเครื่องผ่าน LM Studio ที่พอร์ต 1234 (Gemma + EmbeddingGemma-300M)
+          เลือกโมเดลแชทและ embeddings คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง
+          หรือ Gemma ในเครื่อง + OpenAI embeddings โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ
           การบันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend หากเปลี่ยนผู้ให้บริการหรือโมเดล embeddings
           ต้องประมวลผลฐานความรู้ใหม่ (`python -m app.seed_raw_docs`)
         </p>
@@ -134,7 +146,7 @@ export default function AdminAiSettingsPage() {
             options={[
               { value: "on_prem", label: "รันในเครื่อง (Local)" },
               { value: "cloud", label: "คลาวด์ (Cloud API)" },
-              { value: "hybrid", label: "ผสม (Hybrid)" },
+              { value: "hybrid", label: "ผสม (Hybrid) — แนะนำเมื่อใช้คนละแหล่ง" },
             ]}
           />
         </div>
@@ -173,6 +185,23 @@ export default function AdminAiSettingsPage() {
       {showLocal ? (
         <div className="gov-card space-y-3">
           <h2 className="font-semibold">เซิร์ฟเวอร์ในเครื่อง</h2>
+          <div>
+            <Label htmlFor="local-embed-server">เซิร์ฟเวอร์ embeddings ในเครื่อง</Label>
+            <Select
+              id="local-embed-server"
+              value={form.local_embedding_server || "lm_studio"}
+              onChange={(event) => patch("local_embedding_server", event.target.value)}
+              options={LOCAL_LLMS}
+            />
+          </div>
+          <div>
+            <Label htmlFor="local-embed-url">URL embeddings (เว้นว่างใช้ URL ของเซิร์ฟเวอร์ด้านบน)</Label>
+            <Input
+              id="local-embed-url"
+              value={form.local_embedding_base_url}
+              onChange={(event) => patch("local_embedding_base_url", event.target.value)}
+            />
+          </div>
           <div>
             <Label htmlFor="lm-url">LM Studio URL</Label>
             <Input
@@ -264,11 +293,19 @@ export default function AdminAiSettingsPage() {
             />
           </div>
           <div>
-            <Label htmlFor="openai-model">โมเดล OpenAI</Label>
+            <Label htmlFor="openai-model">โมเดล OpenAI แชท</Label>
             <Input
               id="openai-model"
               value={form.openai_chat_model}
               onChange={(event) => patch("openai_chat_model", event.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="openai-embed-model">โมเดล OpenAI embeddings</Label>
+            <Input
+              id="openai-embed-model"
+              value={form.openai_embedding_model}
+              onChange={(event) => patch("openai_embedding_model", event.target.value)}
             />
           </div>
           <div>
@@ -305,6 +342,12 @@ export default function AdminAiSettingsPage() {
             value={form.bedrock_model_id}
             onChange={(event) => patch("bedrock_model_id", event.target.value)}
           />
+          <Label htmlFor="bedrock-embed-model">Embedding model ID</Label>
+          <Input
+            id="bedrock-embed-model"
+            value={form.bedrock_embedding_model_id}
+            onChange={(event) => patch("bedrock_embedding_model_id", event.target.value)}
+          />
           <Label htmlFor="aws-key">AWS access key</Label>
           <Input
             id="aws-key"
@@ -337,11 +380,19 @@ export default function AdminAiSettingsPage() {
             value={form.azure_foundry_api_key}
             onChange={(event) => patch("azure_foundry_api_key", event.target.value)}
           />
-          <Label htmlFor="azure-deploy">Deployment</Label>
+          <Label htmlFor="azure-deploy">Deployment (แชท)</Label>
           <Input
             id="azure-deploy"
             value={form.azure_foundry_deployment}
             onChange={(event) => patch("azure_foundry_deployment", event.target.value)}
+          />
+          <Label htmlFor="azure-embed-deploy">Deployment (embeddings)</Label>
+          <Input
+            id="azure-embed-deploy"
+            value={form.azure_foundry_embedding_deployment}
+            onChange={(event) =>
+              patch("azure_foundry_embedding_deployment", event.target.value)
+            }
           />
         </div>
       ) : null}
@@ -362,11 +413,19 @@ export default function AdminAiSettingsPage() {
             value={form.openai_compatible_api_key}
             onChange={(event) => patch("openai_compatible_api_key", event.target.value)}
           />
-          <Label htmlFor="compat-model">ชื่อโมเดล</Label>
+          <Label htmlFor="compat-model">ชื่อโมเดลแชท</Label>
           <Input
             id="compat-model"
             value={form.openai_compatible_model}
             onChange={(event) => patch("openai_compatible_model", event.target.value)}
+          />
+          <Label htmlFor="compat-embed-model">ชื่อโมเดล embeddings</Label>
+          <Input
+            id="compat-embed-model"
+            value={form.openai_compatible_embedding_model}
+            onChange={(event) =>
+              patch("openai_compatible_embedding_model", event.target.value)
+            }
           />
         </div>
       ) : null}

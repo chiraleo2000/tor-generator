@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 session_factory: async_sessionmaker[AsyncSession] | None = None
 mongo_client: Any = None
 neo4j_driver: Any = None
+redis_client: Any = None
+minio_client: Any = None
 
 
 def set_session_factory(value: async_sessionmaker[AsyncSession] | None) -> None:
@@ -27,3 +29,13 @@ def set_mongo_client(value: Any) -> None:
 def set_neo4j_driver(value: Any) -> None:
     global neo4j_driver
     neo4j_driver = value
+
+
+def set_redis_client(value: Any) -> None:
+    global redis_client
+    redis_client = value
+
+
+def set_minio_client(value: Any) -> None:
+    global minio_client
+    minio_client = value

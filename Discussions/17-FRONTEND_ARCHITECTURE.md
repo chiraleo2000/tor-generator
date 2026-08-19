@@ -18,7 +18,8 @@ Axios `apiClient` uses `withCredentials: true` so the HttpOnly cookie `tor_acces
 | Compat | `/projects/[id]/wizard/[step]`, `/wizard/[step]` | Redirect into the 5-phase draft |
 | Admin | `/admin/templates`, `/admin/knowledge-base`, `/admin/users`, `/admin/ai-settings` | Admin layout redirects non-admins |
 
-Main nav: แดชบอร์ด, ฐานความรู้, ร่าง TOR, ตรวจสอบ TOR, **ถาม-ตอบ** (`/chat`), คู่มือ. Admin cluster is below. Creating a project opens a form (name, agency, budget, type) then `/projects/{id}/draft`. Reviewer/admin see **อนุมัติ** / **ส่งกลับ** on `in_review` rows (`decideProject` → `POST /projects/{id}/approve|reject`). Officers cannot edit while a project is in review. Phase 3 submit is disabled until 13 sections are filled **and** HITL sections are confirmed.
+- Officers browse `/knowledge-base`: shared groups (`mandatory_handbook`, `mandatory_raw`) plus **เอกสารของฉัน**. Upload goes to `POST /knowledge-base/mine` (owner-only RAG). Admins still push shared files via `/knowledge-base/upload` and `/admin/knowledge-base`.
+- Main nav: แดชบอร์ด, ฐานความรู้, ร่าง TOR, ตรวจสอบ TOR, **ถาม-ตอบ** (`/chat`), คู่มือ. Admin cluster is below. Creating a project opens a form (name, agency, budget, type) then `/projects/{id}/draft`. Reviewer/admin see **อนุมัติ** / **ส่งกลับ** on `in_review` rows (`decideProject` → `POST /projects/{id}/approve|reject`). Officers cannot edit while a project is in review. Phase 3 submit is disabled until 13 sections are filled **and** HITL sections are confirmed.
 
 ## Client state (Zustand)
 
@@ -45,7 +46,9 @@ Create-project from the dashboard opens **สร้างโครงการ�
 
 Standalone review extracts each compare file (`POST /review/extract`) then calls `POST /review/compare-projects` with `{ extract_ids }` (Jaccard). A 404/405/501 on that path falls back to local Jaccard on `extracted_text`.
 
-Admin **การตั้งค่า AI** (`/admin/ai-settings`) toggles Local vs Cloud vs Hybrid, tests connectivity (`ai-settings-test`), and saves to Postgres. Cloud providers: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible. Help FAQ names `google/gemma-4-e4b` and `text-embedding-embeddinggemma-300m`. API error strings are read through `apiErrorMessage` in `src/lib/api-error.ts`. Review findings are mapped in `src/lib/review-findings.ts` so nested objects are never stringified to `[object Object]`.
+Admin **การตั้งค่า AI** (`/admin/ai-settings`) lists every chat and embedding vendor in every mode — `on_prem` / `cloud` / `hybrid` is a label only and does **not** remap the other side. Mix example: Claude chat + local EmbeddingGemma (`LOCAL_EMBEDDING_SERVER`). Test (`ai-settings-test`) probes chat and embeddings separately. Cloud providers: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible. Help FAQ names `google/gemma-4-e4b` and `text-embedding-embeddinggemma-300m`. API error strings are read through `apiErrorMessage` in `src/lib/api-error.ts`. Review findings are mapped in `src/lib/review-findings.ts` so nested objects are never stringified to `[object Object]`.
+
+There are **no Next.js pages** for `/api/v1/agent` or `/api/v1/kb-chat` in v0.2.0. The live UI stays on the 5-phase draft workspace and `/chat`. Those endpoints are backend-only until a later UI wave.
 
 ## UI testing
 

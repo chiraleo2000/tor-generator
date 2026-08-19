@@ -41,6 +41,9 @@ class KnowledgeBaseDocument(Base):
     )
     mongo_gridfs_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="baseline")
+    corpus_group: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="mandatory_raw"
+    )
 
     # Relationships
     chunks: Mapped[list["KBChunk"]] = relationship(  # noqa: F821

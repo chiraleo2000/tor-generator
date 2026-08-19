@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING, Any
 from app.config import Settings, get_settings
 from app.providers.base import EmbeddingProvider, LLMProvider, VectorStoreProvider
 from app.providers.constants import (
-    CLOUD_LLM_PROVIDERS,
     EMBEDDING_DIMENSIONS,
     LOCAL_EMBEDDING_PROVIDERS,
+    LOCAL_EMBEDDING_SERVERS,
     LOCAL_LLM_DEFAULT_URLS,
     LOCAL_LLM_PROVIDERS,
 )
@@ -45,11 +45,24 @@ VALID_VECTOR_STORE_PROVIDERS = ("pgvector", "qdrant")
 
 
 def _attr(settings: Any, name: str, default: Any = "") -> Any:
-    return getattr(settings, name, default)
+    value = getattr(settings, name, default)
+    if isinstance(default, str) and not isinstance(value, str):
+        return default
+    return value
+
+
+def _url_for_local_kind(settings: Any, kind: str) -> str:
+    if kind == "ollama":
+        return str(_attr(settings, "ollama_base_url", LOCAL_LLM_DEFAULT_URLS["ollama"]))
+    if kind == "llama_cpp":
+        return str(
+            _attr(settings, "llama_cpp_base_url", LOCAL_LLM_DEFAULT_URLS["llama_cpp"])
+        )
+    return str(_attr(settings, "lm_studio_base_url", LOCAL_LLM_DEFAULT_URLS["lm_studio"]))
 
 
 class ProviderFactory:
-    """Factory that resolves providers from DEPLOYMENT_MODE and sub-provider ids."""
+    """Factory that resolves LLM and embeddings independently of each other."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
@@ -62,157 +75,129 @@ class ProviderFactory:
                 f"Invalid DEPLOYMENT_MODE: '{mode}'. "
                 f"Accepted values are: {', '.join(VALID_DEPLOYMENT_MODES)}"
             )
-        if mode == "cloud":
-            self._validate_cloud_config()
-        elif mode == "hybrid":
-            self._validate_hybrid_config()
+        self._validate_provider_ids()
+        self._validate_llm_credentials()
+        self._validate_embedding_credentials()
 
-    def _resolved_cloud_llm(self) -> str:
-        provider = _attr(self._settings, "llm_provider", "lm_studio")
-        if provider in CLOUD_LLM_PROVIDERS:
-            return provider
-        return "claude"
+    def _validate_provider_ids(self) -> None:
+        llm = _attr(self._settings, "llm_provider", "lm_studio")
+        embedding = _attr(self._settings, "embedding_provider", "local")
+        store = _attr(self._settings, "vector_store_provider", "pgvector")
+        if not llm or llm not in VALID_LLM_PROVIDERS:
+            raise ValueError(
+                f"Invalid LLM_PROVIDER: '{llm}'. "
+                f"Accepted values are: {', '.join(VALID_LLM_PROVIDERS)}"
+            )
+        if not embedding or embedding not in VALID_EMBEDDING_PROVIDERS:
+            raise ValueError(
+                f"Invalid EMBEDDING_PROVIDER: '{embedding}'. "
+                f"Accepted values are: {', '.join(VALID_EMBEDDING_PROVIDERS)}"
+            )
+        if store and store not in VALID_VECTOR_STORE_PROVIDERS:
+            raise ValueError(
+                f"Invalid VECTOR_STORE_PROVIDER: '{store}'. "
+                f"Accepted values are: {', '.join(VALID_VECTOR_STORE_PROVIDERS)}"
+            )
 
-    def _resolved_cloud_embedding(self) -> str:
-        provider = _attr(self._settings, "embedding_provider", "local")
-        if provider in ("gemini", "azure_foundry", "openai_compatible", "bedrock"):
-            return provider
-        return "openai"
+    def _require_secret(self, attr: str, env_name: str, reason: str) -> None:
+        if _attr(self._settings, attr):
+            return
+        raise ValueError(f"{env_name} is not set. {reason}")
 
-    def _validate_cloud_config(self) -> None:
-        llm = self._resolved_cloud_llm()
-        embedding = self._resolved_cloud_embedding()
-        if llm == "claude" and not _attr(self._settings, "anthropic_api_key"):
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'cloud' but ANTHROPIC_API_KEY is not set. "
-                "Cloud mode requires a valid Anthropic API key for the LLM provider."
+    def _validate_llm_credentials(self) -> None:
+        llm = _attr(self._settings, "llm_provider", "lm_studio")
+        if llm in LOCAL_LLM_PROVIDERS:
+            return
+        if llm == "claude":
+            self._require_secret(
+                "anthropic_api_key",
+                "ANTHROPIC_API_KEY",
+                "LLM_PROVIDER is 'claude' and requires a valid Anthropic API key.",
             )
-        if llm == "openai" and not _attr(self._settings, "openai_api_key"):
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'cloud' but OPENAI_API_KEY is not set. "
-                "Cloud chat requires a valid OpenAI API key."
+            return
+        if llm == "openai":
+            self._require_secret(
+                "openai_api_key",
+                "OPENAI_API_KEY",
+                "LLM_PROVIDER is 'openai' and requires a valid OpenAI API key.",
             )
-        if llm == "gemini" and not _attr(self._settings, "gemini_api_key"):
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'cloud' but GEMINI_API_KEY is not set. "
-                "Cloud chat requires a valid Gemini API key."
+            return
+        if llm == "gemini":
+            self._require_secret(
+                "gemini_api_key",
+                "GEMINI_API_KEY",
+                "LLM_PROVIDER is 'gemini' and requires a valid Gemini API key.",
             )
-        if llm == "azure_foundry" and not _attr(self._settings, "azure_foundry_api_key"):
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'cloud' but AZURE_FOUNDRY_API_KEY is not set."
+            return
+        if llm == "azure_foundry":
+            self._require_secret(
+                "azure_foundry_api_key",
+                "AZURE_FOUNDRY_API_KEY",
+                "LLM_PROVIDER is 'azure_foundry' and requires a valid Azure API key.",
             )
+            if not _attr(self._settings, "azure_foundry_endpoint"):
+                raise ValueError(
+                    "AZURE_FOUNDRY_ENDPOINT is not set. "
+                    "Azure Foundry chat requires an endpoint URL."
+                )
+            return
         if llm == "openai_compatible" and not _attr(
             self._settings, "openai_compatible_base_url"
         ):
             raise ValueError(
-                "DEPLOYMENT_MODE is 'cloud' but OPENAI_COMPATIBLE_BASE_URL is not set."
-            )
-        if embedding == "openai" and not _attr(self._settings, "openai_api_key"):
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'cloud' but OPENAI_API_KEY is not set. "
-                "Cloud mode requires a valid OpenAI API key for the embedding provider."
-            )
-        if embedding == "gemini" and not _attr(self._settings, "gemini_api_key"):
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'cloud' but GEMINI_API_KEY is not set. "
-                "Gemini embeddings require a valid Gemini API key."
+                "OPENAI_COMPATIBLE_BASE_URL is not set. "
+                "LLM_PROVIDER is 'openai_compatible' and requires a base URL."
             )
 
-    def _validate_hybrid_config(self) -> None:
-        settings = self._settings
-        if not settings.llm_provider:
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'hybrid' but LLM_PROVIDER is not set. "
-                f"Set LLM_PROVIDER to one of: {', '.join(VALID_LLM_PROVIDERS)}"
+    def _validate_embedding_credentials(self) -> None:
+        embedding = _attr(self._settings, "embedding_provider", "local")
+        if embedding in LOCAL_EMBEDDING_PROVIDERS:
+            return
+        if embedding == "openai":
+            self._require_secret(
+                "openai_api_key",
+                "OPENAI_API_KEY",
+                "EMBEDDING_PROVIDER is 'openai' and requires a valid OpenAI API key.",
             )
-        if settings.llm_provider not in VALID_LLM_PROVIDERS:
-            raise ValueError(
-                f"Invalid LLM_PROVIDER: '{settings.llm_provider}'. "
-                f"Accepted values are: {', '.join(VALID_LLM_PROVIDERS)}"
+            return
+        if embedding == "gemini":
+            self._require_secret(
+                "gemini_api_key",
+                "GEMINI_API_KEY",
+                "EMBEDDING_PROVIDER is 'gemini' and requires a valid Gemini API key.",
             )
-        if not settings.embedding_provider:
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'hybrid' but EMBEDDING_PROVIDER is not set. "
-                f"Set EMBEDDING_PROVIDER to one of: {', '.join(VALID_EMBEDDING_PROVIDERS)}"
+            return
+        if embedding == "azure_foundry":
+            self._require_secret(
+                "azure_foundry_api_key",
+                "AZURE_FOUNDRY_API_KEY",
+                "EMBEDDING_PROVIDER is 'azure_foundry' and requires a valid Azure API key.",
             )
-        if settings.embedding_provider not in VALID_EMBEDDING_PROVIDERS:
-            raise ValueError(
-                f"Invalid EMBEDDING_PROVIDER: '{settings.embedding_provider}'. "
-                f"Accepted values are: {', '.join(VALID_EMBEDDING_PROVIDERS)}"
-            )
-        if not settings.vector_store_provider:
-            raise ValueError(
-                "DEPLOYMENT_MODE is 'hybrid' but VECTOR_STORE_PROVIDER is not set. "
-                f"Set VECTOR_STORE_PROVIDER to one of: {', '.join(VALID_VECTOR_STORE_PROVIDERS)}"
-            )
-        if settings.vector_store_provider not in VALID_VECTOR_STORE_PROVIDERS:
-            raise ValueError(
-                f"Invalid VECTOR_STORE_PROVIDER: '{settings.vector_store_provider}'. "
-                f"Accepted values are: {', '.join(VALID_VECTOR_STORE_PROVIDERS)}"
-            )
-        if settings.llm_provider == "claude" and not _attr(settings, "anthropic_api_key"):
-            raise ValueError(
-                "LLM_PROVIDER is 'claude' but ANTHROPIC_API_KEY is not set. "
-                "Provide a valid Anthropic API key."
-            )
-        if settings.llm_provider == "openai" and not _attr(settings, "openai_api_key"):
-            raise ValueError(
-                "LLM_PROVIDER is 'openai' but OPENAI_API_KEY is not set. "
-                "Provide a valid OpenAI API key."
-            )
-        if settings.llm_provider == "gemini" and not _attr(settings, "gemini_api_key"):
-            raise ValueError(
-                "LLM_PROVIDER is 'gemini' but GEMINI_API_KEY is not set. "
-                "Provide a valid Gemini API key."
-            )
-        if settings.llm_provider == "azure_foundry" and not _attr(
-            settings, "azure_foundry_api_key"
+            if not _attr(self._settings, "azure_foundry_endpoint"):
+                raise ValueError(
+                    "AZURE_FOUNDRY_ENDPOINT is not set. "
+                    "Azure Foundry embeddings require an endpoint URL."
+                )
+            return
+        if embedding == "openai_compatible" and not _attr(
+            self._settings, "openai_compatible_base_url"
         ):
             raise ValueError(
-                "LLM_PROVIDER is 'azure_foundry' but AZURE_FOUNDRY_API_KEY is not set."
-            )
-        if settings.llm_provider == "openai_compatible" and not _attr(
-            settings, "openai_compatible_base_url"
-        ):
-            raise ValueError(
-                "LLM_PROVIDER is 'openai_compatible' but OPENAI_COMPATIBLE_BASE_URL is not set."
-            )
-        if settings.embedding_provider == "openai" and not _attr(settings, "openai_api_key"):
-            raise ValueError(
-                "EMBEDDING_PROVIDER is 'openai' but OPENAI_API_KEY is not set. "
-                "Provide a valid OpenAI API key."
-            )
-        if settings.embedding_provider == "gemini" and not _attr(settings, "gemini_api_key"):
-            raise ValueError(
-                "EMBEDDING_PROVIDER is 'gemini' but GEMINI_API_KEY is not set. "
-                "Provide a valid Gemini API key."
-            )
-        if settings.embedding_provider == "azure_foundry" and not _attr(
-            settings, "azure_foundry_api_key"
-        ):
-            raise ValueError(
-                "EMBEDDING_PROVIDER is 'azure_foundry' but AZURE_FOUNDRY_API_KEY is not set."
+                "OPENAI_COMPATIBLE_BASE_URL is not set. "
+                "EMBEDDING_PROVIDER is 'openai_compatible' and requires a base URL."
             )
 
     def get_llm(self) -> LLMProvider:
-        mode = self._settings.deployment_mode
-        if mode == "on_prem":
+        provider = _attr(self._settings, "llm_provider", "lm_studio")
+        if provider in LOCAL_LLM_PROVIDERS:
             return self._create_local_llm_provider()
-        if mode == "cloud":
-            return self._create_cloud_llm_provider(self._resolved_cloud_llm())
-        if self._settings.llm_provider in LOCAL_LLM_PROVIDERS:
-            return self._create_local_llm_provider()
-        return self._create_cloud_llm_provider(self._settings.llm_provider)
+        return self._create_cloud_llm_provider(provider)
 
     def get_embedding(self) -> EmbeddingProvider:
-        mode = self._settings.deployment_mode
-        if mode == "on_prem":
+        provider = _attr(self._settings, "embedding_provider", "local")
+        if provider in LOCAL_EMBEDDING_PROVIDERS:
             return self._create_local_embedding_provider()
-        if mode == "cloud":
-            return self._create_embedding_by_kind(self._resolved_cloud_embedding())
-        if self._settings.embedding_provider in LOCAL_EMBEDDING_PROVIDERS:
-            return self._create_local_embedding_provider()
-        return self._create_embedding_by_kind(self._settings.embedding_provider)
+        return self._create_embedding_by_kind(provider)
 
     def get_vector_store(
         self,
@@ -295,7 +280,8 @@ class ProviderFactory:
 
             provider = OpenAIEmbeddingProvider(
                 api_key=_attr(self._settings, "azure_foundry_api_key"),
-                model=_attr(self._settings, "azure_foundry_deployment")
+                model=_attr(self._settings, "azure_foundry_embedding_deployment")
+                or _attr(self._settings, "azure_foundry_deployment")
                 or "text-embedding-3-small",
                 dimensions=EMBEDDING_DIMENSIONS,
             )
@@ -329,24 +315,8 @@ class ProviderFactory:
         kind = _attr(self._settings, "llm_provider", "lm_studio")
         if kind not in LOCAL_LLM_PROVIDERS:
             kind = "lm_studio"
-        if kind == "ollama":
-            base_url = _attr(
-                self._settings, "ollama_base_url", LOCAL_LLM_DEFAULT_URLS["ollama"]
-            )
-        elif kind == "llama_cpp":
-            base_url = _attr(
-                self._settings,
-                "llama_cpp_base_url",
-                LOCAL_LLM_DEFAULT_URLS["llama_cpp"],
-            )
-        else:
-            base_url = _attr(
-                self._settings,
-                "lm_studio_base_url",
-                LOCAL_LLM_DEFAULT_URLS["lm_studio"],
-            )
         return LMStudioLocalProvider(
-            base_url=base_url,
+            base_url=_url_for_local_kind(self._settings, kind),
             model_name=_attr(self._settings, "lm_studio_model"),
             timeout=_attr(self._settings, "lm_studio_timeout", 180.0),
         )
@@ -356,29 +326,18 @@ class ProviderFactory:
 
         return OpenAIEmbeddingProvider(
             api_key=_attr(self._settings, "openai_api_key"),
+            model=_attr(self._settings, "openai_embedding_model", "text-embedding-3-small"),
             dimensions=EMBEDDING_DIMENSIONS,
         )
 
     def _create_local_embedding_provider(self) -> EmbeddingProvider:
         from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
 
-        kind = _attr(self._settings, "llm_provider", "lm_studio")
-        if kind == "ollama":
-            base_url = _attr(
-                self._settings, "ollama_base_url", LOCAL_LLM_DEFAULT_URLS["ollama"]
-            )
-        elif kind == "llama_cpp":
-            base_url = _attr(
-                self._settings,
-                "llama_cpp_base_url",
-                LOCAL_LLM_DEFAULT_URLS["llama_cpp"],
-            )
-        else:
-            base_url = _attr(
-                self._settings,
-                "lm_studio_base_url",
-                LOCAL_LLM_DEFAULT_URLS["lm_studio"],
-            )
+        override = str(_attr(self._settings, "local_embedding_base_url", "") or "").strip()
+        kind = _attr(self._settings, "local_embedding_server", "lm_studio")
+        if kind not in LOCAL_EMBEDDING_SERVERS:
+            kind = "lm_studio"
+        base_url = override or _url_for_local_kind(self._settings, kind)
         return Qwen3LocalEmbeddingProvider(
             base_url=base_url,
             model=_attr(

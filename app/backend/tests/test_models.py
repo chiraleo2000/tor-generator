@@ -22,6 +22,8 @@ from app.models.suggestion import Suggestion
 from app.models.audit_log import AuditLog
 from app.models.uploaded_file import UploadedFile
 from app.models.ai_runtime_settings import AiRuntimeSettings
+from app.models.agent_session import AgentSession
+from app.models.kb_chat_session import KBChatSession
 from app.providers.constants import EMBEDDING_DIMENSIONS
 
 
@@ -155,6 +157,11 @@ class TestProjectModel:
         """Test that Project project_type column default is configured as 'general'."""
         col = Project.__table__.columns["project_type"]
         assert col.default.arg == "general"
+
+    def test_project_default_workflow_mode_is_wizard(self):
+        """Test that Project workflow_mode column default is 'wizard'."""
+        col = Project.__table__.columns["workflow_mode"]
+        assert col.default.arg == "wizard"
 
     def test_project_status_values(self, sample_user_id: uuid.UUID):
         """Test that Project supports all valid status values."""
@@ -1039,6 +1046,16 @@ class TestModelRelationships:
         )
         assert hasattr(project, "uploaded_files")
 
+    def test_project_has_agent_sessions_relationship(self, sample_user_id: uuid.UUID):
+        """Test Project model defines agent_sessions relationship."""
+        project = Project(
+            owner_id=sample_user_id,
+            name="test",
+            ministry="m",
+            budget=1000,
+        )
+        assert hasattr(project, "agent_sessions")
+
     def test_kb_document_has_chunks_relationship(self):
         """Test KnowledgeBaseDocument model defines chunks relationship."""
         doc = KnowledgeBaseDocument(
@@ -1190,3 +1207,53 @@ class TestAiRuntimeSettingsModel:
         row = AiRuntimeSettings(id=1, payload={"deployment_mode": "on_prem"})
         assert row.id == 1
         assert row.payload["deployment_mode"] == "on_prem"
+
+
+class TestAgentSessionModel:
+    """Unit tests for AgentSession model."""
+
+    def test_tablename(self):
+        assert AgentSession.__tablename__ == "agent_sessions"
+
+    def test_creation(
+        self, sample_project_id: uuid.UUID, sample_user_id: uuid.UUID
+    ):
+        session = AgentSession(
+            project_id=sample_project_id,
+            user_id=sample_user_id,
+            phase="gap_filling",
+        )
+        assert session.project_id == sample_project_id
+        assert session.user_id == sample_user_id
+        assert session.phase == "gap_filling"
+
+    def test_default_phase_is_idle(self):
+        col = AgentSession.__table__.columns["phase"]
+        assert col.default.arg == "idle"
+
+    def test_repr(self, sample_project_id: uuid.UUID, sample_user_id: uuid.UUID):
+        session_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        row = AgentSession(
+            id=session_id,
+            project_id=sample_project_id,
+            user_id=sample_user_id,
+            phase="idle",
+        )
+        assert str(session_id) in repr(row)
+
+
+class TestKBChatSessionModel:
+    """Unit tests for KBChatSession model."""
+
+    def test_tablename(self):
+        assert KBChatSession.__tablename__ == "kb_chat_sessions"
+
+    def test_creation(self, sample_user_id: uuid.UUID):
+        row = KBChatSession(user_id=sample_user_id, history=[])
+        assert row.user_id == sample_user_id
+        assert row.history == []
+
+    def test_repr(self, sample_user_id: uuid.UUID):
+        session_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        row = KBChatSession(id=session_id, user_id=sample_user_id)
+        assert str(session_id) in repr(row)

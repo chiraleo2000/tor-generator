@@ -12,7 +12,8 @@
 | Embeddings | `text-embedding-embeddinggemma-300m` (768 มิติ) |
 
 ภาพอยู่ใน `discussions/test-evidence/` ถ่ายจาก Playwright แบบเห็นหน้าจอหลังเคสผ่านแล้วเท่านั้น — **ไม่มีเคสที่ล้มในรอบนี้**  
-คู่มือผู้ใช้ที่อธิบายภาพชุดเดียวกันทีละขั้น: `13-USER_GUIDELINE.md`
+คู่มือผู้ใช้ที่อธิบายภาพชุดเดียวกันทีละขั้น: `13-USER_GUIDELINE.md`  
+เดโม UX/UI ที่คลิกได้ (ไม่เรียก API): https://chiraleo2000.github.io/tor-generator/ (`index.html`) — ไม่ใช่ `06-UXUI-Mockup.html`
 
 ---
 
@@ -20,9 +21,10 @@
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest รวม live LM Studio | **1378 ผ่าน**, coverage **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) | หน่วยทดสอบ backend ทั้งก้อน รวมยิง LM Studio จริง |
-| Vitest | **119 ผ่าน** / **91.39%** statements | lib, stores, หน้าตั้งค่า AI, chat SSE, phase-gate |
-| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (~3.3 นาที) | เวิร์กโฟลว์ผู้ใช้บน http://localhost:3000 รวม `/chat` แชทร่าง Phase 0–1 และร่างด้วย AI (Gemma ~2.7 นาที) |
+| pytest ไม่รวม `live_llm` (v0.2.0) | **1440 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL เจ้าของไฟล์, `/knowledge-base/mine`; intake, `/chat`, wizard step APIs ยังผ่าน |
+| pytest `--cov=app` | **85%** (9461 stmts / 1415 miss) | HTML ที่ `app/backend/htmlcov/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| Vitest `--coverage` | **122 ผ่าน** / **90.9%** statements (670/737) | รวมหน้าฐานความรู้ของเจ้าหน้าที่; ตัดหน้าแอดมิน KB |
+| Playwright (แอป, 1 worker) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม | เวิร์กโฟลว์บน http://localhost:3000 รวมหน้าคลังความรู้เจ้าหน้าที่ (`อัปโหลดเอกสารของฉัน`) `/chat` และร่างด้วย AI (Gemma) — รันทีละเคสเพราะบัญชีทดลองร่วมกัน |
 | ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ หน้าแอดมิน `/chat` HITL |
 | Playwright รายงาน coverage (`test:e2e:reports`) | **3 ผ่าน** | ถ่าย htmlcov / Istanbul / รายงาน Playwright |
 
@@ -36,7 +38,7 @@ Coverage backend ลดจากรอบเช้าเพราะเพิ่
 
 ## รายงาน Playwright — 15 เคสแอป
 
-รัน: `cd app/frontend && npm run test:e2e:headed`  
+รัน: `cd app/frontend && npm run test:e2e` (1 worker) หรือ `npm run test:e2e:headed`  
 Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเนอร์พอร์ต 3000
 
 ![รายงาน Playwright — 15 ผ่าน 0 ล้ม](test-evidence/15-playwright-report.png)
@@ -198,7 +200,7 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 **ไฟล์เทสต์:** `webapp.spec.ts` — *knowledge base is in the main menu*
 
-คลิก `nav-knowledge-base` URL `/knowledge-base` เห็นข้อความอัปโหลดเอกสารเข้าคลังความรู้
+คลิก `nav-knowledge-base` URL `/knowledge-base` เห็นหัวข้อ **อัปโหลดเอกสารของฉัน** และ **เอกสารที่ผู้ใช้อัปโหลด (เฉพาะบัญชีนี้)**
 
 ![เคส webapp: ฐานความรู้ผู้ใช้](test-evidence/11-knowledge-base.png)
 
@@ -270,11 +272,11 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **87%** (7839 statements, 1049 miss)
+Backend `coverage.py`: **85%** (9461 statements, 1415 miss) — ลดจาก 87% เพราะโมดูล RAG/Graph/Mongo/`knowledge_base.mine` ที่เพิ่มในรอบนี้
 
 ![Coverage backend 87%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **91.39%** (637/697), lines **93.09%** (580/623)
+Frontend Istanbul/v8: statements **90.9%** (670/737), lines **92.58%** (612/661) — รวมหน้า `/knowledge-base`
 
 ![Coverage frontend 91.39%](test-evidence/14-frontend-coverage.png)
 

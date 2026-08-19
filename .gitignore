@@ -164,3 +164,8 @@ app/frontend/coverage/
 # Original PDF/DOCX source packs — too large for GitHub and not required to run the app
 documents/sources/
 
+# Runtime officer/agent uploads and local test caches
+app/backend/agent-uploads/
+.hypothesis/
+.ruff_cache/
+

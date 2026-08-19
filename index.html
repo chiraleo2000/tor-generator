@@ -212,11 +212,11 @@ tr:hover td{background:#f9fafb}
       <div><h1>TOR Generator</h1><p>ระบบจัดซื้อจัดจ้างภาครัฐ</p></div>
     </div>
     <nav id="nav"></nav>
-    <p class="sidebar-foot">OCR/NLP + RAG + Gemma ในเครื่อง — โหมด on-prem ไม่ส่งข้อมูลออก</p>
+    <p class="sidebar-foot">v0.2 — Gemma ในเครื่อง หรือคลาวด์เมื่อใส่ API key (Anthropic / OpenAI / Gemini / Bedrock / Azure)</p>
     <button class="logout" type="button" id="logoutBtn">ออกจากระบบ</button>
   </aside>
   <div class="main">
-    <div class="sim-banner">จำลองบน GitHub Pages — หน้าตาตามแอป Docker จริง (แชทร่าง Phase 0–1, ถาม-ตอบ, 13 หมวด) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
+    <div class="sim-banner">จำลองบน GitHub Pages v0.2 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, Agent API เอกสาร) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
     <header class="topbar">
       <div><h1 id="pageTitle">แดชบอร์ด</h1><p class="sub" id="pageSub">ภาพรวมโครงการ TOR ทั้งหมด</p></div>
       <div class="user-chip"><span id="userEmail"></span><div class="avatar" id="userAv">?</div></div>
@@ -277,7 +277,8 @@ const META = {
   templates:["แม่แบบ","โครงร่าง TOR ตามประเภทงาน"],
   adminkb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG"],
   users:["ผู้ใช้","บัญชีเจ้าหน้าที่และสิทธิ์"],
-  ai:["การตั้งค่า AI","โหมด on-prem / cloud / hybrid"]
+  ai:["การตั้งค่า AI","เลือกแชทและ embeddings อิสระ (ในเครื่อง / คลาวด์)"],
+  agent:["Agent API","เส้นทาง /api/v1/agent และ /kb-chat — ยังไม่มีหน้า Next.js"]
 };
 const ACCOUNTS = {
   "officer@example.go.th":{name:"เจ้าหน้าที่พัสดุ",role:"officer",org:"กรมบัญชีกลาง"},
@@ -351,7 +352,7 @@ const state = {
     {name:"ผู้ตรวจสอบ",email:"reviewer@example.go.th",role:"reviewer",org:"กรมบัญชีกลาง",disabled:false},
     {name:"ผู้ดูแลระบบ",email:"admin@example.go.th",role:"admin",org:"กรมบัญชีกลาง",disabled:false}
   ],
-  ai:{mode:"on_prem",llm:"lm_studio",embed:"local",vector:"pgvector",
+  ai:{mode:"on_prem",llm:"lm_studio",embed:"local",embedServer:"lm_studio",vector:"pgvector",
     lm:"http://host.docker.internal:1234/v1",ollama:"http://host.docker.internal:11434/v1",
     llama:"http://host.docker.internal:8080/v1",chat:"google/gemma-4-e4b",emb:"text-embedding-embeddinggemma-300m",timeout:180},
   aiMsg:"",
@@ -525,7 +526,7 @@ function navHtml(){
   const p=state.page;
   const item=(id,href,icon,label)=>`<a class="menu-item ${p===id?"active":""}" href="#/${href}">${ICONS[icon]}${label}</a>`;
   let h=`<div class="menu-section"><p class="menu-title">หลัก</p>${item("projects","projects","dash","แดชบอร์ด")}${item("kb","knowledge-base","book","ฐานความรู้")}</div>`;
-  h+=`<div class="menu-section"><p class="menu-title">การทำงาน</p>${item("draft","draft","pen","ร่าง TOR")}${item("review","review","scan","ตรวจสอบ TOR")}${item("chat","chat","chat","ถาม-ตอบ")}</div>`;
+  h+=`<div class="menu-section"><p class="menu-title">การทำงาน</p>${item("draft","draft","pen","ร่าง TOR")}${item("agent","agent","cpu","Agent API")}${item("review","review","scan","ตรวจสอบ TOR")}${item("chat","chat","chat","ถาม-ตอบ")}</div>`;
   h+=`<div class="menu-section"><p class="menu-title">อื่นๆ</p>${item("help","help","help","คู่มือ")}</div>`;
   if(state.user?.role==="admin"){
     h+=`<div class="menu-section"><p class="menu-title">ผู้ดูแลระบบ</p>${item("templates","admin/templates","file","แม่แบบ")}${item("adminkb","admin/knowledge-base","book","ฐานความรู้ (จัดการ)")}${item("users","admin/users","users","ผู้ใช้")}${item("ai","admin/ai-settings","cpu","การตั้งค่า AI")}</div>`;
@@ -549,6 +550,7 @@ function viewHtml(){
     case "kb": return kbHtml();
     case "draft": return draftHtml();
     case "chat": return chatHtml();
+    case "agent": return agentHtml();
     case "review": return reviewHtml();
     case "help": return helpHtml();
     case "templates": return templatesHtml();
@@ -592,23 +594,30 @@ function kbHtml(){
   const types=[["law","กฎหมาย/ระเบียบกลาง"],["guideline","ประกาศราคากลาง / ระเบียบ"],["example_tor","ร่างเอกสารประกวดราคา"],["manual","ความต้องการ/คู่มือ"],["regulation","กฎกระทรวง"]];
   const cats=[
     ["พระราชบัญญัติและระเบียบ",[{n:"พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:48},{n:"ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:62}]],
+    ["คู่มือแนวปฏิบัติ (บังคับ)",[{n:"คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf",c:86}]],
     ["หนังสือกรมบัญชีกลาง",[{n:"หนังสือ กค (กวจ) 0405.2 ว 360",c:12},{n:"หนังสือ กค 0405.4 ว 322",c:9}]]
   ];
   const chunked=[["กฎหมายกลาง",3,110],["คุณสมบัติผู้เสนอราคา",2,44],["งวดจ่ายและค่าปรับ",2,31],["หลักเกณฑ์การพิจารณา",1,18]];
   const admin=state.user?.role==="admin";
+  const uploadTitle=admin?"อัปโหลดเอกสารเข้าคลังความรู้ส่วนกลาง":"อัปโหลดเอกสารของฉัน";
+  const uploadHint=admin
+    ?"รองรับ PDF, Word — ระบบแบ่ง chunk และฝังเข้า Vector Store ส่วนกลาง"
+    :"ไฟล์ของคุณถูก chunk และฝังเข้า RAG เฉพาะบัญชีนี้";
+  const mine=(state.files||[]).filter(f=>f.user);
   return `<div class="gov-card" style="margin-bottom:20px">
-    <h2 style="color:var(--navy);font-size:16.5px;margin-bottom:12px">อัปโหลดเอกสารเข้าคลังความรู้</h2>
+    <h2 style="color:var(--navy);font-size:16.5px;margin-bottom:12px">${uploadTitle}</h2>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${types.map(([id,l])=>`<button type="button" class="type-chip ${state.kbType===id?"on":""}" data-kbt="${id}">${l}</button>`).join("")}</div>
-    <label class="upload"><input type="file" hidden multiple accept=".pdf,.docx"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์</p><span>รองรับ PDF, Word — ระบบแบ่ง chunk และฝังเข้า Vector Store</span></label>
-    <p class="muted" id="kbMsg">${admin?"":"การอัปโหลดคลังกฎหมายสงวนไว้สำหรับผู้ดูแลระบบ"}</p>
+    <label class="upload"><input type="file" hidden multiple accept=".pdf,.docx" id="kbMineUp"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์</p><span>${uploadHint}</span></label>
+    <p class="muted" id="kbMsg">${admin?"":"เจ้าหน้าที่อื่นไม่เห็นไฟล์นี้ — คลังกฎหมายบังคับยังเป็นส่วนกลาง"}</p>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารต้นฉบับ กฎหมาย/ระเบียบ</h2><span class="pill pill-draft">4 ไฟล์</span></div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารต้นฉบับ กฎหมาย/ระเบียบ</h2><span class="pill pill-draft">บังคับ</span></div>
   ${cats.map(([name,items])=>`<div class="kb-row"><button type="button" class="head" data-kbo="${esc(name)}"><span>${esc(name)}</span><span class="badge-req">บังคับ</span></button>
     ${state.kbOpen===name?items.map(d=>`<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding:8px 16px;font-size:12.5px"><span>${esc(d.n)}</span><span class="muted">${d.c} chunks</span></div>`).join(""):""}
   </div>`).join("")}
   <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">คลังความรู้ที่ผ่านการ Chunk เข้า RAG</h2><span class="pill pill-draft">203 chunks</span></div>
   ${chunked.map(([n,f,c])=>`<div class="kb-row" style="display:flex;justify-content:space-between;padding:12px 16px"><span style="font-weight:600;color:var(--navy)">${n}</span><span class="muted">${f} ไฟล์ · ${c} chunks</span></div>`).join("")}
-  <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารที่ผู้ใช้อัปโหลด</h2><span class="pill pill-draft">${state.files.filter(f=>f.user).length} ไฟล์</span></div>`;
+  <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารที่ผู้ใช้อัปโหลด (เฉพาะบัญชีนี้)</h2><span class="pill pill-draft">${mine.length} ไฟล์</span></div>
+  ${mine.length?mine.map(f=>`<div class="kb-row" style="padding:12px 16px;font-size:13px">${esc(f.name)}</div>`).join(""):`<p class="muted">ยังไม่มีไฟล์ส่วนตัว</p>`}`;
 }
 
 function unlockedPhase(){
@@ -908,18 +917,36 @@ function reviewHtml(){
   </div>`;
 }
 
+function agentHtml(){
+  return `<div class="gov-card" style="margin-bottom:16px">
+    <h2 style="color:var(--navy);margin-bottom:8px">เส้นทาง Agent TOR (API อย่างเดียว)</h2>
+    <p>แอป Docker ยังร่างด้วยพื้นที่ทำงาน 5 Phase ที่ /projects/{id}/draft หน้านี้เป็นเอกสารเส้นทางขนาน <code>/api/v1/agent</code> สำหรับไคลเอนต์ในอนาคต ไม่มีหน้า Next.js ใน v0.2.0</p>
+  </div>
+  <div class="gov-card" style="margin-bottom:16px">
+    <h3 style="color:var(--navy);margin-bottom:8px">ลำดับงาน</h3>
+    <div class="flow"><span>ingest</span><span>แผนที่ 27 ช่อง</span><span>ถามส่วนขาด</span><span>ร่าง s1–s13</span><span>HITL</span><span>ส่งออก</span></div>
+    <p class="muted" style="margin-top:10px">สูงสุด 20 ไฟล์ / 50 MB, รองรับ PPTX, ถามครั้งละไม่เกิน 5 ข้อ, ยืนยัน s3 s6 s8 s10 s13 ก่อนส่งออก</p>
+  </div>
+  <div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">โมเดลท้องถิ่นและคลาวด์</h3>
+    <p>ค่าเริ่มต้น: LM Studio google/gemma-4-e4b + EmbeddingGemma-300M (ข้อมูลไม่ออกเครื่อง)</p>
+    <p>สลับคลาวด์จากหน้าผู้ดูแลเมื่อมี API key โดยไม่บังคับสลับ embeddings: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible</p>
+    <p class="muted">ถาม-ตอบคลังแยก <code>/api/v1/kb-chat</code> ไม่แทนเมนูถาม-ตอบ <code>/chat</code></p>
+  </div>`;
+}
+
 function helpHtml(){
   const tabs=[["overview","ภาพรวม","dash"],["login","เข้าสู่ระบบ","users"],["dashboard","แดชบอร์ด","dash"],["draft","ร่าง TOR","pen"],["chat","ถาม-ตอบ","chat"],["kb","ฐานความรู้","book"],["review","ตรวจสอบ","scan"],["admin","ผู้ดูแล","cpu"],["faq","FAQ","help"]];
   const body={
-    overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3><p>ระบบช่วยเจ้าหน้าที่พัสดุร่างและตรวจสอบ TOR ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มี 13 หมวด แชทร่างใน Phase 0–1 และถาม-ตอบคลังความรู้แยกต่างหาก</p><div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>แชทร่าง 5 Phase</span><span>ถาม-ตอบ</span><span>ตรวจสอบ</span></div>`,
+    overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3><p>ระบบช่วยเจ้าหน้าที่พัสดุร่างและตรวจสอบ TOR ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มี 13 หมวด แชทร่างใน Phase 0–1 และถาม-ตอบคลังความรู้แยกต่างหาก v0.2 เพิ่มเส้นทาง API agent ขนาน (ยังไม่มีหน้าจอแอป)</p><div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>แชทร่าง 5 Phase</span><span>ถาม-ตอบ</span><span>ตรวจสอบ</span></div>`,
     login:`<h3 style="color:var(--navy);margin-bottom:8px">เข้าสู่ระบบ</h3><p>บัญชีทดลอง officer@example.go.th / Passw0rd! — ผู้ดูแล admin@ และผู้ตรวจ reviewer@ ใช้รหัสเดียวกัน</p><p class="muted">สมัครสมาชิกได้ที่หน้าสมัคร บัญชีใหม่ได้บทบาทเจ้าหน้าที่</p>`,
     dashboard:`<h3 style="color:var(--navy);margin-bottom:8px">แดชบอร์ด</h3><p>การ์ดสถานะสามใบ: ร่าง / กำลังดำเนินการ / เสร็จแล้ว และตารางโครงการ</p><p>กดสร้างโครงการใหม่แล้วกรอกฟอร์มสร้างโครงการ แล้วเข้า Phase 0 (แชทอัปโหลดชุดใหญ่)</p>`,
-    kb:`<h3 style="color:var(--navy);margin-bottom:8px">ฐานความรู้</h3><p>หน้า GitHub Pages จำลอง RAG ด้วยไฟล์ JSON extracts (`*_tor_extract.json`) ที่ seed จาก PDF</p><p>ผู้ดูแลอัปโหลดคลังกลาง ผู้ใช้ทั่วไปอัปโหลดได้เฉพาะคลังส่วนตัวจากหน้าแชท</p>`,
+    kb:`<h3 style="color:var(--navy);margin-bottom:8px">ฐานความรู้</h3><p>คลังบังคับมาจากคู่มือแนวปฏิบัติและโฟลเดอร์ข้อมูลดิบ เจ้าหน้าที่อัปโหลดเอกสารของตนเองได้ที่หน้านี้ (เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลาง</p>`,
     draft:`<h3 style="color:var(--navy);margin-bottom:8px">กระบวนการร่าง 5 Phase</h3><div class="flow"><span>Phase 0 อัปโหลดชุดใหญ่</span><span>Phase 1 แชทถามส่วนขาด</span><span>Phase 2 13 หมวด</span><span>Phase 3 ทบทวน HITL</span><span>Phase 4 ส่งออก</span></div><p>Phase 0–1 เป็นแชทโครงการ — อัปโหลดหลายไฟล์ได้โดยไม่ต้องเลือก 9 ประเภท บอทจัดเข้า s1–s13 และ s4.1–s4.14 เมื่อครบเกณฑ์กดพร้อมร่าง แล้วเข้า Phase 2</p>`,
     chat:`<h3 style="color:var(--navy);margin-bottom:8px">ถาม-ตอบ</h3><p>เมนูการทำงาน → ถาม-ตอบ เปิดห้องแชทรายคน ค้นคลังกลางและเอกสารของฉันด้วย RAG + กราฟกฎหมาย ประวัติไม่ปนกับแชทร่างโครงการ</p>`,
     review:`<h3 style="color:var(--navy);margin-bottom:8px">ตรวจสอบ TOR</h3><p>อัปโหลดไฟล์ที่มีอยู่แล้ว ระบบอ้างอิงกฎหมายบังคับเสมอ เทียบเคียงไฟล์อื่นด้วย Jaccard และแสดงผลเป็นรายการผ่าน/เตือน/ไม่ผ่าน</p>`,
-    admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3><p>หน้าแม่แบบ ผู้ใช้ และการตั้งค่า AI — ค่าเริ่มต้น LM Studio ที่พอร์ต 1234 สลับไป Anthropic / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible ได้ บันทึกแล้วมีผลทันที</p>`,
-    faq:`<h3 style="color:var(--navy);margin-bottom:8px">FAQ</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p><p>LLM ไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลด google/gemma-4-e4b และ text-embedding-embeddinggemma-300m</p>`
+    admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3><p>หน้าแม่แบบ ผู้ใช้ และการตั้งค่า AI — เลือกแชทและ embeddings คนละตัวได้ เช่น Claude + EmbeddingGemma ในเครื่อง คีย์ใส่ในหน้านี้ บันทึกแล้วมีผลทันที</p>`,
+    faq:`<h3 style="color:var(--navy);margin-bottom:8px">FAQ</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p><p>LLM ไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลด google/gemma-4-e4b และ text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่การตั้งค่า AI โดยคง embeddings ในเครื่องได้</p><p>Agent API: POST /api/v1/agent/sessions (multipart) และ /api/v1/kb-chat — ใช้โมเดลในเครื่องหรือคีย์คลาวด์จากหน้าการตั้งค่า AI</p>`
   };
   const tabsHtml = tabs
     .map(([id, l, icon]) => {
@@ -1005,58 +1032,31 @@ function usersHtml(){
 }
 
 function aiHtml(){
-  const mode = state.ai.mode;
-  const local =
-    mode === "on_prem" ||
-    (mode === "hybrid" && ["lm_studio", "ollama", "llama_cpp"].includes(state.ai.llm));
-  const cloud = mode === "cloud" || mode === "hybrid";
-
-  let llm = [];
-  if (mode === "on_prem") {
-    llm = [
-      ["lm_studio", "LM Studio"],
-      ["ollama", "Ollama"],
-      ["llama_cpp", "llama.cpp / เซิร์ฟเวอร์กำหนดเอง"],
-    ];
-  } else if (mode === "cloud") {
-    llm = [
-      ["claude", "Claude (Anthropic)"],
-      ["openai", "OpenAI"],
-      ["gemini", "Gemini (Google)"],
-      ["bedrock", "Amazon Bedrock"],
-      ["azure_foundry", "Azure AI Foundry"],
-      ["openai_compatible", "อื่น ๆ (OpenAI-compatible)"],
-    ];
-  } else {
-    // hybrid
-    llm = [
-      ["claude", "Claude (Anthropic)"],
-      ["openai", "OpenAI"],
-      ["gemini", "Gemini (Google)"],
-      ["bedrock", "Amazon Bedrock"],
-      ["azure_foundry", "Azure AI Foundry"],
-      ["openai_compatible", "อื่น ๆ (OpenAI-compatible)"],
-      ["lm_studio", "LM Studio"],
-      ["ollama", "Ollama"],
-    ];
-  }
+  const localLlms=[["lm_studio","LM Studio"],["ollama","Ollama"],["llama_cpp","llama.cpp / เซิร์ฟเวอร์กำหนดเอง"]];
+  const cloudLlms=[["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"],["bedrock","Amazon Bedrock"],["azure_foundry","Azure AI Foundry"],["openai_compatible","อื่น ๆ (OpenAI-compatible)"]];
+  const llm=state.ai.mode==="cloud"?[...cloudLlms,...localLlms]:[...localLlms,...cloudLlms];
+  const localChat=["lm_studio","ollama","llama_cpp"].includes(state.ai.llm);
+  const localEmb=state.ai.embed==="local"||state.ai.embed==="qwen3";
+  const showLocal=localChat||localEmb;
+  const showCloud=!localChat||!localEmb;
 
   const aiMsgHtml = state.aiMsg
-    ? `<div class="gov-card" style="background:#f0fdf4;color:#14532d;margin-bottom:16px">${esc(
-        state.aiMsg
-      )}</div>`
+    ? `<div class="gov-card" style="background:#f0fdf4;color:#14532d;margin-bottom:16px">${esc(state.aiMsg)}</div>`
     : "";
 
   const llmOptionsHtml = llm
-    .map(([v, l]) => {
-      const selectedAttr = state.ai.llm === v ? "selected" : "";
-      return `<option value="${v}" ${selectedAttr ? "selected" : ""}>${l}</option>`;
-    })
+    .map(([v, l]) => `<option value="${v}" ${state.ai.llm===v?"selected":""}>${l}</option>`)
     .join("");
 
   let localHtml = "";
-  if (local) {
+  if (showLocal) {
     localHtml = `<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">เซิร์ฟเวอร์ในเครื่อง</h2>
+      <label class="lbl">เซิร์ฟเวอร์ embeddings ในเครื่อง</label>
+      <select id="embSrv">
+        <option value="lm_studio"${(state.ai.embedServer||"lm_studio")==="lm_studio"?" selected":""}>LM Studio</option>
+        <option value="ollama"${state.ai.embedServer==="ollama"?" selected":""}>Ollama</option>
+        <option value="llama_cpp"${state.ai.embedServer==="llama_cpp"?" selected":""}>llama.cpp</option>
+      </select>
       <label class="lbl">LM Studio URL</label><input id="lmUrl" value="${esc(state.ai.lm)}">
       <label class="lbl">Ollama URL</label><input id="olUrl" value="${esc(state.ai.ollama)}">
       <label class="lbl">llama.cpp / custom URL</label><input id="llUrl" value="${esc(state.ai.llama)}">
@@ -1066,7 +1066,7 @@ function aiHtml(){
   }
 
   let cloudHtml = "";
-  if (cloud) {
+  if (showCloud) {
     cloudHtml = `<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์</h2>
       <label class="lbl">Anthropic API key</label><input type="password" placeholder="จำลอง — ไม่ส่งออก">
       <label class="lbl">OpenAI API key</label><input type="password">
@@ -1077,13 +1077,27 @@ function aiHtml(){
   }
 
   return `<div class="gov-card" style="margin-bottom:16px"><h1 style="color:var(--navy);font-size:24px;font-weight:800">การตั้งค่า AI</h1>
-    <p class="muted" style="margin-top:6px">ค่าเริ่มต้นคือรันในเครื่องผ่าน LM Studio ที่พอร์ต 1234 (Gemma + EmbeddingGemma-300M) การบันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend หากเปลี่ยนผู้ให้บริการหรือโมเดล embeddings ต้องประมวลผลฐานความรู้ใหม่</p></div>
+    <p class="muted" style="margin-top:6px">เลือกโมเดลแชทและ embeddings คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ การบันทึกมีผลทันที หากเปลี่ยน embeddings ต้องประมวลผลฐานความรู้ใหม่</p></div>
     ${aiMsgHtml}
     <div class="gov-card" style="margin-bottom:16px">
-      <label class="lbl">โหมด</label><select id="aiMode"><option value="on_prem">รันในเครื่อง (Local)</option><option value="cloud">คลาวด์ (Cloud API)</option><option value="hybrid">ผสม (Hybrid)</option></select>
+      <label class="lbl">โหมด</label><select id="aiMode">
+        <option value="on_prem"${state.ai.mode==="on_prem"?" selected":""}>รันในเครื่อง (Local)</option>
+        <option value="cloud"${state.ai.mode==="cloud"?" selected":""}>คลาวด์ (Cloud API)</option>
+        <option value="hybrid"${state.ai.mode==="hybrid"?" selected":""}>ผสม (Hybrid) — แนะนำเมื่อใช้คนละแหล่ง</option>
+      </select>
       <label class="lbl" style="margin-top:10px">โมเดลแชท</label><select id="aiLlm">${llmOptionsHtml}</select>
-      <label class="lbl" style="margin-top:10px">Embeddings</label><select id="aiEmb"><option value="local">ในเครื่อง (OpenAI-compatible)</option><option value="openai">OpenAI embeddings</option><option value="gemini">Gemini embeddings</option></select>
-      <label class="lbl" style="margin-top:10px">คลังเวกเตอร์</label><select id="aiVec"><option value="pgvector">pgvector</option><option value="qdrant">Qdrant</option></select>
+      <label class="lbl" style="margin-top:10px">Embeddings</label><select id="aiEmb">
+        <option value="local"${state.ai.embed==="local"?" selected":""}>ในเครื่อง (OpenAI-compatible)</option>
+        <option value="openai"${state.ai.embed==="openai"?" selected":""}>OpenAI embeddings</option>
+        <option value="gemini"${state.ai.embed==="gemini"?" selected":""}>Gemini embeddings</option>
+        <option value="bedrock"${state.ai.embed==="bedrock"?" selected":""}>Bedrock (Titan)</option>
+        <option value="azure_foundry"${state.ai.embed==="azure_foundry"?" selected":""}>Azure Foundry embeddings</option>
+        <option value="openai_compatible"${state.ai.embed==="openai_compatible"?" selected":""}>OpenAI-compatible embeddings</option>
+      </select>
+      <label class="lbl" style="margin-top:10px">คลังเวกเตอร์</label><select id="aiVec">
+        <option value="pgvector"${state.ai.vector==="pgvector"?" selected":""}>pgvector</option>
+        <option value="qdrant"${state.ai.vector==="qdrant"?" selected":""}>Qdrant</option>
+      </select>
     </div>
     ${localHtml}
     ${cloudHtml}
@@ -1248,27 +1262,42 @@ function bindView(){
   v.querySelectorAll("[data-dis]").forEach(b=>b.addEventListener("click",()=>{state.users[+b.dataset.dis].disabled=!state.users[+b.dataset.dis].disabled;renderShell();}));
   v.querySelector("#aiMode")?.addEventListener("change",e=>{
     state.ai.mode=e.target.value;
-    if(e.target.value==="on_prem") state.ai.llm="lm_studio";
-    else if(e.target.value==="cloud") state.ai.llm="claude";
     renderShell();
   });
-  v.querySelector("#aiTest")?.addEventListener("click",()=>{state.aiMsg="เชื่อมต่อได้ (จำลอง) — LM Studio google/gemma-4-e4b"; renderShell();});
+  v.querySelector("#aiLlm")?.addEventListener("change",e=>{state.ai.llm=e.target.value;renderShell();});
+  v.querySelector("#aiEmb")?.addEventListener("change",e=>{state.ai.embed=e.target.value;renderShell();});
+  v.querySelector("#aiVec")?.addEventListener("change",e=>{state.ai.vector=e.target.value;});
+  v.querySelector("#embSrv")?.addEventListener("change",e=>{state.ai.embedServer=e.target.value;});
+  v.querySelector("#aiTest")?.addEventListener("click",()=>{
+    const chat=state.ai.llm;
+    const emb=state.ai.embed;
+    state.aiMsg="เชื่อมต่อ: แชท "+chat+" · embeddings "+emb+" (จำลอง — ไม่เรียก API จริง)";
+    renderShell();
+  });
   v.querySelector("#aiSave")?.addEventListener("click",()=>{
-    ["lmUrl","olUrl","llUrl","chatM","embM","tmo"].forEach(id=>{const el=document.getElementById(id); if(!el) return;});
     if(document.getElementById("lmUrl")) state.ai.lm=document.getElementById("lmUrl").value;
+    if(document.getElementById("olUrl")) state.ai.ollama=document.getElementById("olUrl").value;
+    if(document.getElementById("llUrl")) state.ai.llama=document.getElementById("llUrl").value;
     if(document.getElementById("chatM")) state.ai.chat=document.getElementById("chatM").value;
-    state.aiMsg="บันทึกแล้ว (จำลองในเบราว์เซอร์)"; renderShell();
+    if(document.getElementById("embM")) state.ai.emb=document.getElementById("embM").value;
+    if(document.getElementById("tmo")) state.ai.timeout=Number(document.getElementById("tmo").value)||180;
+    if(document.getElementById("aiLlm")) state.ai.llm=document.getElementById("aiLlm").value;
+    if(document.getElementById("aiEmb")) state.ai.embed=document.getElementById("aiEmb").value;
+    state.aiMsg="บันทึกแล้ว (จำลองในเบราว์เซอร์) — แชท "+state.ai.llm+" · embeddings "+state.ai.embed;
+    renderShell();
+  });
+  v.querySelector("#kbMineUp")?.addEventListener("change",()=>{
+    const files=[...(document.getElementById("kbMineUp")?.files||[])];
+    files.forEach(f=>state.files.push({name:f.name,user:true,docClass:"user",chars:Math.max(400,Math.round(f.size/4)),status:"success"}));
+    const m=document.getElementById("kbMsg");
+    if(m) m.textContent=state.user?.role==="admin"?"อัปโหลดเข้าคลังกลางแล้ว (จำลอง)":"อัปโหลดเอกสารของฉันแล้ว — เฉพาะบัญชีนี้ (จำลอง)";
+    renderShell();
   });
   v.querySelectorAll("label.upload input").forEach(inp=>{
-    if(inp.id==="revFile"||inp.dataset.doc||inp.dataset.cf||inp.id==="akbUp") return;
+    if(inp.id==="revFile"||inp.dataset.doc||inp.dataset.cf||inp.id==="akbUp"||inp.id==="kbMineUp"||inp.id==="intakeUp") return;
     inp.addEventListener("change",()=>{
-      if(state.user?.role!=="admin"){
-        const m=document.getElementById("kbMsg");
-        if(m) m.textContent="การอัปโหลดคลังกฎหมายสงวนไว้สำหรับผู้ดูแลระบบ";
-        return;
-      }
       const m=document.getElementById("kbMsg");
-      if(m) m.textContent="อัปโหลดแล้ว — กำลังประมวลผล";
+      if(m) m.textContent="อัปโหลดแล้ว — กำลังประมวลผล (จำลอง)";
     });
   });
 }
@@ -1343,7 +1372,7 @@ function route(){
   if(!state.user){ showAuth(h==="register"?"register":"login"); return; }
   document.getElementById("auth").style.display="none";
   document.getElementById("app").style.display="block";
-  const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","chat":"chat","review":"review","help":"help",
+  const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","agent":"agent","chat":"chat","review":"review","help":"help",
     "admin/templates":"templates","admin/knowledge-base":"adminkb","admin/users":"users","admin/ai-settings":"ai"};
   state.page=map[h]||"projects";
   if(state.page==="draft") ensureDraftProject();

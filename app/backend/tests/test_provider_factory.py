@@ -156,9 +156,11 @@ class TestCloudMode:
         assert factory is not None
 
     def test_factory_rejects_missing_anthropic_key(self):
-        """cloud mode should reject missing ANTHROPIC_API_KEY."""
+        """Cloud Claude chat should reject missing ANTHROPIC_API_KEY."""
         settings = make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="local",
             anthropic_api_key="",
             openai_api_key="sk-openai-test-key",
         )
@@ -166,9 +168,11 @@ class TestCloudMode:
             ProviderFactory(settings=settings)
 
     def test_factory_rejects_missing_openai_key(self):
-        """cloud mode should reject missing OPENAI_API_KEY."""
+        """OpenAI embeddings should reject missing OPENAI_API_KEY."""
         settings = make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="openai",
             anthropic_api_key="sk-ant-test-key",
             openai_api_key="",
         )
@@ -176,24 +180,27 @@ class TestCloudMode:
             ProviderFactory(settings=settings)
 
     def test_get_llm_returns_claude_provider(self):
-        """cloud mode should return ClaudeSonnetProvider."""
+        """Cloud Claude chat should return ClaudeSonnetProvider."""
         from app.providers.llm.claude_provider import ClaudeSonnetProvider
 
         settings = make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="local",
             anthropic_api_key="sk-ant-test-key",
-            openai_api_key="sk-openai-test-key",
         )
         factory = ProviderFactory(settings=settings)
         llm = factory.get_llm()
         assert isinstance(llm, ClaudeSonnetProvider)
 
     def test_get_embedding_returns_openai_provider(self):
-        """cloud mode should return OpenAIEmbeddingProvider."""
+        """OpenAI embeddings should return OpenAIEmbeddingProvider."""
         from app.providers.embedding.openai_provider import OpenAIEmbeddingProvider
 
         settings = make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="openai",
             anthropic_api_key="sk-ant-test-key",
             openai_api_key="sk-openai-test-key",
         )
@@ -207,6 +214,8 @@ class TestCloudMode:
 
         settings = make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="openai",
             anthropic_api_key="sk-ant-test-key",
             openai_api_key="sk-openai-test-key",
             vector_store_provider="pgvector",
@@ -222,6 +231,8 @@ class TestCloudMode:
 
         settings = make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="openai",
             anthropic_api_key="sk-ant-test-key",
             openai_api_key="sk-openai-test-key",
             vector_store_provider="qdrant",
@@ -279,21 +290,21 @@ class TestHybridMode:
         assert isinstance(factory.get_vector_store(), QdrantProvider)
 
     def test_hybrid_mixed_cloud_local(self):
-        """hybrid mode can mix cloud LLM with local embedding."""
+        """Any mode can mix cloud LLM with local embedding."""
         from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
         from app.providers.llm.claude_provider import ClaudeSonnetProvider
 
-        settings = make_settings(
-            deployment_mode="hybrid",
-            llm_provider="claude",
-            embedding_provider="qwen3",
-            vector_store_provider="pgvector",
-            anthropic_api_key="sk-ant-test-key",
-        )
-        factory = ProviderFactory(settings=settings)
-
-        assert isinstance(factory.get_llm(), ClaudeSonnetProvider)
-        assert isinstance(factory.get_embedding(), Qwen3LocalEmbeddingProvider)
+        for mode in ("hybrid", "on_prem", "cloud"):
+            settings = make_settings(
+                deployment_mode=mode,
+                llm_provider="claude",
+                embedding_provider="qwen3",
+                vector_store_provider="pgvector",
+                anthropic_api_key="sk-ant-test-key",
+            )
+            factory = ProviderFactory(settings=settings)
+            assert isinstance(factory.get_llm(), ClaudeSonnetProvider)
+            assert isinstance(factory.get_embedding(), Qwen3LocalEmbeddingProvider)
 
     def test_hybrid_rejects_missing_anthropic_key_for_claude(self):
         """hybrid mode with claude LLM should reject missing ANTHROPIC_API_KEY."""
@@ -472,7 +483,32 @@ class TestExpandedProviders:
         assert isinstance(llm, LMStudioLocalProvider)
         assert llm._base_url == "http://127.0.0.1:11434/v1"
 
-    def test_qdrant_vector_size_is_768(self):
+    def test_local_embedding_host_is_independent_of_chat(self):
+        from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
+
+        settings = make_settings(
+            deployment_mode="on_prem",
+            llm_provider="ollama",
+            embedding_provider="local",
+            local_embedding_server="lm_studio",
+            ollama_base_url="http://host.docker.internal:11434/v1",
+            lm_studio_base_url="http://host.docker.internal:1234/v1",
+        )
+        factory = ProviderFactory(settings=settings)
+        embedding = factory.get_embedding()
+        assert isinstance(embedding, Qwen3LocalEmbeddingProvider)
+        assert "1234" in embedding._base_url
+        assert "11434" in factory.get_llm()._base_url
+
+    def test_local_embedding_base_url_override(self):
+        settings = make_settings(
+            llm_provider="claude",
+            embedding_provider="local",
+            anthropic_api_key="sk-ant-test-key",
+            local_embedding_base_url="http://127.0.0.1:8080/v1",
+        )
+        embedding = ProviderFactory(settings=settings).get_embedding()
+        assert embedding._base_url == "http://127.0.0.1:8080/v1"
         from app.providers.constants import EMBEDDING_DIMENSIONS
 
         settings = make_settings(
@@ -511,16 +547,17 @@ class TestErrorHandling:
             assert mode in error_msg
 
     def test_cloud_mode_error_messages_are_descriptive(self):
-        """Cloud mode errors should specify which API key is missing."""
+        """Claude chat errors should specify which API key is missing."""
         settings = make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="local",
             anthropic_api_key="",
             openai_api_key="",
         )
         with pytest.raises(ValueError) as exc_info:
             ProviderFactory(settings=settings)
 
-        # Should mention the first missing key found (anthropic checked first)
         assert "ANTHROPIC_API_KEY" in str(exc_info.value)
 
     def test_pgvector_without_session_factory_raises(self):

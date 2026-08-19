@@ -24,7 +24,7 @@ describe("AdminAiSettingsPage", () => {
     vi.mocked(apiClient.get).mockResolvedValue({ data: { ok: true, data: loaded } });
   });
 
-  it("loads local defaults then switches to cloud key fields", async () => {
+  it("loads local defaults then keeps them when switching mode; mix Claude + local embed", async () => {
     render(<AdminAiSettingsPage />);
     expect(await screen.findByTestId("admin-ai-settings-page")).toBeInTheDocument();
     expect(screen.getByLabelText("โหมด")).toHaveValue("on_prem");
@@ -45,17 +45,15 @@ describe("AdminAiSettingsPage", () => {
     fireEvent.change(screen.getByLabelText("Timeout (วินาที)"), { target: { value: "120" } });
 
     fireEvent.change(screen.getByLabelText("โหมด"), { target: { value: "cloud" } });
-    expect(screen.getByLabelText("โมเดลแชท")).toHaveValue("claude");
-    expect(screen.queryByLabelText("LM Studio URL")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("โมเดลแชท")).toHaveValue("ollama");
+    expect(screen.getByLabelText("LM Studio URL")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "claude" } });
     expect(screen.getByLabelText("Anthropic API key")).toBeInTheDocument();
-    expect(screen.getByLabelText("OpenAI API key")).toBeInTheDocument();
-    expect(screen.getByLabelText("Gemini API key")).toBeInTheDocument();
+    expect(screen.getByLabelText("Embeddings")).toHaveValue("local");
+    expect(screen.getByLabelText("LM Studio URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("โมเดลแชท").querySelector("option[value='lm_studio']")).not.toBeNull();
     fireEvent.change(screen.getByLabelText("Anthropic API key"), { target: { value: "sk-ant" } });
-    fireEvent.change(screen.getByLabelText("OpenAI API key"), { target: { value: "sk-openai" } });
-    fireEvent.change(screen.getByLabelText("Gemini API key"), { target: { value: "gem" } });
-    fireEvent.change(screen.getByLabelText("โมเดล OpenAI"), { target: { value: "gpt-4o-mini" } });
-    fireEvent.change(screen.getByLabelText("โมเดล Gemini"), { target: { value: "gemini-2.0-flash" } });
-    expect(screen.queryByRole("option", { name: "LM Studio" })).not.toBeInTheDocument();
   });
 
   it("saves and tests the connection", async () => {

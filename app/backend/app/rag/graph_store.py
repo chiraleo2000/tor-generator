@@ -32,15 +32,19 @@ class GraphRAGStore:
         document_name: str,
         nodes: list[dict[str, Any]],
         rels: list[dict[str, Any]],
+        owner_id: str | None = None,
+        scope: str = "baseline",
     ) -> None:
         async with self._driver.session() as session:
             await session.run(
                 """
                 MERGE (d:Document {id: $id})
-                SET d.name = $name
+                SET d.name = $name, d.owner_id = $owner_id, d.scope = $scope
                 """,
                 id=document_id,
                 name=document_name,
+                owner_id=owner_id,
+                scope=scope,
             )
             for node in nodes:
                 label = str(node.get("label") or "Concept")
@@ -82,14 +86,35 @@ class GraphRAGStore:
                 )
                 await session.run(query, src=src, dst=dst)
 
+    async def delete_document(self, document_id: str) -> None:
+        async with self._driver.session() as session:
+            await session.run(
+                """
+                MATCH (n)
+                WHERE n.document_id = $id OR (n:Document AND n.id = $id)
+                DETACH DELETE n
+                """,
+                id=document_id,
+            )
+
     async def expand(
         self,
         *,
         query_text: str,
         slot_key: str | None = None,
         limit: int = 8,
+        search_scope: str = "both",
+        owner_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return neighbouring graph nodes for a query or TOR slot."""
+        """Return neighbouring graph nodes visible under the RAG ACL."""
+        allow_global = search_scope in {"both", "global"}
+        owner = owner_id if search_scope != "global" else None
+        visibility = (
+            "OPTIONAL MATCH (n)-[:CONTAINED_IN]->(d:Document) "
+            "WITH n, d "
+            "WHERE ($allow_global AND (d IS NULL OR d.owner_id IS NULL)) "
+            "OR ($owner_id IS NOT NULL AND d.owner_id = $owner_id) "
+        )
         results: list[dict[str, Any]] = []
         try:
             async with self._driver.session() as session:
@@ -99,18 +124,25 @@ class GraphRAGStore:
                         MATCH (s:TorSlot)
                         WHERE s.id = $slot OR s.name CONTAINS $slot
                         OPTIONAL MATCH (n)-[r]-(s)
+                        OPTIONAL MATCH (n)-[:CONTAINED_IN]->(d:Document)
+                        WITH s, n, r, d
+                        WHERE ($allow_global AND (d IS NULL OR d.owner_id IS NULL))
+                           OR ($owner_id IS NOT NULL AND d.owner_id = $owner_id)
                         RETURN s.name AS slot, labels(n) AS labels, n.name AS name,
                                type(r) AS rel
                         LIMIT $limit
                         """,
                         slot=slot_key,
                         limit=limit,
+                        allow_global=allow_global,
+                        owner_id=owner,
                     )
                     results.extend([record.data() async for record in cursor])
                 cursor = await session.run(
-                    """
+                    f"""
                     MATCH (n)
                     WHERE n.name CONTAINS $q
+                    {visibility}
                     OPTIONAL MATCH (n)-[r]-(m)
                     RETURN labels(n) AS labels, n.name AS name, type(r) AS rel,
                            labels(m) AS other_labels, m.name AS other
@@ -118,6 +150,8 @@ class GraphRAGStore:
                     """,
                     q=query_text[:80],
                     limit=limit,
+                    allow_global=allow_global,
+                    owner_id=owner,
                 )
                 results.extend([record.data() async for record in cursor])
         except Exception:

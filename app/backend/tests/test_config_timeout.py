@@ -17,6 +17,11 @@ def test_cloud_claude_timeout_is_60():
     assert settings.drafting_agent_timeout_seconds() == 60
 
 
+def test_on_prem_claude_uses_cloud_timeout():
+    settings = Settings(llm_provider="claude", deployment_mode="on_prem")
+    assert settings.drafting_agent_timeout_seconds() == 60
+
+
 def test_timeout_is_clamped_to_300():
     settings = Settings(
         llm_provider="lm_studio",

@@ -192,7 +192,10 @@ export default function HelpPage() {
             คลังกลาง seed จาก PDF ข้อมูลดิบด้วย python -m app.seed_raw_docs (EmbeddingGemma จริง)
             ไม่ใช้ JSON extracts เก่าเป็นคลังใช้งาน
           </p>
-          <p>ผู้ดูแลอัปโหลดคลังกลาง ผู้ใช้ทั่วไปอัปโหลดได้เฉพาะคลังส่วนตัวจากหน้าแชท</p>
+          <p>
+            เจ้าหน้าที่อัปโหลดเอกสารของฉันที่หน้านี้ (เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลาง
+            ยังแนบไฟล์เข้าคลังส่วนตัวจากหน้าถาม-ตอบได้
+          </p>
         </GuideBlock>
       ) : null}
       {tab === "review" ? (
@@ -207,7 +210,8 @@ export default function HelpPage() {
         <GuideBlock title="ผู้ดูแลระบบ">
           <p>หน้าแม่แบบ ผู้ใช้ และ การตั้งค่า AI — ค่าเริ่มต้น LM Studio ที่พอร์ต 1234</p>
           <p>
-            สลับไป Anthropic / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible ได้
+            แชทและ embeddings เลือกอิสระในทุกโหมด เช่น Claude API + EmbeddingGemma ในเครื่อง
+            คลาวด์: Anthropic / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible
             บันทึกแล้วมีผลทันที คีย์ไม่โชว์เต็ม
           </p>
         </GuideBlock>
@@ -217,13 +221,15 @@ export default function HelpPage() {
           <p>ลืมรหัสผ่าน: ให้ผู้ดูแลระบบรีเซ็ตที่หน้าผู้ใช้</p>
           <p>
             LLM ไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลดแชท google/gemma-4-e4b และ embeddings
-            text-embedding-embeddinggemma-300m หรือสลับ Local/Cloud ที่หน้าการตั้งค่า AI
+            text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่หน้าการตั้งค่า AI โดยคง embeddings ในเครื่องได้
           </p>
           <p>
             Seed คลังจากโฮสต์ถ้า bind-mount ไทยพัง: POSTGRES_HOST=127.0.0.1 และ
             python -m app.seed_raw_docs
           </p>
-          <p>โหมด on-prem ไม่ส่งเนื้อหาโครงการออกนอกเครื่อง</p>
+          <p>
+            โหมด on-prem ค่าเริ่มต้นไม่เรียกคลาวด์ — ถ้าเลือกแชทคลาวด์ เนื้อหาแชทออกนอกเครื่อง ส่วน embeddings ในเครื่องยังอยู่ที่เซิร์ฟเวอร์ท้องถิ่น
+          </p>
         </GuideBlock>
       ) : null}
     </div>

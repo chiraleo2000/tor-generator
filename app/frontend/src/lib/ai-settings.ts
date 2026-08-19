@@ -2,6 +2,8 @@ export interface AiSettings {
   deployment_mode: string;
   llm_provider: string;
   embedding_provider: string;
+  local_embedding_server: string;
+  local_embedding_base_url: string;
   lm_studio_base_url: string;
   lm_studio_model: string;
   lm_studio_embedding_model: string;
@@ -22,6 +24,7 @@ export interface AiSettings {
   openai_compatible_api_key: string;
   openai_compatible_api_key_set?: boolean;
   openai_chat_model: string;
+  openai_embedding_model: string;
   gemini_model: string;
   gemini_embedding_model: string;
   vector_store_provider: string;
@@ -30,6 +33,7 @@ export interface AiSettings {
   bedrock_embedding_model_id: string;
   azure_foundry_endpoint: string;
   azure_foundry_deployment: string;
+  azure_foundry_embedding_deployment: string;
   azure_foundry_api_version: string;
   openai_compatible_base_url: string;
   openai_compatible_model: string;
@@ -77,6 +81,8 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   deployment_mode: "on_prem",
   llm_provider: "lm_studio",
   embedding_provider: "local",
+  local_embedding_server: "lm_studio",
+  local_embedding_base_url: "",
   lm_studio_base_url: "http://host.docker.internal:1234/v1",
   lm_studio_model: "google/gemma-4-e4b",
   lm_studio_embedding_model: "text-embedding-embeddinggemma-300m",
@@ -87,6 +93,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   openai_api_key: "",
   gemini_api_key: "",
   openai_chat_model: "gpt-4o-mini",
+  openai_embedding_model: "text-embedding-3-small",
   gemini_model: "gemini-2.0-flash",
   gemini_embedding_model: "text-embedding-004",
   vector_store_provider: "pgvector",
@@ -99,6 +106,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   bedrock_embedding_model_id: "amazon.titan-embed-text-v2:0",
   azure_foundry_endpoint: "",
   azure_foundry_deployment: "",
+  azure_foundry_embedding_deployment: "",
   azure_foundry_api_version: "2024-10-21",
   openai_compatible_base_url: "",
   openai_compatible_model: "",
@@ -106,31 +114,33 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
 };
 
 export function llmOptionsForMode(mode: string) {
-  if (mode === "on_prem") {
-    return LOCAL_LLMS;
-  }
   if (mode === "cloud") {
-    return CLOUD_LLMS;
+    return [...CLOUD_LLMS, ...LOCAL_LLMS];
   }
-  return [...CLOUD_LLMS, ...LOCAL_LLMS];
+  return [...LOCAL_LLMS, ...CLOUD_LLMS];
 }
 
 export function embedOptionsForMode(mode: string) {
-  if (mode === "on_prem") {
-    return LOCAL_EMBEDS;
-  }
   if (mode === "cloud") {
-    return CLOUD_EMBEDS;
+    return [...CLOUD_EMBEDS, ...LOCAL_EMBEDS];
   }
-  return [...CLOUD_EMBEDS, ...LOCAL_EMBEDS];
+  return [...LOCAL_EMBEDS, ...CLOUD_EMBEDS];
 }
 
-export function showLocalServerFields(mode: string, llmProvider: string): boolean {
-  return mode === "on_prem" || mode === "hybrid" || hasValue(LOCAL_LLMS, llmProvider);
+export function showLocalServerFields(
+  _mode: string,
+  llmProvider: string,
+  embedProvider = "",
+): boolean {
+  return hasValue(LOCAL_LLMS, llmProvider) || hasValue(LOCAL_EMBEDS, embedProvider);
 }
 
-export function showCloudKeyFields(mode: string, llmProvider: string): boolean {
-  return mode === "cloud" || mode === "hybrid" || hasValue(CLOUD_LLMS, llmProvider);
+export function showCloudKeyFields(
+  _mode: string,
+  llmProvider: string,
+  embedProvider = "",
+): boolean {
+  return hasValue(CLOUD_LLMS, llmProvider) || hasValue(CLOUD_EMBEDS, embedProvider);
 }
 
 function hasValue(options: { value: string }[], value: string): boolean {
@@ -138,27 +148,7 @@ function hasValue(options: { value: string }[], value: string): boolean {
 }
 
 export function nextFormOnModeChange(prev: AiSettings, mode: string): AiSettings {
-  if (mode === "on_prem") {
-    return {
-      ...prev,
-      deployment_mode: mode,
-      llm_provider: hasValue(LOCAL_LLMS, prev.llm_provider)
-        ? prev.llm_provider
-        : "lm_studio",
-      embedding_provider: "local",
-    };
-  }
-  if (mode === "hybrid") {
-    return { ...prev, deployment_mode: mode };
-  }
-  return {
-    ...prev,
-    deployment_mode: mode,
-    llm_provider: hasValue(CLOUD_LLMS, prev.llm_provider) ? prev.llm_provider : "claude",
-    embedding_provider: hasValue(CLOUD_EMBEDS, prev.embedding_provider)
-      ? prev.embedding_provider
-      : "openai",
-  };
+  return { ...prev, deployment_mode: mode };
 }
 
 export function saveSuccessMessage(reingestRequired: boolean): string {

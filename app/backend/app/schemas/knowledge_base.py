@@ -68,6 +68,9 @@ class KBDocumentResponse(BaseModel):
     error_message: Optional[str] = None
     uploaded_at: datetime
     processed_at: Optional[datetime] = None
+    owner_id: Optional[uuid.UUID] = None
+    scope: str = "baseline"
+    corpus_group: str = "mandatory_raw"
 
     model_config = {"from_attributes": True}
 

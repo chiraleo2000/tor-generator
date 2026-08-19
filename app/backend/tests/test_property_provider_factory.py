@@ -90,6 +90,23 @@ def _make_settings(
     mock_settings.lm_studio_timeout = lm_studio_timeout
     mock_settings.ollama_base_url = ollama_base_url
     mock_settings.llama_cpp_base_url = llama_cpp_base_url
+    mock_settings.local_embedding_server = "lm_studio"
+    mock_settings.local_embedding_base_url = ""
+    mock_settings.openai_embedding_model = "text-embedding-3-small"
+    mock_settings.azure_foundry_api_key = ""
+    mock_settings.azure_foundry_endpoint = ""
+    mock_settings.azure_foundry_deployment = ""
+    mock_settings.azure_foundry_embedding_deployment = ""
+    mock_settings.azure_foundry_api_version = "2024-10-21"
+    mock_settings.openai_compatible_base_url = ""
+    mock_settings.openai_compatible_api_key = ""
+    mock_settings.openai_compatible_model = ""
+    mock_settings.openai_compatible_embedding_model = "text-embedding-3-small"
+    mock_settings.bedrock_region = "ap-southeast-1"
+    mock_settings.bedrock_model_id = ""
+    mock_settings.bedrock_embedding_model_id = "amazon.titan-embed-text-v2:0"
+    mock_settings.aws_access_key_id = ""
+    mock_settings.aws_secret_access_key = ""
     mock_settings.openai_chat_model = openai_chat_model
     mock_settings.gemini_model = gemini_model
     mock_settings.gemini_embedding_model = "text-embedding-004"
@@ -359,6 +376,8 @@ class TestProviderFactoryModeResolution:
         """
         settings_obj = _make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="openai",
             anthropic_api_key="",
         )
 
@@ -375,6 +394,8 @@ class TestProviderFactoryModeResolution:
         """
         settings_obj = _make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
+            embedding_provider="openai",
             openai_api_key="",
         )
 

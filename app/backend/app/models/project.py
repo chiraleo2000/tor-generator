@@ -43,6 +43,9 @@ class Project(Base):
     template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("templates.id"), nullable=True
     )
+    workflow_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="wizard"
+    )  # wizard|agent
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=func.now()
     )
@@ -68,6 +71,9 @@ class Project(Base):
     )
     uploaded_files: Mapped[list["UploadedFile"]] = relationship(  # noqa: F821
         "UploadedFile", back_populates="project", lazy="selectin"
+    )
+    agent_sessions: Mapped[list["AgentSession"]] = relationship(  # noqa: F821
+        "AgentSession", back_populates="project", lazy="selectin"
     )
 
     def __repr__(self) -> str:

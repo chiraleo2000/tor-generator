@@ -3,7 +3,9 @@
 
 > **สแตกที่รันอยู่ตอนนี้:** LM Studio `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` (768 มิติ), pgvector, Mongo GridFS, Neo4j GraphRAG  
 > คลาวด์ที่เปิดจากหน้าผู้ดูแล: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible  
-> ค่าติดตั้งจริงดู `14-INSTALLATION.md` และ `16-BACKEND_ARCHITECTURE.md` — ตารางโมเดลด้านล่าง (เช่น Qwen3 / OpenThaiChinda) เป็นบันทึกออกแบบเดิม ไม่ใช่ค่าเริ่มต้นปัจจุบัน
+> **แชท (`LLM_PROVIDER`) และ embeddings (`EMBEDDING_PROVIDER`) เลือกอิสระในทุกโหมด** — `on_prem` / `cloud` ไม่สลับคู่อัตโนมัติ เช่น Claude API + EmbeddingGemma ในเครื่อง  
+> ค่าติดตั้งจริงดู `14-INSTALLATION.md` และ `16-BACKEND_ARCHITECTURE.md` — ตารางโมเดลด้านล่าง (เช่น Qwen3 / OpenThaiChinda) เป็นบันทึกออกแบบเดิม ไม่ใช่ค่าเริ่มต้นปัจจุบัน  
+> **v0.2.0:** กราฟร่างทั้งฉบับ (`/api/v1/agent`) ใช้ `ProviderFactory` ชุดเดียวกับร่างรายหมวด — เลือกแชทและ embeddings คนละแหล่งได้ในทุกโหมด
 
 เอกสารนี้ต่อยอดจากเอกสาร 07 (สถาปัตยกรรมของ PoC ที่เป็น Rule-based ล้วน ไม่มี LLM) โดยออกแบบสถาปัตยกรรมชั้นที่เพิ่มขึ้นมาสำหรับการใช้ **LLM + RAG ช่วยร่าง/ตรวจ TOR** ควบคู่กับ Rule Engine เดิม (ซึ่งยังคงทำงานเป็น **Deterministic Guardrail** ตรวจสอบผลลัพธ์จาก LLM เสมอ — ไม่ปล่อยให้ LLM ตัดสินใจเรื่องกฎหมาย/ตัวเลขเพียงลำพัง)
 
@@ -33,17 +35,17 @@
 
 | Profile | เมื่อไรควรใช้ | LLM | Embedding | Vector Store |
 |---|---|---|---|---|
-| **On-Premise Only** | ข้อมูลจัดซื้อจัดจ้างชั้นความลับสูง / นโยบาย Data Residency ของหน่วยงาน / ไม่มีอินเทอร์เน็ตออกนอกองค์กร | LM Studio: OpenThaiChinda-4B หรือ Qwen3.5-8B (Q4_K_M) | Qwen3-Embedding-4B (local) | Qdrant self-hosted หรือ PostgreSQL+pgvector self-hosted |
-| **Cloud** | ต้องการคุณภาพ/ความเร็วสูงสุด มีงบประมาณ API และข้อมูลอนุญาตให้ประมวลผลบน Cloud ได้ | Claude Sonnet API (พร้อม Prompt Caching) | OpenAI Embedding (text-embedding-3-large/small) | Qdrant Cloud หรือ PostgreSQL+pgvector (RDS/managed) |
-| **Hybrid** | ต้องการยืดหยุ่นต่อ Component เช่น Extraction/Rule Engine รันในองค์กร แต่ LLM Drafting เรียก Cloud เมื่อได้รับอนุญาต | สลับได้ต่อ Project/ต่อ Request | สลับได้ | สลับได้ (แนะนำ sync ข้อมูลระหว่าง 2 ฝั่งด้วย batch job) |
+| **On-Premise Only** | ข้อมูลจัดซื้อจัดจ้างชั้นความลับสูง / นโยบาย Data Residency ของหน่วยงาน / ไม่มีอินเทอร์เน็ตออกนอกองค์กร | ค่าเริ่มต้น: LM Studio Gemma (หรือ Ollama / llama.cpp) | ค่าเริ่มต้น: EmbeddingGemma ในเครื่อง — **เลือกอิสระจากแชท** | PostgreSQL+pgvector (ค่าเริ่มต้น) หรือ Qdrant |
+| **Cloud** | ต้องการคุณภาพ/ความเร็วสูงสุด มีงบประมาณ API และข้อมูลอนุญาตให้ประมวลผลบน Cloud ได้ | Claude / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible | เลือกอิสระ เช่น OpenAI embeddings **หรือคง embeddings ในเครื่อง** | pgvector หรือ Qdrant |
+| **Hybrid** | ใช้คนละแหล่งชัดเจน เช่น แชทคลาวด์ + embeddings ในเครื่อง | สลับได้ต่อช่องแชท | สลับได้ต่อช่อง embeddings — **ไม่ถูกบังคับคู่กับโหมด** | สลับได้ |
 
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#dbeafe','primaryTextColor':'#1e3a8a','primaryBorderColor':'#1e3a8a','lineColor':'#c41e3a','secondaryColor':'#fed7aa','secondaryTextColor':'#92400e','tertiaryColor':'#f9fafb'}}}%%
 flowchart LR
     Req["ผู้ใช้/โครงการ"] --> Mode{"DEPLOYMENT_MODE"}
-    Mode -->|on_prem| OP["On-Premise Only<br/>LM Studio + Qwen3-Embedding-4B<br/>+ Qdrant/pgvector self-hosted"]:::onprem
-    Mode -->|cloud| CL["Cloud<br/>Claude Sonnet API + OpenAI Embedding<br/>+ Qdrant Cloud/pgvector managed"]:::cloud
-    Mode -->|hybrid| HY["Hybrid<br/>เลือก Provider ต่อ Component"]:::hybrid
+    Mode -->|on_prem| OP["On-Premise label<br/>เลือกแชท/embed อิสระ<br/>ค่าเริ่มต้น Gemma + EmbeddingGemma"]:::onprem
+    Mode -->|cloud| CL["Cloud label<br/>เลือกแชท/embed อิสระ<br/>เช่น Claude + local embed"]:::cloud
+    Mode -->|hybrid| HY["Hybrid — แนะนำเมื่อใช้คนละแหล่ง"]:::hybrid
     HY -.-> OP
     HY -.-> CL
 
@@ -451,21 +453,21 @@ gantt
 # ===== ตัวเลือกหลัก =====
 DEPLOYMENT_MODE=on_prem            # on_prem | cloud | hybrid
 
-# ===== LLM Provider =====
-LLM_PROVIDER=local                 # claude | local
-CLAUDE_API_KEY=sk-ant-xxxxx
+# ===== LLM Provider (อิสระจาก embeddings) =====
+LLM_PROVIDER=lm_studio             # lm_studio | ollama | llama_cpp | claude | openai | gemini | bedrock | azure_foundry | openai_compatible
+ANTHROPIC_API_KEY=                 # ใส่เมื่อใช้แชท Claude — ไม่บังคับสลับ embeddings
 CLAUDE_MODEL=claude-sonnet-4-5
-CLAUDE_PROMPT_CACHE_ENABLED=true
 
-LMSTUDIO_BASE_URL=http://gpu-server.internal:1234/v1
-LMSTUDIO_MODEL=qwen3.5-8b-instruct-q4_k_m   # หรือ openthai-chinda-4b
+LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+LM_STUDIO_MODEL=google/gemma-4-e4b
 
-# ===== Embedding Provider =====
-EMBEDDING_PROVIDER=local           # openai | local
-OPENAI_API_KEY=sk-xxxxx
-OPENAI_EMBEDDING_MODEL=text-embedding-3-large
-LOCAL_EMBEDDING_MODEL=qwen3-embedding-4b
-LOCAL_EMBEDDING_BASE_URL=http://gpu-server.internal:1234/v1
+# ===== Embedding Provider (อิสระจากแชท) =====
+EMBEDDING_PROVIDER=local           # local | openai | gemini | bedrock | azure_foundry | openai_compatible
+LOCAL_EMBEDDING_SERVER=lm_studio   # lm_studio | ollama | llama_cpp — ไม่ตาม LLM_PROVIDER
+LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m
+LOCAL_EMBEDDING_BASE_URL=          # ว่าง = ใช้ URL ของ LOCAL_EMBEDDING_SERVER
+OPENAI_API_KEY=
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # ===== Vector Store =====
 VECTOR_STORE=pgvector              # qdrant | pgvector

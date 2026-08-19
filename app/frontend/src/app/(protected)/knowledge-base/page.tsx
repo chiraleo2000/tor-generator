@@ -7,10 +7,28 @@ import { unwrapData } from "@/lib/api-unwrap";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 
+interface CatalogFile {
+  id: string;
+  name: string;
+  chunk_count: number;
+  mandatory?: boolean;
+  corpus_group?: string;
+}
+
+interface CatalogGroup {
+  key: string;
+  label: string;
+  mandatory: boolean;
+  files: number;
+  chunks: number;
+  items: CatalogFile[];
+}
+
 interface CatalogPayload {
-  raw?: Record<string, { id: string; name: string; chunk_count: number }[]>;
+  raw?: Record<string, CatalogFile[]>;
   chunked?: { key: string; name: string; files: number; chunks: number }[];
-  userFiles?: { id: string; name: string; chunk_count: number }[];
+  groups?: CatalogGroup[];
+  userFiles?: CatalogFile[];
   totals?: { files: number; chunks: number };
 }
 
@@ -27,6 +45,7 @@ export default function KnowledgeBasePage() {
   const isAdmin = user?.role === "admin";
   const [catalog, setCatalog] = useState<CatalogPayload>({});
   const [type, setType] = useState("law");
+  const [openGroup, setOpenGroup] = useState<string>("");
   const [openCat, setOpenCat] = useState<string>("");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -40,28 +59,40 @@ export default function KnowledgeBasePage() {
   }, [load]);
 
   async function upload(files: FileList) {
-    if (!isAdmin) {
-      setMessage("การอัปโหลดคลังกฎหมายสงวนไว้สำหรับผู้ดูแลระบบ");
-      return;
-    }
     for (const file of Array.from(files)) {
       const body = new FormData();
       body.append("file", file);
       body.append("category", type);
       body.append("name", file.name);
-      await apiClient.post("/knowledge-base/upload", body);
+      if (isAdmin) {
+        await apiClient.post("/knowledge-base/upload", body);
+      } else {
+        await apiClient.post("/knowledge-base/mine", body);
+      }
     }
-    setMessage("อัปโหลดแล้ว — กำลังประมวลผล");
+    setMessage(
+      isAdmin
+        ? "อัปโหลดเข้าคลังส่วนกลางแล้ว — กำลังประมวลผล"
+        : "อัปโหลดเฉพาะบัญชีของคุณแล้ว — กำลังแบ่ง chunk และฝังเข้า RAG"
+    );
     await load();
   }
 
   const raw = catalog.raw || {};
   const chunked = catalog.chunked || [];
+  const groups = catalog.groups || [];
 
   return (
     <div data-testid="knowledge-base-page">
       <div className="gov-card mb-5">
-        <h2 className="mb-3 text-[16.5px] font-bold text-navy">อัปโหลดเอกสารเข้าคลังความรู้</h2>
+        <h2 className="mb-3 text-[16.5px] font-bold text-navy">
+          {isAdmin ? "อัปโหลดเอกสารเข้าคลังความรู้ส่วนกลาง" : "อัปโหลดเอกสารของฉัน"}
+        </h2>
+        <p className="mb-3 text-[12.5px] text-muted-foreground">
+          {isAdmin
+            ? "ไฟล์ที่อัปโหลดที่นี่เป็นคลังบังคับ/ส่วนกลาง เห็นได้ทุกบัญชี"
+            : "ไฟล์ของคุณถูก chunk และฝังเข้า RAG เฉพาะบัญชีนี้ ไม่เผยแพร่ให้เจ้าหน้าที่อื่น"}
+        </p>
         <div className="mb-3.5 flex flex-wrap gap-2">
           {TYPES.map((item) => (
             <button
@@ -88,36 +119,65 @@ export default function KnowledgeBasePage() {
       </div>
 
       <div className="mb-3 flex items-center gap-2">
-        <h2 className="text-[16.5px] text-navy">เอกสารต้นฉบับ กฎหมาย/ระเบียบ</h2>
+        <h2 className="text-[16.5px] text-navy">คลังกฎหมาย/ระเบียบตามกลุ่ม</h2>
         <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11.5px] font-bold">
           {catalog.totals?.files || 0} ไฟล์
         </span>
       </div>
-      {Object.entries(raw).map(([category, items]) => (
-        <div key={category} className="mb-2.5 overflow-hidden rounded-[10px] bg-white shadow-sm">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between px-4 py-3"
-            onClick={() => setOpenCat(openCat === category ? "" : category)}
-          >
-            <span className="font-semibold text-navy">{category}</span>
-            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700">
-              บังคับ
-            </span>
-          </button>
-          {openCat === category
-            ? items.map((doc) => (
-                <div
-                  key={doc.id}
-                  className="flex justify-between border-t px-4 py-2 text-[12.5px]"
-                >
-                  <span>{doc.name}</span>
-                  <span className="text-muted-foreground">{doc.chunk_count} chunks</span>
-                </div>
-              ))
-            : null}
-        </div>
-      ))}
+      {groups.length > 0
+        ? groups.map((group) => (
+            <div key={group.key} className="mb-2.5 overflow-hidden rounded-[10px] bg-white shadow-sm">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-4 py-3"
+                onClick={() => setOpenGroup(openGroup === group.key ? "" : group.key)}
+              >
+                <span className="font-semibold text-navy">{group.label}</span>
+                {group.mandatory ? (
+                  <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700">
+                    บังคับ
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-800">
+                    ของฉัน
+                  </span>
+                )}
+              </button>
+              {openGroup === group.key
+                ? group.items.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex justify-between border-t px-4 py-2 text-[12.5px]"
+                    >
+                      <span>{doc.name}</span>
+                      <span className="text-muted-foreground">{doc.chunk_count} chunks</span>
+                    </div>
+                  ))
+                : null}
+            </div>
+          ))
+        : Object.entries(raw).map(([category, items]) => (
+            <div key={category} className="mb-2.5 overflow-hidden rounded-[10px] bg-white shadow-sm">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-4 py-3"
+                onClick={() => setOpenCat(openCat === category ? "" : category)}
+              >
+                <span className="font-semibold text-navy">{category}</span>
+              </button>
+              {openCat === category
+                ? items.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex justify-between border-t px-4 py-2 text-[12.5px]"
+                    >
+                      <span>{doc.name}</span>
+                      <span className="text-muted-foreground">{doc.chunk_count} chunks</span>
+                    </div>
+                  ))
+                : null}
+            </div>
+          ))}
 
       <div className="mb-3 mt-6 flex items-center gap-2">
         <h2 className="text-[16.5px] text-navy">คลังความรู้ที่ผ่านการ Chunk เข้า RAG</h2>
@@ -135,7 +195,7 @@ export default function KnowledgeBasePage() {
       ))}
 
       <div className="mb-3 mt-6 flex items-center gap-2">
-        <h2 className="text-[16.5px] text-navy">เอกสารที่ผู้ใช้อัปโหลด</h2>
+        <h2 className="text-[16.5px] text-navy">เอกสารที่ผู้ใช้อัปโหลด (เฉพาะบัญชีนี้)</h2>
         <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11.5px] font-bold">
           {(catalog.userFiles || []).length} ไฟล์
         </span>

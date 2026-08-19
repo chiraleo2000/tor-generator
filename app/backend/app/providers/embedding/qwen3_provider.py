@@ -56,6 +56,7 @@ class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
                 "(e.g., 'http://localhost:1234/v1')"
             )
 
+        self._base_url = base_url
         self._client = AsyncOpenAI(
             base_url=base_url,
             api_key=api_key,

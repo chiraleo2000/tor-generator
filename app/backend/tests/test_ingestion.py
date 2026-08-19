@@ -177,6 +177,18 @@ class TestBuildChunkMetadata:
 
         assert metadata["page_number"] == 2
 
+    def test_merges_extra_metadata(self, sample_chunking_result):
+        chunk = sample_chunking_result.chunks[0]
+        metadata = _build_chunk_metadata(
+            chunk,
+            "Doc",
+            {"corpus_group": "user", "owner_id": "abc", "scope": "user"},
+        )
+        assert metadata["corpus_group"] == "user"
+        assert metadata["owner_id"] == "abc"
+        assert metadata["scope"] == "user"
+        assert metadata["source_document"] == "Doc"
+
 
 # ---------------------------------------------------------------------------
 # Test: ingest_document

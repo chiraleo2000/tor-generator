@@ -8,7 +8,7 @@ from uuid import UUID
 from app.infra import neo4j_driver, session_factory
 from app.providers.factory import ProviderFactory
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
-from app.rag.retrieval import RetrievedChunk, RetrievalFilter, RetrievalResult
+from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,12 @@ async def hybrid_retrieve(
     if neo4j_driver is not None:
         try:
             store_graph = GraphRAGStore(neo4j_driver)
-            rows = await store_graph.expand(query_text=query, slot_key=section_relevance)
+            rows = await store_graph.expand(
+                query_text=query,
+                slot_key=section_relevance,
+                search_scope=search_scope,
+                owner_id=str(user_id) if user_id else None,
+            )
             citations.extend(citations_from_graph(rows))
             extra_bits = [
                 str(row.get("name") or row.get("other") or "")
