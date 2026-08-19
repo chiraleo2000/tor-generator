@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
@@ -518,20 +519,24 @@ async def _probe_cloud_chat(body: AiSettingsTest, existing: dict[str, Any]) -> N
     raise ValidationError(message="ผู้ให้บริการไม่ถูกต้อง", field="llm_provider")
 
 
-async def _probe_bedrock(body: AiSettingsTest, existing: dict[str, Any]) -> None:
-    region = body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1"
-    try:
-        import boto3
+def _sts_caller_identity(region: str, access: str, secret: str) -> None:
+    import boto3
 
-        kwargs: dict[str, Any] = {"region_name": region}
-        access = body.aws_access_key_id or existing.get("aws_access_key_id")
-        secret = _usable_secret(
-            body.aws_secret_access_key or existing.get("aws_secret_access_key")
-        )
-        if access and secret:
-            kwargs["aws_access_key_id"] = access
-            kwargs["aws_secret_access_key"] = secret
-        boto3.client("sts", **kwargs).get_caller_identity()
+    kwargs: dict[str, Any] = {"region_name": region}
+    if access and secret:
+        kwargs["aws_access_key_id"] = access
+        kwargs["aws_secret_access_key"] = secret
+    boto3.client("sts", **kwargs).get_caller_identity()
+
+
+async def _probe_bedrock(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    region = str(body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1")
+    access = str(body.aws_access_key_id or existing.get("aws_access_key_id") or "")
+    secret = _usable_secret(
+        body.aws_secret_access_key or existing.get("aws_secret_access_key")
+    )
+    try:
+        await asyncio.to_thread(_sts_caller_identity, region, access, secret)
     except Exception as exc:
         raise ValidationError(message=f"ทดสอบ Bedrock/STS ไม่สำเร็จ: {exc}") from exc
 

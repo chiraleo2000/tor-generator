@@ -232,7 +232,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="TOR Drafting and Review API",
     description="API for drafting, reviewing, and exporting Terms of Reference documents compliant with Thai procurement law (พ.ร.บ. 2560)",
-    version="0.2.0",
+    version="0.2.1",
     lifespan=lifespan,
     redirect_slashes=False,
 )

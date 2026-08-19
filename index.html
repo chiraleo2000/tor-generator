@@ -212,11 +212,11 @@ tr:hover td{background:#f9fafb}
       <div><h1>TOR Generator</h1><p>ระบบจัดซื้อจัดจ้างภาครัฐ</p></div>
     </div>
     <nav id="nav"></nav>
-    <p class="sidebar-foot">v0.2 — Gemma ในเครื่อง หรือคลาวด์เมื่อใส่ API key (Anthropic / OpenAI / Gemini / Bedrock / Azure)</p>
+    <p class="sidebar-foot">v0.2.1 — Gemma ในเครื่อง หรือคลาวด์เมื่อใส่ API key (Anthropic / OpenAI / Gemini / Bedrock / Azure)</p>
     <button class="logout" type="button" id="logoutBtn">ออกจากระบบ</button>
   </aside>
   <div class="main">
-    <div class="sim-banner">จำลองบน GitHub Pages v0.2 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, Agent API เอกสาร) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
+    <div class="sim-banner">จำลองบน GitHub Pages v0.2.1 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, Agent API เอกสาร) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
     <header class="topbar">
       <div><h1 id="pageTitle">แดชบอร์ด</h1><p class="sub" id="pageSub">ภาพรวมโครงการ TOR ทั้งหมด</p></div>
       <div class="user-chip"><span id="userEmail"></span><div class="avatar" id="userAv">?</div></div>
@@ -604,20 +604,49 @@ function kbHtml(){
     ?"รองรับ PDF, Word — ระบบแบ่ง chunk และฝังเข้า Vector Store ส่วนกลาง"
     :"ไฟล์ของคุณถูก chunk และฝังเข้า RAG เฉพาะบัญชีนี้";
   const mine=(state.files||[]).filter(f=>f.user);
+  const notice=admin?"":"เจ้าหน้าที่อื่นไม่เห็นไฟล์นี้ — คลังกฎหมายบังคับยังเป็นส่วนกลาง";
   return `<div class="gov-card" style="margin-bottom:20px">
     <h2 style="color:var(--navy);font-size:16.5px;margin-bottom:12px">${uploadTitle}</h2>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${types.map(([id,l])=>`<button type="button" class="type-chip ${state.kbType===id?"on":""}" data-kbt="${id}">${l}</button>`).join("")}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${kbTypeChipsHtml(types)}</div>
     <label class="upload"><input type="file" hidden multiple accept=".pdf,.docx" id="kbMineUp"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์</p><span>${uploadHint}</span></label>
-    <p class="muted" id="kbMsg">${admin?"":"เจ้าหน้าที่อื่นไม่เห็นไฟล์นี้ — คลังกฎหมายบังคับยังเป็นส่วนกลาง"}</p>
+    <p class="muted" id="kbMsg">${notice}</p>
   </div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารต้นฉบับ กฎหมาย/ระเบียบ</h2><span class="pill pill-draft">บังคับ</span></div>
-  ${cats.map(([name,items])=>`<div class="kb-row"><button type="button" class="head" data-kbo="${esc(name)}"><span>${esc(name)}</span><span class="badge-req">บังคับ</span></button>
-    ${state.kbOpen===name?items.map(d=>`<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding:8px 16px;font-size:12.5px"><span>${esc(d.n)}</span><span class="muted">${d.c} chunks</span></div>`).join(""):""}
-  </div>`).join("")}
+  ${kbRawCatsHtml(cats)}
   <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">คลังความรู้ที่ผ่านการ Chunk เข้า RAG</h2><span class="pill pill-draft">203 chunks</span></div>
-  ${chunked.map(([n,f,c])=>`<div class="kb-row" style="display:flex;justify-content:space-between;padding:12px 16px"><span style="font-weight:600;color:var(--navy)">${n}</span><span class="muted">${f} ไฟล์ · ${c} chunks</span></div>`).join("")}
+  ${kbChunkedHtml(chunked)}
   <div style="display:flex;align-items:center;gap:8px;margin:24px 0 10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารที่ผู้ใช้อัปโหลด (เฉพาะบัญชีนี้)</h2><span class="pill pill-draft">${mine.length} ไฟล์</span></div>
-  ${mine.length?mine.map(f=>`<div class="kb-row" style="padding:12px 16px;font-size:13px">${esc(f.name)}</div>`).join(""):`<p class="muted">ยังไม่มีไฟล์ส่วนตัว</p>`}`;
+  ${kbMineListHtml(mine)}`;
+}
+
+function kbTypeChipsHtml(types){
+  return types.map(function(pair){
+    const on=state.kbType===pair[0]?" on":"";
+    return '<button type="button" class="type-chip'+on+'" data-kbt="'+pair[0]+'">'+pair[1]+'</button>';
+  }).join("");
+}
+function kbRawCatsHtml(cats){
+  return cats.map(function(entry){
+    const name=entry[0], items=entry[1];
+    let body="";
+    if(state.kbOpen===name){
+      body=items.map(function(doc){
+        return '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding:8px 16px;font-size:12.5px"><span>'+esc(doc.n)+'</span><span class="muted">'+doc.c+' chunks</span></div>';
+      }).join("");
+    }
+    return '<div class="kb-row"><button type="button" class="head" data-kbo="'+esc(name)+'"><span>'+esc(name)+'</span><span class="badge-req">บังคับ</span></button>'+body+'</div>';
+  }).join("");
+}
+function kbChunkedHtml(chunked){
+  return chunked.map(function(row){
+    return '<div class="kb-row" style="display:flex;justify-content:space-between;padding:12px 16px"><span style="font-weight:600;color:var(--navy)">'+row[0]+'</span><span class="muted">'+row[1]+' ไฟล์ · '+row[2]+' chunks</span></div>';
+  }).join("");
+}
+function kbMineListHtml(mine){
+  if(!mine.length) return '<p class="muted">ยังไม่มีไฟล์ส่วนตัว</p>';
+  return mine.map(function(file){
+    return '<div class="kb-row" style="padding:12px 16px;font-size:13px">'+esc(file.name)+'</div>';
+  }).join("");
 }
 
 function unlockedPhase(){
@@ -1031,77 +1060,79 @@ function usersHtml(){
     ${usersCardsHtml}`;
 }
 
+function htmlSelected(current, value){
+  return current===value?" selected":"";
+}
+function htmlOption(value, label, current){
+  return '<option value="'+value+'"'+htmlSelected(current,value)+'>'+label+'</option>';
+}
+function aiLocalCardHtml(){
+  const server=state.ai.embedServer||"lm_studio";
+  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">เซิร์ฟเวอร์ในเครื่อง</h2>'+
+    '<label class="lbl">เซิร์ฟเวอร์ embeddings ในเครื่อง</label>'+
+    '<select id="embSrv">'+
+      htmlOption("lm_studio","LM Studio",server)+
+      htmlOption("ollama","Ollama",server)+
+      htmlOption("llama_cpp","llama.cpp",server)+
+    '</select>'+
+    '<label class="lbl">LM Studio URL</label><input id="lmUrl" value="'+esc(state.ai.lm)+'">'+
+    '<label class="lbl">Ollama URL</label><input id="olUrl" value="'+esc(state.ai.ollama)+'">'+
+    '<label class="lbl">llama.cpp / custom URL</label><input id="llUrl" value="'+esc(state.ai.llama)+'">'+
+    '<label class="lbl">ชื่อโมเดลแชท</label><input id="chatM" value="'+esc(state.ai.chat)+'">'+
+    '<label class="lbl">ชื่อโมเดล embeddings</label><input id="embM" value="'+esc(state.ai.emb)+'">'+
+    '<label class="lbl">Timeout (วินาที)</label><input id="tmo" type="number" value="'+state.ai.timeout+'"></div>';
+}
+function aiCloudCardHtml(){
+  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์</h2>'+
+    '<label class="lbl">Anthropic API key</label><input type="password" placeholder="จำลอง — ไม่ส่งออก">'+
+    '<label class="lbl">OpenAI API key</label><input type="password">'+
+    '<label class="lbl">Gemini API key</label><input type="password">'+
+    '<label class="lbl">AWS access key / secret (Bedrock)</label><input type="password" placeholder="เว้นว่างใช้ default chain ได้">'+
+    '<label class="lbl">Azure Foundry endpoint + API key</label><input type="password">'+
+    '<label class="lbl">OpenAI-compatible base URL</label><input placeholder="https://api.groq.com/openai/v1"></div>';
+}
 function aiHtml(){
   const localLlms=[["lm_studio","LM Studio"],["ollama","Ollama"],["llama_cpp","llama.cpp / เซิร์ฟเวอร์กำหนดเอง"]];
   const cloudLlms=[["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"],["bedrock","Amazon Bedrock"],["azure_foundry","Azure AI Foundry"],["openai_compatible","อื่น ๆ (OpenAI-compatible)"]];
-  const llm=state.ai.mode==="cloud"?[...cloudLlms,...localLlms]:[...localLlms,...cloudLlms];
+  let llm=localLlms.concat(cloudLlms);
+  if(state.ai.mode==="cloud") llm=cloudLlms.concat(localLlms);
   const localChat=["lm_studio","ollama","llama_cpp"].includes(state.ai.llm);
   const localEmb=state.ai.embed==="local"||state.ai.embed==="qwen3";
-  const showLocal=localChat||localEmb;
-  const showCloud=!localChat||!localEmb;
-
-  const aiMsgHtml = state.aiMsg
-    ? `<div class="gov-card" style="background:#f0fdf4;color:#14532d;margin-bottom:16px">${esc(state.aiMsg)}</div>`
-    : "";
-
-  const llmOptionsHtml = llm
-    .map(([v, l]) => `<option value="${v}" ${state.ai.llm===v?"selected":""}>${l}</option>`)
-    .join("");
-
-  let localHtml = "";
-  if (showLocal) {
-    localHtml = `<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">เซิร์ฟเวอร์ในเครื่อง</h2>
-      <label class="lbl">เซิร์ฟเวอร์ embeddings ในเครื่อง</label>
-      <select id="embSrv">
-        <option value="lm_studio"${(state.ai.embedServer||"lm_studio")==="lm_studio"?" selected":""}>LM Studio</option>
-        <option value="ollama"${state.ai.embedServer==="ollama"?" selected":""}>Ollama</option>
-        <option value="llama_cpp"${state.ai.embedServer==="llama_cpp"?" selected":""}>llama.cpp</option>
-      </select>
-      <label class="lbl">LM Studio URL</label><input id="lmUrl" value="${esc(state.ai.lm)}">
-      <label class="lbl">Ollama URL</label><input id="olUrl" value="${esc(state.ai.ollama)}">
-      <label class="lbl">llama.cpp / custom URL</label><input id="llUrl" value="${esc(state.ai.llama)}">
-      <label class="lbl">ชื่อโมเดลแชท</label><input id="chatM" value="${esc(state.ai.chat)}">
-      <label class="lbl">ชื่อโมเดล embeddings</label><input id="embM" value="${esc(state.ai.emb)}">
-      <label class="lbl">Timeout (วินาที)</label><input id="tmo" type="number" value="${state.ai.timeout}"></div>`;
+  let aiMsgHtml="";
+  if(state.aiMsg){
+    aiMsgHtml='<div class="gov-card" style="background:#f0fdf4;color:#14532d;margin-bottom:16px">'+esc(state.aiMsg)+'</div>';
   }
-
-  let cloudHtml = "";
-  if (showCloud) {
-    cloudHtml = `<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์</h2>
-      <label class="lbl">Anthropic API key</label><input type="password" placeholder="จำลอง — ไม่ส่งออก">
-      <label class="lbl">OpenAI API key</label><input type="password">
-      <label class="lbl">Gemini API key</label><input type="password">
-      <label class="lbl">AWS access key / secret (Bedrock)</label><input type="password" placeholder="เว้นว่างใช้ default chain ได้">
-      <label class="lbl">Azure Foundry endpoint + API key</label><input type="password">
-      <label class="lbl">OpenAI-compatible base URL</label><input placeholder="https://api.groq.com/openai/v1"></div>`;
-  }
-
-  return `<div class="gov-card" style="margin-bottom:16px"><h1 style="color:var(--navy);font-size:24px;font-weight:800">การตั้งค่า AI</h1>
-    <p class="muted" style="margin-top:6px">เลือกโมเดลแชทและ embeddings คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ การบันทึกมีผลทันที หากเปลี่ยน embeddings ต้องประมวลผลฐานความรู้ใหม่</p></div>
-    ${aiMsgHtml}
-    <div class="gov-card" style="margin-bottom:16px">
-      <label class="lbl">โหมด</label><select id="aiMode">
-        <option value="on_prem"${state.ai.mode==="on_prem"?" selected":""}>รันในเครื่อง (Local)</option>
-        <option value="cloud"${state.ai.mode==="cloud"?" selected":""}>คลาวด์ (Cloud API)</option>
-        <option value="hybrid"${state.ai.mode==="hybrid"?" selected":""}>ผสม (Hybrid) — แนะนำเมื่อใช้คนละแหล่ง</option>
-      </select>
-      <label class="lbl" style="margin-top:10px">โมเดลแชท</label><select id="aiLlm">${llmOptionsHtml}</select>
-      <label class="lbl" style="margin-top:10px">Embeddings</label><select id="aiEmb">
-        <option value="local"${state.ai.embed==="local"?" selected":""}>ในเครื่อง (OpenAI-compatible)</option>
-        <option value="openai"${state.ai.embed==="openai"?" selected":""}>OpenAI embeddings</option>
-        <option value="gemini"${state.ai.embed==="gemini"?" selected":""}>Gemini embeddings</option>
-        <option value="bedrock"${state.ai.embed==="bedrock"?" selected":""}>Bedrock (Titan)</option>
-        <option value="azure_foundry"${state.ai.embed==="azure_foundry"?" selected":""}>Azure Foundry embeddings</option>
-        <option value="openai_compatible"${state.ai.embed==="openai_compatible"?" selected":""}>OpenAI-compatible embeddings</option>
-      </select>
-      <label class="lbl" style="margin-top:10px">คลังเวกเตอร์</label><select id="aiVec">
-        <option value="pgvector"${state.ai.vector==="pgvector"?" selected":""}>pgvector</option>
-        <option value="qdrant"${state.ai.vector==="qdrant"?" selected":""}>Qdrant</option>
-      </select>
-    </div>
-    ${localHtml}
-    ${cloudHtml}
-    <div style="display:flex;gap:8px"><button class="btn btn-outline" id="aiTest">ทดสอบการเชื่อมต่อ</button><button class="btn btn-primary" id="aiSave">บันทึก</button></div>`;
+  let localHtml="";
+  if(localChat||localEmb) localHtml=aiLocalCardHtml();
+  let cloudHtml="";
+  if(!localChat||!localEmb) cloudHtml=aiCloudCardHtml();
+  const llmOptionsHtml=llm.map(function(pair){return htmlOption(pair[0],pair[1],state.ai.llm);}).join("");
+  return '<div class="gov-card" style="margin-bottom:16px"><h1 style="color:var(--navy);font-size:24px;font-weight:800">การตั้งค่า AI</h1>'+
+    '<p class="muted" style="margin-top:6px">เลือกโมเดลแชทและ embeddings คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ การบันทึกมีผลทันที หากเปลี่ยน embeddings ต้องประมวลผลฐานความรู้ใหม่</p></div>'+
+    aiMsgHtml+
+    '<div class="gov-card" style="margin-bottom:16px">'+
+      '<label class="lbl">โหมด</label><select id="aiMode">'+
+        htmlOption("on_prem","รันในเครื่อง (Local)",state.ai.mode)+
+        htmlOption("cloud","คลาวด์ (Cloud API)",state.ai.mode)+
+        htmlOption("hybrid","ผสม (Hybrid) — แนะนำเมื่อใช้คนละแหล่ง",state.ai.mode)+
+      '</select>'+
+      '<label class="lbl" style="margin-top:10px">โมเดลแชท</label><select id="aiLlm">'+llmOptionsHtml+'</select>'+
+      '<label class="lbl" style="margin-top:10px">Embeddings</label><select id="aiEmb">'+
+        htmlOption("local","ในเครื่อง (OpenAI-compatible)",state.ai.embed)+
+        htmlOption("openai","OpenAI embeddings",state.ai.embed)+
+        htmlOption("gemini","Gemini embeddings",state.ai.embed)+
+        htmlOption("bedrock","Bedrock (Titan)",state.ai.embed)+
+        htmlOption("azure_foundry","Azure Foundry embeddings",state.ai.embed)+
+        htmlOption("openai_compatible","OpenAI-compatible embeddings",state.ai.embed)+
+      '</select>'+
+      '<label class="lbl" style="margin-top:10px">คลังเวกเตอร์</label><select id="aiVec">'+
+        htmlOption("pgvector","pgvector",state.ai.vector)+
+        htmlOption("qdrant","Qdrant",state.ai.vector)+
+      '</select>'+
+    '</div>'+
+    localHtml+
+    cloudHtml+
+    '<div style="display:flex;gap:8px"><button class="btn btn-outline" id="aiTest">ทดสอบการเชื่อมต่อ</button><button class="btn btn-primary" id="aiSave">บันทึก</button></div>';
 }
 
 function bindView(){

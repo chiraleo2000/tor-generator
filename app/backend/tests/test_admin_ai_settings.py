@@ -16,8 +16,10 @@ from app.api.v1.endpoints.admin_ai_settings import (
     _merge_saved_payload,
     _merged_settings_dict,
     _overlay_from_merged,
+    _probe_bedrock,
     _public_payload,
     _resolved_local_url,
+    _sts_caller_identity,
     _validate_update,
 )
 from app.config import get_settings
@@ -652,3 +654,55 @@ def test_put_ai_settings_cloud_with_keys(admin_client):
     assert response.json()["data"]["llm_provider"] == "gemini"
     assert response.json()["data"]["gemini_api_key"].startswith("****")
     assert get_settings().llm_provider == "gemini"
+
+
+@pytest.mark.asyncio
+async def test_probe_bedrock_calls_sts_off_event_loop():
+    body = AiSettingsTest(
+        deployment_mode="cloud",
+        llm_provider="bedrock",
+        embedding_provider="local",
+        bedrock_region="ap-southeast-1",
+        aws_access_key_id="AKIATEST",
+        aws_secret_access_key="secret-test",
+    )
+    with patch(
+        "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity"
+    ) as mock_sts:
+        await _probe_bedrock(body, {})
+    mock_sts.assert_called_once_with("ap-southeast-1", "AKIATEST", "secret-test")
+
+
+@pytest.mark.asyncio
+async def test_probe_bedrock_maps_sts_errors():
+    body = AiSettingsTest(
+        deployment_mode="cloud",
+        llm_provider="bedrock",
+        embedding_provider="local",
+    )
+    with patch(
+        "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity",
+        side_effect=RuntimeError("denied"),
+    ):
+        with pytest.raises(ValidationError) as exc:
+            await _probe_bedrock(body, {})
+    assert "Bedrock/STS" in str(exc.value.message)
+
+
+def test_sts_caller_identity_passes_explicit_keys():
+    fake_boto3 = MagicMock()
+    fake_boto3.client.return_value.get_caller_identity.return_value = {"Account": "1"}
+    with patch.dict("sys.modules", {"boto3": fake_boto3}):
+        _sts_caller_identity("ap-southeast-1", "AKIATEST", "secret-test")
+    kwargs = fake_boto3.client.call_args.kwargs
+    assert kwargs["region_name"] == "ap-southeast-1"
+    assert kwargs["aws_access_key_id"] == "AKIATEST"
+    assert kwargs["aws_secret_access_key"] == "secret-test"
+
+
+def test_sts_caller_identity_uses_default_chain_without_keys():
+    fake_boto3 = MagicMock()
+    fake_boto3.client.return_value.get_caller_identity.return_value = {}
+    with patch.dict("sys.modules", {"boto3": fake_boto3}):
+        _sts_caller_identity("us-east-1", "", "")
+    assert fake_boto3.client.call_args.kwargs == {"region_name": "us-east-1"}

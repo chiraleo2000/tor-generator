@@ -21,9 +21,9 @@
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest ไม่รวม `live_llm` (v0.2.0) | **1440 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL เจ้าของไฟล์, `/knowledge-base/mine`; intake, `/chat`, wizard step APIs ยังผ่าน |
-| pytest `--cov=app` | **85%** (9461 stmts / 1415 miss) | HTML ที่ `app/backend/htmlcov/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
-| Vitest `--coverage` | **122 ผ่าน** / **90.9%** statements (670/737) | รวมหน้าฐานความรู้ของเจ้าหน้าที่; ตัดหน้าแอดมิน KB |
+| pytest ไม่รวม `live_llm` (v0.2.1) | **1447 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL เจ้าของไฟล์, `/knowledge-base/mine`; intake, `/chat`, wizard step APIs ยังผ่าน |
+| pytest `--cov=app` | **85%** (9524 stmts / 1426 miss) | HTML ที่ `app/backend/htmlcov/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| Vitest `--coverage` | **122 ผ่าน** / **89.8%** statements (660/735) | รวมหน้าฐานความรู้ของเจ้าหน้าที่; ตัดหน้าแอดมิน KB |
 | Playwright (แอป, 1 worker) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม | เวิร์กโฟลว์บน http://localhost:3000 รวมหน้าคลังความรู้เจ้าหน้าที่ (`อัปโหลดเอกสารของฉัน`) `/chat` และร่างด้วย AI (Gemma) — รันทีละเคสเพราะบัญชีทดลองร่วมกัน |
 | ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ หน้าแอดมิน `/chat` HITL |
 | Playwright รายงาน coverage (`test:e2e:reports`) | **3 ผ่าน** | ถ่าย htmlcov / Istanbul / รายงาน Playwright |
@@ -32,7 +32,7 @@
 
 Coverage backend ลดจากรอบเช้าเพราะเพิ่มโมดูลแชท / Mongo / GraphRAG ที่ยังไม่คลุมครบทุกบรรทัด — ชุดเทสต์ยังผ่านทั้งหมด
 
-รอบ 19 ส.ค. 2026 แก้ TS2580 (`Buffer` ใน `e2e/chat.spec.ts`) ด้วย `e2e/tsconfig.json` + `import { Buffer } from "node:buffer"` ลด cognitive complexity ของ intake/drafting/sections ตาม SonarLint บน `app/frontend/src` และ `app/backend/app` ตั้ง `experimental.proxyTimeout` 5 นาที และคลิก Phase 2 ที่ล็อกด้วย `{ force: true }`
+รอบ 19 ส.ค. 2026 แก้ SonarLint `python:S7503` (Bedrock probe ใช้ `asyncio.to_thread`), `javascript:S4624` / `javascript:S3776` ใน GitHub Pages mockup, TS2580 (`Buffer` ใน `e2e/chat.spec.ts`) ด้วย `e2e/tsconfig.json` + `import { Buffer } from "node:buffer"` ลด cognitive complexity ของ intake/drafting/sections ตาม SonarLint บน `app/frontend/src` และ `app/backend/app` ตั้ง `experimental.proxyTimeout` 5 นาที และคลิก Phase 2 ที่ล็อกด้วย `{ force: true }`
 
 ---
 
@@ -272,11 +272,11 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **85%** (9461 statements, 1415 miss) — ลดจาก 87% เพราะโมดูล RAG/Graph/Mongo/`knowledge_base.mine` ที่เพิ่มในรอบนี้
+Backend `coverage.py`: **85%** (9524 statements, 1426 miss) — ลดจาก 87% เพราะโมดูล RAG/Graph/Mongo/`knowledge_base.mine` ที่เพิ่มในรอบนี้
 
 ![Coverage backend 87%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **90.9%** (670/737), lines **92.58%** (612/661) — รวมหน้า `/knowledge-base`
+Frontend Istanbul/v8: statements **89.8%** (660/735), lines **91.4%** (602/659) — รวมหน้า `/knowledge-base`
 
 ![Coverage frontend 91.39%](test-evidence/14-frontend-coverage.png)
 

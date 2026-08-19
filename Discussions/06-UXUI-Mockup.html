@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TOR Generator - ระบบร่างและตรวจสอบ TOR ภาครัฐ (PoC mock v0.2 — อ้างอิงแอป Docker)</title>
+<title>TOR Generator - ระบบร่างและตรวจสอบ TOR ภาครัฐ (PoC mock v0.2.1 — อ้างอิงแอป Docker)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
@@ -290,7 +290,7 @@ textarea{resize:vertical;min-height:80px;}
       <div class="menu-title">อื่นๆ</div>
       <div class="menu-item" data-page="guide" onclick="nav('guide',this)"><span class="menu-icon">❓</span>คู่มือ</div>
     </div>
-    <div class="sidebar-foot">💡 แอปจริง v0.2: 5 Phase · แชทและ embeddings เลือกอิสระ (เช่น Claude + EmbeddingGemma ในเครื่อง) · เจ้าหน้าที่อัปโหลดเอกสารของฉันได้ — เดโมคลิกได้ที่ GitHub Pages ไม่ใช่ไฟล์นี้</div>
+    <div class="sidebar-foot">💡 แอปจริง v0.2.1: 5 Phase · แชทและ embeddings เลือกอิสระ (เช่น Claude + EmbeddingGemma ในเครื่อง) · เจ้าหน้าที่อัปโหลดเอกสารของฉันได้ — เดโมคลิกได้ที่ GitHub Pages ไม่ใช่ไฟล์นี้</div>
     <div class="logout-link" onclick="handleLogout()">🚪 ออกจากระบบ</div>
   </div>
 
@@ -1349,7 +1349,7 @@ const GUIDE = [
   {id:'review', label:'ตรวจสอบ TOR', title:'การใช้งาน ตรวจสอบ TOR',
    body:`<p>อัปโหลด TOR ฉบับสมบูรณ์ → OCR สกัดข้อความจริง → Rule Engine ตรวจสอบ 5 ด้าน: ความครบถ้วนของหมวด, สัดส่วนทุนจดทะเบียน, ผลรวมงวดจ่ายเงิน, ความเป็นธรรมของการระบุยี่ห้อ, การอ้างอิงกฎหมาย + เทียบเคียงโครงการ Optional ด้วย Jaccard keyword-overlap similarity</p>`},
   {id:'faq', label:'FAQ', title:'คำถามที่พบบ่อย',
-   body:`<h3>ระบบนี้ใช้ AI/LLM หรือไม่?</h3><p>ไฟล์ PoC นี้เป็น Rule-based (OCR + keyword) ไม่เรียก LLM แอปที่รันจริง (Docker v0.2) ใช้ Gemma ในเครื่องหรือคลาวด์ได้ และเลือกแชทกับ embeddings คนละแหล่งได้</p>
+   body:`<h3>ระบบนี้ใช้ AI/LLM หรือไม่?</h3><p>ไฟล์ PoC นี้เป็น Rule-based (OCR + keyword) ไม่เรียก LLM แอปที่รันจริง (Docker v0.2.1) ใช้ Gemma ในเครื่องหรือคลาวด์ได้ และเลือกแชทกับ embeddings คนละแหล่งได้</p>
    <h3>เดโม UX/UI อยู่ที่ไหน?</h3><p>https://chiraleo2000.github.io/tor-generator/ — ไม่ใช่ไฟล์ HTML นี้</p>`}
 ];
 function renderGuide(){

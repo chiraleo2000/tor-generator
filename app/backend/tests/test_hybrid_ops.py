@@ -18,11 +18,22 @@ def test_factory_resolves_all_three_modes():
     cloud = ProviderFactory(
         make_settings(
             deployment_mode="cloud",
+            llm_provider="claude",
             anthropic_api_key="sk-ant-test",
             openai_api_key="sk-test",
         )
     )
     assert cloud.get_llm().__class__.__name__ == "ClaudeSonnetProvider"
+
+    cloud_local_chat = ProviderFactory(
+        make_settings(
+            deployment_mode="cloud",
+            llm_provider="lm_studio",
+            embedding_provider="openai",
+            openai_api_key="sk-test",
+        )
+    )
+    assert cloud_local_chat.get_llm().__class__.__name__ == "LMStudioLocalProvider"
 
     hybrid = ProviderFactory(
         make_settings(

@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.2.0**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ, และโหมด LLM ในเครื่อง (LM Studio / Ollama / llama.cpp) หรือคลาวด์จากหน้าผู้ดูแล
+แอปที่รันจริงคือ **v0.2.1**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ, และโหมด LLM ในเครื่อง (LM Studio / Ollama / llama.cpp) หรือคลาวด์จากหน้าผู้ดูแล
 
 **GitHub Pages คือ UI จำลองเท่านั้น** — เปิดจาก [`index.html`](index.html) ที่ root ของรีโป ให้หน้าตาและเมนูตรงกับแอปปัจจุบัน แต่ไม่เรียก API/LLM จริง และ**ไม่ได้**ใช้ `discussions/06-UXUI-Mockup.html`
 
@@ -148,9 +148,9 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm"` + `--cov=app` | **1440 ผ่าน** / **85%** ของ `app/` |
+| pytest `-m "not live_llm"` + `--cov=app` | **1447 ผ่าน** / **85%** ของ `app/` |
 | pytest `-m live_llm` (LM Studio พอร์ต 1234) | **10 ผ่าน** |
-| Vitest `--coverage` | **122 ผ่าน** / **90.9%** statements |
+| Vitest `--coverage` | **122 ผ่าน** / **89.8%** statements |
 | Playwright `test:e2e` (1 worker, Docker :3000) | **15 ผ่าน** |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
