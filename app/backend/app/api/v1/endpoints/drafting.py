@@ -12,11 +12,10 @@ Validates: Requirements 5.1, 6.1
 
 from __future__ import annotations
 
-from typing import Annotated
-
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Request
 from fastapi.responses import JSONResponse
@@ -24,9 +23,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.constants import PROJECT_NOT_FOUND, PROJECT_UUID_DESC
-from app.domain.section_text import section_plain_text
 from app.config import get_settings
 from app.deps import get_current_user, get_db
+from app.domain.section_text import section_plain_text
+from app.domain.tor_sections import SCOPE_SUBSECTIONS
 from app.exceptions import NotFoundError, ValidationError
 from app.models.project import Project
 from app.models.tor_section import TORSection
@@ -34,6 +34,7 @@ from app.models.user import User
 from app.rbac import require_project_access
 from app.schemas.drafting import DraftSectionRequest, DraftSectionResponse
 from app.schemas.responses import MetaInfo, SuccessResponse
+from app.services.intake_service import slot_content
 
 logger = logging.getLogger("tor_app.drafting")
 
@@ -47,6 +48,139 @@ def _persist_keys_for_section(section_key: str) -> tuple[str, str | None]:
     if section_key[0] == "s":
         return "s4", section_key
     return "s4", f"s4.{section_key[2:]}"
+
+
+def _as_slot_map(analysis: object) -> dict:
+    if not isinstance(analysis, dict):
+        return {}
+    raw = analysis.get("slot_map") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _user_input_for_draft(
+    project: Project,
+    all_sections: list[TORSection],
+    body: DraftSectionRequest,
+    slot_map: dict,
+    analysis: dict,
+) -> dict:
+    existing_sections = {
+        section.section_key: section_plain_text(section.content) for section in all_sections
+    }
+    user_input: dict = {
+        "project_name": project.name,
+        "ministry": project.ministry,
+        "budget": project.budget,
+        "project_type": project.project_type,
+        "existing_sections": existing_sections,
+    }
+    if body.additional_context:
+        user_input.update(body.additional_context)
+    user_input["analysis_json"] = analysis
+    user_input["slot_map"] = slot_map
+    target_slot = slot_map.get(body.section_key) or {}
+    if isinstance(target_slot, dict) and target_slot.get("content"):
+        user_input["intake_slot_content"] = target_slot.get("content")
+        user_input["intake_slot_status"] = target_slot.get("status")
+        user_input["intake_slot_sources"] = target_slot.get("sources")
+    if body.section_key == "s4":
+        user_input["scope_subslots"] = {
+            key: slot_map.get(key) for key in slot_map if str(key).startswith("s4.")
+        }
+    return user_input
+
+
+def _template_payload(project: Project) -> dict:
+    if not project.template_id or not project.template:
+        return {}
+    return {
+        "section_structure": project.template.section_structure or {},
+        "placeholder_guidance": project.template.placeholder_guidance or {},
+    }
+
+
+def _draft_from_state(final_state: dict) -> tuple:
+    draft_content = final_state.get("draft_content", "")
+    quality_score = final_state.get("quality_score")
+    validation_findings = final_state.get("validation_findings", [])
+    rag_failed = final_state.get("rag_retrieval_failed", False)
+    error = final_state.get("error")
+    if final_state.get("best_draft_content") and not draft_content:
+        return (
+            final_state["best_draft_content"],
+            final_state.get("best_draft_score"),
+            final_state.get("best_draft_findings", []),
+            rag_failed,
+            error,
+        )
+    return draft_content, quality_score, validation_findings, rag_failed, error
+
+
+async def _save_draft_section(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    persist_key: str,
+    persist_sub: str | None,
+    draft_content: str,
+    quality_score,
+    validation_findings,
+) -> None:
+    findings_json = {"findings": validation_findings} if validation_findings else None
+    section_stmt = select(TORSection).where(
+        TORSection.project_id == project_id,
+        TORSection.section_key == persist_key,
+    )
+    if persist_sub:
+        section_stmt = section_stmt.where(TORSection.sub_key == persist_sub)
+    else:
+        section_stmt = section_stmt.where(TORSection.sub_key.is_(None))
+    section = (await db.execute(section_stmt)).scalar_one_or_none()
+    if section:
+        section.ai_draft = draft_content
+        section.content = draft_content
+        section.quality_score = quality_score
+        section.validation_findings = findings_json
+        return
+    db.add(
+        TORSection(
+            project_id=project_id,
+            section_key=persist_key,
+            sub_key=persist_sub,
+            content=draft_content,
+            ai_draft=draft_content,
+            quality_score=quality_score,
+            validation_findings=findings_json,
+            version=1,
+        )
+    )
+
+
+async def _fill_empty_s4_subs(
+    db: AsyncSession, project_id: uuid.UUID, slot_map: dict
+) -> None:
+    for sub_key in SCOPE_SUBSECTIONS:
+        sub_text = slot_content(slot_map, sub_key)
+        if not sub_text.strip():
+            continue
+        sub_stmt = select(TORSection).where(
+            TORSection.project_id == project_id,
+            TORSection.section_key == "s4",
+            TORSection.sub_key == sub_key,
+        )
+        sub_row = (await db.execute(sub_stmt)).scalar_one_or_none()
+        if not sub_row:
+            db.add(
+                TORSection(
+                    project_id=project_id,
+                    section_key="s4",
+                    sub_key=sub_key,
+                    content=sub_text,
+                    version=1,
+                )
+            )
+            continue
+        if not (sub_row.content or "").strip():
+            sub_row.content = sub_text
 
 
 # =============================================================================
@@ -91,158 +225,49 @@ async def draft_section(
     require_project_access(project.owner_id, current_user)
 
     target_section = body.section_key
+    all_sections = (
+        await db.execute(select(TORSection).where(TORSection.project_id == project_id))
+    ).scalars().all()
+    analysis = project.analysis_json if isinstance(project.analysis_json, dict) else {}
+    slot_map = _as_slot_map(analysis)
+    user_input = _user_input_for_draft(project, list(all_sections), body, slot_map, analysis)
+    template_data = _template_payload(project)
 
-    # Gather existing section content for cross-section context
-    sections_stmt = select(TORSection).where(TORSection.project_id == project_id)
-    sections_result = await db.execute(sections_stmt)
-    all_sections = sections_result.scalars().all()
-
-    existing_sections: dict[str, str] = {}
-    for s in all_sections:
-        existing_sections[s.section_key] = section_plain_text(s.content)
-
-    # Build user_input from project metadata and existing sections
-    user_input: dict = {
-        "project_name": project.name,
-        "ministry": project.ministry,
-        "budget": project.budget,
-        "project_type": project.project_type,
-        "existing_sections": existing_sections,
-    }
-
-    # Merge additional context from the request body
-    if body.additional_context:
-        user_input.update(body.additional_context)
-
-    analysis = project.analysis_json or {}
-    slot_map = analysis.get("slot_map") or {}
-    user_input["analysis_json"] = analysis
-    user_input["slot_map"] = slot_map
-    target_slot = slot_map.get(target_section) or {}
-    if target_slot.get("content"):
-        user_input["intake_slot_content"] = target_slot.get("content")
-        user_input["intake_slot_status"] = target_slot.get("status")
-        user_input["intake_slot_sources"] = target_slot.get("sources")
-    if target_section == "s4":
-        user_input["scope_subslots"] = {
-            key: slot_map.get(key)
-            for key in slot_map
-            if str(key).startswith("s4.")
-        }
-
-    # Get template data if project has a template
-    template_data: dict = {}
-    if project.template_id:
-        # Template is eagerly loaded via relationship
-        if project.template:
-            template_data = {
-                "section_structure": project.template.section_structure or {},
-                "placeholder_guidance": project.template.placeholder_guidance or {},
-            }
-
-    # Invoke the orchestrator
     try:
         from app.orchestrator import compile_tor_drafting_graph
 
-        graph = compile_tor_drafting_graph()
-
-        initial_state = {
-            "project_id": str(project_id),
-            "user_input": user_input,
-            "template": template_data,
-            "target_section": target_section,
-            "max_retries": 3,
-            "agent_timeout_seconds": get_settings().drafting_agent_timeout_seconds(),
-            # Auto-approve for API-driven drafting (non-interactive mode)
-            "human_approved": True,
-        }
-
-        # Run the graph
-        final_state = await graph.ainvoke(initial_state)
-
-        # Extract results
-        draft_content = final_state.get("draft_content", "")
-        quality_score = final_state.get("quality_score")
-        validation_findings = final_state.get("validation_findings", [])
-        rag_failed = final_state.get("rag_retrieval_failed", False)
-        error = final_state.get("error")
-
-        # Use best draft if available and current draft failed
-        if final_state.get("best_draft_content") and not draft_content:
-            draft_content = final_state["best_draft_content"]
-            quality_score = final_state.get("best_draft_score")
-            validation_findings = final_state.get("best_draft_findings", [])
-
+        final_state = await compile_tor_drafting_graph().ainvoke(
+            {
+                "project_id": str(project_id),
+                "user_input": user_input,
+                "template": template_data,
+                "target_section": target_section,
+                "max_retries": 3,
+                "agent_timeout_seconds": get_settings().drafting_agent_timeout_seconds(),
+                "human_approved": True,
+            }
+        )
+        draft_content, quality_score, validation_findings, rag_failed, error = _draft_from_state(
+            final_state
+        )
         if error and not draft_content:
             raise ValidationError(
                 message=f"การสร้างร่างล้มเหลว: {error}",
                 field="draft",
             )
-
         persist_key, persist_sub = _persist_keys_for_section(target_section)
-
-        section_stmt = select(TORSection).where(
-            TORSection.project_id == project_id,
-            TORSection.section_key == persist_key,
+        await _save_draft_section(
+            db,
+            project_id,
+            persist_key,
+            persist_sub,
+            draft_content,
+            quality_score,
+            validation_findings,
         )
-        if persist_sub:
-            section_stmt = section_stmt.where(TORSection.sub_key == persist_sub)
-        else:
-            section_stmt = section_stmt.where(TORSection.sub_key.is_(None))
-        section_result = await db.execute(section_stmt)
-        section = section_result.scalar_one_or_none()
-
-        if section:
-            section.ai_draft = draft_content
-            section.content = draft_content
-            section.quality_score = quality_score
-            section.validation_findings = (
-                {"findings": validation_findings} if validation_findings else None
-            )
-        else:
-            new_section = TORSection(
-                project_id=project_id,
-                section_key=persist_key,
-                sub_key=persist_sub,
-                content=draft_content,
-                ai_draft=draft_content,
-                quality_score=quality_score,
-                validation_findings=(
-                    {"findings": validation_findings} if validation_findings else None
-                ),
-                version=1,
-            )
-            db.add(new_section)
-
         if persist_key == "s4" and persist_sub is None:
-            from app.domain.tor_sections import SCOPE_SUBSECTIONS
-
-            for sub_key in SCOPE_SUBSECTIONS:
-                sub_text = (slot_map.get(sub_key) or {}).get("content") or ""
-                if not sub_text.strip():
-                    continue
-                sub_stmt = select(TORSection).where(
-                    TORSection.project_id == project_id,
-                    TORSection.section_key == "s4",
-                    TORSection.sub_key == sub_key,
-                )
-                sub_row = (await db.execute(sub_stmt)).scalar_one_or_none()
-                if sub_row:
-                    if not (sub_row.content or "").strip():
-                        sub_row.content = str(sub_text)
-                else:
-                    db.add(
-                        TORSection(
-                            project_id=project_id,
-                            section_key="s4",
-                            sub_key=sub_key,
-                            content=str(sub_text),
-                            version=1,
-                        )
-                    )
-
+            await _fill_empty_s4_subs(db, project_id, slot_map)
         await db.flush()
-
         logger.info(
             "Draft generated for project %s, section %s, score=%s",
             project_id,

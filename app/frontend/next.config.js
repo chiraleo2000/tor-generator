@@ -5,6 +5,10 @@ const nextConfig = {
   images: {
     domains: ["localhost"],
   },
+  // Draft/review/chat LLM calls often exceed the default 30s rewrite proxy timeout.
+  experimental: {
+    proxyTimeout: 300000,
+  },
   async headers() {
     return [
       {

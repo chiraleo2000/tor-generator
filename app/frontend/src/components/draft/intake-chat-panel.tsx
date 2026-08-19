@@ -47,7 +47,9 @@ export function IntakeChatPanel({
   }, [projectId]);
 
   useEffect(() => {
-    refreshCoverage().catch(() => undefined);
+    refreshCoverage().catch(() => {
+      /* coverage loads after upload/paste */
+    });
   }, [refreshCoverage]);
 
   async function uploadFiles(files: FileList | null) {
@@ -140,7 +142,9 @@ export function IntakeChatPanel({
           data-testid="intake-analyze-text"
           disabled={busy}
           onClick={() => {
-            submitText().catch(() => undefined);
+            submitText().catch(() => {
+              /* submitText already sets message */
+            });
           }}
         >
           วิเคราะห์ข้อความ
@@ -225,7 +229,9 @@ export function IntakeChatPanel({
             .then((rows) => {
               if (rows.some((row) => row.filled)) onAnalyzed();
             })
-            .catch(() => undefined);
+            .catch(() => {
+              /* coverage refresh is best-effort after chat */
+            });
         }}
       />
     </div>

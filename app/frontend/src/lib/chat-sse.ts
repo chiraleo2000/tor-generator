@@ -30,6 +30,31 @@ export interface ChatPrompt {
   body: string;
 }
 
+function dispatchSseBlock(
+  block: string,
+  eventName: string,
+  onEvent: (event: string, data: Record<string, unknown>) => void
+): string {
+  let dataLine = "";
+  let nextEvent = eventName;
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) {
+      nextEvent = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLine += line.slice(5).trim();
+    }
+  }
+  if (!dataLine) {
+    return nextEvent;
+  }
+  try {
+    onEvent(nextEvent, JSON.parse(dataLine) as Record<string, unknown>);
+  } catch {
+    onEvent(nextEvent, { text: dataLine });
+  }
+  return "message";
+}
+
 export async function streamSsePost(
   url: string,
   body: unknown,
@@ -68,28 +93,18 @@ export async function streamSsePost(
   const decoder = new TextDecoder();
   let buffer = "";
   let eventName = "message";
-  while (true) {
+  let more = true;
+  while (more) {
     const { done, value } = await reader.read();
-    if (done) break;
+    more = !done;
+    if (done) {
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     const parts = buffer.split("\n\n");
     buffer = parts.pop() || "";
     for (const block of parts) {
-      let dataLine = "";
-      for (const line of block.split("\n")) {
-        if (line.startsWith("event:")) {
-          eventName = line.slice(6).trim();
-        } else if (line.startsWith("data:")) {
-          dataLine += line.slice(5).trim();
-        }
-      }
-      if (!dataLine) continue;
-      try {
-        onEvent(eventName, JSON.parse(dataLine) as Record<string, unknown>);
-      } catch {
-        onEvent(eventName, { text: dataLine });
-      }
-      eventName = "message";
+      eventName = dispatchSseBlock(block, eventName, onEvent);
     }
   }
 }

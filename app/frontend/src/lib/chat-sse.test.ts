@@ -49,4 +49,34 @@ describe("streamSsePost", () => {
       streamSsePost("/chat", { content: "hi" }, "token", () => undefined)
     ).rejects.toThrow("สตรีมแชทไม่สำเร็จ");
   });
+
+  it("uses the API error message when the stream fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        body: null,
+        json: async () => ({ error: { message: "ห้องไม่พบ" } }),
+      })
+    );
+    await expect(
+      streamSsePost("/chat", { content: "hi" }, null, () => undefined)
+    ).rejects.toThrow("ห้องไม่พบ");
+  });
+
+  it("treats non-JSON data lines as text", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("event: token\ndata: not-json\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body }));
+    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    await streamSsePost("/chat", { content: "hi" }, null, (event, data) => {
+      events.push({ event, data });
+    });
+    expect(events).toEqual([{ event: "token", data: { text: "not-json" } }]);
+  });
 });

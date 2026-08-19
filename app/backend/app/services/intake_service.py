@@ -86,6 +86,13 @@ def slot_map_of(project: Project) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def slot_content(slot_map: dict[str, Any], key: str) -> str:
+    slot = slot_map.get(key)
+    if not isinstance(slot, dict):
+        return ""
+    return str(slot.get("content") or "")
+
+
 def has_intake_material(project: Project) -> bool:
     """True when the officer uploaded files, pasted text, or filled a slot."""
     texts = _extracted_dict(project).get("intake_texts") or []
@@ -128,7 +135,7 @@ def can_set_phase(project: Project, target: int) -> bool:
     unlocked = intake_unlocked_phase(project)
     if target <= unlocked:
         return True
-    return bool(unlocked >= 2 and target == current + 1)
+    return unlocked >= 2 and target == current + 1
 
 
 def clamp_draft_phase(project: Project) -> bool:
@@ -189,10 +196,14 @@ async def analyze_pack(project: Project, pack_text: str, filenames: list[str]) -
         for key, value in incoming.items():
             if key not in slot_map or not isinstance(value, dict):
                 continue
+            status = value.get("status")
+            if status not in {"filled", "gap", "reference_only"}:
+                status = "gap"
+            sources = value.get("sources")
             slot_map[key] = {
                 "content": str(value.get("content") or ""),
-                "status": value.get("status") if value.get("status") in {"filled", "gap", "reference_only"} else "gap",
-                "sources": value.get("sources") if isinstance(value.get("sources"), list) else [],
+                "status": status,
+                "sources": sources if isinstance(sources, list) else [],
             }
         raw_q = payload.get("gap_questions")
         if isinstance(raw_q, list):
@@ -260,19 +271,19 @@ async def _upsert_section_text(
     else:
         stmt = stmt.where(TORSection.sub_key.is_(None))
     row = (await db.execute(stmt)).scalar_one_or_none()
-    if row:
-        if not (row.content or "").strip():
-            row.content = stripped
-        return
-    db.add(
-        TORSection(
-            project_id=project_id,
-            section_key=section_key,
-            sub_key=sub_key,
-            content=stripped,
-            version=1,
+    if not row:
+        db.add(
+            TORSection(
+                project_id=project_id,
+                section_key=section_key,
+                sub_key=sub_key,
+                content=stripped,
+                version=1,
+            )
         )
-    )
+        return
+    if not (row.content or "").strip():
+        row.content = stripped
 
 
 async def apply_slot_map_to_sections(
@@ -284,13 +295,10 @@ async def apply_slot_map_to_sections(
     for key in TOR_SECTION_ORDER:
         if key == "s4":
             continue
-        slot = slot_map.get(key) or {}
-        if isinstance(slot, dict):
-            await _upsert_section_text(db, project_id, key, None, str(slot.get("content") or ""))
+        await _upsert_section_text(db, project_id, key, None, slot_content(slot_map, key))
     parts: list[str] = []
     for sub_key, title in SCOPE_SUBSECTIONS.items():
-        slot = slot_map.get(sub_key) or {}
-        text = str(slot.get("content") or "") if isinstance(slot, dict) else ""
+        text = slot_content(slot_map, sub_key)
         if not text.strip():
             continue
         await _upsert_section_text(db, project_id, "s4", sub_key, text)

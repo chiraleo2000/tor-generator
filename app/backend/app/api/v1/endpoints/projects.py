@@ -48,7 +48,6 @@ from app.models.tor_section import TORSection
 from app.models.user import User
 from app.rag.extraction import ExtractionResult, extract_text
 from app.rbac import require_project_access, require_role
-from app.services.intake_service import can_set_phase, clamp_draft_phase
 from app.schemas.project import (
     AnalysisUpdateRequest,
     PaginationMeta,
@@ -65,6 +64,7 @@ from app.schemas.project import (
 )
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.audit_service import AuditService, get_client_ip
+from app.services.intake_service import can_set_phase, clamp_draft_phase, slot_content
 
 logger = logging.getLogger("tor_app.projects")
 
@@ -72,6 +72,45 @@ router = APIRouter()
 
 # Maximum versions per project (requirement 9.6)
 MAX_VERSIONS_PER_PROJECT = 50
+
+
+def _first_nonempty(*candidates: str) -> str:
+    for item in candidates:
+        if str(item or "").strip():
+            return item
+    return ""
+
+
+def _index_tor_sections(
+    rows: list[TORSection],
+) -> tuple[dict[str, TORSection], dict[str, dict[str, TORSection]]]:
+    by_key: dict[str, TORSection] = {}
+    subs: dict[str, dict[str, TORSection]] = {}
+    for row in rows:
+        if row.sub_key:
+            subs.setdefault(row.section_key, {})[row.sub_key] = row
+        else:
+            by_key[row.section_key] = row
+    return by_key, subs
+
+
+def _scope_sub_payload(scope_map: dict[str, TORSection], slot_map: dict) -> list[dict]:
+    items: list[dict] = []
+    for sub_key, title in SCOPE_SUBSECTIONS.items():
+        sub_row = scope_map.get(sub_key) or scope_map.get(sub_key.replace("s4.", "4."))
+        content = _first_nonempty(
+            sub_row.content if sub_row else "",
+            slot_content(slot_map, sub_key),
+        )
+        items.append(
+            {
+                "key": sub_key,
+                "title": title,
+                "content": content,
+                "filled": bool(str(content or "").strip()),
+            }
+        )
+    return items
 
 
 def _build_success_response(
@@ -802,21 +841,17 @@ async def list_project_sections(
     rows = (
         await db.execute(select(TORSection).where(TORSection.project_id == project_id))
     ).scalars().all()
-    by_key: dict[str, TORSection] = {}
-    subs: dict[str, dict[str, TORSection]] = {}
-    for row in rows:
-        if row.sub_key:
-            subs.setdefault(row.section_key, {})[row.sub_key] = row
-        else:
-            by_key[row.section_key] = row
+    by_key, subs = _index_tor_sections(list(rows))
     extracted = project.extracted_fields or {}
-    slot_map = (project.analysis_json or {}).get("slot_map") or {}
+    raw_slots = (project.analysis_json or {}).get("slot_map") or {}
+    slot_map = raw_slots if isinstance(raw_slots, dict) else {}
     sections = []
     for key in TOR_SECTION_ORDER:
         row = by_key.get(key)
-        content = row.content if row else ""
-        if not str(content or "").strip() and isinstance(slot_map.get(key), dict):
-            content = str((slot_map.get(key) or {}).get("content") or "")
+        content = _first_nonempty(
+            row.content if row else "",
+            slot_content(slot_map, key),
+        )
         filled = bool(str(content or "").strip())
         item: dict = {
             "key": key,
@@ -830,21 +865,7 @@ async def list_project_sections(
         }
         if key == "s4":
             item["big"] = True
-            item["subs"] = []
-            scope_map = subs.get("s4") or {}
-            for sub_key, title in SCOPE_SUBSECTIONS.items():
-                sub_row = scope_map.get(sub_key) or scope_map.get(sub_key.replace("s4.", "4."))
-                sub_content = sub_row.content if sub_row else ""
-                if not str(sub_content or "").strip() and isinstance(slot_map.get(sub_key), dict):
-                    sub_content = str((slot_map.get(sub_key) or {}).get("content") or "")
-                item["subs"].append(
-                    {
-                        "key": sub_key,
-                        "title": title,
-                        "content": sub_content,
-                        "filled": bool(str(sub_content or "").strip()),
-                    }
-                )
+            item["subs"] = _scope_sub_payload(subs.get("s4") or {}, slot_map)
         sections.append(item)
     return _build_success_response(request, {"sections": sections})
 

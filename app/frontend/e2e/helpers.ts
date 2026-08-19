@@ -55,7 +55,7 @@ export async function walkFivePhases(page: Page) {
   await expect(page.getByText("Phase 0: อัปโหลดชุดเอกสาร")).toBeVisible();
   await expect(page.getByTestId("intake-paste")).toBeVisible();
   await expect(page.getByText("โหลดห้องแชทไม่สำเร็จ")).toHaveCount(0);
-  await page.getByTestId("phase-2").click();
+  await page.getByTestId("phase-2").click({ force: true });
   await expect(page.getByText("Phase 0: อัปโหลดชุดเอกสาร")).toBeVisible();
   await expect(page.getByText("Phase 2: ร่างเนื้อหา TOR")).toHaveCount(0);
   await saveEvidence(page, "03-phase-0-upload");

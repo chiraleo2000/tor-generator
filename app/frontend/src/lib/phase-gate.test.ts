@@ -28,4 +28,23 @@ describe("phase-gate", () => {
     expect(canSelectPhase(2, 2, 3)).toBe(true);
     expect(canSelectPhase(2, 2, 4)).toBe(false);
   });
+
+  it("unlocks phase 1 from uploaded files or a filled fact slot", () => {
+    expect(
+      intakeUnlockedPhase({
+        analysisJson: { intake_files: [{ name: "pack.pdf" }] },
+      })
+    ).toBe(1);
+    expect(
+      intakeUnlockedPhase({
+        analysisJson: { slot_map: { s1: { status: "filled", content: "โครงการทดสอบ" } } },
+      })
+    ).toBe(1);
+  });
+
+  it("clamps a saved phase 1 display back to 0 when intake is empty", () => {
+    expect(displayPhase(1, 0)).toBe(0);
+    expect(displayPhase(0, 0)).toBe(0);
+    expect(canSelectPhase(0, 0, -1)).toBe(false);
+  });
 });

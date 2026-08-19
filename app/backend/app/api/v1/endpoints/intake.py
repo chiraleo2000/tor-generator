@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from typing import Annotated, Any, AsyncIterator
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.constants import PROJECT_NOT_FOUND
@@ -17,14 +19,16 @@ from app.deps import get_current_user, get_db
 from app.domain.slots import INTAKE_SLOT_LABELS
 from app.exceptions import NotFoundError, ValidationError
 from app.infra import session_factory
+from app.io_temp import unlink_path, write_temp_bytes
 from app.models.chat_message import ChatMessage
 from app.models.chat_room import ChatRoom
+from app.models.project import Project
 from app.models.user import User
 from app.providers.factory import ProviderFactory
-from app.rbac import require_project_access
 from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.extraction import extract_text
 from app.rag.hybrid import hybrid_retrieve
+from app.rbac import require_project_access
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.intake_service import (
     analyze_pack,
@@ -41,6 +45,53 @@ from app.services.intake_service import (
 logger = logging.getLogger("tor_app.intake")
 router = APIRouter()
 INTAKE_PASTE_FILENAME = "ข้อความผู้ใช้.txt"
+CHAT_USER_SOURCE = "ผู้ใช้ตอบในแชท"
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _apply_chat_fact_to_first_gap(slot_map: dict[str, Any], user_text: str) -> None:
+    answer = user_text.strip()
+    if not slot_map or len(answer) <= 12:
+        return
+    for slot in slot_map.values():
+        if not isinstance(slot, dict) or slot.get("status") != "gap":
+            continue
+        previous = str(slot.get("content") or "")
+        slot["content"] = f"{previous}\n{answer}".strip() if previous else answer
+        slot["status"] = "filled"
+        sources = slot.get("sources")
+        if isinstance(sources, list):
+            sources.append(CHAT_USER_SOURCE)
+        else:
+            slot["sources"] = [CHAT_USER_SOURCE]
+        return
+
+
+async def _persist_intake_assistant(
+    session_maker,
+    project_id: uuid.UUID,
+    room_id: uuid.UUID,
+    slot_map: dict[str, Any],
+    content: str,
+    citations: list,
+) -> None:
+    async with session_maker() as persist:
+        row = (await persist.execute(select(Project).where(Project.id == project_id))).scalar_one()
+        merged = dict(row.analysis_json or {})
+        merged["slot_map"] = slot_map
+        row.analysis_json = merged
+        persist.add(
+            ChatMessage(
+                room_id=room_id,
+                role="assistant",
+                content=content,
+                citations=citations,
+            )
+        )
+        await persist.commit()
 
 
 class FillReferenceBody(BaseModel):
@@ -81,9 +132,6 @@ async def _project(db: AsyncSession, project_id: uuid.UUID, user: User):
 
 
 async def _ensure_intake_room(db: AsyncSession, project, user: User) -> ChatRoom:
-    existing = None
-    from sqlalchemy import select
-
     existing = (
         await db.execute(
             select(ChatRoom).where(
@@ -124,8 +172,6 @@ async def intake_upload(
         mime = upload.content_type or "application/pdf"
         name = upload.filename or "upload.bin"
         tmp_suffix = "." + name.rsplit(".", 1)[-1] if "." in name else ".bin"
-        from app.io_temp import unlink_path, write_temp_bytes
-
         tmp_path = await write_temp_bytes(content, suffix=tmp_suffix)
         extracted = extract_text(tmp_path, mime)
         await unlink_path(tmp_path)
@@ -293,12 +339,12 @@ async def intake_chat(
     gaps = analysis.get("gap_questions") or []
 
     async def generate() -> AsyncIterator[str]:
-        import json
-
         result, citations, degraded = await hybrid_retrieve(
             body.content,
             user_id=current_user.id,
-            search_scope=body.search_scope if body.search_scope in {"global", "mine", "both"} else "both",
+            search_scope=(
+                body.search_scope if body.search_scope in {"global", "mine", "both"} else "both"
+            ),
             top_k=5,
         )
         context = "\n\n".join(
@@ -318,10 +364,6 @@ async def intake_chat(
         )
         llm = ProviderFactory().get_llm()
         parts: list[str] = []
-
-        def sse(event: str, data: dict) -> str:
-            return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
         try:
             async for token in llm.stream(
                 [
@@ -332,40 +374,22 @@ async def intake_chat(
                 max_tokens=2048,
             ):
                 parts.append(token)
-                yield sse("token", {"text": token})
+                yield _sse("token", {"text": token})
         except Exception as exc:
             logger.exception("intake chat failed")
-            yield sse("error", {"message": str(exc)})
+            yield _sse("error", {"message": str(exc)})
             return
         full = "".join(parts)
-        # Heuristic: if user answered a fact, mark first gap slot filled.
-        lowered = body.content.strip()
-        if lowered and slot_map:
-            for key, slot in slot_map.items():
-                if slot.get("status") == "gap" and len(lowered) > 12:
-                    slot["content"] = (str(slot.get("content") or "") + "\n" + lowered).strip()
-                    slot["status"] = "filled"
-                    slot.setdefault("sources", []).append("ผู้ใช้ตอบในแชท")
-                    break
-        async with request.app.state.db_session_factory() as persist:
-            from sqlalchemy import select as sel
-
-            from app.models.project import Project as P
-
-            row = (await persist.execute(sel(P).where(P.id == project.id))).scalar_one()
-            merged = dict(row.analysis_json or {})
-            merged["slot_map"] = slot_map
-            row.analysis_json = merged
-            persist.add(
-                ChatMessage(
-                    room_id=room.id,
-                    role="assistant",
-                    content=full,
-                    citations=citations,
-                )
-            )
-            await persist.commit()
-        yield sse(
+        _apply_chat_fact_to_first_gap(slot_map, body.content)
+        await _persist_intake_assistant(
+            request.app.state.db_session_factory,
+            project.id,
+            room.id,
+            slot_map,
+            full,
+            citations,
+        )
+        yield _sse(
             "done",
             {
                 "content": full,

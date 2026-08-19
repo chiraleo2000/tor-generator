@@ -1,6 +1,6 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **18 สิงหาคม 2026 ~16:35 น.**  
+วันที่ **19 สิงหาคม 2026**  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234`  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
@@ -20,15 +20,17 @@
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest รวม live LM Studio | **1367 ผ่าน**, coverage **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) | หน่วยทดสอบ backend ทั้งก้อน รวมยิง LM Studio จริง 10 เคส |
-| Vitest | **109 ผ่าน** / **90.97%** statements | lib, stores, หน้าตั้งค่า AI, chat SSE |
-| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (~1.2 นาที) | เวิร์กโฟลว์ผู้ใช้บน http://localhost:3000 รวม `/chat` และแชทร่าง Phase 0–1 |
+| pytest รวม live LM Studio | **1378 ผ่าน**, coverage **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) | หน่วยทดสอบ backend ทั้งก้อน รวมยิง LM Studio จริง |
+| Vitest | **119 ผ่าน** / **91.39%** statements | lib, stores, หน้าตั้งค่า AI, chat SSE, phase-gate |
+| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (~3.3 นาที) | เวิร์กโฟลว์ผู้ใช้บน http://localhost:3000 รวม `/chat` แชทร่าง Phase 0–1 และร่างด้วย AI (Gemma ~2.7 นาที) |
 | ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ หน้าแอดมิน `/chat` HITL |
 | Playwright รายงาน coverage (`test:e2e:reports`) | **3 ผ่าน** | ถ่าย htmlcov / Istanbul / รายงาน Playwright |
 
 ไฟล์ `e2e/reports.spec.ts` และ `e2e/guide-shots.spec.ts` **ไม่ถูกรวม**ใน `npm run test:e2e` ปกติ จึงไม่มีเคสข้ามในชุดหลัก (Sonar S1607)
 
 Coverage backend ลดจากรอบเช้าเพราะเพิ่มโมดูลแชท / Mongo / GraphRAG ที่ยังไม่คลุมครบทุกบรรทัด — ชุดเทสต์ยังผ่านทั้งหมด
+
+รอบ 19 ส.ค. 2026 แก้ TS2580 (`Buffer` ใน `e2e/chat.spec.ts`) ด้วย `e2e/tsconfig.json` + `import { Buffer } from "node:buffer"` ลด cognitive complexity ของ intake/drafting/sections ตาม SonarLint บน `app/frontend/src` และ `app/backend/app` ตั้ง `experimental.proxyTimeout` 5 นาที และคลิก Phase 2 ที่ล็อกด้วย `{ force: true }`
 
 ---
 
@@ -268,13 +270,13 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **87%** (7674 statements, 1011 miss) — รวมโมดูลแชท Mongo GraphRAG ที่เพิ่มรอบนี้
+Backend `coverage.py`: **87%** (7839 statements, 1049 miss)
 
 ![Coverage backend 87%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **90.97%** (585/643), lines **92.72%**
+Frontend Istanbul/v8: statements **91.39%** (637/697), lines **93.09%** (580/623)
 
-![Coverage frontend 90.97%](test-evidence/14-frontend-coverage.png)
+![Coverage frontend 91.39%](test-evidence/14-frontend-coverage.png)
 
 ---
 
@@ -286,7 +288,7 @@ Frontend Istanbul/v8: statements **90.97%** (585/643), lines **92.72%**
 python -m pytest tests -q --tb=short --cov=app --cov-report=term --cov-report=html
 ```
 
-ผลที่ยืนยันแยกชุด: `1357 passed` (`-m "not live_llm"`) + `10 passed` (`-m live_llm`) = **1367**
+ผลที่ยืนยันแยกชุด: รอบเต็มบนโฮสต์ Python 3.14 ได้ **1378 ผ่าน** (รวม `test_live_lm_studio.py` เมื่อ `lms server` ฟังพอร์ต 1234 และโมเดล Gemma + EmbeddingGemma โหลดแล้ว)
 
 จาก `app/frontend`:
 

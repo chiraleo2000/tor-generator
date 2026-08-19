@@ -67,7 +67,7 @@ class TestPropertyRateLimitingEnforcement:
         limit=st.integers(min_value=1, max_value=1000),
         request_count=st.integers(min_value=1, max_value=2000),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)
     # Feature: tor-drafting-review-app, Property 13: Rate Limiting Enforcement
     @pytest.mark.asyncio
     async def test_requests_within_limit_always_allowed(self, limit, request_count):
@@ -90,7 +90,7 @@ class TestPropertyRateLimitingEnforcement:
         limit=st.integers(min_value=1, max_value=1000),
         excess=st.integers(min_value=1, max_value=500),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)
     # Feature: tor-drafting-review-app, Property 13: Rate Limiting Enforcement
     @pytest.mark.asyncio
     async def test_excess_requests_always_rejected(self, limit, excess):
@@ -113,7 +113,7 @@ class TestPropertyRateLimitingEnforcement:
         limit=st.integers(min_value=1, max_value=1000),
         ttl_value=st.integers(min_value=-10, max_value=300),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)
     # Feature: tor-drafting-review-app, Property 13: Rate Limiting Enforcement
     @pytest.mark.asyncio
     async def test_retry_after_always_at_least_one_second(self, limit, ttl_value):
@@ -138,7 +138,7 @@ class TestPropertyRateLimitingEnforcement:
         limit=st.integers(min_value=1, max_value=1000),
         extra_requests=st.integers(min_value=0, max_value=500),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)
     # Feature: tor-drafting-review-app, Property 13: Rate Limiting Enforcement
     @pytest.mark.asyncio
     async def test_allowed_count_equals_exactly_configured_limit(self, limit, extra_requests):

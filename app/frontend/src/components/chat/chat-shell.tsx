@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   Globe,
@@ -28,6 +28,18 @@ import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+const TITLE_KB = "ถาม-ตอบคลังความรู้";
+const TITLE_DRAFT = "แชทร่าง TOR";
+
+function sseFieldText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return fallback;
+}
 
 function withPatchedLastAssistant(
   prev: ChatMessageItem[],
@@ -74,64 +86,77 @@ export function ChatShell({
     [streamPath]
   );
 
-  async function loadRooms() {
+  const loadRooms = useCallback(async () => {
     const response = await apiClient.get("/chat/rooms", {
       params: { kind, ...(projectId ? { project_id: projectId } : {}) },
     });
     const payload = unwrapData<{ rooms?: ChatRoomCard[] }>(response);
-    setRooms(payload.rooms || []);
-    return payload.rooms || [];
-  }
+    const next = payload.rooms || [];
+    setRooms(next);
+    return next;
+  }, [kind, projectId]);
 
-  async function loadMessages(roomId: string) {
+  const loadMessages = useCallback(async (roomId: string) => {
     const response = await apiClient.get(`/chat/rooms/${roomId}/messages`);
     const payload = unwrapData<{ messages?: ChatMessageItem[] }>(response);
     setMessages(payload.messages || []);
-  }
+  }, []);
 
   useEffect(() => {
+    let cancelled = false;
     apiClient
       .get("/chat/prompts", { params: { kind } })
       .then((response) => {
+        if (cancelled) return;
         const payload = unwrapData<{ prompts?: ChatPrompt[] }>(response);
         setPrompts(payload.prompts || []);
       })
-      .catch(() => undefined);
-    loadRooms()
-      .then(async (list) => {
-        const existing =
-          (projectId
-            ? list.find((room) => room.project_id === projectId)
-            : undefined) || list[0];
-        if (existing) {
-          setActiveId(existing.id);
-          await loadMessages(existing.id);
-          return;
-        }
-        if (kind === "draft_intake" && projectId) {
-          const created = await apiClient.post("/chat/rooms", {
-            kind,
-            project_id: projectId,
-            title: "แชทร่าง TOR",
-          });
-          const room = unwrapData<ChatRoomCard>(created);
-          await loadRooms();
-          setActiveId(room.id);
-          await loadMessages(room.id);
-          return;
-        }
-        if (kind === "kb") {
-          const created = await apiClient.post("/chat/rooms", {
-            kind,
-            title: "ถาม-ตอบคลังความรู้",
-          });
-          const room = unwrapData<ChatRoomCard>(created);
-          await loadRooms();
-          setActiveId(room.id);
-        }
-      })
-      .catch(() => setError("โหลดห้องแชทไม่สำเร็จ"));
-  }, [kind, projectId]);
+      .catch(() => {
+        /* prompt chips are optional */
+      });
+
+    async function bootstrap() {
+      const list = await loadRooms();
+      if (cancelled) return;
+      const existing =
+        (projectId ? list.find((room) => room.project_id === projectId) : undefined) ||
+        list[0];
+      if (existing) {
+        setActiveId(existing.id);
+        await loadMessages(existing.id);
+        return;
+      }
+      if (kind === "draft_intake" && projectId) {
+        const created = await apiClient.post("/chat/rooms", {
+          kind,
+          project_id: projectId,
+          title: TITLE_DRAFT,
+        });
+        const room = unwrapData<ChatRoomCard>(created);
+        if (cancelled) return;
+        await loadRooms();
+        setActiveId(room.id);
+        await loadMessages(room.id);
+        return;
+      }
+      if (kind !== "kb") return;
+      const created = await apiClient.post("/chat/rooms", {
+        kind,
+        title: TITLE_KB,
+      });
+      const room = unwrapData<ChatRoomCard>(created);
+      if (cancelled) return;
+      await loadRooms();
+      setActiveId(room.id);
+    }
+
+    bootstrap().catch(() => {
+      if (!cancelled) setError("โหลดห้องแชทไม่สำเร็จ");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, projectId, loadRooms, loadMessages]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -141,7 +166,7 @@ export function ChatShell({
     const response = await apiClient.post("/chat/rooms", {
       kind,
       project_id: projectId,
-      title: kind === "kb" ? "ถาม-ตอบคลังความรู้" : "แชทร่าง TOR",
+      title: kind === "kb" ? TITLE_KB : TITLE_DRAFT,
     });
     const room = unwrapData<ChatRoomCard>(response);
     await loadRooms();
@@ -192,7 +217,7 @@ export function ChatShell({
         token,
         (event, data) => {
           if (event === "token") {
-            const piece = String(data.text || "");
+            const piece = sseFieldText(data.text);
             setMessages((prev) => {
               const last = prev.at(-1);
               if (last?.role !== "assistant") {
@@ -207,14 +232,14 @@ export function ChatShell({
             const citations = (data.citations as ChatCitation[]) || [];
             setMessages((prev) =>
               withPatchedLastAssistant(prev, {
-                content: String(data.content || prev.at(-1)?.content || ""),
+                content: sseFieldText(data.content) || prev.at(-1)?.content || "",
                 citations,
               })
             );
             onReady?.();
           }
           if (event === "error") {
-            setError(String(data.message || "แชทล้มเหลว"));
+            setError(sseFieldText(data.message) || "แชทล้มเหลว");
           }
         },
         controller.signal
@@ -253,7 +278,7 @@ export function ChatShell({
     }
   }
 
-  const lastAssistant = [...messages].reverse().find((item) => item.role === "assistant");
+  const lastAssistant = messages.findLast((item) => item.role === "assistant");
 
   return (
     <div className="flex min-h-[70vh] overflow-hidden rounded-xl border bg-white" data-testid="chat-shell">
@@ -310,7 +335,7 @@ export function ChatShell({
             title="ส่งใหม่"
             className="rounded-md p-1.5 hover:bg-muted"
             onClick={() => {
-              const lastUser = [...messages].reverse().find((item) => item.role === "user");
+              const lastUser = messages.findLast((item) => item.role === "user");
               if (lastUser) send(lastUser.content);
             }}
           >

@@ -4,7 +4,7 @@ Next.js 14 App Router in `app/frontend`. Production image is standalone Node on 
 
 ## Request path
 
-Browser JavaScript calls **same-origin** `/api/v1/...`. `next.config.js` rewrites that to `BACKEND_INTERNAL_URL` (`http://backend:4000/api/v1` in Docker). Do not set `NEXT_PUBLIC_API_URL` to the Docker hostname `backend` — the browser cannot resolve it.
+Browser JavaScript calls **same-origin** `/api/v1/...`. `next.config.js` rewrites that to `BACKEND_INTERNAL_URL` (`http://backend:4000/api/v1` in Docker) and sets `experimental.proxyTimeout` to **300000** ms so Phase 2 AI draft and chat SSE are not cut at the default 30s rewrite limit. Do not set `NEXT_PUBLIC_API_URL` to the Docker hostname `backend` — the browser cannot resolve it.
 
 Axios `apiClient` uses `withCredentials: true` so the HttpOnly cookie `tor_access_token` is sent. If the in-memory store still has a token (returned in the login JSON), it is also sent as `Authorization: Bearer`. A 401 clears the session and sends the browser to `/login`.
 
@@ -56,7 +56,7 @@ Admin **การตั้งค่า AI** (`/admin/ai-settings`) toggles Local
 | `npm run test:e2e:guide` | Extra screenshots for the user guideline (`CAPTURE_GUIDE=1`) |
 | `npm run test:e2e:ui` | Playwright UI mode |
 
-E2E specs live in `app/frontend/e2e/`. They require `E2E=1` and a running UI (Docker or `next dev`) plus seed users.
+E2E specs live in `app/frontend/e2e/` with their own `e2e/tsconfig.json` (`types: ["node"]`) so opening a spec does not raise TS2580 on `Buffer`. They require `E2E=1` and a running UI (Docker or `next dev`) plus seed users. A locked Phase 2 chip uses `aria-disabled`; the walk-through clicks it with `{ force: true }` to prove the UI stays on Phase 0.
 
 Stable selectors: `login-form`, `new-project`, `draft-page`, `phase-0`…`phase-4`, `intake-chat-panel`, `intake-upload`, `intake-confirm-ready`, `chat-page`, `chat-shell`, `nav-chat`, `help-tab-faq`, `nav-knowledge-base`, `nav-admin-ai-settings`, `admin-ai-settings-page`, `ai-settings-test`, `ai-settings-status`, `approve-project`, `reject-project`, `hitl-confirm-s3`.
 
@@ -80,6 +80,7 @@ Last headed run numbers and screenshots: `discussions/18-TEST_EVIDENCE.md`. User
 
 - Component props that Sonar flagged are `Readonly<...>`.
 - Live E2E specs keep `test.skip(skipUnlessLive, …)` with a comment: they need a live stack and are skipped unless `E2E=1`.
+- Playwright e2e is excluded from `sonar.sources`; Node globals come from `e2e/tsconfig.json` plus `import { Buffer } from "node:buffer"`.
 - Password rules and review-finding mapping live in `src/lib/` so Vitest covers them without rendering pages.
 - Nested ternaries in the draft editor were split into `ScopeSubsectionEditor`, `StandardSectionFields`, and `SectionFieldControl`.
 - Date/money regexes on the backend stay `[0-9]`; Sonar `python:S6353` is ignored on purpose.

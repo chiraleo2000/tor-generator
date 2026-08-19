@@ -22,7 +22,7 @@ test.describe("TOR 5-phase draft", () => {
   });
 
   test("Phase 2 AI draft uses LM Studio Gemma", async ({ page }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(360_000);
     await login(page);
     await createProjectAndOpenDraft(page);
     await unlockPhase2ViaMockedIntake(page);

@@ -8,6 +8,7 @@ from app.services.intake_service import (
     clamp_draft_phase,
     has_intake_material,
     intake_unlocked_phase,
+    slot_content,
 )
 
 
@@ -56,3 +57,9 @@ def test_clamp_skips_submitted_projects():
     project = _project(status="in_review", phase=3)
     assert clamp_draft_phase(project) is False
     assert project.current_phase == 3
+
+
+def test_slot_content_reads_only_dict_slots():
+    assert slot_content({"s1": {"content": "  x  "}}, "s1") == "  x  "
+    assert slot_content({"s1": "not-a-slot"}, "s1") == ""
+    assert slot_content({}, "s1") == ""

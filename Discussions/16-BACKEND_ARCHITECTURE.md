@@ -21,7 +21,7 @@ flowchart LR
   API --> Export["DOCX / PDF + MinIO"]
 ```
 
-`redirect_slashes=False` so `POST /api/v1/projects` is not 307’d to `/projects/` (that redirect dropped the JSON body through the Next.js rewrite).
+`redirect_slashes=False` so `POST /api/v1/projects` is not 307’d to `/projects/` (that redirect dropped the JSON body through the Next.js rewrite). The Next.js rewrite proxy timeout is 5 minutes (`experimental.proxyTimeout`) so LangGraph draft retries are not hung up at 30s.
 
 ## Layers
 
@@ -36,7 +36,7 @@ flowchart LR
 | Export | `app/export/` | Thai formatting, DOCX, PDF, MinIO |
 | Models | `app/models/` | SQLAlchemy: users, projects (`current_phase`, `analysis_json`, `extracted_fields`), TOR sections, templates, KB (`owner_id`, `mongo_gridfs_id`, `scope`), chat rooms/messages/prompts, audit, AI runtime settings |
 
-HTTP handlers use FastAPI `Annotated[..., Depends(...)]`. Shared API strings are in `app/api/constants.py`. Short tempfile writes go through `app/io_temp.py` so they do not block the event loop. `get_redis` and `get_minio` are synchronous (they only read `app.state`). `require_role`’s **inner** checker is sync and must use `current_user=Depends(get_current_user)` — wrapping that nested parameter in `Annotated` makes FastAPI 0.115 on Python 3.14 treat `current_user` as a missing body field (HTTP 422). `require_project_access` raises on deny and returns `None` on success. Knowledge-base list is registered on both `""` and `"/"` because `redirect_slashes=False`.
+HTTP handlers use FastAPI `Annotated[..., Depends(...)]`. Shared API strings are in `app/api/constants.py`. Short tempfile writes go through `app/io_temp.py` so they do not block the event loop. Intake copies filled slots into TOR sections via `apply_slot_map_to_sections` / `slot_content`. `GET /projects/{id}/sections` falls back to `slot_map` when a section row is still empty. `get_redis` and `get_minio` are synchronous (they only read `app.state`). `require_role`’s **inner** checker is sync and must use `current_user=Depends(get_current_user)` — wrapping that nested parameter in `Annotated` makes FastAPI 0.115 on Python 3.14 treat `current_user` as a missing body field (HTTP 422). `require_project_access` raises on deny and returns `None` on success. Knowledge-base list is registered on both `""` and `"/"` because `redirect_slashes=False`.
 
 ## Canonical TOR model
 

@@ -136,7 +136,7 @@ curl.exe http://localhost:4000/health
 curl.exe http://localhost:3000
 ```
 
-Frontend พร็อกซี `/api/v1/*` ไปที่ backend ภายใน Docker (`BACKEND_INTERNAL_URL=http://backend:4000/api/v1`)
+Frontend พร็อกซี `/api/v1/*` ไปที่ backend ภายใน Docker (`BACKEND_INTERNAL_URL=http://backend:4000/api/v1`). `next.config.js` ตั้ง `experimental.proxyTimeout` เป็น 300000 มิลลิวินาที เพราะร่างด้วย AI / แชท SSE มักเกินค่าเริ่มต้น 30 วินาทีของ rewrite proxy
 
 ## 7. ทดสอบ
 
@@ -178,7 +178,7 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**18 ส.ค. 2026 ~16:35 น.**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**19 ส.ค. 2026**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
@@ -186,16 +186,16 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest รวม live LM Studio | **1367 ผ่าน** / ครอบคลุม **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
-| Vitest | **109 ผ่าน** / ครอบคลุม **90.97%** statements ของ lib+stores+หน้าตั้งค่า AI+chat SSE |
-| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม — ฟอร์มสร้างโครงการ, แชทร่าง Phase 0–1, `/chat`, เดิน Phase 0–4, ร่างด้วย AI (Gemma), Admin AI ping LM Studio |
+| pytest รวม live LM Studio | **1378 ผ่าน** / ครอบคลุม **87%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| Vitest | **119 ผ่าน** / ครอบคลุม **91.39%** statements ของ lib+stores+หน้าตั้งค่า AI+chat SSE |
+| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม — ฟอร์มสร้างโครงการ, แชทร่าง Phase 0–1, `/chat`, เดิน Phase 0–4, ร่างด้วย AI (Gemma ~2.7 นาที) |
 | Playwright รายงาน coverage | **3 ผ่าน** (`test:e2e:reports` ที่พอร์ต 8765/8766/8767) |
 | การตั้งค่า AI | โหมดในเครื่อง = LM Studio/Ollama/llama.cpp; โหมดคลาวด์ = Claude/OpenAI/Gemini + คีย์ในหน้า UI; บันทึกมีผลทันที |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 
 ![Backend coverage 87%](test-evidence/13-backend-coverage.png)
 
-![Frontend coverage 90.97%](test-evidence/14-frontend-coverage.png)
+![Frontend coverage 91.39%](test-evidence/14-frontend-coverage.png)
 
 รอบนี้แก้ pgvector จริง: คอลัมน์ `metadata` ชนกับ `Table.metadata` ทำให้ upsert ฝังเวกเตอร์ไม่ได้ และ `search()` ล้มตอนสร้าง SQL — ตอนนี้ insert ใช้ `__table__` / `excluded["metadata"]` และ `Vector.cosine_distance` `seed_kb` ข้าม bind-mount ที่อ่านไม่ได้ (Errno 5) และรองรับไฟล์ชื่อสั้น + sidecar `.kbname` เพราะชื่อไทยยาวเกิน NAME_MAX ของ Linux Gemma 4 ใช้ reasoning tokens — `LMStudioLocalProvider` ตั้ง `max_tokens` เริ่มต้น 4096
 
@@ -206,7 +206,7 @@ npm run test:e2e:headed
 คำเตือนใน Problems ของ Cursor มักเป็นหนึ่งในสามอย่างนี้ — ส่วนใหญ่ **ไม่ใช่บั๊กในแอปที่รันอยู่**:
 
 1. **พาธ `frontend/...` หรือ `backend/...` ที่ราก** — โฟลเดอร์เหล่านี้ **ไม่มีในดิสก์**. โค้ดจริงอยู่ที่ `app/frontend` และ `app/backend`. ปิดแท็บที่พาธไม่มีคำว่า `app/` แล้วกด **Developer: Reload Window**. TypeScript → **Use Workspace Version**.
-2. **การตั้งค่า IDE** — `.vscode/settings.json` ข้ามเฉพาะ `frontend/**` และ `backend/**` ที่ราก (อย่าใช้ `**/frontend/**` เพราะจะไปข้าม `app/frontend` ด้วย). `tsconfig.json` ที่รากชี้ไฟล์เดียว (`.vscode/tsconfig-placeholder.ts`) เพื่อไม่ให้ TS18002 และไม่ให้ language service ไป infer โปรเจกต์จากพาธราก. `.cursorignore` และ `sonar-project.properties` ใช้ `sonar.sources=app`.
+2. **การตั้งค่า IDE** — `.vscode/settings.json` ข้ามเฉพาะ `frontend/**` และ `backend/**` ที่ราก (อย่าใช้ `**/frontend/**` เพราะจะไปข้าม `app/frontend` ด้วย). `tsconfig.json` ที่รากชี้ไฟล์เดียว (`.vscode/tsconfig-placeholder.ts`) เพื่อไม่ให้ TS18002 และไม่ให้ language service ไป infer โปรเจกต์จากพาธราก. `sonar-project.properties` ใช้ `sonar.sources=app/frontend/src,app/backend/app` (ไม่สแกน `e2e/`). สเปก Playwright อยู่นอก `app/frontend/tsconfig.json` — เปิด `app/frontend/e2e/tsconfig.json` (`types: ["node"]`) และ `import { Buffer } from "node:buffer"` เพื่อไม่ให้ TS2580 เมื่อพิมพ์ `Buffer.from` ในอัปโหลด E2E.
 3. **`documents/extract-scripts/**`** — สคริปต์วิจัย ไม่ได้ถูก Docker รัน — ถูก exclude จาก SonarLint / search.
 
 อย่าใส่ `"ignoreDeprecations": "6.0"` ใน `app/frontend/tsconfig.json`. อย่าเปลี่ยน `[0-9]` เป็น `\\d` ในกฎรูปแบบ (Python `\\d` ตรงกับเลขไทย).
