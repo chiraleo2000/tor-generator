@@ -237,11 +237,11 @@ export default function HelpPage() {
 }
 
 interface GuideBlockProps {
-  readonly title: string;
-  readonly children: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
 }
 
-function GuideBlock({ title, children }: GuideBlockProps) {
+function GuideBlock({ title, children }: Readonly<GuideBlockProps>) {
   return (
     <div className="guide-content space-y-3">
       <h2 className="text-[19px] font-bold text-navy">{title}</h2>
@@ -253,10 +253,10 @@ function GuideBlock({ title, children }: GuideBlockProps) {
 }
 
 interface FlowProps {
-  readonly steps: string[];
+  steps: string[];
 }
 
-function Flow({ steps }: FlowProps) {
+function Flow({ steps }: Readonly<FlowProps>) {
   return (
     <div className="illus-flow my-4 flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-gradient-to-br from-indigo-50 to-orange-50 p-5">
       {steps.map((step, index) => (

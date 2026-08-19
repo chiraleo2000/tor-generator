@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.2.2**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ, และโหมด LLM ในเครื่อง (LM Studio / Ollama / llama.cpp) หรือคลาวด์จากหน้าผู้ดูแล
+แอปที่รันจริงคือ **v0.2.3**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ, และโหมด LLM ในเครื่อง (LM Studio / Ollama / llama.cpp) หรือคลาวด์จากหน้าผู้ดูแล
 
 **GitHub Pages คือ UI จำลองเท่านั้น** — เปิดจาก [`index.html`](index.html) ที่ root ของรีโป ให้หน้าตาและเมนูตรงกับแอปปัจจุบัน แต่ไม่เรียก API/LLM จริง และ**ไม่ได้**ใช้ `discussions/06-UXUI-Mockup.html`
 
