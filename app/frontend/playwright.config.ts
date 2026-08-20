@@ -5,10 +5,19 @@ const headed = process.env.HEADED === "1";
 const captureReports = process.env.CAPTURE_REPORTS === "1";
 const captureGuide = process.env.CAPTURE_GUIDE === "1";
 
+/**
+ * Optional suites stay ignored unless their own flag is set.
+ * Never clear the whole ignore list when a capture flag leaks into the shell —
+ * that used to pull reports/guide into `test:e2e:headed` and fail on missing :8765/:8766.
+ */
 function ignoredSpecs(): string[] {
-  if (captureReports || captureGuide) return [];
-  if (!e2eEnabled) return ["**/*.spec.ts"];
-  return ["**/reports.spec.ts", "**/guide-shots.spec.ts"];
+  if (!e2eEnabled && !captureReports && !captureGuide) {
+    return ["**/*.spec.ts"];
+  }
+  const ignore: string[] = [];
+  if (!captureReports) ignore.push("**/reports.spec.ts");
+  if (!captureGuide) ignore.push("**/guide-shots.spec.ts");
+  return ignore;
 }
 
 export default defineConfig({
