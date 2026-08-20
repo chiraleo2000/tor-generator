@@ -283,7 +283,6 @@ textarea{resize:vertical;min-height:80px;}
     <div class="menu-section">
       <div class="menu-title">การทำงาน</div>
       <div class="menu-item" data-page="draft" onclick="nav('draft',this)"><span class="menu-icon">✍️</span>ร่าง TOR</div>
-      <div class="menu-item" data-page="agent" onclick="nav('agent',this)"><span class="menu-icon">🤖</span>Agent API</div>
       <div class="menu-item" data-page="review" onclick="nav('review',this)"><span class="menu-icon">✔️</span>ตรวจสอบ TOR</div>
     </div>
     <div class="menu-section">
@@ -367,21 +366,6 @@ textarea{resize:vertical;min-height:80px;}
           <div class="phase-flow" id="phaseFlow"></div>
         </div>
         <div id="phaseContent"></div>
-      </div>
-
-      <div id="page-agent" class="page">
-        <div class="card" style="margin-bottom:16px;">
-          <h2 style="color:var(--navy);margin-bottom:10px;">เส้นทาง Agent TOR (API อย่างเดียว)</h2>
-          <p style="font-size:13.5px;line-height:1.7;color:var(--gray-700);">แอป Docker ที่รันอยู่ยังร่างด้วยพื้นที่ทำงาน 5 Phase ที่ /projects/{id}/draft Mock นี้ไม่แทนที่ UI นั้น — เพิ่มเอกสารเส้นทางขนาน /api/v1/agent สำหรับไคลเอนต์ในอนาคต</p>
-        </div>
-        <div class="card" style="margin-bottom:16px;">
-          <h3 style="color:var(--navy);margin-bottom:8px;">ลำดับงาน</h3>
-          <p style="font-size:13px;line-height:1.8;">ingest (ไม่เกิน 20 ไฟล์ / PPTX ได้) → แผนที่ 27 ช่อง → ถามส่วนขาด (สูงสุด 20 รอบ ครั้งละ 5 ข้อ) → ยืนยัน → ร่าง s1–s13 (900 วินาที, แก้ตามกฎไม่เกิน 3) → HITL (s3, s6, s8, s10, s13) → ส่งออก DOCX/PDF</p>
-        </div>
-        <div class="card">
-          <h3 style="color:var(--navy);margin-bottom:8px;">โมเดล</h3>
-          <p style="font-size:13px;line-height:1.8;">ค่าเริ่มต้นในเครื่อง: LM Studio google/gemma-4-e4b + EmbeddingGemma-300M<br>แชทและ embeddings เลือกอิสระในทุกโหมด เช่น Claude API + EmbeddingGemma ในเครื่อง — คีย์คลาวด์ใส่ที่หน้าผู้ดูแล<br>ถาม-ตอบคลังแยก: /api/v1/kb-chat (ไม่แทน /chat)</p>
-        </div>
       </div>
 
       <!-- ============ REVIEW TOR ============ -->
@@ -726,7 +710,6 @@ const PAGE_META = {
   dashboard:{title:'Dashboard', sub:'ภาพรวมโครงการ TOR ทั้งหมด'},
   knowledge:{title:'Knowledge Base', sub:'คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG'},
   draft:{title:'ร่าง TOR', sub:'กระบวนการร่างเอกสาร TOR แบบ Flow 5 Phase'},
-  agent:{title:'Agent API', sub:'เส้นทาง /api/v1/agent และ /kb-chat (ยังไม่มีหน้า Next.js)'},
   review:{title:'ตรวจสอบ TOR', sub:'ตรวจสอบความถูกต้องตามกฎหมายและเทียบเคียงโครงการ'},
   guide:{title:'คู่มือการใช้งาน', sub:'คำอธิบายและภาพประกอบแต่ละส่วนของระบบ'}
 };

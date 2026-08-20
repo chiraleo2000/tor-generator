@@ -216,7 +216,7 @@ tr:hover td{background:#f9fafb}
     <button class="logout" type="button" id="logoutBtn">ออกจากระบบ</button>
   </aside>
   <div class="main">
-    <div class="sim-banner">จำลองบน GitHub Pages v0.2.3 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, Agent API เอกสาร) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
+    <div class="sim-banner">จำลองบน GitHub Pages v0.2.3 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, ตรวจสอบ TOR) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
     <header class="topbar">
       <div><h1 id="pageTitle">แดชบอร์ด</h1><p class="sub" id="pageSub">ภาพรวมโครงการ TOR ทั้งหมด</p></div>
       <div class="user-chip"><span id="userEmail"></span><div class="avatar" id="userAv">?</div></div>
@@ -277,8 +277,7 @@ const META = {
   templates:["แม่แบบ","โครงร่าง TOR ตามประเภทงาน"],
   adminkb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG"],
   users:["ผู้ใช้","บัญชีเจ้าหน้าที่และสิทธิ์"],
-  ai:["การตั้งค่า AI","เลือกแชทและฝังเวกเตอร์อิสระ (ในเครื่อง / คลาวด์)"],
-  agent:["Agent API","เส้นทาง /api/v1/agent และ /kb-chat — ยังไม่มีหน้า Next.js"]
+  ai:["การตั้งค่า AI","เลือกแชทและฝังเวกเตอร์อิสระ (ในเครื่อง / คลาวด์)"]
 };
 const ACCOUNTS = {
   "officer@example.go.th":{name:"เจ้าหน้าที่พัสดุ",role:"officer",org:"กรมบัญชีกลาง"},
@@ -526,7 +525,7 @@ function navHtml(){
   const p=state.page;
   const item=(id,href,icon,label)=>`<a class="menu-item ${p===id?"active":""}" href="#/${href}">${ICONS[icon]}${label}</a>`;
   let h=`<div class="menu-section"><p class="menu-title">หลัก</p>${item("projects","projects","dash","แดชบอร์ด")}${item("kb","knowledge-base","book","ฐานความรู้")}</div>`;
-  h+=`<div class="menu-section"><p class="menu-title">การทำงาน</p>${item("draft","draft","pen","ร่าง TOR")}${item("agent","agent","cpu","Agent API")}${item("review","review","scan","ตรวจสอบ TOR")}${item("chat","chat","chat","ถาม-ตอบ")}</div>`;
+  h+=`<div class="menu-section"><p class="menu-title">การทำงาน</p>${item("draft","draft","pen","ร่าง TOR")}${item("review","review","scan","ตรวจสอบ TOR")}${item("chat","chat","chat","ถาม-ตอบ")}</div>`;
   h+=`<div class="menu-section"><p class="menu-title">อื่นๆ</p>${item("help","help","help","คู่มือ")}</div>`;
   if(state.user?.role==="admin"){
     h+=`<div class="menu-section"><p class="menu-title">ผู้ดูแลระบบ</p>${item("templates","admin/templates","file","แม่แบบ")}${item("adminkb","admin/knowledge-base","book","ฐานความรู้ (จัดการ)")}${item("users","admin/users","users","ผู้ใช้")}${item("ai","admin/ai-settings","cpu","การตั้งค่า AI")}</div>`;
@@ -550,7 +549,6 @@ function viewHtml(){
     case "kb": return kbHtml();
     case "draft": return draftHtml();
     case "chat": return chatHtml();
-    case "agent": return agentHtml();
     case "review": return reviewHtml();
     case "help": return helpHtml();
     case "templates": return templatesHtml();
@@ -946,28 +944,10 @@ function reviewHtml(){
   </div>`;
 }
 
-function agentHtml(){
-  return `<div class="gov-card" style="margin-bottom:16px">
-    <h2 style="color:var(--navy);margin-bottom:8px">เส้นทาง Agent TOR (API อย่างเดียว)</h2>
-    <p>แอป Docker ยังร่างด้วยพื้นที่ทำงาน 5 Phase ที่ /projects/{id}/draft หน้านี้เป็นเอกสารเส้นทางขนาน <code>/api/v1/agent</code> สำหรับไคลเอนต์ในอนาคต ไม่มีหน้า Next.js ใน v0.2.0</p>
-  </div>
-  <div class="gov-card" style="margin-bottom:16px">
-    <h3 style="color:var(--navy);margin-bottom:8px">ลำดับงาน</h3>
-    <div class="flow"><span>รับเอกสาร</span><span>แผนที่ 27 ช่อง</span><span>ถามส่วนขาด</span><span>ร่าง s1–s13</span><span>เจ้าหน้าที่ตรวจ</span><span>ส่งออก</span></div>
-    <p class="muted" style="margin-top:10px">สูงสุด 20 ไฟล์ / 50 MB, รองรับ PPTX, ถามครั้งละไม่เกิน 5 ข้อ, ยืนยัน s3 s6 s8 s10 s13 ก่อนส่งออก</p>
-  </div>
-  <div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">โมเดลท้องถิ่นและคลาวด์</h3>
-    <p>ค่าเริ่มต้น: LM Studio google/gemma-4-e4b + EmbeddingGemma-300M (ข้อมูลไม่ออกเครื่อง)</p>
-    <p>สลับคลาวด์จากหน้าผู้ดูแลเมื่อมี API key โดยไม่บังคับสลับฝังเวกเตอร์: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible</p>
-    <p class="muted">ถาม-ตอบคลังแยก <code>/api/v1/kb-chat</code> ไม่แทนเมนูถาม-ตอบ <code>/chat</code></p>
-  </div>`;
-}
-
 function helpHtml(){
   const tabs=[["overview","ภาพรวม","dash"],["login","เข้าสู่ระบบ","users"],["dashboard","แดชบอร์ด","dash"],["draft","ร่าง TOR","pen"],["chat","ถาม-ตอบ","chat"],["kb","ฐานความรู้","book"],["review","ตรวจสอบ","scan"],["admin","ผู้ดูแล","cpu"],["faq","คำถามที่พบบ่อย","help"]];
   const body={
-    overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3><p>ระบบช่วยเจ้าหน้าที่พัสดุร่างและตรวจสอบ TOR ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มี 13 หมวด แชทร่างใน Phase 0–1 และถาม-ตอบคลังความรู้แยกต่างหาก v0.2 เพิ่มเส้นทาง API agent ขนาน (ยังไม่มีหน้าจอแอป)</p><div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>แชทร่าง 5 Phase</span><span>ถาม-ตอบ</span><span>ตรวจสอบ</span></div>`,
+    overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3><p>ระบบช่วยเจ้าหน้าที่พัสดุร่างและตรวจสอบ TOR ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มี 13 หมวด แชทร่างใน Phase 0–1 และถาม-ตอบคลังความรู้แยกต่างหาก</p><div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>แชทร่าง 5 Phase</span><span>ถาม-ตอบ</span><span>ตรวจสอบ</span></div>`,
     login:`<h3 style="color:var(--navy);margin-bottom:8px">เข้าสู่ระบบ</h3><p>บัญชีทดลอง officer@example.go.th / Passw0rd! — ผู้ดูแล admin@ และผู้ตรวจ reviewer@ ใช้รหัสเดียวกัน</p><p class="muted">สมัครสมาชิกได้ที่หน้าสมัคร บัญชีใหม่ได้บทบาทเจ้าหน้าที่</p>`,
     dashboard:`<h3 style="color:var(--navy);margin-bottom:8px">แดชบอร์ด</h3><p>การ์ดสถานะสามใบ: ร่าง / กำลังดำเนินการ / เสร็จแล้ว และตารางโครงการ</p><p>กดสร้างโครงการใหม่แล้วกรอกฟอร์มสร้างโครงการ แล้วเข้า Phase 0 (แชทอัปโหลดชุดใหญ่)</p>`,
     kb:`<h3 style="color:var(--navy);margin-bottom:8px">ฐานความรู้</h3><p>คลังบังคับมาจากคู่มือแนวปฏิบัติและโฟลเดอร์ข้อมูลดิบ เจ้าหน้าที่อัปโหลดเอกสารของตนเองได้ที่หน้านี้ (เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลาง</p>`,
@@ -975,7 +955,7 @@ function helpHtml(){
     chat:`<h3 style="color:var(--navy);margin-bottom:8px">ถาม-ตอบ</h3><p>เมนูการทำงาน → ถาม-ตอบ เปิดห้องแชทรายคน ค้นคลังกลางและเอกสารของฉันด้วย RAG + กราฟกฎหมาย ประวัติไม่ปนกับแชทร่างโครงการ</p>`,
     review:`<h3 style="color:var(--navy);margin-bottom:8px">ตรวจสอบ TOR</h3><p>อัปโหลดไฟล์ที่มีอยู่แล้ว ระบบอ้างอิงกฎหมายบังคับเสมอ เทียบเคียงไฟล์อื่นด้วย Jaccard และแสดงผลเป็นรายการผ่าน/เตือน/ไม่ผ่าน</p>`,
     admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3><p>หน้าแม่แบบ ผู้ใช้ และการตั้งค่า AI — เลือกแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude + EmbeddingGemma ในเครื่อง คีย์ใส่ในหน้านี้ บันทึกแล้วมีผลทันที</p>`,
-    faq:`<h3 style="color:var(--navy);margin-bottom:8px">คำถามที่พบบ่อย</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p><p>โมเดลไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลด google/gemma-4-e4b และ text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่การตั้งค่า AI โดยคงฝังเวกเตอร์ในเครื่องได้</p><p>เส้นทาง API ตัวแทน: POST /api/v1/agent/sessions (multipart) และ /api/v1/kb-chat — ใช้โมเดลในเครื่องหรือคีย์คลาวด์จากหน้าการตั้งค่า AI</p>`
+    faq:`<h3 style="color:var(--navy);margin-bottom:8px">คำถามที่พบบ่อย</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p><p>โมเดลไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลด google/gemma-4-e4b และ text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่การตั้งค่า AI โดยคงฝังเวกเตอร์ในเครื่องได้</p><p>การตั้งค่าโมเดลและคลังความรู้เป็นหน้าที่ผู้ดูแลที่หน้าการตั้งค่า AI และฐานความรู้ (จัดการ) — เจ้าหน้าที่ใช้เมนูร่าง TOR / ตรวจสอบ / ถาม-ตอบ</p>`
   };
   const tabsHtml = tabs
     .map(([id, l, icon]) => {
@@ -1403,9 +1383,10 @@ function route(){
   if(!state.user){ showAuth(h==="register"?"register":"login"); return; }
   document.getElementById("auth").style.display="none";
   document.getElementById("app").style.display="block";
-  const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","agent":"agent","chat":"chat","review":"review","help":"help",
+  const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","chat":"chat","review":"review","help":"help",
     "admin/templates":"templates","admin/knowledge-base":"adminkb","admin/users":"users","admin/ai-settings":"ai"};
   state.page=map[h]||"projects";
+  if(h==="agent"){ location.hash="#/projects"; return; }
   if(state.page==="draft") ensureDraftProject();
   if(state.page.startsWith("admin")||["templates","adminkb","users","ai"].includes(state.page)){
     if(state.user.role!=="admin"){ location.hash="#/projects"; return; }
