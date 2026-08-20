@@ -75,7 +75,9 @@ test.describe("Guide screenshots", () => {
     await expect(page.getByTestId("admin-ai-settings-page")).toBeVisible();
     await saveEvidence(page, "09a-admin-ai-local");
 
-    await page.locator("#ai-mode").selectOption("cloud");
+    // Mode is a label only — cloud key fields appear when chat/embed is a cloud vendor.
+    await page.locator("#ai-mode").selectOption("hybrid");
+    await page.locator("#ai-llm").selectOption("claude");
     await expect(page.locator("#anthropic-key")).toBeVisible();
     await saveEvidence(page, "09b-admin-ai-cloud");
   });

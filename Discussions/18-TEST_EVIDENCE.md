@@ -24,9 +24,9 @@
 | pytest ไม่รวม `live_llm` (v0.2.3) | **1448 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL, intake, `/chat`, wizard, hybrid timeout ขยายเกณฑ์ flaky |
 | pytest `-m live_llm` | **10 ผ่าน** (~1m40s) | LM Studio ที่ `http://127.0.0.1:1234` — Gemma 4 + EmbeddingGemma-300M · ยิง `/v1/models` แชทจิ๋ว และ embedding 768 มิติ |
 | Vitest `npm run test:unit` | **128 ผ่าน** / 30 ไฟล์ | รวมหน้า `/review`, `formatChatTimestamp`, alert คลังความรู้เมื่อโหลด/อัปโหลดล้ม |
-| Playwright (แอป, 1 worker) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (20 ส.ค. 2026, ~2.6 นาที รวม Phase 2 AI) | เวิร์กโฟลว์บน http://localhost:3000 รวม `/chat`, `/review`, `/help`, ร่าง 5 Phase และร่างด้วย AI (Gemma) |
-| Smoke API 3 เครื่องมือ | **ผ่านหมด** | ร่าง TOR · ตรวจสอบ TOR · ถาม-ตอบ (ดูตารางด้านล่าง) |
-| ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** (19 ส.ค.) | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ |
+| Playwright (แอป, 1 worker, **headed**) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (20 ส.ค. 2026 ~17:20 น. · ~3.1 นาที รวม Phase 2 AI) | รัน `npm run test:e2e:headed` — Chromium เปิดหน้าจอจริง (`slowMo` 250ms) + ถ่ายภาพทุกเคส · ภาพหลักฐานอัปเดตใน `test-evidence/` |
+| Guide screenshots (`test:e2e:guide`) | **3 ผ่าน** (headed) | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือ แอดมิน AI (Claude+คีย์) · รีเฟรช PNG คู่มือ |
+| Playwright HTML report | จับภาพแล้ว | `15-playwright-report.png` จาก `playwright-report` ที่พอร์ต 8767 |
 
 ไฟล์ `e2e/reports.spec.ts` และ `e2e/guide-shots.spec.ts` **ไม่ถูกรวม**ใน `npm run test:e2e` ปกติ จึงไม่มีเคสข้ามในชุดหลัก (Sonar S1607)
 
@@ -44,10 +44,11 @@
 
 ---
 
-## รายงาน Playwright — 15 เคสแอป
+## รายงาน Playwright — 15 เคสแอป (headed)
 
-รัน: `cd app/frontend && npm run test:e2e` (1 worker) หรือ `npm run test:e2e:headed`  
-Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเนอร์พอร์ต 3000
+รัน: `cd app/frontend && npm run test:e2e:headed` (1 worker, Chromium มองเห็นได้)  
+ค่าเริ่มต้น `npm run test:e2e` เป็น **headless** — ไม่มีหน้าต่างเบราว์เซอร์ จึงไม่เห็น UI ระหว่างเทสต์  
+Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเนอร์พอร์ต 3000 · `HEADED=1` เปิดหน้าจอ + `screenshot: on` + `slowMo: 250`
 
 ![รายงาน Playwright — 15 ผ่าน 0 ล้ม](test-evidence/15-playwright-report.png)
 

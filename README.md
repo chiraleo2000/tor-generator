@@ -153,7 +153,8 @@ npm run test:e2e:headed
 | pytest `-m "not live_llm"` | **1448 ผ่าน**, 1 ข้าม, 10 ไม่รัน (`live_llm`) |
 | pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) |
 | Vitest `npm run test:unit` | **128 ผ่าน** (30 ไฟล์) |
-| Playwright `test:e2e` (1 worker, Docker :3000) | **15 ผ่าน** / 0 ล้ม |
+| Playwright `test:e2e:headed` (1 worker, Docker :3000) | **15 ผ่าน** / 0 ล้ม (~3.1 นาที · UI มองเห็นได้) |
+| Guide `test:e2e:guide` | **3 ผ่าน** (รีเฟรชภาพคู่มือ) |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
 

@@ -209,7 +209,8 @@ npm run test:e2e:headed
 | pytest ไม่รวม `live_llm` | **1448 ผ่าน** / ครอบคลุม **85%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
 | pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) เมื่อรันชุดนั้น |
 | Vitest | **128 ผ่าน** (รวมหน้า `/review`, timestamp แชท, alert คลังความรู้) |
-| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม (20 ส.ค. 2026 · รวม Phase 2 AI ~2.3 นาที) |
+| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม (20 ส.ค. 2026 ~17:20 น. · ~3.1 นาที รวม Phase 2 AI · `test:e2e:headed`) |
+| Guide screenshots | **3 ผ่าน** (`test:e2e:guide` headed · รีเฟรช PNG ใน `test-evidence/`) |
 | Smoke API 3 เครื่องมือ | ร่าง s1, Phase 3 คะแนน 79 + 11 ข้อเสนอแนะ, `/review` extract+run, `/chat` SSE 5 citations, kb-chat มีคำตอบ |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 
