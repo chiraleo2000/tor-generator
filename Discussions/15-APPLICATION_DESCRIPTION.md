@@ -58,7 +58,7 @@
 
 ตัวเลขรอบที่ผ่านครบและภาพหน้าจออยู่ที่ `18-TEST_EVIDENCE.md`  
 รอบ **20 ส.ค. 2026** ตรวจสด 3 เครื่องมือบน Docker + LM Studio: ร่าง TOR (intake + ร่าง s1 + agent ingest), ตรวจสอบ TOR (Phase 3 คะแนน 79 / 11 ข้อเสนอแนะ และ `/review`), ถาม-ตอบ (SSE + kb-chat มี citations)  
-pytest **1448** ผ่าน · Vitest **128** ผ่าน · Playwright **15** ผ่าน · คู่มือในแอป `/help` อธิบายเส้นทางเดียวกัน
+pytest **1451** (+ live_llm **10**) ผ่าน · Vitest **128** ผ่าน · Playwright **15** ผ่าน · คู่มือในแอป `/help` อธิบายเส้นทางเดียวกัน
 
 คำอธิบายการใช้ทีละขั้นอยู่ที่ `13-USER_GUIDELINE.md`
 

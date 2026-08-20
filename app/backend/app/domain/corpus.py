@@ -39,9 +39,17 @@ class CorpusFile:
 
 
 def repo_root() -> Path | None:
-    parts = Path(__file__).resolve().parents
-    if len(parts) > 3:
-        return parts[3]
+    """Walk up from this file until documents/sources (or .git + app/backend) is found.
+
+    corpus.py lives at app/backend/app/domain/ — fixed parents[N] breaks when the
+    package depth changes; discovery is safer for host and Docker layouts.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "documents" / "sources").is_dir():
+            return parent
+        if (parent / ".git").exists() and (parent / "app" / "backend").is_dir():
+            return parent
     return None
 
 

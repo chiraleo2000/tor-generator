@@ -22,9 +22,10 @@
 | API | FastAPI · พอร์ต **4000** · คำนำหน้า `/api/v1` |
 | พื้นที่ทำงานหลัก | **5 Phase (0–4)** ไม่ใช่วิซาร์ด 8 ขั้น (เหลือไว้เพื่อความเข้ากันได้) |
 | โมเดลเอกสาร | 13 ส่วนกฎหมาย + ขอบเขตงานย่อย `s4.1`–`s4.14` = **27 ช่อง** |
-| AI ค่าเริ่มต้น | แชท `google/gemma-4-e4b` · ฝังเวกเตอร์ EmbeddingGemma 768 มิติ · ในเครื่องผ่าน LM Studio |
+| AI ค่าเริ่มต้น (dev) | แชท `google/gemma-4-e4b` · ฝังเวกเตอร์ EmbeddingGemma 768 มิติ · ในเครื่องผ่าน LM Studio |
+| AI production แนะนำ | Amazon Bedrock บนบัญชี AWS — คู่มือ `20-AWS_BEDROCK_SETUP.md` · ตัวเลือก on-prem/cloud อื่นสลับได้จาก Admin |
 | บทบาท | `officer` / `reviewer` / `admin` |
-| เทสต์รอบนี้ | **Vitest 128** · **pytest 1448** (+ **live_llm 10**) · **Playwright headed 15** · smoke 3 เครื่องมือผ่าน |
+| เทสต์รอบนี้ | **Vitest 128** · **pytest 1451** (+ **live_llm 10**) · **Playwright headed 15** · coverage backend ~84% · frontend statements ~89% · **0 skipped** |
 
 ```mermaid
 flowchart LR
@@ -411,7 +412,9 @@ flowchart TD
 | เป้าหมาย | แชท | ฝังเวกเตอร์ | หมายเหตุ |
 |----------|-----|-------------|----------|
 | ค่าเริ่มต้นในเครื่อง | LM Studio (Gemma) | EmbeddingGemma ในเครื่อง | โหลดทั้งสองโมเดลที่พอร์ต 1234 |
+| **Amazon production** | Bedrock | Titan หรือในเครื่อง | IAM role / access key · ดู 20-AWS_BEDROCK_SETUP |
 | Claude + ฝังเวกเตอร์ในเครื่อง | Claude (Anthropic) | ในเครื่อง | ใส่ Anthropic key · เปิด LM Studio โหลด EmbeddingGemma · ไม่ต้อง seed ใหม่ |
+| SGLang multi-user | SGLang | SGLang | `docker compose --profile sglang` · GPU |
 | Claude + OpenAI embeddings | Claude | ฝังเวกเตอร์ OpenAI | ใส่ Anthropic + OpenAI key · **ต้อง** `python -m app.seed_raw_docs` หลังเปลี่ยนฝังเวกเตอร์ |
 
 ### 9.3 คำสั่ง seed
@@ -444,19 +447,19 @@ flowchart TD
 
 ![Vitest ผ่าน](test-evidence/19-vitest-output.png)
 
-![pytest 1448 ผ่าน](test-evidence/19-pytest-output.png)
+![pytest 1451 ผ่าน](test-evidence/19-pytest-output.png)
 
 ![แผนที่: การใช้งาน ↔ เทสต์ที่ล็อกพฤติกรรม](test-evidence/19-unit-test-usage-map.png)
 
 | ชุด | คำสั่ง | ผลรอบนี้ | อธิบายการใช้งาน |
 |-----|--------|-----------|-----------------|
-| Frontend unit | `cd app/frontend && npm run test:unit` | **30 ไฟล์ / 128 เคส ผ่าน** | ล็อกอิน เกต 5 Phase HITL แชท SSE หน้าคลัง `/review` ตั้งค่า AI |
-| Backend unit | `cd app/backend && python -m pytest -m "not live_llm"` | **1448 ผ่าน** · 1 ข้าม · 10 ไม่รัน (`live_llm`) | auth, intake, เอเจนต์, Rule Engine, RAG/ACL, ส่งออก, แอดมิน |
-| Backend live LLM | `cd app/backend && python -m pytest -m live_llm` | **10 ผ่าน** (~1m40s) | LM Studio Gemma 4 + EmbeddingGemma ที่พอร์ต 1234 |
-| E2E headed | `npm run test:e2e:headed` | **15 ผ่าน** (~3.1 นาที) | Chromium มองเห็นได้ · ภาพใน `test-evidence/` |
-| Guide shots | `npm run test:e2e:guide` | **3 ผ่าน** | รีเฟรช PNG คู่มือผู้ใช้ |
+| Frontend unit | `cd app/frontend && npm run test:coverage` | **128 ผ่าน** / 30 ไฟล์ · statements ~89% | รวม Admin AI SGLang/Custom RAG · Bedrock-first |
+| Backend unit | `cd app/backend && python -m pytest -m "not live_llm"` | **1451 ผ่าน** · **0 ข้าม** · ~84% cov | auth, intake, เอเจนต์, Rule Engine, RAG/ACL, custom RAG, admission, corpus PDF, ส่งออก, แอดมิน |
+| E2E headed | `npm run test:e2e:headed` | **15 ผ่าน** (~2.4 นาที) | Chromium มองเห็นได้ · ภาพใน `test-evidence/` |
+| Backend live LLM | `cd app/backend && python -m pytest -m live_llm` | **10 ผ่าน** (~1m12s) | LM Studio Gemma 4 + EmbeddingGemma ที่พอร์ต 1234 |
+| Guide shots | `npm run test:e2e:guide` | (ชุดเสริม) | รีเฟรช PNG คู่มือผู้ใช้ |
 
-รวม backend เมื่อรันทั้ง unit + live = **1458** เคสผ่าน · `npm run test:e2e` (ไม่มี `--headed`) เป็น **headless** จึงไม่เห็นหน้าต่างเบราว์เซอร์
+รวม backend unit + live = **1461** เคสผ่าน · `npm run test:e2e` (ไม่มี `--headed`) เป็น **headless** จึงไม่เห็นหน้าต่างเบราว์เซอร์
 
 ### 10.2 Frontend — ไฟล์เทสต์กับการใช้งาน
 

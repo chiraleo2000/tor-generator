@@ -28,9 +28,11 @@ from app.deps import get_current_user, get_db
 from app.domain.section_text import section_plain_text
 from app.domain.tor_sections import SCOPE_SUBSECTIONS
 from app.exceptions import NotFoundError, ValidationError
+from app.llm_admission import AdmissionTimeoutError, admit
 from app.models.project import Project
 from app.models.tor_section import TORSection
 from app.models.user import User
+from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
 from app.schemas.drafting import DraftSectionRequest, DraftSectionResponse
 from app.schemas.responses import MetaInfo, SuccessResponse
@@ -197,6 +199,7 @@ async def _fill_empty_s4_subs(
         "Uses RAG context retrieval + LLM + Rule Engine guardrail. "
         "Returns the generated draft with quality score."
     ),
+    dependencies=[Depends(rate_limit_ai)],
 )
 async def draft_section(
     request: Request,
@@ -236,17 +239,22 @@ async def draft_section(
     try:
         from app.orchestrator import compile_tor_drafting_graph
 
-        final_state = await compile_tor_drafting_graph().ainvoke(
-            {
-                "project_id": str(project_id),
-                "user_input": user_input,
-                "template": template_data,
-                "target_section": target_section,
-                "max_retries": 3,
-                "agent_timeout_seconds": get_settings().drafting_agent_timeout_seconds(),
-                "human_approved": True,
-            }
-        )
+        request_id = (
+            request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
+        ).strip()
+        redis = getattr(request.app.state, "redis", None)
+        async with admit(redis, "llm", request_id):
+            final_state = await compile_tor_drafting_graph().ainvoke(
+                {
+                    "project_id": str(project_id),
+                    "user_input": user_input,
+                    "template": template_data,
+                    "target_section": target_section,
+                    "max_retries": 3,
+                    "agent_timeout_seconds": get_settings().drafting_agent_timeout_seconds(),
+                    "human_approved": True,
+                }
+            )
         draft_content, quality_score, validation_findings, rag_failed, error = _draft_from_state(
             final_state
         )
@@ -277,6 +285,8 @@ async def draft_section(
 
     except ValidationError:
         raise
+    except AdmissionTimeoutError as exc:
+        raise ValidationError(message=str(exc), field="draft") from exc
     except ImportError:
         logger.exception("Orchestrator not available")
         raise ValidationError(

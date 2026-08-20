@@ -1,6 +1,8 @@
 # การติดตั้งและรันระบบ TOR
 
-คู่มือนี้สำหรับสแตกที่รันจริง: Next.js + FastAPI ใน Docker และ LLM ที่ LM Studio บนเครื่องโฮสต์ (ค่าเริ่มต้น) หรือคลาวด์เมื่อผู้ดูแลเปิดใช้
+คู่มือนี้สำหรับสแตกที่รันจริง: Next.js + FastAPI ใน Docker  
+**Production แนะนำ:** Amazon Bedrock บนบัญชี AWS — ดู [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
+**Dev / on-prem:** LM Studio บนเครื่องโฮสต์ (ค่าเริ่มต้น) หรือ Ollama / llama.cpp / SGLang — สลับได้จาก Admin โดยไม่ถอดตัวเลือก
 
 แอปปัจจุบันเป็นกระบวนการร่าง **5 Phase (0–4)** ไม่ใช่วิซาร์ด 8 ขั้น และไม่ใช่ไฟล์ HTML ต้นแบบใน `06-UXUI-Mockup.html` — ไฟล์นั้นเป็นแบบออกแบบเท่านั้น
 
@@ -12,10 +14,11 @@
 ## สิ่งที่ต้องมี
 
 - Docker Desktop (Windows/macOS) หรือ Docker Engine + Compose
+- **Production บน Amazon:** บัญชี AWS + Bedrock model access (ไม่บังคับ GPU บนเครื่องแอป)
 - สำหรับโหมดในเครื่อง: เซิร์ฟเวอร์ OpenAI-compatible ที่ `http://127.0.0.1:1234` (LM Studio) พร้อม
   - Chat: **google/gemma-4-e4b**
   - Embeddings: **text-embedding-embeddinggemma-300m** (768 มิติ)
-- หรือ Ollama ที่พอร์ต **11434** / llama.cpp ที่พอร์ต **8080** (เลือกได้จากหน้าการตั้งค่า AI)
+- หรือ Ollama ที่พอร์ต **11434** / llama.cpp ที่พอร์ต **8080** / SGLang (`docker compose --profile sglang`) เลือกได้จากหน้าการตั้งค่า AI
 - Git และ (ถ้าจะรันเทสต์บนโฮสต์) Node.js 20 และ Python 3.11
 
 โฟลเดอร์รีโปเป็นภาษาไทย ต้องตั้งชื่อโปรเจกต์ Compose เป็น `tor-app` มิฉะนั้นชื่อโปรเจกต์จะว่าง
@@ -129,10 +132,12 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 เข้าสู่ระบบด้วยบัญชี admin แล้วเปิด **การตั้งค่า AI**:
 
+- **Production แนะนำ:** Amazon Bedrock (คู่มือเต็ม [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)) — เว้นว่าง AWS key ได้ถ้าใช้ IAM role บน EC2/ECS
 - แชทและ embeddings เลือกอิสระในทุกโหมด ไม่สลับคู่อัตโนมัติ เช่น Claude API + EmbeddingGemma ในเครื่อง
-- รันในเครื่อง: LM Studio / Ollama / llama.cpp — เซิร์ฟเวอร์ embeddings แยกจากแชทได้ (`LOCAL_EMBEDDING_SERVER`)
-- คลาวด์: Claude / OpenAI / Gemini / Bedrock / Azure Foundry / OpenAI-compatible + API key (ใส่ในหน้านี้ได้ ไม่ต้องใส่ใน `.env`)
-- ผสม: ค่าที่เลือกในช่องแชท/embeddings คือแหล่งที่ใช้งานจริง (คลาวด์ต้องมีคีย์ของฝั่งนั้น)
+- รันในเครื่อง: LM Studio / Ollama / llama.cpp / **SGLang** — เซิร์ฟเวอร์ embeddings แยกจากแชทได้ (`LOCAL_EMBEDDING_SERVER`)
+- คลาวด์: Bedrock / Claude / OpenAI / Gemini / Azure Foundry / OpenAI-compatible + API key (ใส่ในหน้านี้ได้ ไม่ต้องใส่ใน `.env`)
+- **Custom RAG:** เปิดแหล่ง HTTP เสริม (`POST {base}/v1/retrieve`) รวมกับคลังในเครื่องได้
+- ผสม: ค่าที่เลือกในช่องแชท/embeddings คือแหล่งที่ใช้งานจริง (คลาวด์ต้องมีคีย์ของฝั่งนั้น ยกเว้น Bedrock ที่ใช้ IAM role)
 - คลังเวกเตอร์: `pgvector` หรือ `qdrant` (ใช้ได้ทั้งโหมดในเครื่อง)
 - **ทดสอบการเชื่อมต่อ** ยิงทั้งแชทและ embeddings ไม่ต้องรีสตาร์ท
 - **บันทึก** มีผลทันทีในกระบวนการ — ไม่ต้อง `restart backend`
@@ -143,11 +148,15 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 | เป้าหมาย | แชท | ฝังเวกเตอร์ | หมายเหตุ |
 |----------|-----|-------------|----------|
-| Claude + EmbeddingGemma ในเครื่อง | Claude (Anthropic) | ในเครื่อง | ใส่ Anthropic key · เปิด LM Studio โหลด `text-embedding-embeddinggemma-300m` · ไม่ต้อง seed ใหม่ถ้าเคยใช้ EmbeddingGemma |
-| Claude + OpenAI embeddings | Claude (Anthropic) | ฝังเวกเตอร์ OpenAI | ใส่ Anthropic + OpenAI key · โมเดลฝังเวกเตอร์เช่น `text-embedding-3-small` · **ต้อง** `python -m app.seed_raw_docs` หลังบันทึก |
-| Gemma ในเครื่อง (ค่าเริ่มต้น) | LM Studio | ในเครื่อง | โหลดทั้ง `google/gemma-4-e4b` และ EmbeddingGemma ที่พอร์ต 1234 |
+| **Amazon production** | Amazon Bedrock | Bedrock Titan หรือในเครื่อง | ดู 20-AWS_BEDROCK_SETUP · IAM role หรือ access key |
+| Claude + EmbeddingGemma ในเครื่อง | Claude (Anthropic) | ในเครื่อง | ใส่ Anthropic key · เปิด LM Studio โหลด EmbeddingGemma |
+| Claude + OpenAI embeddings | Claude (Anthropic) | ฝังเวกเตอร์ OpenAI | ใส่ Anthropic + OpenAI key · **ต้อง** seed ใหม่หลังบันทึก |
+| Gemma ในเครื่อง (dev) | LM Studio | ในเครื่อง | โหลดทั้งแชทและ EmbeddingGemma ที่พอร์ต 1234 |
+| SGLang multi-user | SGLang | SGLang | `docker compose --profile sglang up` · GPU NVIDIA |
 
 โหมด (`on_prem` / `cloud` / `hybrid`) เป็นป้ายเท่านั้น — ค่าที่เลือกในช่องแชทและฝังเวกเตอร์คือแหล่งที่ใช้จริง · **ทดสอบการเชื่อมต่อ** ยิงทั้งสองฝั่ง · **บันทึก** มีผลทันที
+
+เมื่อหลายผู้ใช้เรียก AI พร้อมกัน ระบบมี Redis admission queue + แสดงสถานะรอคิวใน UI (แชท / ร่าง / ตรวจ)
 
 ## 6. ตรวจสุขภาพ
 
@@ -206,7 +215,7 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest ไม่รวม `live_llm` | **1448 ผ่าน** / ครอบคลุม **85%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| pytest ไม่รวม `live_llm` | **1451 ผ่าน** / ครอบคลุม **~84%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) · **0 skipped** |
 | pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) เมื่อรันชุดนั้น |
 | Vitest | **128 ผ่าน** (รวมหน้า `/review`, timestamp แชท, alert คลังความรู้) |
 | Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม (20 ส.ค. 2026 ~17:20 น. · ~3.1 นาที รวม Phase 2 AI · `test:e2e:headed`) |

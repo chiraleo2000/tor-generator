@@ -131,7 +131,7 @@ python -m pytest tests/test_real_procurement_pdfs.py tests/test_live_lm_studio.p
 
 Latest counts and headed screenshots: `discussions/18-TEST_EVIDENCE.md`. Live LM Studio tests need both chat and embedding models loaded at `http://127.0.0.1:1234/v1`.
 
-**20 ส.ค. 2026 verification:** pytest `-m "not live_llm"` **1448** passed; live smoke covered draft-section LangGraph, agent ingest (`gap_filling`), `POST /projects/{id}/review` (Rule Engine + ReviewAgent suggestions), standalone `/review/extract`+`/run`, `/chat` SSE, and `/kb-chat` with citations (`RELEVANCE_THRESHOLD=0.25`, `hybrid_retrieve` uses runtime `session_factory`).
+**20 ส.ค. 2026 verification:** pytest `-m "not live_llm"` **1451** passed (~84% cov, **0 skipped** after `corpus.repo_root()` fix); `live_llm` **10** passed against LM Studio; live smoke covered draft-section LangGraph, agent ingest (`gap_filling`), `POST /projects/{id}/review` (Rule Engine + ReviewAgent suggestions), standalone `/review/extract`+`/run`, `/chat` SSE, and `/kb-chat` with citations (`RELEVANCE_THRESHOLD=0.25`, `hybrid_retrieve` uses runtime `session_factory`).
 
 `POST /api/v1/review/compare-projects` accepts `project_ids` and `extract_ids` (job ids from `POST /review/extract`). Pairwise Jaccard is computed in `_token_set` / `_jaccard`; missing ids are skipped. Combined length must be ≥ 2.
 

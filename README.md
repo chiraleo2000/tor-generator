@@ -2,7 +2,9 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.2.3**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ, และโหมด LLM ในเครื่อง (LM Studio / Ollama / llama.cpp) หรือคลาวด์จากหน้าผู้ดูแล
+แอปที่รันจริงคือ **v0.2.3**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ  
+**Production แนะนำ:** Amazon Bedrock (ดู [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md))  
+**Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
 
 **GitHub Pages คือ UI จำลองเท่านั้น** — เปิดจาก [`index.html`](index.html) ที่ root ของรีโป ให้หน้าตาและเมนูตรงกับแอปปัจจุบัน แต่ไม่เรียก API/LLM จริง และ**ไม่ได้**ใช้ `discussions/06-UXUI-Mockup.html`
 
@@ -150,7 +152,8 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm"` | **1448 ผ่าน**, 1 ข้าม, 10 ไม่รัน (`live_llm`) |
+| pytest `-m "not live_llm"` | **1451 ผ่าน**, 0 ข้าม · coverage ~84% |
+| pytest `-m live_llm` | **10 ผ่าน** (ต้องมี LM Studio :1234) |
 | pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) |
 | Vitest `npm run test:unit` | **128 ผ่าน** (30 ไฟล์) |
 | Playwright `test:e2e:headed` (1 worker, Docker :3000) | **15 ผ่าน** / 0 ล้ม (~3.1 นาที · UI มองเห็นได้) |

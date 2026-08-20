@@ -1,54 +1,51 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **20 สิงหาคม 2026** (รอบตรวจ 3 เครื่องมือ + unit tests)  
+วันที่ **20 สิงหาคม 2026** (รอบแก้ `repo_root` corpus · Amazon/Bedrock + SGLang + Custom RAG · SonarLint · unit + live_llm + E2E headed)  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234`  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
-เอกสารชุดปัจจุบันเรียง **13–19**. หลักฐาน Playwright/ภาพจอชุด 19 ส.ค. ยังใช้ได้; รายงานการทำงานอยู่ที่ `19-APPLICATION_OPERATING_REPORT.md`
+เอกสารชุดปัจจุบันเรียง **13–20** (เพิ่ม `20-AWS_BEDROCK_SETUP.md`). หลักฐานภาพอยู่ใน `discussions/test-evidence/`
 
 | โมเดล | ค่า |
 |--------|-----|
-| Chat | `google/gemma-4-e4b` |
-| Embeddings | `text-embedding-embeddinggemma-300m` (768 มิติ) |
+| Chat (dev) | `google/gemma-4-e4b` |
+| Embeddings (dev) | `text-embedding-embeddinggemma-300m` (768 มิติ) |
+| Production แนะนำ | Amazon Bedrock (ดู `20-AWS_BEDROCK_SETUP.md`) |
 
-ภาพอยู่ใน `discussions/test-evidence/` ถ่ายจาก Playwright แบบเห็นหน้าจอหลังเคสผ่านแล้วเท่านั้น  
-คู่มือผู้ใช้ที่อธิบายภาพชุดเดียวกันทีละขั้น: `13-USER_GUIDELINE.md`  
-เดโม UX/UI ที่คลิกได้ (ไม่เรียก API): https://chiraleo2000.github.io/tor-generator/ (`index.html`) — ไม่ใช่ `06-UXUI-Mockup.html`
+ภาพถ่ายจาก Playwright แบบ **headed** (`slowMo` 250ms) หลังเคสผ่านแล้วเท่านั้น  
+คู่มือผู้ใช้: `13-USER_GUIDELINE.md` · รายงานการทำงาน: `19-APPLICATION_OPERATING_REPORT.md`
 
 ---
 
-## สรุปตัวเลข (รอบ 20 ส.ค. 2026)
+## สรุปตัวเลข (รอบ 20 ส.ค. 2026 — คืน)
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest ไม่รวม `live_llm` (v0.2.3) | **1448 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL, intake, `/chat`, wizard, hybrid timeout ขยายเกณฑ์ flaky |
-| pytest `-m live_llm` | **10 ผ่าน** (~1m40s) | LM Studio ที่ `http://127.0.0.1:1234` — Gemma 4 + EmbeddingGemma-300M · ยิง `/v1/models` แชทจิ๋ว และ embedding 768 มิติ |
-| Vitest `npm run test:unit` | **128 ผ่าน** / 30 ไฟล์ | รวมหน้า `/review`, `formatChatTimestamp`, alert คลังความรู้เมื่อโหลด/อัปโหลดล้ม |
-| Playwright (แอป, 1 worker, **headed**) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (20 ส.ค. 2026 ~17:20 น. · ~3.1 นาที รวม Phase 2 AI) | รัน `npm run test:e2e:headed` — Chromium เปิดหน้าจอจริง (`slowMo` 250ms) + ถ่ายภาพทุกเคส · ภาพหลักฐานอัปเดตใน `test-evidence/` |
-| Guide screenshots (`test:e2e:guide`) | **3 ผ่าน** (headed) | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือ แอดมิน AI (Claude+คีย์) · รีเฟรช PNG คู่มือ |
-| Playwright HTML report | จับภาพแล้ว | `15-playwright-report.png` จาก `playwright-report` ที่พอร์ต 8767 |
+| pytest ไม่รวม `live_llm` | **1451 ผ่าน**, **0 ข้าม**, 10 ไม่รวมในรอบนี้แล้วรันแยก · coverage **~84%** | แก้ `corpus.repo_root()` ให้เจอ `documents/sources` → เคส PDF บังคับไม่ skip อีก |
+| pytest `live_llm` | **10 ผ่าน** (~1m12s) | LM Studio Gemma 4 + EmbeddingGemma ที่ :1234 |
+| Vitest `npm run test:coverage` | **128 ผ่าน** / 30 ไฟล์ · Statements **88.93%** · Lines **90.17%** | Admin AI SGLang/Custom RAG · Bedrock-first |
+| Playwright (แอป, 1 worker, **headed**) | **15 ผ่าน** / 0 ล้ม (~2.4 นาที รวม Phase 2 AI) | `npm run test:e2e:headed` — Chromium มองเห็นได้ |
+| SonarLint (ไฟล์ที่แตะ) | แก้ S5332 / S6772 / S7744 | Docker-internal HTTP → NOSONAR · checkbox · chat-sse |
 
-ไฟล์ `e2e/reports.spec.ts` และ `e2e/guide-shots.spec.ts` **ไม่ถูกรวม**ใน `npm run test:e2e` ปกติ จึงไม่มีเคสข้ามในชุดหลัก (Sonar S1607)
+### สาเหตุที่เคย “1 ข้าม”
 
-### Smoke API — 3 เครื่องมือเจ้าหน้าที่ (20 ส.ค. 2026)
+`test_live_mandatory_folders_when_present` ข้ามเมื่อ `list_mandatory_sources()` ว่าง — เพราะ `repo_root()` ใช้ `parents[3]` ชี้ไปโฟลเดอร์ `app/` แทน root ของ repo (PDF จริงอยู่ที่ `documents/sources/` แต่ path ผิด)  
+แก้แล้ว: เดินหา parent ที่มี `documents/sources` → พบ **27** ไฟล์บังคับ · เคสนี้ **ผ่าน** ไม่ skip
 
-บัญชี `officer@example.go.th` · คลัง RAG **80 ไฟล์ / 507 chunks**
+### สิ่งที่ตรวจเพิ่มในรอบนี้
 
-| เครื่องมือ | หลักฐาน | ผล |
-|-----------|---------|-----|
-| ร่าง TOR | `POST …/intake/text` + analyze + coverage (27 ช่อง) · `PUT …/sections/s1–s13` · `POST …/draft-section` s1 · `POST /agent/sessions` → `gap_filling` | ผ่าน |
-| ตรวจสอบ TOR | `POST …/review` คะแนน **79** · findings 14 · suggestions **11** · `POST /review/extract` + `/run` | ผ่าน |
-| ถาม-ตอบ | `POST /kb-chat/…/message` คำตอบยาว + **5 citations** · `POST /chat/rooms/…/messages` SSE tokens=308 done + **5 citations** | ผ่าน |
-
-รอบนี้แก้ UX ที่บล็อกการใช้งาน: ไม่กลืน error ที่ admin users/templates/KB และ officer KB · Phase 4 แสดงสถานะส่งออกล้มเหลว · Phase 3 แสดงข้อเสนอแนะ ReviewAgent · `/review` มี `role="alert"` และเกณฑ์ 70 · แชทมีจุดพิมพ์ + เวลา · SonarLint บนไฟล์ที่แตะ (ใช้ `<output>` แทน `role="status"`)
+- Admin → Amazon Bedrock เป็นตัวเลือก production แนะนำ · SGLang / Custom RAG ในฟอร์ม
+- FAQ ช่วยเหลือระบุ `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` + `127.0.0.1:1234`
+- Redis LLM admission + SSE `queued`/`started` + UI รอคิว
+- `index.html` (จำลอง GitHub Pages) ปรับให้ตรงแอป: Bedrock-first, SGLang, Custom RAG, FAQ/ตัวเลขเทสต์
+- Phase 2 AI draft ผ่านด้วย LM Studio Gemma (~1.8 นาที)
 
 ---
 
 ## รายงาน Playwright — 15 เคสแอป (headed)
 
 รัน: `cd app/frontend && npm run test:e2e:headed` (1 worker, Chromium มองเห็นได้)  
-ค่าเริ่มต้น `npm run test:e2e` เป็น **headless** — ไม่มีหน้าต่างเบราว์เซอร์ จึงไม่เห็น UI ระหว่างเทสต์  
-Chromium, viewport 1440×900, ภาษา th-TH, ยิงคอนเทนเนอร์พอร์ต 3000 · `HEADED=1` เปิดหน้าจอ + `screenshot: on` + `slowMo: 250`
+Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:3000` · `HEADED=1` + `screenshot: on` + `slowMo: 250`
 
 ![รายงาน Playwright — 15 ผ่าน 0 ล้ม](test-evidence/15-playwright-report.png)
 

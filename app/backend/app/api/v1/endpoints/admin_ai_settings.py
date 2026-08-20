@@ -27,6 +27,7 @@ from app.providers.constants import (
     LOCAL_EMBEDDING_SERVERS,
     LOCAL_LLM_DEFAULT_URLS,
     LOCAL_LLM_PROVIDERS,
+    SGLANG_DEFAULT_EMBEDDING_URL,
 )
 from app.providers.factory import (
     VALID_EMBEDDING_PROVIDERS,
@@ -45,6 +46,7 @@ _KEY_FIELDS = (
     "aws_secret_access_key",
     "azure_foundry_api_key",
     "openai_compatible_api_key",
+    "custom_rag_api_key",
 )
 _MSG_ANTHROPIC_KEY = "ต้องใส่ ANTHROPIC_API_KEY"
 _MSG_OPENAI_KEY = "ต้องใส่ OPENAI_API_KEY"
@@ -127,6 +129,10 @@ class AiSettingsUpdate(BaseModel):
     lm_studio_timeout: float | None = None
     ollama_base_url: str | None = None
     llama_cpp_base_url: str | None = None
+    sglang_base_url: str | None = None
+    sglang_embedding_base_url: str | None = None
+    sglang_model: str | None = None
+    sglang_embedding_model: str | None = None
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
@@ -149,6 +155,12 @@ class AiSettingsUpdate(BaseModel):
     openai_compatible_api_key: str | None = None
     openai_compatible_model: str | None = None
     openai_compatible_embedding_model: str | None = None
+    custom_rag_enabled: bool | None = None
+    custom_rag_base_url: str | None = None
+    custom_rag_api_key: str | None = None
+    custom_rag_top_k: int | None = None
+    custom_rag_timeout_seconds: float | None = None
+    rag_sources: str | None = None
 
 
 class AiSettingsTest(BaseModel):
@@ -160,6 +172,8 @@ class AiSettingsTest(BaseModel):
     lm_studio_base_url: str | None = None
     ollama_base_url: str | None = None
     llama_cpp_base_url: str | None = None
+    sglang_base_url: str | None = None
+    sglang_embedding_base_url: str | None = None
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
@@ -174,6 +188,9 @@ class AiSettingsTest(BaseModel):
     openai_compatible_base_url: str | None = None
     openai_compatible_api_key: str | None = None
     openai_compatible_model: str | None = None
+    custom_rag_enabled: bool | None = None
+    custom_rag_base_url: str | None = None
+    custom_rag_api_key: str | None = None
 
 
 def _require_cloud_key(
@@ -188,6 +205,8 @@ def _resolved_local_url(body: AiSettingsUpdate, existing: dict[str, Any]) -> str
         return str(body.ollama_base_url or existing.get("ollama_base_url") or "")
     if body.llm_provider == "llama_cpp":
         return str(body.llama_cpp_base_url or existing.get("llama_cpp_base_url") or "")
+    if body.llm_provider == "sglang":
+        return str(body.sglang_base_url or existing.get("sglang_base_url") or "")
     return str(body.lm_studio_base_url or existing.get("lm_studio_base_url") or "")
 
 
@@ -204,7 +223,32 @@ def _resolved_embed_url(body: AiSettingsUpdate, existing: dict[str, Any]) -> str
         return str(body.ollama_base_url or existing.get("ollama_base_url") or "")
     if server == "llama_cpp":
         return str(body.llama_cpp_base_url or existing.get("llama_cpp_base_url") or "")
+    if server == "sglang":
+        return str(
+            body.sglang_embedding_base_url
+            or existing.get("sglang_embedding_base_url")
+            or ""
+        )
     return str(body.lm_studio_base_url or existing.get("lm_studio_base_url") or "")
+
+
+def _resolved_chat_model(body: AiSettingsUpdate, existing: dict[str, Any]) -> str:
+    if body.llm_provider == "sglang":
+        return str(body.sglang_model or existing.get("sglang_model") or "")
+    return str(body.lm_studio_model or existing.get("lm_studio_model") or "")
+
+
+def _resolved_embed_model(body: AiSettingsUpdate, existing: dict[str, Any]) -> str:
+    server = str(
+        body.local_embedding_server or existing.get("local_embedding_server") or "lm_studio"
+    )
+    if server == "sglang":
+        return str(
+            body.sglang_embedding_model or existing.get("sglang_embedding_model") or ""
+        )
+    return str(
+        body.lm_studio_embedding_model or existing.get("lm_studio_embedding_model") or ""
+    )
 
 
 def _validate_local_fields(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
@@ -215,19 +259,38 @@ def _validate_local_fields(body: AiSettingsUpdate, existing: dict[str, Any]) -> 
             message="ต้องระบุ URL ของเซิร์ฟเวอร์แชทในเครื่อง",
             field="lm_studio_base_url",
         )
-    if chat_is_local and not (body.lm_studio_model or existing.get("lm_studio_model")):
+    if chat_is_local and not _resolved_chat_model(body, existing):
         raise ValidationError(message="ต้องระบุชื่อโมเดลแชท", field="lm_studio_model")
     if embed_is_local and not _resolved_embed_url(body, existing):
         raise ValidationError(
             message="ต้องระบุ URL ของเซิร์ฟเวอร์ embeddings ในเครื่อง",
             field="local_embedding_base_url",
         )
-    if embed_is_local and not (
-        body.lm_studio_embedding_model or existing.get("lm_studio_embedding_model")
-    ):
+    if embed_is_local and not _resolved_embed_model(body, existing):
         raise ValidationError(
             message="ต้องระบุชื่อโมเดล embeddings", field="lm_studio_embedding_model"
         )
+    if body.custom_rag_enabled or existing.get("custom_rag_enabled"):
+        enabled = (
+            body.custom_rag_enabled
+            if body.custom_rag_enabled is not None
+            else bool(existing.get("custom_rag_enabled"))
+        )
+        if enabled:
+            base = str(
+                body.custom_rag_base_url or existing.get("custom_rag_base_url") or ""
+            ).strip()
+            if not base:
+                raise ValidationError(
+                    message="ต้องระบุ Custom RAG base URL",
+                    field="custom_rag_base_url",
+                )
+            sources = str(body.rag_sources or existing.get("rag_sources") or "both")
+            if sources not in ("local", "custom", "both"):
+                raise ValidationError(
+                    message="rag_sources ต้องเป็น local, custom หรือ both",
+                    field="rag_sources",
+                )
 
 
 def _validate_selected_cloud_keys(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
@@ -423,6 +486,8 @@ def _local_base_url(body: AiSettingsTest) -> str:
         return body.ollama_base_url or LOCAL_LLM_DEFAULT_URLS["ollama"]
     if body.llm_provider == "llama_cpp":
         return body.llama_cpp_base_url or LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
+    if body.llm_provider == "sglang":
+        return body.sglang_base_url or LOCAL_LLM_DEFAULT_URLS["sglang"]
     return body.lm_studio_base_url or LOCAL_LLM_DEFAULT_URLS["lm_studio"]
 
 
@@ -434,6 +499,8 @@ def _embed_local_base_url(body: AiSettingsTest) -> str:
         return body.ollama_base_url or LOCAL_LLM_DEFAULT_URLS["ollama"]
     if server == "llama_cpp":
         return body.llama_cpp_base_url or LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
+    if server == "sglang":
+        return body.sglang_embedding_base_url or SGLANG_DEFAULT_EMBEDDING_URL
     return body.lm_studio_base_url or LOCAL_LLM_DEFAULT_URLS["lm_studio"]
 
 

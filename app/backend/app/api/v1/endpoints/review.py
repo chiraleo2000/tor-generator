@@ -25,10 +25,12 @@ from app.api.constants import PROJECT_NOT_FOUND, PROJECT_UUID_DESC
 from app.domain.section_text import section_plain_text
 from app.deps import get_current_user, get_db
 from app.exceptions import NotFoundError, ValidationError
+from app.llm_admission import admit
 from app.models.project import Project
 from app.models.suggestion import Suggestion
 from app.models.tor_section import TORSection
 from app.models.user import User
+from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
 from app.schemas.drafting import (
     CategoryScoreResponse,
@@ -98,6 +100,7 @@ async def _get_project_with_access(
         "Also invokes the ReviewAgent to generate categorized suggestions. "
         "Returns quality score, findings, and generates suggestions."
     ),
+    dependencies=[Depends(rate_limit_ai)],
 )
 async def run_review(
     request: Request,
@@ -193,6 +196,10 @@ async def run_review(
     # Invoke ReviewAgent to generate suggestions (async, best-effort)
     suggestions_generated = 0
     try:
+        request_id = (
+            request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
+        ).strip()
+        redis = getattr(request.app.state, "redis", None)
         suggestions_generated = await _generate_suggestions(
             project_id=project_id,
             sections_map=sections_map,
@@ -202,6 +209,8 @@ async def run_review(
             },
             db=db,
             custom_requirements=project.custom_requirements_text,
+            redis=redis,
+            request_id=request_id,
         )
     except Exception as exc:
         logger.warning(
@@ -241,6 +250,8 @@ async def _generate_suggestions(
     project_metadata: dict,
     db: AsyncSession,
     custom_requirements: str | None = None,
+    redis=None,
+    request_id: str | None = None,
 ) -> int:
     """Generate AI suggestions via the ReviewAgent and persist them.
 
@@ -265,14 +276,16 @@ async def _generate_suggestions(
     factory = ProviderFactory()
     llm = factory.get_llm()
 
-    # Run the ReviewAgent
+    # Run the ReviewAgent under admission control
     agent = ReviewAgent()
-    review_result = await agent.review(
-        llm=llm,
-        sections=sections_map,
-        project_metadata=project_metadata,
-        custom_requirements=custom_requirements,
-    )
+    rid = (request_id or str(uuid.uuid4())).strip()
+    async with admit(redis, "llm", rid):
+        review_result = await agent.review(
+            llm=llm,
+            sections=sections_map,
+            project_metadata=project_metadata,
+            custom_requirements=custom_requirements,
+        )
 
     # Persist suggestions
     for suggestion in review_result.suggestions:

@@ -166,16 +166,40 @@ export function DraftWorkspace() {
   async function draftSection(key: string) {
     setBusy(true);
     setActionError(null);
-    setActionInfo(null);
+    setActionInfo("รอคิว AI...");
+    const requestId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `req-${Date.now()}`;
+    const poll = window.setInterval(() => {
+      apiClient
+        .get(`/ai/queue/${requestId}`)
+        .then((response) => {
+          const payload = unwrapData<{ status?: string; position?: number }>(response);
+          if (payload.status === "waiting") {
+            const position = Number(payload.position || 0);
+            setActionInfo(
+              position > 0 ? `รอคิว GPU (#${position})...` : "รอคิว AI..."
+            );
+          } else if (payload.status === "running") {
+            setActionInfo("กำลังร่างด้วย AI...");
+          }
+        })
+        .catch(() => undefined);
+    }, 500);
     try {
-      await apiClient.post(`/projects/${projectId}/draft-section`, {
-        section_key: key,
-      });
+      await apiClient.post(
+        `/projects/${projectId}/draft-section`,
+        { section_key: key },
+        { headers: { "X-AI-Request-Id": requestId } }
+      );
       await loadSections();
       setActionInfo("ร่างด้วย AI สำเร็จ — ตรวจข้อความแล้วบันทึก");
     } catch (err: unknown) {
       setActionError(apiErrorMessage(err, "ร่างด้วย AI ไม่สำเร็จ"));
+      setActionInfo(null);
     } finally {
+      window.clearInterval(poll);
       setBusy(false);
     }
   }
@@ -183,8 +207,33 @@ export function DraftWorkspace() {
   async function runProjectReview() {
     setReviewBusy(true);
     setActionError(null);
+    setActionInfo("รอคิว AI...");
+    const requestId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `req-${Date.now()}`;
+    const poll = window.setInterval(() => {
+      apiClient
+        .get(`/ai/queue/${requestId}`)
+        .then((response) => {
+          const payload = unwrapData<{ status?: string; position?: number }>(response);
+          if (payload.status === "waiting") {
+            const position = Number(payload.position || 0);
+            setActionInfo(
+              position > 0 ? `รอคิว (#${position})...` : "รอคิว AI..."
+            );
+          } else if (payload.status === "running") {
+            setActionInfo("กำลังตรวจสอบ...");
+          }
+        })
+        .catch(() => undefined);
+    }, 500);
     try {
-      const response = await apiClient.post(`/projects/${projectId}/review`);
+      const response = await apiClient.post(
+        `/projects/${projectId}/review`,
+        {},
+        { headers: { "X-AI-Request-Id": requestId } }
+      );
       const payload = unwrapData<{
         quality_score?: number;
         findings?: Record<string, unknown>[];
@@ -202,7 +251,9 @@ export function DraftWorkspace() {
       }
     } catch (err: unknown) {
       setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+      setActionInfo(null);
     } finally {
+      window.clearInterval(poll);
       setReviewBusy(false);
     }
   }
@@ -387,7 +438,11 @@ function Phase2({
       <p className="mb-4 text-xs text-muted-foreground">
         ข้อความจาก Phase 0 ถูกจัดเข้าหมวดแล้ว กดร่างด้วย AI (LM Studio) เพื่อขยายเป็นภาษาราชการ — หมวดกฎหมายต้องยืนยันโดยเจ้าหน้าที่
       </p>
-      {busy ? <p className="mb-3 text-sm text-navy">กำลังร่างด้วย AI จากโมเดลในเครื่อง...</p> : null}
+      {busy ? (
+        <p className="mb-3 text-sm text-navy">
+          {actionInfo || "กำลังร่างด้วย AI..."}
+        </p>
+      ) : null}
       {actionError ? (
         <p className="mb-3 text-sm text-destructive" role="alert">
           {actionError}

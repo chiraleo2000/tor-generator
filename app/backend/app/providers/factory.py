@@ -8,11 +8,14 @@ from typing import TYPE_CHECKING, Any
 from app.config import Settings, get_settings
 from app.providers.base import EmbeddingProvider, LLMProvider, VectorStoreProvider
 from app.providers.constants import (
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_EMBEDDING_MODEL,
     EMBEDDING_DIMENSIONS,
     LOCAL_EMBEDDING_PROVIDERS,
     LOCAL_EMBEDDING_SERVERS,
     LOCAL_LLM_DEFAULT_URLS,
     LOCAL_LLM_PROVIDERS,
+    SGLANG_DEFAULT_EMBEDDING_URL,
 )
 
 if TYPE_CHECKING:
@@ -26,6 +29,7 @@ VALID_LLM_PROVIDERS = (
     "lm_studio",
     "ollama",
     "llama_cpp",
+    "sglang",
     "openai",
     "gemini",
     "bedrock",
@@ -58,7 +62,18 @@ def _url_for_local_kind(settings: Any, kind: str) -> str:
         return str(
             _attr(settings, "llama_cpp_base_url", LOCAL_LLM_DEFAULT_URLS["llama_cpp"])
         )
+    if kind == "sglang":
+        return str(_attr(settings, "sglang_base_url", LOCAL_LLM_DEFAULT_URLS["sglang"]))
     return str(_attr(settings, "lm_studio_base_url", LOCAL_LLM_DEFAULT_URLS["lm_studio"]))
+
+
+def _local_chat_model(settings: Any, kind: str) -> str:
+    if kind == "sglang":
+        return str(
+            _attr(settings, "sglang_model")
+            or _attr(settings, "lm_studio_model", DEFAULT_CHAT_MODEL)
+        )
+    return str(_attr(settings, "lm_studio_model", DEFAULT_CHAT_MODEL))
 
 
 class ProviderFactory:
@@ -317,7 +332,7 @@ class ProviderFactory:
             kind = "lm_studio"
         return LMStudioLocalProvider(
             base_url=_url_for_local_kind(self._settings, kind),
-            model_name=_attr(self._settings, "lm_studio_model"),
+            model_name=_local_chat_model(self._settings, kind),
             timeout=_attr(self._settings, "lm_studio_timeout", 180.0),
         )
 
@@ -337,15 +352,32 @@ class ProviderFactory:
         kind = _attr(self._settings, "local_embedding_server", "lm_studio")
         if kind not in LOCAL_EMBEDDING_SERVERS:
             kind = "lm_studio"
-        base_url = override or _url_for_local_kind(self._settings, kind)
-        return Qwen3LocalEmbeddingProvider(
-            base_url=base_url,
-            model=_attr(
-                self._settings,
-                "lm_studio_embedding_model",
-                "text-embedding-embeddinggemma-300m",
-            ),
-        )
+        if kind == "sglang":
+            base_url = override or str(
+                _attr(
+                    self._settings,
+                    "sglang_embedding_base_url",
+                    SGLANG_DEFAULT_EMBEDDING_URL,
+                )
+            )
+            model = str(
+                _attr(self._settings, "sglang_embedding_model")
+                or _attr(
+                    self._settings,
+                    "lm_studio_embedding_model",
+                    DEFAULT_EMBEDDING_MODEL,
+                )
+            )
+        else:
+            base_url = override or _url_for_local_kind(self._settings, kind)
+            model = str(
+                _attr(
+                    self._settings,
+                    "lm_studio_embedding_model",
+                    DEFAULT_EMBEDDING_MODEL,
+                )
+            )
+        return Qwen3LocalEmbeddingProvider(base_url=base_url, model=model)
 
     def _create_gemini_embedding_provider(self) -> EmbeddingProvider:
         from app.providers.embedding.gemini_provider import GeminiEmbeddingProvider

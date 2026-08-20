@@ -20,6 +20,7 @@ from app.deps import get_current_user, get_db
 from app.domain.slots import INTAKE_SLOT_LABELS
 from app.exceptions import NotFoundError, ValidationError
 from app.io_temp import unlink_path, write_temp_bytes
+from app.llm_admission import AdmissionTimeoutError, admit
 from app.models.chat_message import ChatMessage
 from app.models.chat_room import ChatRoom
 from app.models.project import Project
@@ -28,6 +29,7 @@ from app.providers.factory import ProviderFactory
 from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.extraction import extract_text
 from app.rag.hybrid import hybrid_retrieve
+from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.intake_service import (
@@ -322,7 +324,7 @@ async def intake_confirm_ready(
     return _ok(request, {"ready_to_compose": True, "phase": project.current_phase})
 
 
-@router.post("/{project_id}/intake/chat")
+@router.post("/{project_id}/intake/chat", dependencies=[Depends(rate_limit_ai)])
 async def intake_chat(
     request: Request,
     project_id: uuid.UUID,
@@ -337,8 +339,13 @@ async def intake_chat(
     analysis = dict(project.analysis_json or {})
     slot_map = analysis.get("slot_map") or empty_slot_map()
     gaps = analysis.get("gap_questions") or []
+    request_id = (
+        request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
+    ).strip()
 
     async def generate() -> AsyncIterator[str]:
+        import asyncio
+
         result, citations, degraded = await hybrid_retrieve(
             body.content,
             user_id=current_user.id,
@@ -362,41 +369,75 @@ async def intake_chat(
             f"คำถามที่ค้าง: {gaps}\n"
             f"บริบท RAG:\n{context}\n\nข้อความผู้ใช้:\n{body.content}"
         )
-        llm = ProviderFactory().get_llm()
-        parts: list[str] = []
+        redis = getattr(request.app.state, "redis", None)
+        event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
+
+        async def on_wait(position: int, waiting_ms: int) -> None:
+            await event_q.put(
+                (
+                    "queued",
+                    {
+                        "request_id": request_id,
+                        "position": position,
+                        "waiting_ms": waiting_ms,
+                    },
+                )
+            )
+
+        async def run_llm() -> None:
+            parts_local: list[str] = []
+            try:
+                async with admit(redis, "llm", request_id, on_wait=on_wait):
+                    await event_q.put(("started", {"request_id": request_id}))
+                    llm = ProviderFactory().get_llm()
+                    async for token in llm.stream(
+                        [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
+                        ],
+                        temperature=0.2,
+                        max_tokens=2048,
+                    ):
+                        parts_local.append(token)
+                        await event_q.put(("token", {"text": token}))
+                full_text = "".join(parts_local)
+                _apply_chat_fact_to_first_gap(slot_map, body.content)
+                await _persist_intake_assistant(
+                    request.app.state.db_session_factory,
+                    project.id,
+                    room.id,
+                    slot_map,
+                    full_text,
+                    citations,
+                )
+                await event_q.put(
+                    (
+                        "done",
+                        {
+                            "content": full_text,
+                            "citations": citations,
+                            "coverage": coverage_table(slot_map),
+                            "graph_degraded": degraded,
+                        },
+                    )
+                )
+            except AdmissionTimeoutError as exc:
+                await event_q.put(("error", {"message": str(exc)}))
+            except Exception as exc:
+                logger.exception("intake chat failed")
+                await event_q.put(("error", {"message": str(exc)}))
+            finally:
+                await event_q.put(None)
+
+        task = asyncio.create_task(run_llm())
         try:
-            async for token in llm.stream(
-                [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                temperature=0.2,
-                max_tokens=2048,
-            ):
-                parts.append(token)
-                yield _sse("token", {"text": token})
-        except Exception as exc:
-            logger.exception("intake chat failed")
-            yield _sse("error", {"message": str(exc)})
-            return
-        full = "".join(parts)
-        _apply_chat_fact_to_first_gap(slot_map, body.content)
-        await _persist_intake_assistant(
-            request.app.state.db_session_factory,
-            project.id,
-            room.id,
-            slot_map,
-            full,
-            citations,
-        )
-        yield _sse(
-            "done",
-            {
-                "content": full,
-                "citations": citations,
-                "coverage": coverage_table(slot_map),
-                "graph_degraded": degraded,
-            },
-        )
+            while True:
+                item = await event_q.get()
+                if item is None:
+                    break
+                event_name, payload = item
+                yield _sse(event_name, payload)
+        finally:
+            await task
 
     return StreamingResponse(generate(), media_type="text/event-stream")

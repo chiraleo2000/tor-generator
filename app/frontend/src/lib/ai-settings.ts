@@ -10,6 +10,10 @@ export interface AiSettings {
   lm_studio_timeout: number;
   ollama_base_url: string;
   llama_cpp_base_url: string;
+  sglang_base_url: string;
+  sglang_embedding_base_url: string;
+  sglang_model: string;
+  sglang_embedding_model: string;
   anthropic_api_key: string;
   openai_api_key: string;
   gemini_api_key: string;
@@ -38,6 +42,13 @@ export interface AiSettings {
   openai_compatible_base_url: string;
   openai_compatible_model: string;
   openai_compatible_embedding_model: string;
+  custom_rag_enabled: boolean;
+  custom_rag_base_url: string;
+  custom_rag_api_key: string;
+  custom_rag_api_key_set?: boolean;
+  custom_rag_top_k: number;
+  custom_rag_timeout_seconds: number;
+  rag_sources: string;
   restart_required?: boolean;
   reingest_required?: boolean;
   default_chat_model?: string;
@@ -48,13 +59,15 @@ export const LOCAL_LLMS = [
   { value: "lm_studio", label: "LM Studio" },
   { value: "ollama", label: "Ollama" },
   { value: "llama_cpp", label: "llama.cpp / เซิร์ฟเวอร์กำหนดเอง" },
+  { value: "sglang", label: "SGLang (on-prem multi-user)" },
 ];
 
+/** Cloud first when mode is cloud — Bedrock highlighted as Amazon production path. */
 export const CLOUD_LLMS = [
+  { value: "bedrock", label: "Amazon Bedrock (แนะนำ production)" },
   { value: "claude", label: "Claude (Anthropic)" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini (Google)" },
-  { value: "bedrock", label: "Amazon Bedrock" },
   { value: "azure_foundry", label: "Azure AI Foundry" },
   { value: "openai_compatible", label: "อื่น ๆ (OpenAI-compatible)" },
 ];
@@ -65,9 +78,9 @@ export const LOCAL_EMBEDS = [
 ];
 
 export const CLOUD_EMBEDS = [
+  { value: "bedrock", label: "ฝังเวกเตอร์ Bedrock (Titan)" },
   { value: "openai", label: "ฝังเวกเตอร์ OpenAI" },
   { value: "gemini", label: "ฝังเวกเตอร์ Gemini" },
-  { value: "bedrock", label: "ฝังเวกเตอร์ Bedrock (Titan)" },
   { value: "azure_foundry", label: "ฝังเวกเตอร์ Azure Foundry" },
   { value: "openai_compatible", label: "ฝังเวกเตอร์แบบ OpenAI-compatible" },
 ];
@@ -75,6 +88,12 @@ export const CLOUD_EMBEDS = [
 export const VECTOR_STORES = [
   { value: "pgvector", label: "pgvector" },
   { value: "qdrant", label: "Qdrant" },
+];
+
+export const RAG_SOURCE_OPTIONS = [
+  { value: "both", label: "คลังในเครื่อง + Custom RAG" },
+  { value: "local", label: "เฉพาะคลังในเครื่อง" },
+  { value: "custom", label: "เฉพาะ Custom RAG" },
 ];
 
 export const EMPTY_AI_SETTINGS: AiSettings = {
@@ -89,6 +108,11 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   lm_studio_timeout: 180,
   ollama_base_url: "http://host.docker.internal:11434/v1",
   llama_cpp_base_url: "http://host.docker.internal:8080/v1",
+  // Docker Compose internal cleartext endpoints (private network only)
+  sglang_base_url: "http://sglang-llm:30000/v1", // NOSONAR typescript:S5332
+  sglang_embedding_base_url: "http://sglang-embed:30001/v1", // NOSONAR typescript:S5332
+  sglang_model: "google/gemma-4-e4b",
+  sglang_embedding_model: "google/embeddinggemma-300m",
   anthropic_api_key: "",
   openai_api_key: "",
   gemini_api_key: "",
@@ -111,6 +135,12 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   openai_compatible_base_url: "",
   openai_compatible_model: "",
   openai_compatible_embedding_model: "text-embedding-3-small",
+  custom_rag_enabled: false,
+  custom_rag_base_url: "",
+  custom_rag_api_key: "",
+  custom_rag_top_k: 5,
+  custom_rag_timeout_seconds: 30,
+  rag_sources: "both",
 };
 
 export function llmOptionsForMode(mode: string) {
@@ -168,6 +198,10 @@ export function showAzureFields(llmProvider: string, embedProvider: string): boo
 
 export function showCompatFields(llmProvider: string, embedProvider: string): boolean {
   return llmProvider === "openai_compatible" || embedProvider === "openai_compatible";
+}
+
+export function showSglangFields(llmProvider: string, embedServer: string): boolean {
+  return llmProvider === "sglang" || embedServer === "sglang";
 }
 
 export function isMaskedSecret(value: string | undefined): boolean {

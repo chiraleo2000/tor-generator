@@ -148,6 +148,27 @@ async def rate_limit_api(request: Request) -> None:
         )
 
 
+async def rate_limit_ai(request: Request) -> None:
+    """FastAPI dependency that enforces AI endpoint rate limiting per user."""
+    redis: Redis | None = request.app.state.redis
+    if redis is None:
+        return
+
+    settings = get_settings()
+    limit = int(getattr(settings, "rate_limit_ai_per_minute", 30) or 30)
+
+    user_identifier = _get_user_identifier(request)
+    key = _build_rate_key(user_identifier, "ai")
+
+    allowed, retry_after = await RateLimiter.check_rate_limit(redis, key, limit)
+
+    if not allowed:
+        raise RateLimitError(
+            message="เกินจำนวนคำขอ AI ที่อนุญาต กรุณารอสักครู่",
+            retry_after=retry_after,
+        )
+
+
 async def rate_limit_upload(request: Request) -> None:
     """FastAPI dependency that enforces upload rate limiting (10 uploads/min per user).
 

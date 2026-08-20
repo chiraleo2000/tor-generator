@@ -282,7 +282,7 @@ def build_docx(arch: Path, phases: Path) -> None:
     add_body(
         doc,
         "แหล่งความจริง: โค้ดใน app/frontend และ app/backend รวมผล unit tests ที่รันจริงวันเดียวกัน "
-        "(Vitest 128 ผ่าน, pytest 1448 + live_llm 10, Playwright headed 15) เอกสารนี้เป็นฉบับส่งออกของ Discussions/19-APPLICATION_OPERATING_REPORT.md",
+        "(Vitest 128 ผ่าน, pytest 1451 + live_llm 10, Playwright headed 15 · 0 skipped) เอกสารนี้เป็นฉบับส่งออกของ Discussions/19-APPLICATION_OPERATING_REPORT.md",
     )
 
     add_heading(doc, "1. สรุปหนึ่งหน้า", 1)
@@ -302,7 +302,7 @@ def build_docx(arch: Path, phases: Path) -> None:
             ["โมเดลเอกสาร", "13 ส่วนกฎหมาย + s4.1–s4.14 = 27 ช่อง"],
             ["AI ค่าเริ่มต้น", "Gemma ใน LM Studio + EmbeddingGemma 768 มิติ"],
             ["บทบาท", "officer / reviewer / admin"],
-            ["เทสต์รอบนี้", "Vitest 128 · pytest 1448 + live_llm 10 · Playwright headed 15"],
+            ["เทสต์รอบนี้", "Vitest 128 · pytest 1451 + live_llm 10 · Playwright headed 15 · 0 skipped · cov ~84%/89%"],
         ],
     )
     add_image(doc, arch, "ภาพที่ 1  สถาปัตยกรรมรวม — ผู้ใช้ → Next.js → FastAPI → คลังข้อมูล / LLM / Rule Engine")
@@ -599,14 +599,14 @@ def build_docx(arch: Path, phases: Path) -> None:
     add_heading(doc, "10. Unit tests", 1)
     add_body(doc, "รันเมื่อ 20 สิงหาคม 2026 บนเครื่องเดียวกันกับรายงานนี้")
     add_image(doc, EVIDENCE / "19-vitest-output.png", "ภาพที่ 15  ผล Vitest — 30 ไฟล์ 128 เคส ผ่าน")
-    add_image(doc, EVIDENCE / "19-pytest-output.png", "ภาพที่ 16  ผล pytest — 1448 ผ่าน (+ live_llm 10 เมื่อเปิด LM Studio)")
+    add_image(doc, EVIDENCE / "19-pytest-output.png", "ภาพที่ 16  ผล pytest — 1451 ผ่าน + live_llm 10 (0 skipped)")
     add_image(doc, EVIDENCE / "19-unit-test-usage-map.png", "ภาพที่ 17  แผนที่การใช้งาน ↔ เทสต์ที่ล็อกพฤติกรรม")
     add_table(
         doc,
         ["ชุด", "คำสั่ง", "ผลรอบนี้"],
         [
             ["Frontend unit", "cd app/frontend && npm run test:unit", "30 ไฟล์ / 128 เคส ผ่าน"],
-            ["Backend unit", 'python -m pytest -m "not live_llm"', "1448 ผ่าน · 1 ข้าม · 10 ไม่รัน (live_llm)"],
+            ["Backend unit", 'python -m pytest -m "not live_llm"', "1451 ผ่าน · 0 ข้าม · ~84% cov"],
             ["Backend live LLM", "python -m pytest -m live_llm", "10 ผ่าน (LM Studio :1234)"],
             ["E2E headed", "npm run test:e2e:headed", "15 ผ่าน · UI มองเห็นได้ ~3.1 นาที"],
             ["E2E (อ้างอิง 19 ส.ค.)", "npm run test:e2e", "15 ผ่าน — ดู 18-TEST_EVIDENCE.md"],
@@ -794,7 +794,7 @@ def build_pptx(arch: Path, phases: Path) -> None:
             ["5", "Workflows 5 Phase, LangGraph, แชท, ตรวจไฟล์, อนุมัติ"],
             ["6–7", "Features และ Functions ที่ขับการใช้งาน"],
             ["8–9", "Rule Engine · Docker / LLM / seed / skills"],
-            ["10", "Unit tests จริง 20 ส.ค. 2026 (Vitest 128 / pytest 1448 + live 10 / E2E headed 15)"],
+            ["10", "Unit tests จริง 20 ส.ค. 2026 (Vitest 128 / pytest 1451 + live 10 / E2E headed 15)"],
         ],
         height=4.8,
     )
@@ -1081,7 +1081,7 @@ def build_pptx(arch: Path, phases: Path) -> None:
             "เจ้าหน้าที่เดิน 5 Phase: อัปโหลด → เติมช่อง → ร่าง 13 หมวด → ตรวจ → ส่งออก",
             "คนยืนยันหมวดเสี่ยง (HITL) ก่อนส่งขออนุมัติ ผู้ตรวจสอบกดอนุมัติหรือส่งกลับ",
             "AI ในเครื่องเป็นค่าเริ่ม แชทกับ embeddings เลือกอิสระได้จากหน้าแอดมิน",
-            "Unit tests ล็อกพฤติกรรมนี้ไว้แล้ว: Vitest 128, pytest 1448 + live_llm 10, Playwright headed 15",
+            "Unit tests ล็อกพฤติกรรมนี้ไว้แล้ว: Vitest 128, pytest 1451 + live_llm 10, Playwright headed 15",
             "ต้นฉบับ Markdown: Discussions/19-APPLICATION_OPERATING_REPORT.md",
         ],
         size=18,

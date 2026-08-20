@@ -217,7 +217,7 @@ tr:hover td{background:#f9fafb}
       <div><h1>TOR Generator</h1><p>ระบบจัดซื้อจัดจ้างภาครัฐ</p></div>
     </div>
     <nav id="nav"></nav>
-    <p class="sidebar-foot">v0.2.3 — Gemma ในเครื่อง หรือคลาวด์เมื่อใส่ API key (Anthropic / OpenAI / Gemini / Bedrock / Azure)</p>
+    <p class="sidebar-foot">v0.2.3 — Dev: LM Studio · Production: Amazon Bedrock · on-prem: SGLang / Ollama / llama.cpp · คิว AI หลายผู้ใช้</p>
     <button class="logout" type="button" id="logoutBtn">ออกจากระบบ</button>
   </aside>
   <div class="main">
@@ -358,7 +358,11 @@ const state = {
   ],
   ai:{mode:"on_prem",llm:"lm_studio",embed:"local",embedServer:"lm_studio",vector:"pgvector",
     lm:"http://host.docker.internal:1234/v1",ollama:"http://host.docker.internal:11434/v1",
-    llama:"http://host.docker.internal:8080/v1",chat:"google/gemma-4-e4b",emb:"text-embedding-embeddinggemma-300m",timeout:180},
+    llama:"http://host.docker.internal:8080/v1",
+    sglang:"http://sglang-llm:30000/v1",sglangEmb:"http://sglang-embed:30001/v1",
+    sglangChat:"google/gemma-4-e4b",sglangEmbModel:"google/embeddinggemma-300m",
+    chat:"google/gemma-4-e4b",emb:"text-embedding-embeddinggemma-300m",timeout:180,
+    customRag:false,customRagUrl:"",ragSources:"both"},
   aiMsg:"",
   busy:false,
   score:null,
@@ -1017,24 +1021,29 @@ function helpHtml(){
     admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3>
       <p>แม่แบบ · คลังกลาง · ผู้ใช้ · การตั้งค่า AI — โหมดเป็นป้ายเท่านั้น แชทกับฝังเวกเตอร์เลือกอิสระ · บันทึกมีผลทันที</p>
       <table class="help-table"><thead><tr><th>เป้าหมาย</th><th>แชท</th><th>ฝังเวกเตอร์</th><th>seed ใหม่?</th></tr></thead>
-      <tbody><tr><td>Gemma ในเครื่อง</td><td>LM Studio</td><td>EmbeddingGemma</td><td>ไม่</td></tr>
+      <tbody>
+      <tr><td>Amazon Bedrock (production)</td><td>Bedrock</td><td>Bedrock Titan / ในเครื่อง</td><td>ตามมิติ</td></tr>
+      <tr><td>Gemma ในเครื่อง (dev)</td><td>LM Studio</td><td>EmbeddingGemma</td><td>ไม่</td></tr>
+      <tr><td>SGLang multi-user</td><td>SGLang</td><td>SGLang embed</td><td>ไม่</td></tr>
       <tr><td>Claude + ฝังในเครื่อง</td><td>Claude</td><td>ในเครื่อง</td><td>ไม่</td></tr>
-      <tr><td>Claude + OpenAI</td><td>Claude</td><td>OpenAI</td><td>ใช่ (seed_raw_docs)</td></tr></tbody></table>
+      <tr><td>Claude + OpenAI</td><td>Claude</td><td>OpenAI</td><td>ใช่ (seed_raw_docs)</td></tr>
+      </tbody></table>
       ${helpFig("16-admin-templates.png","แม่แบบ")}
       ${helpFig("18-admin-users.png","ผู้ใช้")}
       ${helpFig("09-admin-ai-lm-studio.png","ตั้งค่า AI + ทดสอบ LM Studio")}
-      ${helpFig("09b-admin-ai-cloud.png","เลือก Claude + คีย์คลาวด์")}`,
+      ${helpFig("09b-admin-ai-cloud.png","Amazon Bedrock / คีย์คลาวด์")}`,
     faq:`<h3 style="color:var(--navy);margin-bottom:8px">คำถามที่พบบ่อย</h3>
-      <p><strong>ติดตั้ง:</strong> discussions/14-INSTALLATION.md · Docker โปรเจกต์ tor-app · LM Studio :1234 · health ที่ :4000</p>
+      <p><strong>ติดตั้ง:</strong> discussions/14-INSTALLATION.md · Docker โปรเจกต์ tor-app · Dev: LM Studio <code>127.0.0.1:1234</code> · แชท <code>google/gemma-4-e4b</code> · ฝัง <code>text-embedding-embeddinggemma-300m</code> · health ที่ :4000</p>
+      <p><strong>Production:</strong> Amazon Bedrock — discussions/20-AWS_BEDROCK_SETUP.md · on-prem หลายผู้ใช้: SGLang (compose profile <code>sglang</code>) + คิว Redis</p>
       <table class="help-table"><thead><tr><th>อาการ</th><th>ตรวจ</th></tr></thead>
       <tbody>
       <tr><td>เข้าแล้วเด้งกลับ</td><td>Passw0rd! · backend :4000 · คุกกี้</td></tr>
       <tr><td>ถาม-ตอบว่าง</td><td>seed_raw_docs · Mongo/Neo4j</td></tr>
-      <tr><td>AI ไม่ตอบ</td><td>LM Studio โหลด Gemma+EmbeddingGemma หรือคีย์คลาวด์</td></tr>
+      <tr><td>AI ไม่ตอบ</td><td>LM Studio โหลด Gemma+EmbeddingGemma หรือ Bedrock/คีย์คลาวด์ · ดูสถานะคิว AI</td></tr>
       <tr><td>ส่งขออนุมัติไม่ได้</td><td>ครบ 13 หมวด + HITL</td></tr>
       <tr><td>สร้างโครงการไม่ได้</td><td>งบเป็นเลข ASCII</td></tr>
       </tbody></table>
-      <p><strong>เทสต์รอบ 20 ส.ค. 2026:</strong> pytest 1448 · live_llm 10 · Vitest 128 · Playwright headed 15 — ดู 18-TEST_EVIDENCE และ 19-OPERATING_REPORT</p>
+      <p><strong>เทสต์รอบ 20 ส.ค. 2026:</strong> pytest 1451 + live_llm 10 · Vitest 128 · Playwright headed 15 (0 skipped) — ดู Discussions/18-TEST_EVIDENCE และ 19-APPLICATION_OPERATING_REPORT</p>
       <p class="muted">การตั้งค่าโมเดล/คลังเป็นหน้าที่ผู้ดูแล — เจ้าหน้าที่ใช้ร่าง / ตรวจสอบ / ถาม-ตอบ เท่านั้น (ไม่มีเมนู Agent API)</p>`
   };
   const tabsHtml = tabs
@@ -1128,35 +1137,57 @@ function htmlOption(value, label, current){
 }
 function aiLocalCardHtml(){
   const server=state.ai.embedServer||"lm_studio";
+  const isSglang=state.ai.llm==="sglang"||server==="sglang";
+  let sglangHtml="";
+  if(isSglang){
+    sglangHtml='<label class="lbl">SGLang แชท URL</label><input id="sgUrl" value="'+esc(state.ai.sglang)+'">'+
+      '<label class="lbl">SGLang embedding URL</label><input id="sgEmbUrl" value="'+esc(state.ai.sglangEmb)+'">'+
+      '<label class="lbl">โมเดลแชท SGLang</label><input id="sgChat" value="'+esc(state.ai.sglangChat)+'">'+
+      '<label class="lbl">โมเดลฝังเวกเตอร์ SGLang</label><input id="sgEmbM" value="'+esc(state.ai.sglangEmbModel)+'">';
+  }
   return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">เซิร์ฟเวอร์ในเครื่อง</h2>'+
     '<label class="lbl">เซิร์ฟเวอร์ฝังเวกเตอร์ในเครื่อง</label>'+
     '<select id="embSrv">'+
       htmlOption("lm_studio","LM Studio",server)+
       htmlOption("ollama","Ollama",server)+
       htmlOption("llama_cpp","llama.cpp",server)+
+      htmlOption("sglang","SGLang",server)+
     '</select>'+
     '<label class="lbl">LM Studio URL</label><input id="lmUrl" value="'+esc(state.ai.lm)+'">'+
     '<label class="lbl">Ollama URL</label><input id="olUrl" value="'+esc(state.ai.ollama)+'">'+
     '<label class="lbl">llama.cpp / custom URL</label><input id="llUrl" value="'+esc(state.ai.llama)+'">'+
-    '<label class="lbl">ชื่อโมเดลแชท</label><input id="chatM" value="'+esc(state.ai.chat)+'">'+
+    sglangHtml+
+    '<label class="lbl">ชื่อโมเดลแชท (LM Studio / Ollama / llama.cpp)</label><input id="chatM" value="'+esc(state.ai.chat)+'">'+
     '<label class="lbl">ชื่อโมเดลฝังเวกเตอร์</label><input id="embM" value="'+esc(state.ai.emb)+'">'+
     '<label class="lbl">Timeout (วินาที)</label><input id="tmo" type="number" value="'+state.ai.timeout+'"></div>';
 }
 function aiCloudCardHtml(){
-  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์</h2>'+
+  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์ / Amazon Bedrock</h2>'+
+    '<p class="muted" style="margin-bottom:8px">Production แนะนำ: Amazon Bedrock — เว้นว่าง AWS keys ได้ถ้าใช้ IAM role (ดู discussions/20-AWS_BEDROCK_SETUP.md)</p>'+
+    '<label class="lbl">AWS access key / secret (Bedrock)</label><input type="password" placeholder="เว้นว่างใช้ default chain / IAM role ได้">'+
     '<label class="lbl">Anthropic API key</label><input type="password" placeholder="จำลอง — ไม่ส่งออก">'+
     '<label class="lbl">OpenAI API key</label><input type="password">'+
     '<label class="lbl">Gemini API key</label><input type="password">'+
-    '<label class="lbl">AWS access key / secret (Bedrock)</label><input type="password" placeholder="เว้นว่างใช้ default chain ได้">'+
     '<label class="lbl">Azure Foundry endpoint + API key</label><input type="password">'+
     '<label class="lbl">OpenAI-compatible base URL</label><input placeholder="https://api.groq.com/openai/v1"></div>';
 }
+function aiCustomRagHtml(){
+  const on=state.ai.customRag?" checked":"";
+  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">Custom RAG (ทางเลือก)</h2>'+
+    '<label class="lbl"><input type="checkbox" id="crOn"'+on+'> <span>เปิด Custom RAG HTTP retrieve</span></label>'+
+    '<label class="lbl">Base URL</label><input id="crUrl" value="'+esc(state.ai.customRagUrl)+'" placeholder="https://rag.example/v1">'+
+    '<label class="lbl">แหล่งค้น</label><select id="crSrc">'+
+      htmlOption("both","คลังในเครื่อง + Custom RAG",state.ai.ragSources)+
+      htmlOption("local","เฉพาะคลังในเครื่อง",state.ai.ragSources)+
+      htmlOption("custom","เฉพาะ Custom RAG",state.ai.ragSources)+
+    '</select></div>';
+}
 function aiHtml(){
-  const localLlms=[["lm_studio","LM Studio"],["ollama","Ollama"],["llama_cpp","llama.cpp / เซิร์ฟเวอร์กำหนดเอง"]];
-  const cloudLlms=[["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"],["bedrock","Amazon Bedrock"],["azure_foundry","Azure AI Foundry"],["openai_compatible","อื่น ๆ (OpenAI-compatible)"]];
+  const localLlms=[["lm_studio","LM Studio"],["ollama","Ollama"],["llama_cpp","llama.cpp / เซิร์ฟเวอร์กำหนดเอง"],["sglang","SGLang (on-prem multi-user)"]];
+  const cloudLlms=[["bedrock","Amazon Bedrock (แนะนำ production)"],["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"],["azure_foundry","Azure AI Foundry"],["openai_compatible","อื่น ๆ (OpenAI-compatible)"]];
   let llm=localLlms.concat(cloudLlms);
   if(state.ai.mode==="cloud") llm=cloudLlms.concat(localLlms);
-  const localChat=["lm_studio","ollama","llama_cpp"].includes(state.ai.llm);
+  const localChat=["lm_studio","ollama","llama_cpp","sglang"].includes(state.ai.llm);
   const localEmb=state.ai.embed==="local"||state.ai.embed==="qwen3";
   let aiMsgHtml="";
   if(state.aiMsg){
@@ -1168,7 +1199,7 @@ function aiHtml(){
   if(!localChat||!localEmb) cloudHtml=aiCloudCardHtml();
   const llmOptionsHtml=llm.map(function(pair){return htmlOption(pair[0],pair[1],state.ai.llm);}).join("");
   return '<div class="gov-card" style="margin-bottom:16px"><h1 style="color:var(--navy);font-size:24px;font-weight:800">การตั้งค่า AI</h1>'+
-    '<p class="muted" style="margin-top:6px">เลือกโมเดลแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ การบันทึกมีผลทันที หากเปลี่ยนฝังเวกเตอร์ ต้องประมวลผลฐานความรู้ใหม่</p></div>'+
+    '<p class="muted" style="margin-top:6px">Production แนะนำ Amazon Bedrock · on-prem หลายผู้ใช้ใช้ SGLang (Docker profile sglang) · Dev ใช้ LM Studio ได้ โหมดเป็นป้ายกำกับเท่านั้น — แชทและฝังเวกเตอร์เลือกคนละแหล่งได้ การบันทึกมีผลทันที หากเปลี่ยนฝังเวกเตอร์ต้องประมวลผลฐานความรู้ใหม่</p></div>'+
     aiMsgHtml+
     '<div class="gov-card" style="margin-bottom:16px">'+
       '<label class="lbl">โหมด</label><select id="aiMode">'+
@@ -1179,9 +1210,9 @@ function aiHtml(){
       '<label class="lbl" style="margin-top:10px">โมเดลแชท</label><select id="aiLlm">'+llmOptionsHtml+'</select>'+
       '<label class="lbl" style="margin-top:10px">ฝังเวกเตอร์</label><select id="aiEmb">'+
         htmlOption("local","ในเครื่อง (OpenAI-compatible)",state.ai.embed)+
+        htmlOption("bedrock","ฝังเวกเตอร์ Bedrock (Titan)",state.ai.embed)+
         htmlOption("openai","ฝังเวกเตอร์ OpenAI",state.ai.embed)+
         htmlOption("gemini","ฝังเวกเตอร์ Gemini",state.ai.embed)+
-        htmlOption("bedrock","ฝังเวกเตอร์ Bedrock (Titan)",state.ai.embed)+
         htmlOption("azure_foundry","ฝังเวกเตอร์ Azure Foundry",state.ai.embed)+
         htmlOption("openai_compatible","ฝังเวกเตอร์แบบ OpenAI-compatible",state.ai.embed)+
       '</select>'+
@@ -1192,6 +1223,7 @@ function aiHtml(){
     '</div>'+
     localHtml+
     cloudHtml+
+    aiCustomRagHtml()+
     '<div style="display:flex;gap:8px"><button class="btn btn-outline" id="aiTest">ทดสอบการเชื่อมต่อ</button><button class="btn btn-primary" id="aiSave">บันทึก</button></div>';
 }
 
@@ -1358,7 +1390,7 @@ function bindView(){
   v.querySelector("#aiLlm")?.addEventListener("change",e=>{state.ai.llm=e.target.value;renderShell();});
   v.querySelector("#aiEmb")?.addEventListener("change",e=>{state.ai.embed=e.target.value;renderShell();});
   v.querySelector("#aiVec")?.addEventListener("change",e=>{state.ai.vector=e.target.value;});
-  v.querySelector("#embSrv")?.addEventListener("change",e=>{state.ai.embedServer=e.target.value;});
+  v.querySelector("#embSrv")?.addEventListener("change",e=>{state.ai.embedServer=e.target.value;renderShell();});
   v.querySelector("#aiTest")?.addEventListener("click",()=>{
     const chat=state.ai.llm;
     const emb=state.ai.embed;
@@ -1369,11 +1401,18 @@ function bindView(){
     if(document.getElementById("lmUrl")) state.ai.lm=document.getElementById("lmUrl").value;
     if(document.getElementById("olUrl")) state.ai.ollama=document.getElementById("olUrl").value;
     if(document.getElementById("llUrl")) state.ai.llama=document.getElementById("llUrl").value;
+    if(document.getElementById("sgUrl")) state.ai.sglang=document.getElementById("sgUrl").value;
+    if(document.getElementById("sgEmbUrl")) state.ai.sglangEmb=document.getElementById("sgEmbUrl").value;
+    if(document.getElementById("sgChat")) state.ai.sglangChat=document.getElementById("sgChat").value;
+    if(document.getElementById("sgEmbM")) state.ai.sglangEmbModel=document.getElementById("sgEmbM").value;
     if(document.getElementById("chatM")) state.ai.chat=document.getElementById("chatM").value;
     if(document.getElementById("embM")) state.ai.emb=document.getElementById("embM").value;
     if(document.getElementById("tmo")) state.ai.timeout=Number(document.getElementById("tmo").value)||180;
     if(document.getElementById("aiLlm")) state.ai.llm=document.getElementById("aiLlm").value;
     if(document.getElementById("aiEmb")) state.ai.embed=document.getElementById("aiEmb").value;
+    if(document.getElementById("crOn")) state.ai.customRag=document.getElementById("crOn").checked;
+    if(document.getElementById("crUrl")) state.ai.customRagUrl=document.getElementById("crUrl").value;
+    if(document.getElementById("crSrc")) state.ai.ragSources=document.getElementById("crSrc").value;
     state.aiMsg="บันทึกแล้ว (จำลองในเบราว์เซอร์) — แชท "+state.ai.llm+" · ฝังเวกเตอร์ "+state.ai.embed;
     renderShell();
   });

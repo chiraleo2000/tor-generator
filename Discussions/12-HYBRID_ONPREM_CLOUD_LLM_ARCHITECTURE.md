@@ -1,15 +1,17 @@
 # 12 — HYBRID ON-PREMISE / CLOUD LLM ARCHITECTURE
 ### ระบบ TOR Generator — สถาปัตยกรรม AI/LLM แบบ Hybrid (On-Premise / Cloud) พร้อม RAG และ Orchestration
 
-> **สแตกที่รันอยู่ตอนนี้:** LM Studio `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` (768 มิติ), pgvector, Mongo GridFS, Neo4j GraphRAG  
-> คลาวด์ที่เปิดจากหน้าผู้ดูแล: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible  
-> **แชท (`LLM_PROVIDER`) และ embeddings (`EMBEDDING_PROVIDER`) เลือกอิสระในทุกโหมด** — `on_prem` / `cloud` ไม่สลับคู่อัตโนมัติ เช่น Claude API + EmbeddingGemma ในเครื่อง  
-> ค่าติดตั้งจริงดู `14-INSTALLATION.md` และ `16-BACKEND_ARCHITECTURE.md` — ตารางโมเดลด้านล่าง (เช่น Qwen3 / OpenThaiChinda) เป็นบันทึกออกแบบเดิม ไม่ใช่ค่าเริ่มต้นปัจจุบัน  
-> **v0.2.0:** กราฟร่างทั้งฉบับ (`/api/v1/agent`) ใช้ `ProviderFactory` ชุดเดียวกับร่างรายหมวด — เลือกแชทและ embeddings คนละแหล่งได้ในทุกโหมด
+> **Production แนะนำ:** Amazon Bedrock บนบัญชี AWS — คู่มือ [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
+> **Dev ค่าเริ่มต้น:** LM Studio `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` (768 มิติ), pgvector, Mongo GridFS, Neo4j GraphRAG  
+> On-prem ที่สลับได้: LM Studio, Ollama, llama.cpp, **SGLang** · คลาวด์: Bedrock, Anthropic, OpenAI, Gemini, Azure Foundry, OpenAI-compatible  
+> **Custom RAG HTTP** เป็นแหล่งดึงความรู้เสริมได้คู่กับคลังในเครื่อง  
+> **แชท (`LLM_PROVIDER`) และ embeddings (`EMBEDDING_PROVIDER`) เลือกอิสระในทุกโหมด** — `on_prem` / `cloud` ไม่สลับคู่อัตโนมัติ  
+> ค่าติดตั้งจริงดู `14-INSTALLATION.md` และ `16-BACKEND_ARCHITECTURE.md`  
+> **v0.2.0:** กราฟร่างทั้งฉบับ (`/api/v1/agent`) ใช้ `ProviderFactory` ชุดเดียวกับร่างรายหมวด
 
 เอกสารนี้ต่อยอดจากเอกสาร 07 (สถาปัตยกรรมของ PoC ที่เป็น Rule-based ล้วน ไม่มี LLM) โดยออกแบบสถาปัตยกรรมชั้นที่เพิ่มขึ้นมาสำหรับการใช้ **LLM + RAG ช่วยร่าง/ตรวจ TOR** ควบคู่กับ Rule Engine เดิม (ซึ่งยังคงทำงานเป็น **Deterministic Guardrail** ตรวจสอบผลลัพธ์จาก LLM เสมอ — ไม่ปล่อยให้ LLM ตัดสินใจเรื่องกฎหมาย/ตัวเลขเพียงลำพัง)
 
-**หลักการออกแบบสำคัญ:** ระบบต้องรองรับ 3 รูปแบบการติดตั้งโดยไม่ต้องแก้โค้ดหลัก เปลี่ยนแค่ Environment Variable — **On-Premise Only** (ข้อมูลไม่ออกนอกองค์กรเลย เหมาะกับข้อมูลจัดซื้อจัดจ้างที่มีชั้นความลับ), **Cloud** (ใช้บริการ Managed เต็มรูปแบบเพื่อคุณภาพ/ความเร็วสูงสุด), และ **Hybrid** (เลือกได้ต่อ Component)
+**หลักการออกแบบสำคัญ:** ระบบต้องรองรับ 3 รูปแบบการติดตั้งโดยไม่ต้องแก้โค้ดหลัก เปลี่ยนแค่ Environment Variable — **On-Premise Only** (ข้อมูลไม่ออกนอกองค์กรเลย เหมาะกับข้อมูลจัดซื้อจัดจ้างที่มีชั้นความลับ), **Cloud / Amazon** (Bedrock เป็น path แนะนำสำหรับ production multi-user), และ **Hybrid** (เลือกได้ต่อ Component)
 
 ---
 

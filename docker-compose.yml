@@ -107,6 +107,20 @@ services:
       - JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS:-24}
       - RATE_LIMIT_REQUESTS_PER_MINUTE=${RATE_LIMIT_REQUESTS_PER_MINUTE:-100}
       - RATE_LIMIT_UPLOADS_PER_MINUTE=${RATE_LIMIT_UPLOADS_PER_MINUTE:-10}
+      - RATE_LIMIT_AI_PER_MINUTE=${RATE_LIMIT_AI_PER_MINUTE:-30}
+      - LLM_MAX_CONCURRENT=${LLM_MAX_CONCURRENT:-8}
+      - EMBEDDING_MAX_CONCURRENT=${EMBEDDING_MAX_CONCURRENT:-16}
+      - LLM_QUEUE_WAIT_TIMEOUT_SECONDS=${LLM_QUEUE_WAIT_TIMEOUT_SECONDS:-120}
+      - SGLANG_BASE_URL=${SGLANG_BASE_URL:-http://sglang-llm:30000/v1}
+      - SGLANG_EMBEDDING_BASE_URL=${SGLANG_EMBEDDING_BASE_URL:-http://sglang-embed:30001/v1}
+      - SGLANG_MODEL=${SGLANG_MODEL:-google/gemma-4-e4b}
+      - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
+      - CUSTOM_RAG_ENABLED=${CUSTOM_RAG_ENABLED:-false}
+      - CUSTOM_RAG_BASE_URL=${CUSTOM_RAG_BASE_URL:-}
+      - CUSTOM_RAG_API_KEY=${CUSTOM_RAG_API_KEY:-}
+      - CUSTOM_RAG_TOP_K=${CUSTOM_RAG_TOP_K:-5}
+      - CUSTOM_RAG_TIMEOUT_SECONDS=${CUSTOM_RAG_TIMEOUT_SECONDS:-30}
+      - RAG_SOURCES=${RAG_SOURCES:-both}
       - QDRANT_HOST=${QDRANT_HOST:-qdrant}
       - QDRANT_PORT=${QDRANT_PORT:-6333}
     depends_on:
@@ -262,6 +276,87 @@ services:
     networks:
       - tor_network
 
+  # ---------------------------------------------------------------------------
+  # SGLang (optional on-prem multi-user inference) — profile: sglang
+  # Requires NVIDIA Container Toolkit. Production on AWS typically uses Bedrock instead.
+  # ---------------------------------------------------------------------------
+  sglang-llm:
+    image: lmsysorg/sglang:latest-runtime
+    profiles: [sglang]
+    ipc: host
+    shm_size: "32gb"
+    ports:
+      - "30000:30000"
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    entrypoint: python3 -m sglang.launch_server
+    command:
+      - --model-path
+      - ${SGLANG_MODEL:-google/gemma-4-e4b}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "30000"
+      - --mem-fraction-static
+      - "0.75"
+      - --trust-remote-code
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - tor_network
+
+  sglang-embed:
+    image: lmsysorg/sglang:latest-runtime
+    profiles: [sglang]
+    ipc: host
+    shm_size: "8gb"
+    ports:
+      - "30001:30001"
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    entrypoint: python3 -m sglang.launch_server
+    command:
+      - --model-path
+      - ${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
+      - --is-embedding
+      - --host
+      - 0.0.0.0
+      - --port
+      - "30001"
+      - --mem-fraction-static
+      - "0.15"
+      - --trust-remote-code
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - tor_network
+
 # =============================================================================
 # Named Volumes (persistent across container restarts)
 # =============================================================================
@@ -271,6 +366,7 @@ volumes:
   qdrant_data:
   mongo_data:
   neo4j_data:
+  huggingface_cache:
 
 # =============================================================================
 # Networks (shared bridge for inter-service communication by container name)

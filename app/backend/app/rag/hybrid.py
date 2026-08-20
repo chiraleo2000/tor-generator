@@ -1,4 +1,4 @@
-"""Hybrid pgvector + GraphRAG retrieval used by chat, intake, and orchestrator."""
+"""Hybrid pgvector + GraphRAG + optional Custom RAG retrieval."""
 
 from __future__ import annotations
 
@@ -6,7 +6,9 @@ import logging
 from uuid import UUID
 
 from app import infra as runtime
+from app.config import get_settings
 from app.providers.factory import ProviderFactory
+from app.rag.custom_rag_client import build_custom_rag_client
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
 from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk
 
@@ -29,6 +31,14 @@ def owner_filter_dict(
     return payload
 
 
+def _use_local_rag(rag_sources: str) -> bool:
+    return rag_sources in ("local", "both")
+
+
+def _use_custom_rag(rag_sources: str) -> bool:
+    return rag_sources in ("custom", "both")
+
+
 async def hybrid_retrieve(
     query: str,
     *,
@@ -38,41 +48,71 @@ async def hybrid_retrieve(
     section_relevance: str | None = None,
     extra_filter: RetrievalFilter | None = None,
 ) -> tuple[RetrievalResult, list[dict[str, str]], bool]:
-    """Return pgvector chunks plus graph citations.
+    """Return local vector chunks, optional custom RAG, plus graph citations.
 
     The third value is True when Neo4j expansion was skipped (degraded).
     """
+    settings = get_settings()
+    rag_sources = str(getattr(settings, "rag_sources", "both") or "both")
     empty = RetrievalResult(chunks=[], query=query, top_k=top_k, actual_count=0)
     db_factory = runtime.session_factory
-    if db_factory is None:
-        return empty, [], True
+    chunks: list[RetrievedChunk] = []
+    custom_degraded = False
 
-    factory = ProviderFactory()
-    store = factory.get_vector_store(db_factory)
-    query_vector = await factory.get_embedding().embed_query(query)
-    merged_filter = owner_filter_dict(user_id=user_id, search_scope=search_scope)
-    if extra_filter:
-        extra = extra_filter.to_filter_dict() or {}
-        merged_filter.update(extra)
-    elif section_relevance:
-        merged_filter["section_relevance"] = section_relevance
+    if _use_local_rag(rag_sources):
+        if db_factory is None:
+            if not _use_custom_rag(rag_sources):
+                return empty, [], True
+        else:
+            factory = ProviderFactory()
+            store = factory.get_vector_store(db_factory)
+            query_vector = await factory.get_embedding().embed_query(query)
+            merged_filter = owner_filter_dict(user_id=user_id, search_scope=search_scope)
+            if extra_filter:
+                extra = extra_filter.to_filter_dict() or {}
+                merged_filter.update(extra)
+            elif section_relevance:
+                merged_filter["section_relevance"] = section_relevance
 
-    search_results = await store.search(query_vector, top_k=top_k, filter=merged_filter)
-    chunks = [
-        RetrievedChunk(
-            id=item.id,
-            text=item.text,
-            score=item.score,
-            document_type=(item.metadata or {}).get("document_type"),
-            legal_reference=(item.metadata or {}).get("legal_reference"),
-            section_relevance=(item.metadata or {}).get("section_relevance"),
-            source_document=_meta_source(item.metadata),
-            section_label=(item.metadata or {}).get("section_label"),
-            page_number=(item.metadata or {}).get("page_number"),
-            metadata=item.metadata or {},
-        )
-        for item in search_results
-    ]
+            search_results = await store.search(
+                query_vector, top_k=top_k, filter=merged_filter
+            )
+            chunks = [
+                RetrievedChunk(
+                    id=item.id,
+                    text=item.text,
+                    score=item.score,
+                    document_type=(item.metadata or {}).get("document_type"),
+                    legal_reference=(item.metadata or {}).get("legal_reference"),
+                    section_relevance=(item.metadata or {}).get("section_relevance"),
+                    source_document=_meta_source(item.metadata),
+                    section_label=(item.metadata or {}).get("section_label"),
+                    page_number=(item.metadata or {}).get("page_number"),
+                    metadata=item.metadata or {},
+                )
+                for item in search_results
+            ]
+
+    if _use_custom_rag(rag_sources):
+        client = build_custom_rag_client()
+        if client is None and rag_sources == "custom":
+            logger.warning("rag_sources=custom but custom RAG is not configured")
+        elif client is not None:
+            try:
+                custom_chunks = await client.retrieve(
+                    query,
+                    user_id=user_id,
+                    search_scope=search_scope,
+                    top_k=int(getattr(settings, "custom_rag_top_k", top_k) or top_k),
+                )
+                chunks.extend(custom_chunks)
+            except Exception:
+                logger.exception("Custom RAG retrieve failed; continuing with local results")
+                custom_degraded = True
+
+    chunks.sort(key=lambda item: item.score, reverse=True)
+    chunks = chunks[: max(top_k * 2, top_k)]
+
     result = RetrievalResult(
         chunks=chunks,
         query=query,
@@ -83,6 +123,9 @@ async def hybrid_retrieve(
 
     citations: list[dict[str, str]] = []
     for chunk in chunks:
+        if (chunk.metadata or {}).get("rag_source") == "custom_rag":
+            label = chunk.source_document or "Custom RAG"
+            citations.append({"type": "custom_rag", "label": str(label)})
         if chunk.source_document:
             citations.append({"type": "document", "label": chunk.source_document})
         if chunk.legal_reference:
@@ -91,7 +134,7 @@ async def hybrid_retrieve(
             citations.append({"type": "slot", "label": str(chunk.section_relevance)})
 
     graph_degraded = True
-    if runtime.neo4j_driver is not None:
+    if _use_local_rag(rag_sources) and runtime.neo4j_driver is not None:
         try:
             store_graph = GraphRAGStore(runtime.neo4j_driver)
             rows = await store_graph.expand(
@@ -112,7 +155,7 @@ async def hybrid_retrieve(
                 )
             graph_degraded = False
         except Exception:
-            logger.exception("GraphRAG expand failed; continuing with pgvector")
+            logger.exception("GraphRAG expand failed; continuing with vector/custom RAG")
             graph_degraded = True
 
     seen: set[str] = set()
@@ -123,4 +166,6 @@ async def hybrid_retrieve(
             continue
         seen.add(key)
         unique.append(item)
+    # Preserve prior contract: third flag means graph degraded (custom failure is logged only)
+    del custom_degraded
     return result, unique, graph_degraded

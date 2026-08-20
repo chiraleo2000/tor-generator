@@ -67,12 +67,16 @@ export async function streamSsePost(
   body: unknown,
   token: string | null,
   onEvent: (event: string, data: Record<string, unknown>) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  extraHeaders?: Record<string, string>
 ): Promise<void> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
   };
+  if (extraHeaders) {
+    Object.assign(headers, extraHeaders);
+  }
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }

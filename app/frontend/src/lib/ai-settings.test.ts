@@ -17,16 +17,19 @@ describe("ai-settings helpers", () => {
     expect(llmOptionsForMode("on_prem").map((item) => item.value)).toContain("lm_studio");
     expect(llmOptionsForMode("on_prem").map((item) => item.value)).toContain("claude");
     expect(llmOptionsForMode("cloud").map((item) => item.value)).toEqual([
+      "bedrock",
       "claude",
       "openai",
       "gemini",
-      "bedrock",
       "azure_foundry",
       "openai_compatible",
       "lm_studio",
       "ollama",
       "llama_cpp",
+      "sglang",
     ]);
+    expect(llmOptionsForMode("on_prem").map((item) => item.value)).toContain("sglang");
+    expect(CLOUD_LLMS[0].value).toBe("bedrock");
     expect(llmOptionsForMode("hybrid").map((item) => item.value)).toContain("lm_studio");
     expect(llmOptionsForMode("hybrid").map((item) => item.value)).toContain("claude");
   });
@@ -91,10 +94,10 @@ describe("ai-settings helpers", () => {
     expect(isMaskedSecret("****abcd")).toBe(true);
     expect(isMaskedSecret("sk-live")).toBe(false);
     expect(CLOUD_LLMS.map((item) => item.value)).toEqual([
+      "bedrock",
       "claude",
       "openai",
       "gemini",
-      "bedrock",
       "azure_foundry",
       "openai_compatible",
     ]);

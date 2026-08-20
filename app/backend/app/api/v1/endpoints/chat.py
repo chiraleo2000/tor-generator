@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from app import infra as runtime
 from app.deps import get_current_user, get_db
 from app.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.llm_admission import AdmissionTimeoutError, admit
 from app.models.chat_message import ChatMessage
 from app.models.chat_prompt_template import ChatPromptTemplate
 from app.models.chat_room import ChatRoom
@@ -27,6 +28,7 @@ from app.models.user import User
 from app.providers.factory import ProviderFactory
 from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.hybrid import hybrid_retrieve
+from app.rate_limiter import rate_limit_ai
 from app.schemas.responses import MetaInfo, SuccessResponse
 
 logger = logging.getLogger("tor_app.chat")
@@ -289,7 +291,7 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-@router.post("/rooms/{room_id}/messages")
+@router.post("/rooms/{room_id}/messages", dependencies=[Depends(rate_limit_ai)])
 async def send_message(
     request: Request,
     room_id: uuid.UUID,
@@ -308,8 +310,13 @@ async def send_message(
 
     history = [{"role": item.role, "content": item.content} for item in room.messages[-8:]]
     history.append({"role": "user", "content": body.content})
+    request_id = (
+        request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
+    ).strip()
 
     async def generate() -> AsyncIterator[str]:
+        import asyncio
+
         result, citations, degraded = await hybrid_retrieve(
             body.content,
             user_id=current_user.id,
@@ -336,34 +343,70 @@ async def send_message(
                 + body.content,
             },
         ]
-        llm = ProviderFactory().get_llm()
-        parts: list[str] = []
-        try:
-            async for token in llm.stream(messages, temperature=0.2, max_tokens=2048):
-                parts.append(token)
-                yield _sse("token", {"text": token})
-        except Exception as exc:
-            logger.exception("chat stream failed")
-            yield _sse("error", {"message": str(exc)})
-            return
-        full = "".join(parts)
-        async with request.app.state.db_session_factory() as persist:
-            persist.add(
-                ChatMessage(
-                    room_id=room.id,
-                    role="assistant",
-                    content=full,
-                    citations=citations,
+        redis = getattr(request.app.state, "redis", None)
+        event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
+
+        async def on_wait(position: int, waiting_ms: int) -> None:
+            await event_q.put(
+                (
+                    "queued",
+                    {
+                        "request_id": request_id,
+                        "position": position,
+                        "waiting_ms": waiting_ms,
+                    },
                 )
             )
-            await persist.commit()
-        yield _sse(
-            "done",
-            {
-                "content": full,
-                "citations": citations,
-                "graph_degraded": degraded,
-            },
-        )
+
+        async def run_llm() -> None:
+            parts_local: list[str] = []
+            try:
+                async with admit(redis, "llm", request_id, on_wait=on_wait):
+                    await event_q.put(("started", {"request_id": request_id}))
+                    llm = ProviderFactory().get_llm()
+                    async for token in llm.stream(
+                        messages, temperature=0.2, max_tokens=2048
+                    ):
+                        parts_local.append(token)
+                        await event_q.put(("token", {"text": token}))
+                full_text = "".join(parts_local)
+                async with request.app.state.db_session_factory() as persist:
+                    persist.add(
+                        ChatMessage(
+                            room_id=room.id,
+                            role="assistant",
+                            content=full_text,
+                            citations=citations,
+                        )
+                    )
+                    await persist.commit()
+                await event_q.put(
+                    (
+                        "done",
+                        {
+                            "content": full_text,
+                            "citations": citations,
+                            "graph_degraded": degraded,
+                        },
+                    )
+                )
+            except AdmissionTimeoutError as exc:
+                await event_q.put(("error", {"message": str(exc)}))
+            except Exception as exc:
+                logger.exception("chat stream failed")
+                await event_q.put(("error", {"message": str(exc)}))
+            finally:
+                await event_q.put(None)
+
+        task = asyncio.create_task(run_llm())
+        try:
+            while True:
+                item = await event_q.get()
+                if item is None:
+                    break
+                event_name, payload = item
+                yield _sse(event_name, payload)
+        finally:
+            await task
 
     return StreamingResponse(generate(), media_type="text/event-stream")

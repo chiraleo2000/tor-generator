@@ -594,6 +594,7 @@ class TestConstants:
         assert "lm_studio" in VALID_LLM_PROVIDERS
         assert "ollama" in VALID_LLM_PROVIDERS
         assert "llama_cpp" in VALID_LLM_PROVIDERS
+        assert "sglang" in VALID_LLM_PROVIDERS
         assert "openai" in VALID_LLM_PROVIDERS
         assert "gemini" in VALID_LLM_PROVIDERS
         assert "bedrock" in VALID_LLM_PROVIDERS

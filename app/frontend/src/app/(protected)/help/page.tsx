@@ -581,7 +581,14 @@ function FaqTab() {
       <ul className="list-disc space-y-1 pl-5">
         <li>
           คู่มือติดตั้งเต็ม: <code>discussions/14-INSTALLATION.md</code> — Docker compose โปรเจกต์{" "}
-          <code>tor-app</code> + LM Studio ที่พอร์ต 1234
+          <code>tor-app</code> + LM Studio ที่ <code>127.0.0.1:1234</code>
+        </li>
+        <li>
+          Dev ค่าเริ่มต้น: แชท <code>google/gemma-4-e4b</code> · ฝังเวกเตอร์{" "}
+          <code>text-embedding-embeddinggemma-300m</code> (768 มิติ)
+        </li>
+        <li>
+          Production แนะนำ: Amazon Bedrock — คู่มือ <code>discussions/20-AWS_BEDROCK_SETUP.md</code>
         </li>
         <li>
           ตรวจสุขภาพ: <code>http://localhost:4000/health</code> ต้อง healthy (postgres redis minio mongo neo4j)

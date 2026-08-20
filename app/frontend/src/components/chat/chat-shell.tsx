@@ -77,6 +77,7 @@ export function ChatShell({
   const [collapsed, setCollapsed] = useState(false);
   const [scope, setScope] = useState<SearchScope>("both");
   const [busy, setBusy] = useState(false);
+  const [queueStatus, setQueueStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -225,13 +226,28 @@ export function ChatShell({
     ]);
     const controller = new AbortController();
     abortRef.current = controller;
+    const requestId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `req-${Date.now()}`;
+    setQueueStatus("รอคิว AI...");
     try {
       await streamSsePost(
         pathFor(roomId),
         { content, search_scope: scope },
         token,
         (event, data) => {
+          if (event === "queued") {
+            const position = Number(data.position || 0);
+            setQueueStatus(
+              position > 0 ? `รอคิว (#${position})...` : "รอคิว AI..."
+            );
+          }
+          if (event === "started") {
+            setQueueStatus(null);
+          }
           if (event === "token") {
+            setQueueStatus(null);
             const piece = sseFieldText(data.text);
             setMessages((prev) => {
               const last = prev.at(-1);
@@ -244,6 +260,7 @@ export function ChatShell({
             });
           }
           if (event === "done") {
+            setQueueStatus(null);
             const citations = (data.citations as ChatCitation[]) || [];
             setMessages((prev) =>
               withPatchedLastAssistant(prev, {
@@ -254,16 +271,19 @@ export function ChatShell({
             onReady?.();
           }
           if (event === "error") {
+            setQueueStatus(null);
             setError(sseFieldText(data.message) || "แชทล้มเหลว");
           }
         },
-        controller.signal
+        controller.signal,
+        { "X-AI-Request-Id": requestId }
       );
       await loadRooms();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "ส่งข้อความไม่สำเร็จ");
     } finally {
       setBusy(false);
+      setQueueStatus(null);
       abortRef.current = null;
     }
   }
@@ -385,10 +405,16 @@ export function ChatShell({
             >
               <p className="whitespace-pre-wrap">{item.content}</p>
               {!item.content && item.role === "assistant" && busy ? (
-                <span className="inline-flex gap-1" aria-label="กำลังพิมพ์">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                <span className="inline-flex gap-1 items-center text-sm" aria-label="กำลังพิมพ์">
+                  {queueStatus ? (
+                    <span>{queueStatus}</span>
+                  ) : (
+                    <>
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                    </>
+                  )}
                 </span>
               ) : null}
               {item.created_at ? (

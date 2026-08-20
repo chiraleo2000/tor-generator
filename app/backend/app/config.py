@@ -15,6 +15,7 @@ from app.providers.constants import (
     DEFAULT_EMBEDDING_MODEL,
     LOCAL_LLM_DEFAULT_URLS,
     LOCAL_LLM_PROVIDERS,
+    SGLANG_DEFAULT_EMBEDDING_URL,
 )
 
 _runtime_overlay: dict[str, Any] = {}
@@ -79,8 +80,19 @@ class Settings(BaseSettings):
     lm_studio_timeout: float = 180.0
     ollama_base_url: str = LOCAL_LLM_DEFAULT_URLS["ollama"]
     llama_cpp_base_url: str = LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
+    sglang_base_url: str = LOCAL_LLM_DEFAULT_URLS["sglang"]
+    sglang_embedding_base_url: str = SGLANG_DEFAULT_EMBEDDING_URL
+    sglang_model: str = DEFAULT_CHAT_MODEL
+    sglang_embedding_model: str = "google/embeddinggemma-300m"
     local_embedding_server: str = "lm_studio"
     local_embedding_base_url: str = ""
+    # Custom RAG HTTP (optional extra retrieval source)
+    custom_rag_enabled: bool = False
+    custom_rag_base_url: str = ""
+    custom_rag_api_key: str = ""
+    custom_rag_top_k: int = 5
+    custom_rag_timeout_seconds: float = 30.0
+    rag_sources: Literal["local", "custom", "both"] = "both"
 
     # -------------------------------------------------------------------------
     # Cloud model ids
@@ -130,6 +142,10 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     rate_limit_requests_per_minute: int = 100
     rate_limit_uploads_per_minute: int = 10
+    rate_limit_ai_per_minute: int = 30
+    llm_max_concurrent: int = 8
+    embedding_max_concurrent: int = 16
+    llm_queue_wait_timeout_seconds: float = 120.0
 
     # -------------------------------------------------------------------------
     # Qdrant (Optional)

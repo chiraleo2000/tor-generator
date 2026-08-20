@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import {
   EMPTY_AI_SETTINGS,
   LOCAL_LLMS,
+  RAG_SOURCE_OPTIONS,
   VECTOR_STORES,
   embedOptionsForMode,
   llmOptionsForMode,
@@ -18,6 +19,7 @@ import {
   showCloudKeyFields,
   showCompatFields,
   showLocalServerFields,
+  showSglangFields,
   type AiSettings,
 } from "@/lib/ai-settings";
 import { apiClient } from "@/lib/api-client";
@@ -72,6 +74,8 @@ export default function AdminAiSettingsPage() {
         lm_studio_base_url: form.lm_studio_base_url,
         ollama_base_url: form.ollama_base_url,
         llama_cpp_base_url: form.llama_cpp_base_url,
+        sglang_base_url: form.sglang_base_url,
+        sglang_embedding_base_url: form.sglang_embedding_base_url,
         local_embedding_server: form.local_embedding_server,
         local_embedding_base_url: form.local_embedding_base_url,
         anthropic_api_key: form.anthropic_api_key,
@@ -85,6 +89,9 @@ export default function AdminAiSettingsPage() {
         azure_foundry_api_version: form.azure_foundry_api_version,
         openai_compatible_base_url: form.openai_compatible_base_url,
         openai_compatible_api_key: form.openai_compatible_api_key,
+        custom_rag_enabled: form.custom_rag_enabled,
+        custom_rag_base_url: form.custom_rag_base_url,
+        custom_rag_api_key: form.custom_rag_api_key,
       });
       const payload = unwrapData<{ message?: string }>(response);
       setMessage(payload.message || "เชื่อมต่อได้");
@@ -111,8 +118,8 @@ export default function AdminAiSettingsPage() {
       <div className="gov-card">
         <h1 className="text-2xl font-extrabold text-navy">การตั้งค่า AI</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          เลือกโมเดลแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง
-          หรือ Gemma ในเครื่อง + ฝังเวกเตอร์ OpenAI โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ
+          Production แนะนำ: Amazon Bedrock (ดู Discussions/20-AWS_BEDROCK_SETUP.md) — ยังสลับ LM Studio /
+          Ollama / llama.cpp / SGLang และคลาวด์อื่นได้ แชทกับฝังเวกเตอร์เลือกอิสระ
           การบันทึกมีผลทันที ไม่ต้องรีสตาร์ทส่วนหลังบ้าน หากเปลี่ยนผู้ให้บริการหรือโมเดลฝังเวกเตอร์
           ต้องประมวลผลฐานความรู้ใหม่ (`python -m app.seed_raw_docs`)
         </p>
@@ -226,8 +233,44 @@ export default function AdminAiSettingsPage() {
               onChange={(event) => patch("llama_cpp_base_url", event.target.value)}
             />
           </div>
+          {showSglangFields(form.llm_provider, form.local_embedding_server) ? (
+            <>
+              <div>
+                <Label htmlFor="sglang-url">SGLang แชท URL</Label>
+                <Input
+                  id="sglang-url"
+                  value={form.sglang_base_url}
+                  onChange={(event) => patch("sglang_base_url", event.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="sglang-embed-url">SGLang embedding URL</Label>
+                <Input
+                  id="sglang-embed-url"
+                  value={form.sglang_embedding_base_url}
+                  onChange={(event) => patch("sglang_embedding_base_url", event.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="sglang-model">โมเดลแชท SGLang</Label>
+                <Input
+                  id="sglang-model"
+                  value={form.sglang_model}
+                  onChange={(event) => patch("sglang_model", event.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="sglang-embed-model">โมเดลฝังเวกเตอร์ SGLang</Label>
+                <Input
+                  id="sglang-embed-model"
+                  value={form.sglang_embedding_model}
+                  onChange={(event) => patch("sglang_embedding_model", event.target.value)}
+                />
+              </div>
+            </>
+          ) : null}
           <div>
-            <Label htmlFor="chat-model">ชื่อโมเดลแชท</Label>
+            <Label htmlFor="chat-model">ชื่อโมเดลแชท (LM Studio / Ollama / llama.cpp)</Label>
             <Input
               id="chat-model"
               value={form.lm_studio_model}
@@ -329,7 +372,10 @@ export default function AdminAiSettingsPage() {
 
       {showCloud && showBedrockFields(form.llm_provider, form.embedding_provider) ? (
         <div className="gov-card space-y-3">
-          <h2 className="font-semibold">Amazon Bedrock</h2>
+          <h2 className="font-semibold">Amazon Bedrock (แนะนำ production)</h2>
+          <p className="text-xs text-muted-foreground">
+            บน EC2/ECS เว้นว่าง AWS key เพื่อใช้ IAM role — คู่มือ: Discussions/20-AWS_BEDROCK_SETUP.md
+          </p>
           <Label htmlFor="bedrock-region">ภูมิภาค</Label>
           <Input
             id="bedrock-region"
@@ -348,7 +394,7 @@ export default function AdminAiSettingsPage() {
             value={form.bedrock_embedding_model_id}
             onChange={(event) => patch("bedrock_embedding_model_id", event.target.value)}
           />
-          <Label htmlFor="aws-key">AWS access key</Label>
+          <Label htmlFor="aws-key">AWS access key (เว้นว่างได้ถ้าใช้ IAM role)</Label>
           <Input
             id="aws-key"
             value={form.aws_access_key_id}
@@ -429,6 +475,61 @@ export default function AdminAiSettingsPage() {
           />
         </div>
       ) : null}
+
+      <div className="gov-card space-y-3">
+        <h2 className="font-semibold">Custom RAG (แหล่งข้อมูลเสริม)</h2>
+        <p className="text-xs text-muted-foreground">
+          เรียก POST {"{base}"}/v1/retrieve แล้วรวมผลกับคลังในเครื่อง (pgvector / Neo4j)
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(form.custom_rag_enabled)}
+            onChange={(event) => patch("custom_rag_enabled", event.target.checked)}
+          />
+          <span>เปิดใช้ Custom RAG</span>
+        </label>
+        <div>
+          <Label htmlFor="custom-rag-url">Base URL</Label>
+          <Input
+            id="custom-rag-url"
+            value={form.custom_rag_base_url}
+            onChange={(event) => patch("custom_rag_base_url", event.target.value)}
+            placeholder="https://rag.example.com"
+          />
+        </div>
+        <div>
+          <Label htmlFor="custom-rag-key">API key</Label>
+          <Input
+            id="custom-rag-key"
+            type="password"
+            value={form.custom_rag_api_key}
+            onChange={(event) => patch("custom_rag_api_key", event.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="rag-sources">แหล่งดึงความรู้</Label>
+          <Select
+            id="rag-sources"
+            value={form.rag_sources || "both"}
+            onChange={(event) => patch("rag_sources", event.target.value)}
+            options={RAG_SOURCE_OPTIONS}
+          />
+        </div>
+        <div>
+          <Label htmlFor="custom-rag-topk">top_k</Label>
+          <Input
+            id="custom-rag-topk"
+            type="number"
+            min={1}
+            max={20}
+            value={form.custom_rag_top_k}
+            onChange={(event) =>
+              patch("custom_rag_top_k", Number.parseInt(event.target.value, 10) || 5)
+            }
+          />
+        </div>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Button

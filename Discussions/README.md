@@ -15,11 +15,12 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 | `15-APPLICATION_DESCRIPTION.md` | คำอธิบายแอป |
 | `16-BACKEND_ARCHITECTURE.md` | สถาปัตยกรรม backend |
 | `17-FRONTEND_ARCHITECTURE.md` | สถาปัตยกรรม frontend |
-| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — smoke 3 เครื่องมือ + unit tests 20 ส.ค. 2026 |
-| `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (20 ส.ค. 2026; Vitest 128 / pytest 1448+10 / E2E headed 15) |
+| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — Vitest 128 / pytest 1451+10 live / E2E headed 15 · 0 skipped (20 ส.ค. 2026 คืน) |
+| `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (20 ส.ค. 2026; Vitest 128 / pytest 1451+10 / E2E headed 15 · cov ~84%/89%) |
 | `19-APPLICATION_OPERATING_REPORT.docx` | ฉบับ Word (TH Sarabun New, ตาราง, ภาพจอ, ไดอะแกรม) |
 | `19-APPLICATION_OPERATING_REPORT.pdf` | ฉบับ PDF ส่งออกจาก Word |
 | `19-APPLICATION_OPERATING_REPORT.pptx` | สไลด์นำเสนอ (สร้างจาก `_build_report_exports.py`) |
+| `20-AWS_BEDROCK_SETUP.md` | **Setup บน Amazon / Bedrock (path production หลัก)** |
 
 ชุด `01`–`12` เป็นบันทึกออกแบบก่อนหน้า (รวม PoC HTML) — อย่าใช้ `10`/`11` เป็นคู่มือติดตั้งของแอป Docker ปัจจุบัน
 

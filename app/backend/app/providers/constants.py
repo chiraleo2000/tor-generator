@@ -9,14 +9,19 @@ LOCAL_LLM_DEFAULT_URLS = {
     "lm_studio": "http://host.docker.internal:1234/v1",
     "ollama": "http://host.docker.internal:11434/v1",
     "llama_cpp": "http://host.docker.internal:8080/v1",
+    # Docker Compose service name — cleartext on private network only
+    "sglang": "http://sglang-llm:30000/v1",  # NOSONAR python:S5332
 }
 
-LOCAL_LLM_PROVIDERS = frozenset({"lm_studio", "ollama", "llama_cpp"})
+# Docker Compose service name — cleartext on private network only
+SGLANG_DEFAULT_EMBEDDING_URL = "http://sglang-embed:30001/v1"  # NOSONAR python:S5332
+
+LOCAL_LLM_PROVIDERS = frozenset({"lm_studio", "ollama", "llama_cpp", "sglang"})
 CLOUD_LLM_PROVIDERS = frozenset(
     {"claude", "openai", "gemini", "bedrock", "azure_foundry", "openai_compatible"}
 )
 LOCAL_EMBEDDING_PROVIDERS = frozenset({"local", "qwen3"})
-LOCAL_EMBEDDING_SERVERS = frozenset({"lm_studio", "ollama", "llama_cpp"})
+LOCAL_EMBEDDING_SERVERS = frozenset({"lm_studio", "ollama", "llama_cpp", "sglang"})
 CLOUD_EMBEDDING_PROVIDERS = frozenset(
     {"openai", "gemini", "azure_foundry", "openai_compatible", "bedrock"}
 )
@@ -33,6 +38,10 @@ AI_OVERLAY_FIELDS = (
     "lm_studio_timeout",
     "ollama_base_url",
     "llama_cpp_base_url",
+    "sglang_base_url",
+    "sglang_embedding_base_url",
+    "sglang_model",
+    "sglang_embedding_model",
     "anthropic_api_key",
     "openai_api_key",
     "gemini_api_key",
@@ -55,4 +64,10 @@ AI_OVERLAY_FIELDS = (
     "openai_compatible_api_key",
     "openai_compatible_model",
     "openai_compatible_embedding_model",
+    "custom_rag_enabled",
+    "custom_rag_base_url",
+    "custom_rag_api_key",
+    "custom_rag_top_k",
+    "custom_rag_timeout_seconds",
+    "rag_sources",
 )

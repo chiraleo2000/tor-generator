@@ -41,7 +41,9 @@ describe("AdminAiSettingsPage", () => {
     fireEvent.change(screen.getByLabelText("llama.cpp / URL ที่กำหนดเอง"), {
       target: { value: "http://127.0.0.1:8080/v1" },
     });
-    fireEvent.change(screen.getByLabelText("ชื่อโมเดลแชท"), { target: { value: "google/gemma-4-e4b" } });
+    fireEvent.change(screen.getByLabelText("ชื่อโมเดลแชท (LM Studio / Ollama / llama.cpp)"), {
+      target: { value: "google/gemma-4-e4b" },
+    });
     fireEvent.change(screen.getByLabelText("หมดเวลารอ (วินาที)"), { target: { value: "120" } });
 
     fireEvent.change(screen.getByLabelText("โหมด"), { target: { value: "cloud" } });

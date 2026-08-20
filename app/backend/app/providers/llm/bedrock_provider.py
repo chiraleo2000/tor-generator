@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import Any, AsyncIterator
 
@@ -13,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class BedrockLLMProvider(LLMProvider):
-    """Calls Amazon Bedrock Runtime Converse API (sync boto3 wrapped)."""
+    """Calls Amazon Bedrock Runtime Converse / ConverseStream APIs.
+
+    Empty AWS keys rely on the default boto3 credential chain (instance/task role).
+    """
 
     def __init__(
         self,
@@ -34,7 +36,7 @@ class BedrockLLMProvider(LLMProvider):
         self._model_id = model_id
         self._timeout = timeout
 
-    def _converse(self, messages: list[dict], **kwargs: Any) -> dict:
+    def _build_request(self, messages: list[dict], **kwargs: Any) -> dict[str, Any]:
         system_parts: list[dict[str, str]] = []
         converse_messages: list[dict] = []
         for item in messages:
@@ -58,7 +60,20 @@ class BedrockLLMProvider(LLMProvider):
             inference["temperature"] = float(kwargs["temperature"])
         if inference:
             request["inferenceConfig"] = inference
-        return self._client.converse(**request)
+        return request
+
+    def _converse(self, messages: list[dict], **kwargs: Any) -> dict:
+        return self._client.converse(**self._build_request(messages, **kwargs))
+
+    def _collect_stream_tokens(self, messages: list[dict], **kwargs: Any) -> list[str]:
+        response = self._client.converse_stream(**self._build_request(messages, **kwargs))
+        tokens: list[str] = []
+        for event in response.get("stream") or []:
+            delta = (event.get("contentBlockDelta") or {}).get("delta") or {}
+            text = delta.get("text")
+            if text:
+                tokens.append(str(text))
+        return tokens
 
     async def invoke(
         self,
@@ -91,6 +106,19 @@ class BedrockLLMProvider(LLMProvider):
         )
 
     async def stream(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
+        try:
+            tokens = await asyncio.wait_for(
+                asyncio.to_thread(self._collect_stream_tokens, messages, **kwargs),
+                timeout=self._timeout,
+            )
+            for token in tokens:
+                yield token
+            return
+        except Exception as exc:
+            logger.warning(
+                "Bedrock converse_stream failed (%s); falling back to invoke",
+                exc,
+            )
         response = await self.invoke(messages, **kwargs)
         if response.content:
             yield response.content
