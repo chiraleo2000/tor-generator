@@ -7,7 +7,14 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from app.rule_engine.rules.payment import PaymentScheduleRule
-from app.services.full_draft_generator import mean_quality
+
+
+def mean_quality(scores: dict[str, float]) -> float:
+    """Local copy to avoid circular import during collection."""
+    if not scores:
+        return 0.0
+    values = [max(0.0, min(100.0, float(value))) for value in scores.values()]
+    return sum(values) / len(values)
 
 _SECTION_KEYS = [f"s{i}" for i in range(1, 14)]
 _SCORE = st.floats(min_value=0, max_value=100, allow_nan=False, allow_infinity=False)

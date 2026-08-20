@@ -41,4 +41,6 @@ python -m app.seed_db
 python -m app.seed_raw_docs
 ```
 
+ตรวจสด 20 ส.ค. 2026: เครื่องมือร่าง TOR / ตรวจสอบ TOR / ถาม-ตอบ ใช้งานได้จริงบนสแตก Docker + LM Studio — รายละเอียดใน [../Discussions/18-TEST_EVIDENCE.md](../Discussions/18-TEST_EVIDENCE.md)
+
 ทดสอบพร้อม coverage: ดูคำสั่งใน [README.md](../README.md) ที่รากรีโป

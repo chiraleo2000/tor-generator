@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
+import { apiErrorMessage } from "@/lib/api-error";
 
 export default function DraftIndexPage() {
   const router = useRouter();
   const { projects, fetchProjects, createProject, isLoading } = useProjectStore();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchProjects(1)
-      .then(() => undefined)
-      .catch(() => undefined);
+    fetchProjects(1).catch((err: unknown) =>
+      setError(apiErrorMessage(err, "โหลดโครงการไม่สำเร็จ"))
+    );
   }, [fetchProjects]);
 
   useEffect(() => {
@@ -35,6 +37,11 @@ export default function DraftIndexPage() {
 
   return (
     <div className="py-16 text-center" data-testid="draft-index">
+      {error ? (
+        <p className="mb-4 text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
       <p className="mb-4">ยังไม่มีโครงการ — สร้างโครงการใหม่เพื่อเริ่ม Phase 0</p>
       <Button data-testid="new-project" onClick={createAndOpen}>
         + สร้างโครงการ TOR ใหม่

@@ -144,14 +144,16 @@ npm run test:e2e
 npm run test:e2e:headed
 ```
 
-ชุดล่าสุดบนโฮสต์ (**19 ส.ค. 2026**):
+ชุดล่าสุดบนโฮสต์ (**20 ส.ค. 2026**):
+
+ตรวจสด 3 เครื่องมือเจ้าหน้าที่บน Docker `tor-app` + LM Studio (`google/gemma-4-e4b` + EmbeddingGemma): ร่าง TOR (intake + `draft-section` s1 + agent ingest), ตรวจสอบ TOR (Phase 3 คะแนน 79 / 14 findings / 11 ข้อเสนอแนะ และ `/review` extract+run), ถาม-ตอบ (`/chat` SSE 5 citations และ kb-chat คำตอบยาวพร้อม 5 citations)
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm"` + `--cov=app` | **1448 ผ่าน** / **85%** ของ `app/` |
-| pytest `-m live_llm` (LM Studio พอร์ต 1234) | **10 ผ่าน** |
-| Vitest `--coverage` | **122 ผ่าน** / **89.8%** statements |
-| Playwright `test:e2e` (1 worker, Docker :3000) | **15 ผ่าน** |
+| pytest `-m "not live_llm"` | **1448 ผ่าน**, 1 ข้าม, 10 ไม่รัน (`live_llm`) |
+| pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) |
+| Vitest `npm run test:unit` | **128 ผ่าน** (30 ไฟล์) |
+| Playwright `test:e2e` (1 worker, Docker :3000) | **15 ผ่าน** / 0 ล้ม |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
 

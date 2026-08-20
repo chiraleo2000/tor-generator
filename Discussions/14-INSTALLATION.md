@@ -139,6 +139,16 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 ถ้าเปลี่ยนผู้ให้บริการ embeddings หรือชื่อโมเดลฝังตัว ต้อง `python -m app.seed_raw_docs` อีกครั้ง (หน้าผู้ดูแลจะเตือน `reingest_required`)
 
+### ตัวอย่างการตั้งค่าผสม (ผู้ดูแล → การตั้งค่า AI)
+
+| เป้าหมาย | แชท | ฝังเวกเตอร์ | หมายเหตุ |
+|----------|-----|-------------|----------|
+| Claude + EmbeddingGemma ในเครื่อง | Claude (Anthropic) | ในเครื่อง | ใส่ Anthropic key · เปิด LM Studio โหลด `text-embedding-embeddinggemma-300m` · ไม่ต้อง seed ใหม่ถ้าเคยใช้ EmbeddingGemma |
+| Claude + OpenAI embeddings | Claude (Anthropic) | ฝังเวกเตอร์ OpenAI | ใส่ Anthropic + OpenAI key · โมเดลฝังเวกเตอร์เช่น `text-embedding-3-small` · **ต้อง** `python -m app.seed_raw_docs` หลังบันทึก |
+| Gemma ในเครื่อง (ค่าเริ่มต้น) | LM Studio | ในเครื่อง | โหลดทั้ง `google/gemma-4-e4b` และ EmbeddingGemma ที่พอร์ต 1234 |
+
+โหมด (`on_prem` / `cloud` / `hybrid`) เป็นป้ายเท่านั้น — ค่าที่เลือกในช่องแชทและฝังเวกเตอร์คือแหล่งที่ใช้จริง · **ทดสอบการเชื่อมต่อ** ยิงทั้งสองฝั่ง · **บันทึก** มีผลทันที
+
 ## 6. ตรวจสุขภาพ
 
 ```bash
@@ -188,7 +198,7 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**19 ส.ค. 2026**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**20 ส.ค. 2026**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
@@ -196,12 +206,11 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest ไม่รวม `live_llm` | **1440 ผ่าน** / ครอบคลุม **85%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
-| pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) |
-| Vitest | **122 ผ่าน** / ครอบคลุม **90.9%** statements ของ lib+stores+หน้าตั้งค่า AI+หน้าฐานความรู้+chat SSE |
-| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม — ฟอร์มสร้างโครงการ, แชทร่าง Phase 0–1, `/chat`, เดิน Phase 0–4, ร่างด้วย AI (Gemma ~2.7 นาที) |
-| Playwright รายงาน coverage | **3 ผ่าน** (`test:e2e:reports` ที่พอร์ต 8765/8766/8767) |
-| การตั้งค่า AI | แชทและ embeddings เลือกอิสระ; คีย์คลาวด์ใส่ในหน้า UI; บันทึกมีผลทันที |
+| pytest ไม่รวม `live_llm` | **1448 ผ่าน** / ครอบคลุม **85%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
+| pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) เมื่อรันชุดนั้น |
+| Vitest | **128 ผ่าน** (รวมหน้า `/review`, timestamp แชท, alert คลังความรู้) |
+| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม (20 ส.ค. 2026 · รวม Phase 2 AI ~2.3 นาที) |
+| Smoke API 3 เครื่องมือ | ร่าง s1, Phase 3 คะแนน 79 + 11 ข้อเสนอแนะ, `/review` extract+run, `/chat` SSE 5 citations, kb-chat มีคำตอบ |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 
 ![Backend coverage 87%](test-evidence/13-backend-coverage.png)

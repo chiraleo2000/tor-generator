@@ -47,7 +47,7 @@ Persistence is **section-keyed** (`s1`…`s13`, plus `s4.1`–`s4.14`). The live
 | 0 Upload pack | GridFS originals + `analysis_json.slot_map` | `POST /projects/{id}/intake/upload`, `POST /projects/{id}/intake/analyze` |
 | 1 Gaps + ready | coverage rows, `ready_to_compose` | `GET .../intake/coverage`, `POST .../intake/fill-reference`, `POST .../intake/confirm-ready`, `POST .../intake/chat` (SSE) |
 | 2 Draft 13 sections | `tor_sections` (`content` + `ai_draft`; s4.* as `sub_key`) | `GET /projects/{id}/sections`, `PUT /projects/{id}/sections/{key}`, `POST /projects/{id}/draft-section` |
-| 3 Review | `quality_score`, project `status` | `POST /projects/{id}/review`, `POST /projects/{id}/submit` |
+| 3 Review | `quality_score`, project `status` | `POST /projects/{id}/review` (Rule Engine + ReviewAgent), `GET /projects/{id}/suggestions`, `POST /projects/{id}/submit` |
 | 4 Publish | MinIO objects | `POST /projects/{id}/export` |
 
 KB Q&A (not a draft phase) uses `/api/v1/chat/rooms` with `kind=kb`. Draft intake chat uses `kind=draft_intake` on the same room APIs plus the intake routes above. Legacy `POST /projects/{id}/extraction` remains for compatibility; the live UI does not use the 9-class upload form.
@@ -130,6 +130,8 @@ python -m pytest tests/test_real_procurement_pdfs.py tests/test_live_lm_studio.p
 ```
 
 Latest counts and headed screenshots: `discussions/18-TEST_EVIDENCE.md`. Live LM Studio tests need both chat and embedding models loaded at `http://127.0.0.1:1234/v1`.
+
+**20 ส.ค. 2026 verification:** pytest `-m "not live_llm"` **1448** passed; live smoke covered draft-section LangGraph, agent ingest (`gap_filling`), `POST /projects/{id}/review` (Rule Engine + ReviewAgent suggestions), standalone `/review/extract`+`/run`, `/chat` SSE, and `/kb-chat` with citations (`RELEVANCE_THRESHOLD=0.25`, `hybrid_retrieve` uses runtime `session_factory`).
 
 `POST /api/v1/review/compare-projects` accepts `project_ids` and `extract_ids` (job ids from `POST /review/extract`). Pairwise Jaccard is computed in `_token_set` / `_jaccard`; missing ids are skipped. Combined length must be ≥ 2.
 

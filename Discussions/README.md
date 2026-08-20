@@ -2,11 +2,11 @@
 
 Architecture, API, UX, and product write-ups. **Not imported** by Next.js or FastAPI.
 
-Help text in the running app is under `/help` (`app/frontend`). The current operator/install/architecture/test guides are `13`–`18` below (Docker + LM Studio Gemma). Files `01`–`12` are earlier design notes.
+Help text in the running app is under `/help` (`app/frontend`). The current operator/install/architecture/test/operating guides are `13`–`19` below (Docker + LM Studio Gemma). Files `01`–`12` are earlier design notes.
 
 Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.html` at repo root, branch `gh-pages`). `06-UXUI-Mockup.html` is the older PoC mock.
 
-เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–18** (ไม่มีแฟ้ม 19 หรือ 20). แอป **v0.2.3** เพิ่มเส้นทาง backend `/api/v1/agent` และ `/api/v1/kb-chat` คู่กับพื้นที่ทำงาน 5 Phase:
+เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–19**. แอป **v0.2.3** เพิ่มเส้นทาง backend `/api/v1/agent` และ `/api/v1/kb-chat` คู่กับพื้นที่ทำงาน 5 Phase:
 
 | File | Topic |
 |------|--------|
@@ -15,7 +15,11 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 | `15-APPLICATION_DESCRIPTION.md` | คำอธิบายแอป |
 | `16-BACKEND_ARCHITECTURE.md` | สถาปัตยกรรม backend |
 | `17-FRONTEND_ARCHITECTURE.md` | สถาปัตยกรรม frontend |
-| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — อธิบายทุกเคสพร้อมภาพ |
+| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — smoke 3 เครื่องมือ + unit tests 20 ส.ค. 2026 |
+| `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows + ภาพ unit tests (20 ส.ค. 2026; Vitest 128 / pytest 1448) |
+| `19-APPLICATION_OPERATING_REPORT.docx` | ฉบับ Word (TH Sarabun New, ตาราง, ภาพจอ, ไดอะแกรม) |
+| `19-APPLICATION_OPERATING_REPORT.pdf` | ฉบับ PDF ส่งออกจาก Word |
+| `19-APPLICATION_OPERATING_REPORT.pptx` | สไลด์นำเสนอ 23 หน้า |
 
 ชุด `01`–`12` เป็นบันทึกออกแบบก่อนหน้า (รวม PoC HTML) — อย่าใช้ `10`/`11` เป็นคู่มือติดตั้งของแอป Docker ปัจจุบัน
 

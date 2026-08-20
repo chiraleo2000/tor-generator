@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+import sqlalchemy as sa
 from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -46,6 +47,9 @@ class Project(Base):
     workflow_mode: Mapped[str] = mapped_column(
         String(20), nullable=False, default="wizard"
     )  # wizard|agent
+    custom_requirements_text: Mapped[Optional[str]] = mapped_column(
+        sa.Text(), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=func.now()
     )

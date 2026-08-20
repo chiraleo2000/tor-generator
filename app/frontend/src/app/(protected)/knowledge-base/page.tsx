@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { UploadArea } from "@/components/brand/upload-area";
 import { apiClient } from "@/lib/api-client";
+import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,7 @@ export default function KnowledgeBasePage() {
   const [openGroup, setOpenGroup] = useState<string>("");
   const [openCat, setOpenCat] = useState<string>("");
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const response = await apiClient.get("/knowledge-base/catalog");
@@ -55,27 +57,35 @@ export default function KnowledgeBasePage() {
   }, []);
 
   useEffect(() => {
-    load().catch(() => setCatalog({}));
+    load().catch((err: unknown) =>
+      setError(apiErrorMessage(err, "โหลดคลังความรู้ไม่สำเร็จ"))
+    );
   }, [load]);
 
   async function upload(files: FileList) {
-    for (const file of Array.from(files)) {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("category", type);
-      body.append("name", file.name);
-      if (isAdmin) {
-        await apiClient.post("/knowledge-base/upload", body);
-      } else {
-        await apiClient.post("/knowledge-base/mine", body);
+    setError(null);
+    setMessage(null);
+    try {
+      for (const file of Array.from(files)) {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("category", type);
+        body.append("name", file.name);
+        if (isAdmin) {
+          await apiClient.post("/knowledge-base/upload", body);
+        } else {
+          await apiClient.post("/knowledge-base/mine", body);
+        }
       }
+      setMessage(
+        isAdmin
+          ? "อัปโหลดเข้าคลังส่วนกลางแล้ว — กำลังประมวลผล"
+          : "อัปโหลดเฉพาะบัญชีของคุณแล้ว — กำลังแบ่ง chunk และฝังเข้า RAG"
+      );
+      await load();
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "อัปโหลดไม่สำเร็จ"));
     }
-    setMessage(
-      isAdmin
-        ? "อัปโหลดเข้าคลังส่วนกลางแล้ว — กำลังประมวลผล"
-        : "อัปโหลดเฉพาะบัญชีของคุณแล้ว — กำลังแบ่ง chunk และฝังเข้า RAG"
-    );
-    await load();
   }
 
   const raw = catalog.raw || {};
@@ -115,6 +125,11 @@ export default function KnowledgeBasePage() {
           hint="รองรับ PDF, Word — ระบบแบ่ง chunk และฝังเข้า Vector Store"
           onFiles={upload}
         />
+        {error ? (
+          <p className="mt-2 text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
         {message ? <p className="mt-2 text-sm text-navy">{message}</p> : null}
       </div>
 

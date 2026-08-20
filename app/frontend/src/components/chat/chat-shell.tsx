@@ -14,8 +14,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { MiniRoomList } from "@/components/chat/mini-room-list";
 import { apiClient } from "@/lib/api-client";
+import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import {
+  formatChatTimestamp,
   streamSsePost,
   type ChatCitation,
   type ChatKind,
@@ -203,10 +205,23 @@ export function ChatShell({
     setDraft("");
     setBusy(true);
     setError(null);
+    const sentAt = new Date().toISOString();
     setMessages((prev) => [
       ...prev,
-      { id: `u-${Date.now()}`, role: "user", content, citations: [] },
-      { id: `a-${Date.now()}`, role: "assistant", content: "", citations: [] },
+      {
+        id: `u-${Date.now()}`,
+        role: "user",
+        content,
+        citations: [],
+        created_at: sentAt,
+      },
+      {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content: "",
+        citations: [],
+        created_at: sentAt,
+      },
     ]);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -271,8 +286,8 @@ export function ChatShell({
           citations: [],
         },
       ]);
-    } catch {
-      setError("อัปโหลดไฟล์ไม่สำเร็จ");
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "อัปโหลดไฟล์ไม่สำเร็จ"));
     } finally {
       setBusy(false);
     }
@@ -290,7 +305,9 @@ export function ChatShell({
         onSearch={setSearch}
         onSelect={(id) => {
           setActiveId(id);
-          loadMessages(id).catch(() => undefined);
+          loadMessages(id).catch((err: unknown) =>
+            setError(apiErrorMessage(err, "โหลดข้อความไม่สำเร็จ"))
+          );
         }}
         onNew={handleNew}
         onRename={handleRename}
@@ -367,6 +384,21 @@ export function ChatShell({
               )}
             >
               <p className="whitespace-pre-wrap">{item.content}</p>
+              {!item.content && item.role === "assistant" && busy ? (
+                <span className="inline-flex gap-1" aria-label="กำลังพิมพ์">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                </span>
+              ) : null}
+              {item.created_at ? (
+                <time
+                  className="mt-1 block text-[10px] opacity-70"
+                  dateTime={item.created_at}
+                >
+                  {formatChatTimestamp(item.created_at)}
+                </time>
+              ) : null}
               {item.citations?.length ? (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {item.citations.map((cite) => (

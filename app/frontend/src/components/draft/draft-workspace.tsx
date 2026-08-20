@@ -59,6 +59,31 @@ function displayExtracted(value: unknown): string {
   return "";
 }
 
+interface ReviewSuggestion {
+  id: string;
+  section_key: string;
+  category: string;
+  suggested_text: string;
+}
+
+const EXPORT_WAIT_MESSAGE: Record<"failed" | "timeout", string> = {
+  failed: "สร้างเอกสารไม่สำเร็จ",
+  timeout: "สร้างเอกสารใช้เวลานานเกินไป กรุณาลองใหม่",
+};
+
+async function waitForExportReady(
+  projectId: string
+): Promise<"completed" | "failed" | "timeout"> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const statusRes = await apiClient.get(`/projects/${projectId}/export/status`);
+    const status = unwrapData<{ status?: string }>(statusRes).status;
+    if (status === "completed") return "completed";
+    if (status === "failed") return "failed";
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return "timeout";
+}
+
 function sectionCircleClass(filled: boolean, expanded: boolean): string {
   if (filled) return "border-[#0f5c22] bg-brand-green text-white";
   if (expanded) return "border-crimson bg-brand-orange text-navy";
@@ -80,6 +105,9 @@ export function DraftWorkspace() {
   const [exporting, setExporting] = useState(false);
   const [reviewScore, setReviewScore] = useState<number | null>(null);
   const [reviewFindings, setReviewFindings] = useState<ReviewFinding[]>([]);
+  const [reviewSuggestions, setReviewSuggestions] = useState<ReviewSuggestion[]>(
+    []
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -101,8 +129,12 @@ export function DraftWorkspace() {
           setExtracted(project.extractedFields);
         }
       })
-      .catch(() => undefined);
-    loadSections().catch(() => undefined);
+      .catch((err: unknown) =>
+        setActionError(apiErrorMessage(err, "โหลดโครงการไม่สำเร็จ"))
+      );
+    loadSections().catch((err: unknown) =>
+      setActionError(apiErrorMessage(err, "โหลดหมวด TOR ไม่สำเร็จ"))
+    );
   }, [projectId, fetchProject, loadSections]);
 
   async function persistPhase(next: number, nextUnlocked = unlocked) {
@@ -113,8 +145,8 @@ export function DraftWorkspace() {
       await apiClient.patch(`/projects/${projectId}/phase`, { phase: next });
       setUnlocked(nextUnlocked);
       setPhase(next);
-    } catch {
-      // stay on the current phase when the server rejects a skip
+    } catch (err: unknown) {
+      setActionError(apiErrorMessage(err, "เปลี่ยนขั้นตอนไม่สำเร็จ"));
     }
   }
 
@@ -145,6 +177,64 @@ export function DraftWorkspace() {
       setActionError(apiErrorMessage(err, "ร่างด้วย AI ไม่สำเร็จ"));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function runProjectReview() {
+    setReviewBusy(true);
+    setActionError(null);
+    try {
+      const response = await apiClient.post(`/projects/${projectId}/review`);
+      const payload = unwrapData<{
+        quality_score?: number;
+        findings?: Record<string, unknown>[];
+      }>(response);
+      setReviewScore(payload.quality_score ?? null);
+      setReviewFindings(
+        (payload.findings || []).map((item) => toReviewFinding(item))
+      );
+      try {
+        const sugRes = await apiClient.get(`/projects/${projectId}/suggestions`);
+        const sugPayload = unwrapData<{ items?: ReviewSuggestion[] }>(sugRes);
+        setReviewSuggestions(sugPayload.items || []);
+      } catch {
+        setReviewSuggestions([]);
+      }
+    } catch (err: unknown) {
+      setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function exportDocument(format: "docx" | "pdf") {
+    setExporting(true);
+    setActionError(null);
+    setActionInfo("กำลังสร้างเอกสาร...");
+    try {
+      await apiClient.post(`/projects/${projectId}/export`);
+      const wait = await waitForExportReady(projectId);
+      if (wait !== "completed") {
+        setActionInfo(null);
+        setActionError(EXPORT_WAIT_MESSAGE[wait]);
+        return;
+      }
+      const download = await apiClient.get(
+        `/projects/${projectId}/export/download/${format}`,
+        { responseType: "blob" }
+      );
+      const url = URL.createObjectURL(download.data as Blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `TOR.${format}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setActionInfo("ดาวน์โหลดเอกสารแล้ว");
+    } catch (err: unknown) {
+      setActionInfo(null);
+      setActionError(apiErrorMessage(err, "ส่งออกไม่สำเร็จ"));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -184,6 +274,11 @@ export function DraftWorkspace() {
           onSelect={(next) => persistPhase(next)}
         />
       </div>
+      {actionError && phase < 2 ? (
+        <p className="mb-3 text-sm text-destructive" role="alert">
+          {actionError}
+        </p>
+      ) : null}
 
       {phase === 0 || phase === 1 ? (
         <IntakeChatPanel
@@ -193,7 +288,9 @@ export function DraftWorkspace() {
           onReady={() => {
             persistPhase(2, 2)
               .then(() => loadSections())
-              .catch(() => undefined);
+              .catch((err: unknown) =>
+                setActionError(apiErrorMessage(err, "ไปขั้นตอนร่างไม่สำเร็จ"))
+              );
           }}
         />
       ) : null}
@@ -218,33 +315,17 @@ export function DraftWorkspace() {
 
       {phase === 3 ? (
         <Phase3
+          projectId={projectId}
           filledCount={filledCount}
           total={TOR_SECTION_ORDER.length}
           hitlReady={hitlReady}
           score={reviewScore}
           findings={reviewFindings}
+          suggestions={reviewSuggestions}
           busy={reviewBusy}
           error={actionError}
           onBack={() => persistPhase(2)}
-          onReview={async () => {
-            setReviewBusy(true);
-            setActionError(null);
-            try {
-              const response = await apiClient.post(`/projects/${projectId}/review`);
-              const payload = unwrapData<{
-                quality_score?: number;
-                findings?: Record<string, unknown>[];
-              }>(response);
-              setReviewScore(payload.quality_score ?? null);
-              setReviewFindings(
-                (payload.findings || []).map((item) => toReviewFinding(item))
-              );
-            } catch (err: unknown) {
-              setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
-            } finally {
-              setReviewBusy(false);
-            }
-          }}
+          onReview={runProjectReview}
           onSubmit={async () => {
             try {
               await apiClient.post(`/projects/${projectId}/submit`);
@@ -260,36 +341,10 @@ export function DraftWorkspace() {
       {phase === 4 ? (
         <Phase4
           exporting={exporting}
+          error={actionError}
+          info={actionInfo}
           onBack={() => persistPhase(3)}
-          onExport={async (format: "docx" | "pdf") => {
-            setExporting(true);
-            try {
-              await apiClient.post(`/projects/${projectId}/export`);
-              for (let attempt = 0; attempt < 30; attempt += 1) {
-                const statusRes = await apiClient.get(
-                  `/projects/${projectId}/export/status`
-                );
-                const status = unwrapData<{ status?: string }>(statusRes).status;
-                if (status === "completed") break;
-                if (status === "failed") {
-                  return;
-                }
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-              }
-              const download = await apiClient.get(
-                `/projects/${projectId}/export/download/${format}`,
-                { responseType: "blob" }
-              );
-              const url = URL.createObjectURL(download.data as Blob);
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = `TOR.${format}`;
-              link.click();
-              URL.revokeObjectURL(url);
-            } finally {
-              setExporting(false);
-            }
-          }}
+          onExport={exportDocument}
         />
       ) : null}
     </div>
@@ -512,22 +567,26 @@ function SectionCard({
 }
 
 function Phase3({
+  projectId,
   filledCount,
   total,
   hitlReady,
   score,
   findings,
+  suggestions,
   busy,
   error,
   onBack,
   onReview,
   onSubmit,
 }: Readonly<{
+  projectId: string;
   filledCount: number;
   total: number;
   hitlReady: boolean;
   score: number | null;
   findings: ReviewFinding[];
+  suggestions: ReviewSuggestion[];
   busy: boolean;
   error: string | null;
   onBack: () => void;
@@ -571,11 +630,25 @@ function Phase3({
           detail={[finding.section, finding.recommendation].filter(Boolean).join(" — ")}
         />
       ))}
+      {suggestions.length ? (
+        <h4 className="mb-1 mt-3 text-sm font-bold text-navy">
+          ข้อเสนอแนะจาก ReviewAgent ({suggestions.length})
+        </h4>
+      ) : null}
+      {suggestions.map((item) => (
+        <CheckItem
+          key={item.id}
+          tone="warn"
+          title={`${item.category}: ${item.suggested_text}`}
+          detail={item.section_key}
+        />
+      ))}
       {error ? (
         <p className="mt-2 text-sm text-destructive" role="alert">
           {error}
         </p>
       ) : null}
+      <RequirementsUpload projectId={projectId} />
       <div className="mt-4 flex justify-between">
         <Button variant="secondary" onClick={onBack} data-testid="phase3-back">
           ย้อนกลับไปแก้ไข
@@ -595,10 +668,14 @@ function Phase3({
 
 function Phase4({
   exporting,
+  error,
+  info,
   onBack,
   onExport,
 }: Readonly<{
   exporting: boolean;
+  error: string | null;
+  info: string | null;
   onBack: () => void;
   onExport: (format: "docx" | "pdf") => Promise<void>;
 }>) {
@@ -609,6 +686,18 @@ function Phase4({
         ส่งออก Word หรือ PDF ตามมาตรฐานราชการ (TH Sarabun, พ.ศ.) การอัปโหลดเข้าระบบ e-Bidding
         เป็นขั้นตอนของเจ้าหน้าที่นอกแอปนี้
       </p>
+      {exporting ? (
+        <output className="flex items-center gap-2 rounded-md bg-blue-50 p-3 text-sm text-blue-800">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+          {info || "กำลังสร้างเอกสาร... กรุณารอสักครู่"}
+        </output>
+      ) : null}
+      {error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {!exporting && info ? <p className="text-sm text-brand-green">{info}</p> : null}
       <div className="flex gap-2">
         <Button variant="secondary" onClick={onBack} data-testid="phase4-back">
           ย้อนกลับ
@@ -769,3 +858,92 @@ function SectionFieldControl({
 }
 
 
+
+function RequirementsUpload({ projectId }: Readonly<{ projectId: string }>) {
+  const [hasReqs, setHasReqs] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [reqError, setReqError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiClient
+      .get(`/projects/${projectId}/review/requirements`)
+      .then((res) => {
+        const data = unwrapData<{ has_requirements?: boolean; preview?: string }>(res);
+        setHasReqs(Boolean(data.has_requirements));
+        setPreview(data.preview || null);
+      })
+      .catch((err: unknown) => {
+        const status = (err as { response?: { status?: number } }).response?.status;
+        if (status === 404) {
+          return;
+        }
+        setReqError(apiErrorMessage(err, "โหลดข้อกำหนดไม่สำเร็จ"));
+      });
+  }, [projectId]);
+
+  async function upload(file: File) {
+    setUploading(true);
+    setReqError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      await apiClient.post(`/projects/${projectId}/review/requirements`, body);
+      setHasReqs(true);
+      const res = await apiClient.get(`/projects/${projectId}/review/requirements`);
+      const data = unwrapData<{ preview?: string }>(res);
+      setPreview(data.preview || null);
+    } catch (err: unknown) {
+      setReqError(apiErrorMessage(err, "อัปโหลดข้อกำหนดไม่สำเร็จ"));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function clear() {
+    try {
+      await apiClient.delete(`/projects/${projectId}/review/requirements`);
+      setHasReqs(false);
+      setPreview(null);
+    } catch (err: unknown) {
+      setReqError(apiErrorMessage(err, "ลบข้อกำหนดไม่สำเร็จ"));
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border bg-gray-50 p-3">
+      <p className="mb-2 text-xs font-bold text-navy">
+        ข้อกำหนดเพิ่มเติม (ถ้ามี)
+      </p>
+      {hasReqs ? (
+        <div>
+          <p className="text-xs text-muted-foreground mb-1">
+            {preview ? preview.slice(0, 200) + "..." : "อัปโหลดแล้ว"}
+          </p>
+          <Button size="sm" variant="outline" onClick={clear}>
+            ลบข้อกำหนด
+          </Button>
+        </div>
+      ) : (
+        <label className="block cursor-pointer">
+          <span className="text-xs text-muted-foreground">
+            อัปโหลดไฟล์ข้อกำหนดเฉพาะโครงการ (PDF/DOCX/TXT) เพื่อให้ ReviewAgent ตรวจสอบเพิ่มเติม
+          </span>
+          <input
+            type="file"
+            className="mt-1 block text-sm"
+            accept=".pdf,.docx,.txt"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) upload(file);
+            }}
+          />
+        </label>
+      )}
+      {reqError ? (
+        <p className="mt-1 text-xs text-destructive" role="alert">{reqError}</p>
+      ) : null}
+    </div>
+  );
+}

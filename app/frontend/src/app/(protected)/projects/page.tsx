@@ -10,6 +10,7 @@ import { StatCard } from "@/components/brand/stat-card";
 import { StatusPill } from "@/components/brand/status-pill";
 import { Modal } from "@/components/brand/modal";
 import { Button } from "@/components/ui/button";
+import { apiErrorMessage } from "@/lib/api-error";
 import type { Project } from "@/types";
 
 function formatBudget(value: number) {
@@ -30,9 +31,12 @@ export default function ProjectsPage() {
     useProjectStore();
   const [creatingOpen, setCreatingOpen] = useState(false);
   const [viewing, setViewing] = useState<Project | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchProjects(1).catch(() => undefined);
+    fetchProjects(1).catch((err: unknown) =>
+      setError(apiErrorMessage(err, "โหลดโครงการไม่สำเร็จ"))
+    );
   }, [fetchProjects]);
 
   const stats = useMemo(() => {
@@ -45,6 +49,11 @@ export default function ProjectsPage() {
 
   return (
     <div data-testid="projects-page">
+      {error ? (
+        <p className="mb-4 text-sm rounded-md border border-destructive/50 text-destructive p-3" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <StatCard title="ร่าง (Draft)" value={stats.draft} hint="แก้ไขได้ ยังไม่ส่งสร้าง" tone="draft" />
         <StatCard
@@ -90,13 +99,19 @@ export default function ProjectsPage() {
                       role={role}
                       onView={() => setViewing(project)}
                       onEdit={() => router.push(`/projects/${project.id}/draft`)}
-                      onArchive={() =>
-                        archiveProject(project.id).catch(() => undefined)
-                      }
+                      onArchive={() => {
+                        setError(null);
+                        archiveProject(project.id).catch((err: unknown) =>
+                          setError(apiErrorMessage(err, "ลบโครงการไม่สำเร็จ"))
+                        );
+                      }}
                       onDecide={(decision) => {
+                        setError(null);
                         decideProject(project.id, decision)
                           .then(() => fetchProjects(1))
-                          .catch(() => undefined);
+                          .catch((err: unknown) =>
+                            setError(apiErrorMessage(err, "ดำเนินการไม่สำเร็จ"))
+                          );
                       }}
                     />
                   </td>

@@ -176,6 +176,7 @@ class ReviewAgent:
         llm: LLMProvider,
         sections: dict[str, str],
         project_metadata: dict[str, Any] | None = None,
+        custom_requirements: str | None = None,
     ) -> ReviewResult:
         """Analyze full assembled TOR and generate categorized suggestions.
 
@@ -187,6 +188,8 @@ class ReviewAgent:
             llm: The LLM provider instance for AI-based analysis.
             sections: Dict of section_key -> content for all completed sections.
             project_metadata: Optional project info (budget, type, timeline_days).
+            custom_requirements: Optional user-uploaded requirements text for
+                project-specific compliance checking.
 
         Returns:
             ReviewResult with categorized suggestions (3-20 items).
@@ -205,11 +208,20 @@ class ReviewAgent:
             project_metadata=project_metadata,
         )
 
+        # Pass 1b: Custom requirements checks (if provided)
+        if custom_requirements and custom_requirements.strip():
+            custom_suggestions = self._check_custom_requirements(
+                sections=sections,
+                requirements=custom_requirements,
+            )
+            deterministic_suggestions.extend(custom_suggestions)
+
         # Pass 2: LLM-based analysis
         llm_suggestions = await self._run_llm_review(
             llm=llm,
             sections=sections,
             project_metadata=project_metadata,
+            custom_requirements=custom_requirements,
         )
 
         # Merge and deduplicate suggestions
@@ -369,11 +381,64 @@ class ReviewAgent:
 
         return suggestions
 
+    def _check_custom_requirements(
+        self,
+        sections: dict[str, str],
+        requirements: str,
+    ) -> list[ReviewSuggestion]:
+        """Check TOR against user-uploaded custom requirements.
+
+        Uses basic keyword/phrase matching to verify that key terms from
+        the requirements document appear in the TOR sections.
+
+        Args:
+            sections: All completed TOR sections.
+            requirements: User-uploaded requirements text.
+
+        Returns:
+            List of suggestions for unaddressed requirements.
+        """
+        suggestions: list[ReviewSuggestion] = []
+        all_tor_text = " ".join(sections.values()).lower()
+
+        # Split requirements into paragraphs and check each
+        paragraphs = [
+            p.strip() for p in requirements.split("\n") if len(p.strip()) > 20
+        ]
+
+        for paragraph in paragraphs[:20]:  # Limit to 20 paragraphs
+            # Extract key terms (words > 4 chars) from this paragraph
+            words = [w for w in paragraph.split() if len(w) > 4]
+            if not words:
+                continue
+
+            # Check if at least 30% of key terms appear in TOR
+            matched = sum(1 for w in words if w.lower() in all_tor_text)
+            coverage = matched / len(words) if words else 0
+
+            if coverage < 0.3:
+                suggestions.append(ReviewSuggestion(
+                    category="completeness",
+                    section_key="s4",
+                    current_text=paragraph[:150],
+                    suggested_text=(
+                        "ข้อกำหนดเพิ่มเติมนี้ยังไม่ถูกระบุใน TOR: "
+                        f"'{paragraph[:100]}' — ควรเพิ่มเนื้อหาที่ตอบสนองข้อกำหนดนี้"
+                    ),
+                    predicted_score_improvement=2.0,
+                ))
+
+            if len(suggestions) >= 5:
+                break
+
+        return suggestions
+
     async def _run_llm_review(
         self,
         llm: LLMProvider,
         sections: dict[str, str],
         project_metadata: dict[str, Any],
+        custom_requirements: str | None = None,
     ) -> list[ReviewSuggestion]:
         """Run LLM-based deep review of the full TOR document.
 
@@ -384,6 +449,7 @@ class ReviewAgent:
             llm: LLM provider instance.
             sections: All completed sections.
             project_metadata: Project metadata for context.
+            custom_requirements: Optional user-uploaded requirements text.
 
         Returns:
             List of suggestions from LLM analysis.
@@ -393,6 +459,15 @@ class ReviewAgent:
 
         # Build the user message with full TOR content
         user_message = self._build_review_user_message(sections, project_metadata)
+
+        # Append custom requirements if provided
+        if custom_requirements and custom_requirements.strip():
+            user_message += (
+                "\n\n=== ข้อกำหนดเพิ่มเติมของโครงการ ===\n"
+                f"{custom_requirements.strip()[:5000]}\n\n"
+                "ตรวจสอบว่า TOR สอดคล้องกับข้อกำหนดเพิ่มเติมเหล่านี้ด้วย "
+                "โดยให้คำแนะนำหมวด compliance หรือ completeness"
+            )
 
         messages = [
             {"role": "system", "content": REVIEW_SYSTEM_PROMPT},

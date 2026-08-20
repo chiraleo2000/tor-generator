@@ -39,12 +39,12 @@ Axios `apiClient` uses `withCredentials: true` so the HttpOnly cookie `tor_acces
 | 0 | Bulk upload + project intake chat (`IntakeChatPanel`) — no 9-class form |
 | 1 | Same chat: coverage table, gap questions, fill-reference, confirm ready |
 | 2 | Flow-track of 13 sections; s4 chips; HITL confirm vs save; AI draft writes `content` |
-| 3 | Completeness + Rule Engine + submit |
-| 4 | Word / PDF export (MinIO) |
+| 3 | Completeness + Rule Engine + ReviewAgent suggestions (`GET …/suggestions`) + submit |
+| 4 | Word / PDF export (MinIO) — surfaces failed/timeout status instead of silent return |
 
-Create-project from the dashboard opens **สร้างโครงการใหม่** (name, agency, ASCII budget, type, optional template) then routes to `/projects/{id}/draft`. Phase is persisted with `PATCH /projects/{id}/phase`. The leftover `/draft` index is not the primary intake path. `/chat` uses `kind=kb`; Phase 0–1 uses `kind=draft_intake`.
+Create-project from the dashboard opens **สร้างโครงการใหม่** (name, agency, ASCII budget, type, optional template) then routes to `/projects/{id}/draft`. Phase is persisted with `PATCH /projects/{id}/phase`. The leftover `/draft` index is not the primary intake path. `/chat` uses `kind=kb` (typing dots while streaming; `formatChatTimestamp` when `created_at` is present); Phase 0–1 uses `kind=draft_intake`.
 
-Standalone review extracts each compare file (`POST /review/extract`) then calls `POST /review/compare-projects` with `{ extract_ids }` (Jaccard). A 404/405/501 on that path falls back to local Jaccard on `extracted_text`.
+Standalone `/review` extracts each compare file (`POST /review/extract`) then calls `POST /review/compare-projects` with `{ extract_ids }` (Jaccard). A 404/405/501 on that path falls back to local Jaccard on `extracted_text`. Errors use `role="alert"`; score &lt; 70 is shown as not meeting the threshold. Admin/officer list pages that used to swallow load failures now set `apiErrorMessage` + `role="alert"`.
 
 Admin **การตั้งค่า AI** (`/admin/ai-settings`) lists every chat and embedding vendor in every mode — `on_prem` / `cloud` / `hybrid` is a label only and does **not** remap the other side. Mix example: Claude chat + local EmbeddingGemma (`LOCAL_EMBEDDING_SERVER`). Test (`ai-settings-test`) probes chat and embeddings separately. Cloud providers: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible. Help FAQ names `google/gemma-4-e4b` and `text-embedding-embeddinggemma-300m`. API error strings are read through `apiErrorMessage` in `src/lib/api-error.ts`. Review findings are mapped in `src/lib/review-findings.ts` so nested objects are never stringified to `[object Object]`.
 

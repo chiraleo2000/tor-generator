@@ -26,9 +26,11 @@ class TestLMStudioProviderInit:
     def test_is_subclass_of_llm_provider(self):
         assert issubclass(LMStudioLocalProvider, LLMProvider)
 
-    def test_default_values_from_config(self):
+    def test_default_values_from_config(self, monkeypatch):
+        monkeypatch.setenv("LM_STUDIO_BASE_URL", "http://host.docker.internal:1234/v1")
+        monkeypatch.setenv("LM_STUDIO_MODEL", "google/gemma-4-e4b")
+        monkeypatch.setenv("LM_STUDIO_TIMEOUT", "180")
         provider = LMStudioLocalProvider()
-        # Should pick up defaults from Settings
         assert provider._base_url == "http://host.docker.internal:1234/v1"
         assert provider._model_name == "google/gemma-4-e4b"
         assert provider._timeout == 180.0

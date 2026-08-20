@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChatShell } from "@/components/chat/chat-shell";
 import { apiClient } from "@/lib/api-client";
+import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 
 interface CoverageRow {
@@ -12,6 +13,10 @@ interface CoverageRow {
   status: string;
   filled: boolean;
   fact_required: boolean;
+}
+
+function isIntakeErrorMessage(text: string): boolean {
+  return /ไม่สำเร็จ|ยังไม่ครบ|อย่างน้อย/.test(text);
 }
 
 export function IntakeChatPanel({
@@ -66,8 +71,8 @@ export function IntakeChatPanel({
       await refreshCoverage();
       onAnalyzed();
       setMessage("แกะเอกสารแล้ว — บอทจะถามส่วนที่ยังขาด");
-    } catch {
-      setMessage("อัปโหลดหรือวิเคราะห์ไม่สำเร็จ");
+    } catch (err: unknown) {
+      setMessage(apiErrorMessage(err, "อัปโหลดหรือวิเคราะห์ไม่สำเร็จ"));
     } finally {
       setBusy(false);
     }
@@ -80,6 +85,8 @@ export function IntakeChatPanel({
         slot_key: slotKey,
       });
       await refreshCoverage();
+    } catch (err: unknown) {
+      setMessage(apiErrorMessage(err, "ดึงอ้างอิงกฎหมายไม่สำเร็จ"));
     } finally {
       setBusy(false);
     }
@@ -99,8 +106,8 @@ export function IntakeChatPanel({
       await refreshCoverage();
       onAnalyzed();
       setMessage("แกะข้อความแล้ว — บอทจะถามส่วนที่ยังขาด");
-    } catch {
-      setMessage("วิเคราะห์ข้อความไม่สำเร็จ");
+    } catch (err: unknown) {
+      setMessage(apiErrorMessage(err, "วิเคราะห์ข้อความไม่สำเร็จ"));
     } finally {
       setBusy(false);
     }
@@ -113,8 +120,8 @@ export function IntakeChatPanel({
         confirm: true,
       });
       onReady();
-    } catch {
-      setMessage("ยังไม่ครบช่องข้อเท็จจริงที่บังคับ หรือยังไม่ได้ยืนยัน");
+    } catch (err: unknown) {
+      setMessage(apiErrorMessage(err, "ยังไม่ครบช่องข้อเท็จจริงที่บังคับ หรือยังไม่ได้ยืนยัน"));
     } finally {
       setBusy(false);
     }
@@ -159,7 +166,16 @@ export function IntakeChatPanel({
             onChange={(event) => uploadFiles(event.target.files)}
           />
         </label>
-        {message ? <p className="mt-2 text-sm">{message}</p> : null}
+        {message ? (
+          <p
+            className={`mt-2 text-sm ${
+              isIntakeErrorMessage(message) ? "text-destructive" : "text-brand-green"
+            }`}
+            role={isIntakeErrorMessage(message) ? "alert" : undefined}
+          >
+            {message}
+          </p>
+        ) : null}
       </div>
 
       {coverage.length ? (

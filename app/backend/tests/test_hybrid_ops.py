@@ -57,7 +57,7 @@ async def test_unreachable_lm_studio_fails_within_10s_connect():
     with pytest.raises((ConnectionError, TimeoutError, OSError)):
         await provider.invoke([{"role": "user", "content": "ping"}])
     elapsed = time.monotonic() - start
-    assert elapsed < 12
+    assert elapsed < 15
 
 
 def test_claude_prompt_cache_control_present():

@@ -115,4 +115,22 @@ describe("KnowledgeBasePage", () => {
     await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
     expect(vi.mocked(apiClient.post).mock.calls[0][0]).toBe("/knowledge-base/upload");
   });
+
+  it("shows an alert when the catalog fails to load", async () => {
+    vi.mocked(apiClient.get).mockRejectedValue({
+      response: { data: { error: { message: "โหลดคลังความรู้ไม่สำเร็จ" } } },
+    });
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("โหลดคลังความรู้ไม่สำเร็จ");
+  });
+
+  it("shows an alert when officer upload fails", async () => {
+    vi.mocked(apiClient.post).mockRejectedValue({
+      response: { data: { error: { message: "ไฟล์ไม่รองรับ" } } },
+    });
+    render(<KnowledgeBasePage />);
+    await screen.findByTestId("knowledge-base-page");
+    fireEvent.click(screen.getByTestId("upload-trigger"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ไฟล์ไม่รองรับ");
+  });
 });

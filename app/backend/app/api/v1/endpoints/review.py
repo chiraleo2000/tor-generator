@@ -16,7 +16,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Depends, Path, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -201,6 +201,7 @@ async def run_review(
                 "project_type": project.project_type,
             },
             db=db,
+            custom_requirements=project.custom_requirements_text,
         )
     except Exception as exc:
         logger.warning(
@@ -239,6 +240,7 @@ async def _generate_suggestions(
     sections_map: dict[str, str],
     project_metadata: dict,
     db: AsyncSession,
+    custom_requirements: str | None = None,
 ) -> int:
     """Generate AI suggestions via the ReviewAgent and persist them.
 
@@ -269,6 +271,7 @@ async def _generate_suggestions(
         llm=llm,
         sections=sections_map,
         project_metadata=project_metadata,
+        custom_requirements=custom_requirements,
     )
 
     # Persist suggestions
@@ -579,3 +582,133 @@ async def validate_tor(
     )
 
     return _build_response(request, response_data.model_dump(mode="json"))
+
+
+
+# =============================================================================
+# POST /projects/{id}/review/requirements — Upload custom requirements file
+# =============================================================================
+
+
+@router.post(
+    "/{project_id}/review/requirements",
+    response_model=SuccessResponse,
+    summary="Upload custom requirements for review",
+)
+async def upload_requirements(
+    request: Request,
+    project_id: Annotated[uuid.UUID, Path(..., description=PROJECT_UUID_DESC)],
+    file: UploadFile,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Upload a requirements file for project-specific TOR review.
+
+    Extracts text from the uploaded file and stores it in the project's
+    custom_requirements_text field. The ReviewAgent uses this text to
+    check the TOR against project-specific requirements in addition to
+    standard legal compliance rules.
+    """
+    from pathlib import Path as FilePath
+
+    from app.io_temp import unlink_path, write_temp_bytes
+    from app.rag.extraction import extract_text
+
+    project = await _get_project_with_access(project_id, current_user, db)
+
+    raw = await file.read()
+    if not raw:
+        raise ValidationError(message="ไฟล์ว่างเปล่า", field="file")
+    if len(raw) > 20 * 1024 * 1024:
+        raise ValidationError(message="ไฟล์ต้องมีขนาดไม่เกิน 20 MB", field="file")
+
+    suffix = FilePath(file.filename or "upload.bin").suffix or ".bin"
+    mime = file.content_type or "application/octet-stream"
+    tmp_path = await write_temp_bytes(raw, suffix)
+    try:
+        result = extract_text(tmp_path, mime)
+        text = result.text
+    except Exception as exc:
+        logger.warning("Requirements extraction failed: %s", exc)
+        raise ValidationError(
+            message="ไม่สามารถแกะข้อความจากไฟล์ได้", field="file"
+        ) from exc
+    finally:
+        await unlink_path(tmp_path)
+
+    if not text or len(text.strip()) < 10:
+        raise ValidationError(
+            message="ไม่พบข้อความที่มีความหมายในไฟล์", field="file"
+        )
+
+    project.custom_requirements_text = text.strip()
+    await db.flush()
+
+    logger.info(
+        "Custom requirements uploaded for project %s: %d chars",
+        project_id,
+        len(project.custom_requirements_text),
+    )
+
+    return _build_response(request, {
+        "filename": file.filename,
+        "chars_extracted": len(project.custom_requirements_text),
+        "status": "ok",
+    })
+
+
+# =============================================================================
+# GET /projects/{id}/review/requirements — Get current requirements info
+# =============================================================================
+
+
+@router.get(
+    "/{project_id}/review/requirements",
+    response_model=SuccessResponse,
+    summary="Get uploaded requirements info",
+)
+async def get_requirements(
+    request: Request,
+    project_id: Annotated[uuid.UUID, Path(..., description=PROJECT_UUID_DESC)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Return information about the custom requirements for this project."""
+    project = await _get_project_with_access(project_id, current_user, db)
+
+    if not project.custom_requirements_text:
+        return _build_response(request, {
+            "has_requirements": False,
+            "chars": 0,
+            "preview": None,
+        })
+
+    return _build_response(request, {
+        "has_requirements": True,
+        "chars": len(project.custom_requirements_text),
+        "preview": project.custom_requirements_text[:500],
+    })
+
+
+# =============================================================================
+# DELETE /projects/{id}/review/requirements — Clear custom requirements
+# =============================================================================
+
+
+@router.delete(
+    "/{project_id}/review/requirements",
+    response_model=SuccessResponse,
+    summary="Clear custom requirements",
+)
+async def delete_requirements(
+    request: Request,
+    project_id: Annotated[uuid.UUID, Path(..., description=PROJECT_UUID_DESC)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Remove custom requirements text from the project."""
+    project = await _get_project_with_access(project_id, current_user, db)
+    project.custom_requirements_text = None
+    await db.flush()
+
+    return _build_response(request, {"status": "cleared"})

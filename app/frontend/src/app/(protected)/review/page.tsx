@@ -46,6 +46,7 @@ const LAW_REFS = [
 export default function StandaloneReviewPage() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReviewResult | null>(null);
   const [comparisons, setComparisons] = useState<JaccardComparison[]>([]);
   const [compares, setCompares] = useState<CompareRow[]>([]);
@@ -56,10 +57,12 @@ export default function StandaloneReviewPage() {
       return;
     }
     setBusy(true);
-    setStatus("");
+    setStatus("กำลังตรวจสอบเอกสาร...");
+    setError(null);
+    setResult(null);
     try {
       const primary = await extractReviewFile(file);
-      setStatus("สกัดข้อความสำเร็จ");
+      setStatus("สกัดข้อความสำเร็จ — กำลังรัน Rule Engine");
       const compareJobs = await extractCompareFiles(compares);
       const compared = await compareExtractJobs(primary, compareJobs);
       const ran = unwrapData<ReviewResult>(
@@ -67,8 +70,15 @@ export default function StandaloneReviewPage() {
       );
       setResult(ran);
       setComparisons(compared.comparisons);
+      const score = ran.quality_score ?? 0;
+      setStatus(
+        score >= 70
+          ? `ตรวจเสร็จ — ผ่านเกณฑ์เบื้องต้น (${score}/100)`
+          : `ตรวจเสร็จ — ยังไม่ผ่านเกณฑ์ 70 (${score}/100)`
+      );
     } catch (err: unknown) {
-      setStatus(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+      setStatus("");
+      setError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
     } finally {
       setBusy(false);
     }
@@ -90,8 +100,22 @@ export default function StandaloneReviewPage() {
             {file.name} · {Math.round(file.size / 1024)} KB
           </p>
         ) : null}
-        {status ? (
-          <p className={`mt-2 text-sm ${result || status.includes("สำเร็จ") ? "text-brand-green" : "text-destructive"}`}>
+        {busy ? (
+          <output className="mt-2 block text-sm text-navy">
+            {status || "กำลังตรวจสอบ..."}
+          </output>
+        ) : null}
+        {error ? (
+          <p className="mt-2 text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {!busy && status ? (
+          <p
+            className={`mt-2 text-sm ${
+              (result?.quality_score ?? 0) >= 70 ? "text-brand-green" : "text-navy"
+            }`}
+          >
             {status}
           </p>
         ) : null}
@@ -172,8 +196,13 @@ export default function StandaloneReviewPage() {
         ) : (
           <div>
             <CheckItem
-              tone="pass"
+              tone={(result.quality_score ?? 0) >= 70 ? "pass" : "warn"}
               title={`คะแนนความพร้อม ${result.quality_score ?? "—"}/100`}
+              detail={
+                (result.quality_score ?? 0) >= 70
+                  ? "ผ่านเกณฑ์เบื้องต้น"
+                  : "ยังไม่ผ่านเกณฑ์ 70 — ดูรายการด้านล่าง"
+              }
             />
             {findings.map((finding, index) => (
               <CheckItem

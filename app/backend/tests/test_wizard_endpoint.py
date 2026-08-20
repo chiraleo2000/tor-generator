@@ -426,7 +426,7 @@ class TestTriggerDraft:
 
         response = client.post(
             f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/1/draft",
-            json={"target_section": "s5"},  # s5 is not in step 1
+            json={"target_section": "s1"},  # s1 belongs to step 2, not step 1
         )
 
         assert response.status_code == 400

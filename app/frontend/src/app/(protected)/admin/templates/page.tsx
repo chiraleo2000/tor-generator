@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { apiClient } from "@/lib/api-client";
+import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { TOR_SECTION_LABELS, TOR_SECTION_ORDER } from "@/lib/tor-sections";
 
@@ -36,6 +37,7 @@ export default function AdminTemplatesPage() {
   const [guidance, setGuidance] = useState('{"s1":"อธิบายความเป็นมา"}');
   const [editing, setEditing] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function load() {
     const response = await apiClient.get("/templates");
@@ -44,49 +46,71 @@ export default function AdminTemplatesPage() {
   }
 
   useEffect(() => {
-    load().catch(() => setItems([]));
+    load().catch((err: unknown) =>
+      setError(apiErrorMessage(err, "โหลดแม่แบบไม่สำเร็จ"))
+    );
   }, []);
 
   async function save() {
-    const body = {
-      name,
-      industry,
-      section_structure: JSON.parse(structure),
-      placeholder_guidance: JSON.parse(guidance),
-    };
-    if (editing) {
-      await apiClient.put(`/templates/${editing}`, body);
-    } else {
-      await apiClient.post("/templates", body);
+    setError(null);
+    try {
+      const body = {
+        name,
+        industry,
+        section_structure: JSON.parse(structure),
+        placeholder_guidance: JSON.parse(guidance),
+      };
+      if (editing) {
+        await apiClient.put(`/templates/${editing}`, body);
+      } else {
+        await apiClient.post("/templates", body);
+      }
+      setName("");
+      setEditing(null);
+      await load();
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "บันทึกแม่แบบไม่สำเร็จ"));
     }
-    setName("");
-    setEditing(null);
-    await load();
   }
 
   async function publish(id: string) {
-    await apiClient.put(`/templates/${id}/publish`);
-    await load();
+    setError(null);
+    try {
+      await apiClient.put(`/templates/${id}/publish`);
+      await load();
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "เผยแพร่ไม่สำเร็จ"));
+    }
   }
 
   async function unpublish(id: string, confirm = false) {
-    const response = await apiClient.put(`/templates/${id}/unpublish`, null, {
-      params: { confirm },
-    });
-    const data = unwrapData<{ warning?: string; affected_count?: number }>(response);
-    if (data.warning && !confirm) {
-      setWarning(
-        `${data.warning} (โครงการที่กระทบ ${data.affected_count ?? 0}) — กดอีกครั้งเพื่อยืนยัน`
-      );
-      return;
+    setError(null);
+    try {
+      const response = await apiClient.put(`/templates/${id}/unpublish`, null, {
+        params: { confirm },
+      });
+      const data = unwrapData<{ warning?: string; affected_count?: number }>(response);
+      if (data.warning && !confirm) {
+        setWarning(
+          `${data.warning} (โครงการที่กระทบ ${data.affected_count ?? 0}) — กดอีกครั้งเพื่อยืนยัน`
+        );
+        return;
+      }
+      setWarning(null);
+      await load();
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "ยกเลิกเผยแพร่ไม่สำเร็จ"));
     }
-    setWarning(null);
-    await load();
   }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6" data-testid="admin-templates-page">
       <h1 className="text-2xl font-extrabold text-navy">จัดการแม่แบบ</h1>
+      {error ? (
+        <p className="text-sm rounded-md border border-destructive/50 text-destructive p-3" role="alert">
+          {error}
+        </p>
+      ) : null}
       {warning && <p className="text-sm text-amber-700">{warning}</p>}
       <div className="gov-card space-y-3">
         <h2 className="font-medium text-navy">{editing ? "แก้ไขแม่แบบ" : "สร้างแม่แบบ"}</h2>
@@ -134,18 +158,23 @@ export default function AdminTemplatesPage() {
                 size="sm"
                 variant="outline"
                 onClick={async () => {
-                  const response = await apiClient.get(`/templates/${item.id}`);
-                  const detail = unwrapData<{
-                    name: string;
-                    industry: string;
-                    section_structure: unknown;
-                    placeholder_guidance: unknown;
-                  }>(response);
-                  setEditing(item.id);
-                  setName(detail.name);
-                  setIndustry(detail.industry);
-                  setStructure(JSON.stringify(detail.section_structure, null, 2));
-                  setGuidance(JSON.stringify(detail.placeholder_guidance, null, 2));
+                  setError(null);
+                  try {
+                    const response = await apiClient.get(`/templates/${item.id}`);
+                    const detail = unwrapData<{
+                      name: string;
+                      industry: string;
+                      section_structure: unknown;
+                      placeholder_guidance: unknown;
+                    }>(response);
+                    setEditing(item.id);
+                    setName(detail.name);
+                    setIndustry(detail.industry);
+                    setStructure(JSON.stringify(detail.section_structure, null, 2));
+                    setGuidance(JSON.stringify(detail.placeholder_guidance, null, 2));
+                  } catch (err: unknown) {
+                    setError(apiErrorMessage(err, "โหลดข้อมูลแม่แบบไม่สำเร็จ"));
+                  }
                 }}
               >
                 แก้ไข

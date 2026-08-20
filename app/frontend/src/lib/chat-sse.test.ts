@@ -80,3 +80,19 @@ describe("streamSsePost", () => {
     expect(events).toEqual([{ event: "token", data: { text: "not-json" } }]);
   });
 });
+
+describe("formatChatTimestamp", () => {
+  it("returns empty for missing or invalid values", async () => {
+    const { formatChatTimestamp } = await import("@/lib/chat-sse");
+    expect(formatChatTimestamp(null)).toBe("");
+    expect(formatChatTimestamp(undefined)).toBe("");
+    expect(formatChatTimestamp("not-a-date")).toBe("");
+  });
+
+  it("formats a valid ISO timestamp", async () => {
+    const { formatChatTimestamp } = await import("@/lib/chat-sse");
+    const formatted = formatChatTimestamp("2026-08-20T08:00:00.000Z");
+    expect(formatted.length).toBeGreaterThan(0);
+    expect(formatted).not.toBe("not-a-date");
+  });
+});

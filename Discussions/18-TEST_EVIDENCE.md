@@ -1,38 +1,46 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **19 สิงหาคม 2026**  
+วันที่ **20 สิงหาคม 2026** (รอบตรวจ 3 เครื่องมือ + unit tests)  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234`  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
-เอกสารชุดปัจจุบันเรียง **13–18** (ไม่มีแฟ้ม 19–20 — หลักฐานเทสต์คือไฟล์นี้ ไม่ใช่ `21`)
+เอกสารชุดปัจจุบันเรียง **13–19**. หลักฐาน Playwright/ภาพจอชุด 19 ส.ค. ยังใช้ได้; รายงานการทำงานอยู่ที่ `19-APPLICATION_OPERATING_REPORT.md`
 
 | โมเดล | ค่า |
 |--------|-----|
 | Chat | `google/gemma-4-e4b` |
 | Embeddings | `text-embedding-embeddinggemma-300m` (768 มิติ) |
 
-ภาพอยู่ใน `discussions/test-evidence/` ถ่ายจาก Playwright แบบเห็นหน้าจอหลังเคสผ่านแล้วเท่านั้น — **ไม่มีเคสที่ล้มในรอบนี้**  
+ภาพอยู่ใน `discussions/test-evidence/` ถ่ายจาก Playwright แบบเห็นหน้าจอหลังเคสผ่านแล้วเท่านั้น  
 คู่มือผู้ใช้ที่อธิบายภาพชุดเดียวกันทีละขั้น: `13-USER_GUIDELINE.md`  
 เดโม UX/UI ที่คลิกได้ (ไม่เรียก API): https://chiraleo2000.github.io/tor-generator/ (`index.html`) — ไม่ใช่ `06-UXUI-Mockup.html`
 
 ---
 
-## สรุปตัวเลข
+## สรุปตัวเลข (รอบ 20 ส.ค. 2026)
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest ไม่รวม `live_llm` (v0.2.3) | **1448 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL เจ้าของไฟล์, `/knowledge-base/mine`; intake, `/chat`, wizard step APIs ยังผ่าน |
-| pytest `--cov=app` | **85%** (9527 stmts / 1398 miss) | HTML ที่ `app/backend/htmlcov/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) |
-| Vitest `--coverage` | **122 ผ่าน** / **89.8%** statements (660/735) | รวมหน้าฐานความรู้ของเจ้าหน้าที่; ตัดหน้าแอดมิน KB |
-| Playwright (แอป, 1 worker) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม | เวิร์กโฟลว์บน http://localhost:3000 รวมหน้าคลังความรู้เจ้าหน้าที่ (`อัปโหลดเอกสารของฉัน`) `/chat` และร่างด้วย AI (Gemma) — รันทีละเคสเพราะบัญชีทดลองร่วมกัน |
-| ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ หน้าแอดมิน `/chat` HITL |
-| Playwright รายงาน coverage (`test:e2e:reports`) | **3 ผ่าน** | ถ่าย htmlcov / Istanbul / รายงาน Playwright |
+| pytest ไม่รวม `live_llm` (v0.2.3) | **1448 ผ่าน**, 1 ข้ามไฟล์ PDF, 10 ไม่รัน (`live_llm`) | รวม corpus grouping, ACL, intake, `/chat`, wizard, hybrid timeout ขยายเกณฑ์ flaky |
+| pytest `-m live_llm` | **10 ผ่าน** (~1m40s) | LM Studio ที่ `http://127.0.0.1:1234` — Gemma 4 + EmbeddingGemma-300M · ยิง `/v1/models` แชทจิ๋ว และ embedding 768 มิติ |
+| Vitest `npm run test:unit` | **128 ผ่าน** / 30 ไฟล์ | รวมหน้า `/review`, `formatChatTimestamp`, alert คลังความรู้เมื่อโหลด/อัปโหลดล้ม |
+| Playwright (แอป, 1 worker) | **15 ผ่าน** / 0 ล้ม / 0 ข้าม (20 ส.ค. 2026, ~2.6 นาที รวม Phase 2 AI) | เวิร์กโฟลว์บน http://localhost:3000 รวม `/chat`, `/review`, `/help`, ร่าง 5 Phase และร่างด้วย AI (Gemma) |
+| Smoke API 3 เครื่องมือ | **ผ่านหมด** | ร่าง TOR · ตรวจสอบ TOR · ถาม-ตอบ (ดูตารางด้านล่าง) |
+| ภาพคู่มือเพิ่ม (`test:e2e:guide`) | **3 ผ่าน** (19 ส.ค.) | ฟอร์มสมัคร สร้างโครงการ แท็บคู่มือทั้ง 9 แท็บ |
 
 ไฟล์ `e2e/reports.spec.ts` และ `e2e/guide-shots.spec.ts` **ไม่ถูกรวม**ใน `npm run test:e2e` ปกติ จึงไม่มีเคสข้ามในชุดหลัก (Sonar S1607)
 
-Coverage backend ลดจากรอบเช้าเพราะเพิ่มโมดูลแชท / Mongo / GraphRAG ที่ยังไม่คลุมครบทุกบรรทัด — ชุดเทสต์ยังผ่านทั้งหมด
+### Smoke API — 3 เครื่องมือเจ้าหน้าที่ (20 ส.ค. 2026)
 
-รอบ 19 ส.ค. 2026 แก้ SonarLint `python:S7503` (Bedrock probe ใช้ `asyncio.to_thread`), `javascript:S4624` / `javascript:S3776` ใน GitHub Pages mockup, TS2580 (`Buffer` ใน `e2e/chat.spec.ts`) ด้วย `e2e/tsconfig.json` + `import { Buffer } from "node:buffer"` ลด cognitive complexity ของ intake/drafting/sections ตาม SonarLint บน `app/frontend/src` และ `app/backend/app` ตั้ง `experimental.proxyTimeout` 5 นาที และคลิก Phase 2 ที่ล็อกด้วย `{ force: true }`
+บัญชี `officer@example.go.th` · คลัง RAG **80 ไฟล์ / 507 chunks**
+
+| เครื่องมือ | หลักฐาน | ผล |
+|-----------|---------|-----|
+| ร่าง TOR | `POST …/intake/text` + analyze + coverage (27 ช่อง) · `PUT …/sections/s1–s13` · `POST …/draft-section` s1 · `POST /agent/sessions` → `gap_filling` | ผ่าน |
+| ตรวจสอบ TOR | `POST …/review` คะแนน **79** · findings 14 · suggestions **11** · `POST /review/extract` + `/run` | ผ่าน |
+| ถาม-ตอบ | `POST /kb-chat/…/message` คำตอบยาว + **5 citations** · `POST /chat/rooms/…/messages` SSE tokens=308 done + **5 citations** | ผ่าน |
+
+รอบนี้แก้ UX ที่บล็อกการใช้งาน: ไม่กลืน error ที่ admin users/templates/KB และ officer KB · Phase 4 แสดงสถานะส่งออกล้มเหลว · Phase 3 แสดงข้อเสนอแนะ ReviewAgent · `/review` มี `role="alert"` และเกณฑ์ 70 · แชทมีจุดพิมพ์ + เวลา · SonarLint บนไฟล์ที่แตะ (ใช้ `<output>` แทน `role="status"`)
 
 ---
 

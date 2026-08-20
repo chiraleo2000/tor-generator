@@ -30,6 +30,13 @@ export interface ChatPrompt {
   body: string;
 }
 
+export function formatChatTimestamp(iso?: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" });
+}
+
 function dispatchSseBlock(
   block: string,
   eventName: string,
