@@ -282,7 +282,7 @@ def build_docx(arch: Path, phases: Path) -> None:
     add_body(
         doc,
         "แหล่งความจริง: โค้ดใน app/frontend และ app/backend รวมผล unit tests ที่รันจริงวันเดียวกัน "
-        "(Vitest 122 ผ่าน, pytest 1448 ผ่าน) เอกสารนี้เป็นฉบับส่งออกของ Discussions/19-APPLICATION_OPERATING_REPORT.md",
+        "(Vitest 128 ผ่าน, pytest 1448 + live_llm 10, Playwright headed 15) เอกสารนี้เป็นฉบับส่งออกของ Discussions/19-APPLICATION_OPERATING_REPORT.md",
     )
 
     add_heading(doc, "1. สรุปหนึ่งหน้า", 1)
@@ -302,7 +302,7 @@ def build_docx(arch: Path, phases: Path) -> None:
             ["โมเดลเอกสาร", "13 ส่วนกฎหมาย + s4.1–s4.14 = 27 ช่อง"],
             ["AI ค่าเริ่มต้น", "Gemma ใน LM Studio + EmbeddingGemma 768 มิติ"],
             ["บทบาท", "officer / reviewer / admin"],
-            ["เทสต์รอบนี้", "Vitest 122 ผ่าน · pytest 1448 ผ่าน (ข้าม live_llm 10 เคส)"],
+            ["เทสต์รอบนี้", "Vitest 128 · pytest 1448 + live_llm 10 · Playwright headed 15"],
         ],
     )
     add_image(doc, arch, "ภาพที่ 1  สถาปัตยกรรมรวม — ผู้ใช้ → Next.js → FastAPI → คลังข้อมูล / LLM / Rule Engine")
@@ -333,6 +333,16 @@ def build_docx(arch: Path, phases: Path) -> None:
     )
     add_image(doc, EVIDENCE / "00-login.png", "ภาพที่ 2  หน้าเข้าสู่ระบบ")
     add_image(doc, EVIDENCE / "02-dashboard.png", "ภาพที่ 3  แดชบอร์ดหลังล็อกอิน")
+    add_heading(doc, "2.1 สามเครื่องมือหลักของเจ้าหน้าที่", 2)
+    add_table(
+        doc,
+        ["เครื่องมือ", "หน้า", "ทำอะไร", "ผลที่ควรเห็น"],
+        [
+            ["ร่าง TOR", "/projects/{id}/draft", "5 Phase: อัปโหลด → เติมช่อง → ร่าง 13 หมวด (+ AI) → HITL", "มีเนื้อหา s1–s13 พร้อมส่งตรวจ"],
+            ["ตรวจสอบ TOR", "Phase 3 + /review", "Rule Engine ≥ 70 + ReviewAgent · ตรวจไฟล์ภายนอก", "คะแนน / findings / suggestions"],
+            ["ถาม-ตอบ", "/chat", "ห้องคลังความรู้ SSE + citations จาก RAG", "คำตอบยาวพร้อมชิปอ้างอิง"],
+        ],
+    )
 
     add_heading(doc, "3. Frontend — Next.js 14", 1)
     add_body(
@@ -567,6 +577,15 @@ def build_docx(arch: Path, phases: Path) -> None:
     )
     add_table(
         doc,
+        ["เป้าหมายการตั้งค่า", "แชท", "ฝังเวกเตอร์", "หมายเหตุ"],
+        [
+            ["ค่าเริ่มต้นในเครื่อง", "LM Studio (Gemma)", "EmbeddingGemma", "โหลดทั้งสองที่พอร์ต 1234"],
+            ["Claude + ฝังเวกเตอร์ในเครื่อง", "Claude", "ในเครื่อง", "Anthropic key · ไม่ต้อง seed ใหม่"],
+            ["Claude + OpenAI embeddings", "Claude", "OpenAI", "ต้อง seed_raw_docs หลังเปลี่ยนฝังเวกเตอร์"],
+        ],
+    )
+    add_table(
+        doc,
         ["คำสั่ง / แพ็ก", "โหลดเข้าแอปเว็บ?"],
         [
             ["python -m app.seed_db", "ใช่ — ผู้ใช้ทดลอง"],
@@ -579,15 +598,17 @@ def build_docx(arch: Path, phases: Path) -> None:
 
     add_heading(doc, "10. Unit tests", 1)
     add_body(doc, "รันเมื่อ 20 สิงหาคม 2026 บนเครื่องเดียวกันกับรายงานนี้")
-    add_image(doc, EVIDENCE / "19-vitest-output.png", "ภาพที่ 15  ผล Vitest — 29 ไฟล์ 122 เคส ผ่าน")
-    add_image(doc, EVIDENCE / "19-pytest-output.png", "ภาพที่ 16  ผล pytest — 1448 ผ่าน, 1 ข้าม, 10 เคส live_llm ไม่รัน")
+    add_image(doc, EVIDENCE / "19-vitest-output.png", "ภาพที่ 15  ผล Vitest — 30 ไฟล์ 128 เคส ผ่าน")
+    add_image(doc, EVIDENCE / "19-pytest-output.png", "ภาพที่ 16  ผล pytest — 1448 ผ่าน (+ live_llm 10 เมื่อเปิด LM Studio)")
     add_image(doc, EVIDENCE / "19-unit-test-usage-map.png", "ภาพที่ 17  แผนที่การใช้งาน ↔ เทสต์ที่ล็อกพฤติกรรม")
     add_table(
         doc,
         ["ชุด", "คำสั่ง", "ผลรอบนี้"],
         [
-            ["Frontend unit", "cd app/frontend && npm run test:unit", "29 ไฟล์ / 122 เคส ผ่าน ใน 77.43 วินาที"],
-            ["Backend unit", 'python -m pytest -m "not live_llm" --hypothesis-profile=coverage', "1448 ผ่าน · 1 ข้าม · 10 ไม่รัน (live_llm) ใน 3:34 นาที"],
+            ["Frontend unit", "cd app/frontend && npm run test:unit", "30 ไฟล์ / 128 เคส ผ่าน"],
+            ["Backend unit", 'python -m pytest -m "not live_llm"', "1448 ผ่าน · 1 ข้าม · 10 ไม่รัน (live_llm)"],
+            ["Backend live LLM", "python -m pytest -m live_llm", "10 ผ่าน (LM Studio :1234)"],
+            ["E2E headed", "npm run test:e2e:headed", "15 ผ่าน · UI มองเห็นได้ ~3.1 นาที"],
             ["E2E (อ้างอิง 19 ส.ค.)", "npm run test:e2e", "15 ผ่าน — ดู 18-TEST_EVIDENCE.md"],
         ],
     )
@@ -773,7 +794,7 @@ def build_pptx(arch: Path, phases: Path) -> None:
             ["5", "Workflows 5 Phase, LangGraph, แชท, ตรวจไฟล์, อนุมัติ"],
             ["6–7", "Features และ Functions ที่ขับการใช้งาน"],
             ["8–9", "Rule Engine · Docker / LLM / seed / skills"],
-            ["10", "Unit tests จริง 20 ส.ค. 2026 (Vitest 122 / pytest 1448)"],
+            ["10", "Unit tests จริง 20 ส.ค. 2026 (Vitest 128 / pytest 1448 + live 10 / E2E headed 15)"],
         ],
         height=4.8,
     )
@@ -826,6 +847,22 @@ def build_pptx(arch: Path, phases: Path) -> None:
     _picture(s, EVIDENCE / "02-dashboard.png", 6.7, 1.0, 6.1)
     _add_text_box(s, PptInches(0.4), PptInches(6.55), PptInches(6.1), PptInches(0.4), "เข้าสู่ระบบ", size=13, color=P_MUTED, align=PP_ALIGN.CENTER)
     _add_text_box(s, PptInches(6.7), PptInches(6.55), PptInches(6.1), PptInches(0.4), "แดชบอร์ดโครงการ", size=13, color=P_MUTED, align=PP_ALIGN.CENTER)
+
+    s = _blank(prs)
+    _title(s, "สามเครื่องมือหลักของเจ้าหน้าที่")
+    _table(
+        s,
+        ["เครื่องมือ", "หน้า", "ผลที่ควรเห็น"],
+        [
+            ["ร่าง TOR", "/projects/{id}/draft · 5 Phase", "เนื้อหา s1–s13 พร้อมส่งตรวจ"],
+            ["ตรวจสอบ TOR", "Phase 3 + /review", "คะแนน ≥70 / findings / suggestions"],
+            ["ถาม-ตอบ", "/chat (SSE + citations)", "คำตอบยาวพร้อมชิปอ้างอิงจากคลัง"],
+        ],
+        height=3.0,
+        font=16,
+    )
+    _picture(s, EVIDENCE / "13-kb-chat.png", 0.55, 4.3, 5.8)
+    _picture(s, EVIDENCE / "12-standalone-review.png", 6.6, 4.3, 5.8)
 
     s = _blank(prs)
     _title(s, "Frontend — Next.js 14")
@@ -1015,9 +1052,10 @@ def build_pptx(arch: Path, phases: Path) -> None:
             "Frontend:  cd app/frontend && npm run test:unit",
             'Backend:   cd app/backend && python -m pytest -m "not live_llm" --hypothesis-profile=coverage',
             "ถ้า LM Studio เปิดที่ :1234:  python -m pytest -m live_llm",
-            "E2E (ต้องมี UI ที่ :3000):  npm run test:e2e:headed",
+            "E2E headed (ต้องมี UI ที่ :3000):  npm run test:e2e:headed",
+            "Guide screenshots:  npm run test:e2e:guide",
             "บัญชีทดลอง: officer@example.go.th / Passw0rd!",
-            "รอบนี้ไม่ได้รัน 10 เคส live_llm เพราะไม่ได้เปิด LM Studio — ไม่ใช่เคสที่ล้ม",
+            "live_llm 10 เคสผ่านเมื่อเปิด LM Studio ที่ :1234 — รวม backend 1458 เคส",
         ],
         size=17,
     )
@@ -1043,7 +1081,7 @@ def build_pptx(arch: Path, phases: Path) -> None:
             "เจ้าหน้าที่เดิน 5 Phase: อัปโหลด → เติมช่อง → ร่าง 13 หมวด → ตรวจ → ส่งออก",
             "คนยืนยันหมวดเสี่ยง (HITL) ก่อนส่งขออนุมัติ ผู้ตรวจสอบกดอนุมัติหรือส่งกลับ",
             "AI ในเครื่องเป็นค่าเริ่ม แชทกับ embeddings เลือกอิสระได้จากหน้าแอดมิน",
-            "Unit tests ล็อกพฤติกรรมนี้ไว้แล้ว: Vitest 122 ผ่าน, pytest 1448 ผ่าน",
+            "Unit tests ล็อกพฤติกรรมนี้ไว้แล้ว: Vitest 128, pytest 1448 + live_llm 10, Playwright headed 15",
             "ต้นฉบับ Markdown: Discussions/19-APPLICATION_OPERATING_REPORT.md",
         ],
         size=18,

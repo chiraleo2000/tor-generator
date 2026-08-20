@@ -5,8 +5,9 @@
 
 แอปนี้ช่วยเจ้าหน้าที่พัสดุ**ร่างและตรวจ TOR** (ขอบเขตของงาน) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 โดยบังคับโครง 13 ส่วน (`s1`–`s13`) รับชุดเอกสาร จัดเข้าช่อง ตรวจด้วย Rule Engine แล้วยืนยันหมวดเสี่ยงด้วยคน ก่อนส่งออก Word/PDF รูปแบบราชการ
 
-ภาพหน้าจอการใช้งานจริงอยู่ที่ `test-evidence/` (ชุด Playwright 19 ส.ค.)  
-ภาพผล unit tests รอบนี้: [Vitest](test-evidence/19-vitest-output.png) · [pytest](test-evidence/19-pytest-output.png) · [แผนที่เทสต์→การใช้งาน](test-evidence/19-unit-test-usage-map.png)
+ภาพหน้าจอการใช้งานจริงอยู่ที่ `test-evidence/` (Playwright **headed** 20 ส.ค. 2026)  
+ภาพผล unit tests: [Vitest](test-evidence/19-vitest-output.png) · [pytest](test-evidence/19-pytest-output.png) · [แผนที่เทสต์→การใช้งาน](test-evidence/19-unit-test-usage-map.png)  
+ไดอะแกรม: [สถาปัตยกรรม](test-evidence/19-diagram-architecture.png) · [5 Phase](test-evidence/19-diagram-phases.png)
 
 ฉบับส่งออก: [PDF](19-APPLICATION_OPERATING_REPORT.pdf) · [Word](19-APPLICATION_OPERATING_REPORT.docx) · [PowerPoint](19-APPLICATION_OPERATING_REPORT.pptx)
 
@@ -23,7 +24,7 @@
 | โมเดลเอกสาร | 13 ส่วนกฎหมาย + ขอบเขตงานย่อย `s4.1`–`s4.14` = **27 ช่อง** |
 | AI ค่าเริ่มต้น | แชท `google/gemma-4-e4b` · ฝังเวกเตอร์ EmbeddingGemma 768 มิติ · ในเครื่องผ่าน LM Studio |
 | บทบาท | `officer` / `reviewer` / `admin` |
-| เทสต์รอบนี้ | **Vitest 128 ผ่าน** · **pytest 1448 ผ่าน** · **Playwright 15 ผ่าน** · smoke 3 เครื่องมือผ่าน |
+| เทสต์รอบนี้ | **Vitest 128** · **pytest 1448** (+ **live_llm 10**) · **Playwright headed 15** · smoke 3 เครื่องมือผ่าน |
 
 ```mermaid
 flowchart LR
@@ -65,6 +66,14 @@ JWT อยู่ในคุกกี้ HttpOnly `tor_access_token` (`SameSite=
 ![เข้าสู่ระบบ](test-evidence/00-login.png)
 
 ![แดชบอร์ดหลังล็อกอิน](test-evidence/02-dashboard.png)
+
+### 2.1 สามเครื่องมือหลักของเจ้าหน้าที่
+
+| เครื่องมือ | หน้า | ทำอะไร | ผลที่ควรเห็น |
+|-----------|------|--------|-------------|
+| **ร่าง TOR** | `/projects/{id}/draft` | 5 Phase: อัปโหลด → เติมช่อง → ร่าง 13 หมวด (+ AI) → HITL | มีเนื้อหา s1–s13 พร้อมส่งตรวจ |
+| **ตรวจสอบ TOR** | Phase 3 ในโครงการ + `/review` | Rule Engine ≥ 70 + ข้อเสนอแนะ ReviewAgent · ตรวจไฟล์ภายนอก | คะแนน / findings / suggestions |
+| **ถาม-ตอบ** | `/chat` | ห้องคลังความรู้ SSE + citations จาก RAG | คำตอบยาวพร้อมชิปอ้างอิง |
 
 ---
 
@@ -397,6 +406,14 @@ flowchart TD
 
 ค่าเริ่มต้น compose: `DEPLOYMENT_MODE=on_prem` · `LLM_PROVIDER=lm_studio` · `EMBEDDING_PROVIDER=local` · โมเดลแชท `google/gemma-4-e4b`
 
+ตั้งจาก **การตั้งค่า AI** (`/admin/ai-settings`) — บันทึกมีผลทันที ไม่ต้องรีสตาร์ท
+
+| เป้าหมาย | แชท | ฝังเวกเตอร์ | หมายเหตุ |
+|----------|-----|-------------|----------|
+| ค่าเริ่มต้นในเครื่อง | LM Studio (Gemma) | EmbeddingGemma ในเครื่อง | โหลดทั้งสองโมเดลที่พอร์ต 1234 |
+| Claude + ฝังเวกเตอร์ในเครื่อง | Claude (Anthropic) | ในเครื่อง | ใส่ Anthropic key · เปิด LM Studio โหลด EmbeddingGemma · ไม่ต้อง seed ใหม่ |
+| Claude + OpenAI embeddings | Claude | ฝังเวกเตอร์ OpenAI | ใส่ Anthropic + OpenAI key · **ต้อง** `python -m app.seed_raw_docs` หลังเปลี่ยนฝังเวกเตอร์ |
+
 ### 9.3 คำสั่ง seed
 
 รันจาก `app/backend` หรือ `docker compose exec backend`:
@@ -426,7 +443,6 @@ flowchart TD
 ### 10.1 ภาพผลลัพธ์
 
 ![Vitest ผ่าน](test-evidence/19-vitest-output.png)
-*(ภาพชุด 20 ส.ค. เช้าเป็น 122 เคส — รอบเย็นวันเดียวกัน Vitest เป็น **128** ผ่าน หลังเพิ่มเทสต์ `/review` และ alert คลังความรู้)*
 
 ![pytest 1448 ผ่าน](test-evidence/19-pytest-output.png)
 
@@ -434,12 +450,13 @@ flowchart TD
 
 | ชุด | คำสั่ง | ผลรอบนี้ | อธิบายการใช้งาน |
 |-----|--------|-----------|-----------------|
-| Frontend unit | `cd app/frontend && npm run test:unit` | **29 ไฟล์ / 122 เคส ผ่าน** ใน 77.43 วินาที | ล็อกอิน เกต 5 Phase HITL แชท SSE หน้าคลัง ฟอร์มสร้างโครงการ ตั้งค่า AI |
-| Backend unit | `cd app/backend && python -m pytest -m "not live_llm" --hypothesis-profile=coverage` | **1448 ผ่าน** · 1 ข้าม · 10 ไม่รัน (`live_llm`) ใน 3:34 นาที | auth, intake, เอเจนต์, Rule Engine, RAG/ACL, ส่งออก, แอดมิน |
+| Frontend unit | `cd app/frontend && npm run test:unit` | **30 ไฟล์ / 128 เคส ผ่าน** | ล็อกอิน เกต 5 Phase HITL แชท SSE หน้าคลัง `/review` ตั้งค่า AI |
+| Backend unit | `cd app/backend && python -m pytest -m "not live_llm"` | **1448 ผ่าน** · 1 ข้าม · 10 ไม่รัน (`live_llm`) | auth, intake, เอเจนต์, Rule Engine, RAG/ACL, ส่งออก, แอดมิน |
 | Backend live LLM | `cd app/backend && python -m pytest -m live_llm` | **10 ผ่าน** (~1m40s) | LM Studio Gemma 4 + EmbeddingGemma ที่พอร์ต 1234 |
-| E2E (อ้างอิง 19 ส.ค.) | `npm run test:e2e` | 15 ผ่าน — ดู `18-TEST_EVIDENCE.md` | เดินทั้งจอบน http://localhost:3000 |
+| E2E headed | `npm run test:e2e:headed` | **15 ผ่าน** (~3.1 นาที) | Chromium มองเห็นได้ · ภาพใน `test-evidence/` |
+| Guide shots | `npm run test:e2e:guide` | **3 ผ่าน** | รีเฟรช PNG คู่มือผู้ใช้ |
 
-รอบ push **20 ส.ค. 2026 (เย็น)** รัน `live_llm` ครบ **10 ผ่าน** กับ LM Studio ที่พอร์ต 1234 — รวม unit + live = **1458** backend tests ที่ผ่านเมื่อรันทั้งสองชุด
+รวม backend เมื่อรันทั้ง unit + live = **1458** เคสผ่าน · `npm run test:e2e` (ไม่มี `--headed`) เป็น **headless** จึงไม่เห็นหน้าต่างเบราว์เซอร์
 
 ### 10.2 Frontend — ไฟล์เทสต์กับการใช้งาน
 
