@@ -95,4 +95,20 @@ describe("formatChatTimestamp", () => {
     expect(formatted.length).toBeGreaterThan(0);
     expect(formatted).not.toBe("not-a-date");
   });
+
+  it("builds attach ingest feedback from the API payload", async () => {
+    const { attachIngestFeedback } = await import("@/lib/chat-sse");
+    expect(
+      attachIngestFeedback(
+        { name: "reg.pdf", status: "completed", chunk_count: 2 },
+        "reg.pdf"
+      )
+    ).toContain("ถูกเพิ่มเข้าคลังของฉันแล้ว");
+    expect(attachIngestFeedback({ status: "failed", name: "bad.pdf" }, "bad.pdf")).toContain(
+      "ไม่สามารถประมวลผล"
+    );
+    expect(attachIngestFeedback({ status: "processing" }, "wait.pdf")).toContain(
+      "กำลังประมวลผล"
+    );
+  });
 });

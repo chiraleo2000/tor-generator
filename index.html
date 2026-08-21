@@ -268,9 +268,9 @@ const DOC_CLASSES = [
 ];
 const CHECKLIST = ["เอกสารอนุมัติงบประมาณ","ประกาศราคากลางฉบับทางการ","เอกสารโครงการ (Charter / Brief)","รายงานการประชุม","รายชื่อผู้เกี่ยวข้อง"];
 const PHASES = [
-  [0,"เตรียมข้อมูล","Pre-Drafting"],[1,"วิเคราะห์ความต้องการ","Analysis"],
-  [2,"ร่างเนื้อหา TOR","Drafting 13 หมวด"],[3,"ทบทวน/อนุมัติ","Review & Approval"],
-  [4,"เผยแพร่","Publishing"]
+  [0,"เตรียมข้อมูล","Pre-Drafting"],[1,"ผลวิเคราะห์","Analysis"],
+  [2,"สอบถามเพิ่ม","Q&A + กฎระเบียบ"],[3,"ร่างเนื้อหา TOR","Drafting 13 หมวด"],
+  [4,"ทบทวน/เผยแพร่","Review & Publish"]
 ];
 const META = {
   projects:["แดชบอร์ด","ภาพรวมโครงการ TOR ทั้งหมด"],
@@ -357,12 +357,16 @@ const state = {
     {name:"ผู้ดูแลระบบ",email:"admin@example.go.th",role:"admin",org:"กรมบัญชีกลาง",disabled:false}
   ],
   ai:{mode:"on_prem",llm:"lm_studio",embed:"local",embedServer:"lm_studio",vector:"pgvector",
-    lm:"http://host.docker.internal:1234/v1",ollama:"http://host.docker.internal:11434/v1",
-    llama:"http://host.docker.internal:8080/v1",
-    sglang:"http://sglang-llm:30000/v1",sglangEmb:"http://sglang-embed:30001/v1",
+    lm:"http://host.docker.internal:1234/v1", // NOSONAR javascript:S5332
+    ollama:"http://host.docker.internal:11434/v1", // NOSONAR javascript:S5332
+    llama:"http://host.docker.internal:8080/v1", // NOSONAR javascript:S5332
+    sglang:"http://127.0.0.1:30000/v1",
+    sglangEmb:"http://127.0.0.1:30001/v1",
     sglangChat:"google/gemma-4-e4b",sglangEmbModel:"google/embeddinggemma-300m",
     chat:"google/gemma-4-e4b",emb:"text-embedding-embeddinggemma-300m",timeout:180,
     customRag:false,customRagUrl:"",ragSources:"both"},
+  analyzed:false,
+  phase4Confirmed:false,
   aiMsg:"",
   busy:false,
   score:null,
@@ -382,8 +386,10 @@ function emptyCoverage(){
     ...SCOPE.map(([key,label])=>({key,label,status:"gap",fact:fact.has(key)}))
   ];
 }
-function coverageHtml(){
+function coverageHtml(opts){
   if(!state.coverage.length) return "";
+  const showReady = Boolean(opts && opts.showReady);
+  const showQa = Boolean(opts && opts.showQa);
   const rows=state.coverage.map(r=>`<tr>
     <td>${esc(r.key)} ${esc(r.label)}${r.fact?" *":""}</td>
     <td>${esc(r.status)}</td>
@@ -392,7 +398,8 @@ function coverageHtml(){
   return `<div class="gov-card" style="margin-top:12px;overflow-x:auto">
     <h4 style="color:var(--navy);margin-bottom:8px">ตารางความครบถ้วน</h4>
     <table class="cov-table"><thead><tr><th>ช่อง</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-    <button class="btn btn-primary" style="margin-top:12px" id="readyDraft">พร้อมร่าง TOR แล้ว</button>
+    ${showQa?`<button class="btn btn-primary" style="margin-top:12px" id="intakeEnterQa">ไปสอบถามเพิ่ม (Phase 2)</button>`:""}
+    ${showReady?`<button class="btn btn-primary" style="margin-top:12px" id="readyDraft">ครบแล้ว — ไปร่าง TOR (Phase 3)</button>`:""}
   </div>`;
 }
 function chatShellHtml(kind){
@@ -598,7 +605,7 @@ function dashHtml(){
 }
 
 function kbHtml(){
-  const types=[["law","กฎหมาย/ระเบียบกลาง"],["guideline","ประกาศราคากลาง / ระเบียบ"],["example_tor","ร่างเอกสารประกวดราคา"],["manual","ความต้องการ/คู่มือ"],["regulation","กฎกระทรวง"]];
+  const types=[["law","พ.ร.บ. / กฎหมาย"],["regulation","กฎกระทรวง"],["guideline","ระเบียบกระทรวงการคลัง"],["circular","หนังสือเวียนกรมบัญชีกลาง"],["price_announcement","ประกาศราคากลาง"],["manual","คู่มือปฏิบัติงาน"],["example_tor","ตัวอย่าง TOR"],["template","แม่แบบ"],["other","อื่น ๆ"]];
   const cats=[
     ["พระราชบัญญัติและระเบียบ",[{n:"พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:48},{n:"ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:62}]],
     ["คู่มือแนวปฏิบัติ (บังคับ)",[{n:"คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf",c:86}]],
@@ -651,28 +658,32 @@ function kbChunkedHtml(chunked){
 }
 function kbMineListHtml(mine){
   if(!mine.length) return '<p class="muted">ยังไม่มีไฟล์ส่วนตัว</p>';
-  return mine.map(function(file){
-    return '<div class="kb-row" style="padding:12px 16px;font-size:13px">'+esc(file.name)+'</div>';
+  return mine.map(function(file, i){
+    return '<div class="kb-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px"><span>'+esc(file.name)+' <span class="pill pill-draft">ส่วนตัว</span></span><span><button type="button" class="btn btn-outline btn-sm" data-mine-dl="'+i+'">ดาวน์โหลด</button> <button type="button" class="btn btn-danger btn-sm" data-mine-del="'+i+'">ลบ</button></span></div>';
   }).join("");
 }
 
 function unlockedPhase(){
-  if (state.readyCompose) return 2;
-  if ((state.files||[]).length) return 1;
-  if ((state.coverage||[]).some(r=>r.status==="filled")) return 1;
+  if (state.phase4Confirmed) return 4;
+  if (state.readyCompose) return 3;
+  if (state.analyzed) return 2;
   return 0;
 }
 function canSelectMockPhase(target){
   const current=state.phase, u=unlockedPhase();
   if (target<0||target>4) return false;
   if (target<=current) return true;
-  if (target<=u) return true;
-  return u>=2 && target===current+1;
+  return target<=u;
 }
 function applyIntakeMaterial(){
   const fact=new Set(["s1","s2","s5","s6","s7","s4.1"]);
   state.coverage=emptyCoverage().map(r=>({...r,status:fact.has(r.key)?"filled":"gap"}));
-  state.phase=1;
+}
+function fillNonFactRefs(){
+  state.coverage=(state.coverage||[]).map(r=>{
+    if(!r.fact && r.status==="gap") return {...r,status:"reference_only"};
+    return r;
+  });
 }
 
 function phaseFlow(){
@@ -704,7 +715,7 @@ function phaseFlow(){
 function draftHtml(){
   const p=active();
   if(!p) return `<p class="muted">ยังไม่มีโครงการ — สร้างจากแดชบอร์ด</p>`;
-  if (!state.readyCompose && state.phase >= 2) {
+  if (state.phase > unlockedPhase()) {
     state.phase = unlockedPhase();
   }
   let phaseBody = "";
@@ -715,7 +726,7 @@ function draftHtml(){
   else phaseBody = phase4();
 
   return `${phaseFlow()}
-    <p class="muted" style="margin-bottom:12px">${esc(p.name)} · ${esc(p.ministry)} · ${baht(p.budget)} บาท · ${pill(p.status)} — เริ่มที่ Phase 0 วางข้อความหรืออัปโหลดเอกสารก่อน</p>
+    <p class="muted" style="margin-bottom:12px">${esc(p.name)} · ${esc(p.ministry)} · ${baht(p.budget)} บาท · ${pill(p.status)} — เริ่มที่ Phase 0 อัปโหลดหรือวางข้อความได้หลายครั้ง แล้วกดเริ่มต้น</p>
     ${phaseBody}`;
 }
 
@@ -726,17 +737,30 @@ function phase1(){
   return intakeChatHtml(1);
 }
 function intakeChatHtml(phase){
-  const title=phase===0?"Phase 0: อัปโหลดชุดเอกสาร":"Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง";
-  return `<div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">${title}</h3>
-    <p class="muted" style="margin-bottom:12px">วางข้อความร่างหรืออัปโหลดเอกสารก่อน จึงจะไป Phase 2 ได้ — ไม่ต้องเลือกประเภทไฟล์</p>
+  if(phase===0){
+    return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">Phase 0: เตรียมข้อมูล — อัปโหลดหรือวางข้อความ</h3>
+    <p class="muted" style="margin-bottom:12px">อัปโหลดเอกสารหรือวางข้อความได้หลายครั้ง — ระบบจะไม่ทำอะไรจนกว่าคุณกดเริ่มต้น</p>
     <textarea id="intakePaste" rows="5" placeholder="วางข้อความร่าง TOR หรือรายละเอียดโครงการที่นี่"></textarea>
-    <p style="margin-top:8px"><button type="button" class="btn btn-primary" id="intakePasteGo">วิเคราะห์ข้อความ</button></p>
-    <label class="upload"><input type="file" hidden multiple id="intakeUp"><p>หรือคลิกอัปโหลดไฟล์ PDF / Word / สแกน</p><span>ต้นฉบับเก็บใน Mongo แล้วฝังด้วย EmbeddingGemma</span></label>
+    <label class="upload"><input type="file" hidden multiple id="intakeUp"><p>คลิกอัปโหลดไฟล์ PDF / Word / สแกน</p><span>เก็บไฟล์ไว้ก่อน ยังไม่วิเคราะห์</span></label>
+    <p style="margin-top:8px"><button type="button" class="btn btn-primary" id="intakeStart">เริ่มต้น</button></p>
     ${state.intakeMsg?`<p style="margin-top:8px">${esc(state.intakeMsg)}</p>`:""}
     ${state.files.map(f=>`<p class="muted" style="margin-top:6px">${esc(f.name)} · ${f.chars} ตัวอักษร</p>`).join("")}
+  </div>`;
+  }
+  if(phase===1){
+    return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">Phase 1: ผลวิเคราะห์ความต้องการ</h3>
+    <p class="muted" style="margin-bottom:12px">อ่านผลวิเคราะห์แล้วกดไปสอบถามเพิ่มใน Phase 2</p>
+    ${state.intakeMsg?`<p>${esc(state.intakeMsg)}</p>`:""}
   </div>
-  ${coverageHtml()}
+  ${coverageHtml({showQa:true})}`;
+  }
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">Phase 2: สอบถามเพิ่มและดึงกฎระเบียบ</h3>
+    <p class="muted" style="margin-bottom:12px">ตอบส่วนขาดในแชท — ระบบดึงกฎระเบียบอัตโนมัติในช่องที่ไม่ใช่ข้อเท็จจริงโครงการ</p>
+  </div>
+  ${coverageHtml({showReady:true})}
   <div style="margin-top:16px">${chatShellHtml("intake")}</div>`;
 }
 function chatHtml(){
@@ -823,13 +847,41 @@ function renderPhase2Section(s, i) {
 }
 
 function phase2(){
+  return intakeChatHtml(2);
+}
+
+function phase3(){
   const sectionsHtml = state.sections.map(renderPhase2Section).join("");
 
   return `<div class="gov-card">
-    <h3 style="color:var(--navy)">Phase 2: ร่างเนื้อหา TOR — 13 หมวดหลัก</h3>
+    <h3 style="color:var(--navy)">Phase 3: ร่างเนื้อหา TOR — 13 หมวดหลัก</h3>
     <p class="muted" style="margin:4px 0 16px">คลิกแต่ละหมวดเพื่อกรอก ระบบแสดงแท็กจับคู่จาก Phase 0 — หมวดกฎหมายต้องกดยืนยันโดยเจ้าหน้าที่</p>
     ${sectionsHtml}
-    <div class="flex-end"><button class="btn btn-secondary" id="p2back">ย้อนกลับ</button><button class="btn btn-primary" id="p2next">ถัดไป: ทบทวน/อนุมัติ</button></div>
+    <div class="flex-end"><button class="btn btn-secondary" id="p3back">ย้อนกลับ</button><button class="btn btn-primary" id="p3confirm">ยืนยันด้วยตนเอง — ไปทบทวน/เผยแพร่</button></div>
+  </div>`;
+}
+
+function phase4(){
+  const n=filledCount(), pct=Math.round(n/13*100), ready=pct===100 && hitlReady();
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">Phase 4: ทบทวนและเผยแพร่</h3>
+    <p>ความครบถ้วน: ${n}/13 หมวด</p>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="check ${pct===100?"pass":"warn"}"><strong>${pct===100?"ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน":"ยังกรอกไม่ครบทุกหมวด"}</strong></div>
+    <div class="check ${hitlReady()?"pass":"warn"}"><strong>${hitlReady()?"หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน":"ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ"}</strong></div>
+    ${state.score!=null?`<div class="check pass"><strong>คะแนนคุณภาพ ${state.score}/100</strong></div>`:""}
+    <div class="flex-end"><button class="btn btn-secondary" id="p4back">ย้อนกลับไปแก้ไข</button>
+      <div style="display:flex;gap:8px"><button class="btn btn-outline" id="runRules">รัน Rule Engine</button>
+      <button class="btn btn-primary" id="submitRev" ${ready?"":"disabled"}>ส่งขออนุมัติ / สร้าง TOR</button></div></div>
+  </div>
+  <div class="gov-card" style="margin-top:12px">
+    <h3 style="color:var(--navy);margin-bottom:8px">ส่งออก</h3>
+    <p class="muted" style="margin-bottom:14px">ส่งออก Word หรือ PDF ตามมาตรฐานราชการ (TH Sarabun, พ.ศ.) การอัปโหลดเข้าระบบ e-Bidding เป็นขั้นตอนของเจ้าหน้าที่นอกแอปนี้</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" id="expDocx">ส่งออก Word</button>
+      <button class="btn btn-primary" id="expPdf">ส่งออก PDF</button>
+    </div>
+    <p class="okmsg" id="expMsg"></p>
   </div>`;
 }
 
@@ -855,34 +907,6 @@ function scopeHtml(s){
   return `<p class="muted">หมวด 4 แบ่งเป็น ${SCOPE.length} หัวข้อย่อย</p>
     <div style="margin:8px 0">${subsButtons}</div>
     ${detailHtml}`;
-}
-
-function phase3(){
-  const n=filledCount(), pct=Math.round(n/13*100), ready=pct===100 && hitlReady();
-  return `<div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">Phase 3: ทบทวนและอนุมัติ</h3>
-    <p>ความครบถ้วน: ${n}/13 หมวด</p>
-    <div class="bar"><i style="width:${pct}%"></i></div>
-    <div class="check ${pct===100?"pass":"warn"}"><strong>${pct===100?"ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน":"ยังกรอกไม่ครบทุกหมวด"}</strong></div>
-    <div class="check ${hitlReady()?"pass":"warn"}"><strong>${hitlReady()?"หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน":"ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ"}</strong></div>
-    ${state.score!=null?`<div class="check pass"><strong>คะแนนคุณภาพ ${state.score}/100</strong></div>`:""}
-    <div class="flex-end"><button class="btn btn-secondary" id="p3back">ย้อนกลับไปแก้ไข</button>
-      <div style="display:flex;gap:8px"><button class="btn btn-outline" id="runRules">รัน Rule Engine</button>
-      <button class="btn btn-primary" id="submitRev" ${ready?"":"disabled"}>ส่งขออนุมัติ / สร้าง TOR</button></div></div>
-  </div>`;
-}
-
-function phase4(){
-  return `<div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">Phase 4: เผยแพร่</h3>
-    <p class="muted" style="margin-bottom:14px">ส่งออก Word หรือ PDF ตามมาตรฐานราชการ (TH Sarabun, พ.ศ.) การอัปโหลดเข้าระบบ e-Bidding เป็นขั้นตอนของเจ้าหน้าที่นอกแอปนี้</p>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-secondary" id="p4back">ย้อนกลับ</button>
-      <button class="btn btn-primary" id="expDocx">ส่งออก Word</button>
-      <button class="btn btn-primary" id="expPdf">ส่งออก PDF</button>
-    </div>
-    <p class="okmsg" id="expMsg"></p>
-  </div>`;
 }
 
 function reviewHtml(){
@@ -968,7 +992,7 @@ function helpHtml(){
       <h4 style="color:var(--navy);margin:12px 0 6px">สามเครื่องมือของเจ้าหน้าที่</h4>
       <table class="help-table"><thead><tr><th>เครื่องมือ</th><th>หน้า</th><th>ผล</th></tr></thead>
       <tbody><tr><td>ร่าง TOR</td><td>/projects/{id}/draft</td><td>เนื้อหา s1–s13</td></tr>
-      <tr><td>ตรวจสอบ TOR</td><td>Phase 3 + /review</td><td>คะแนน ≥70 / findings</td></tr>
+      <tr><td>ตรวจสอบ TOR</td><td>Phase 4 + /review</td><td>คะแนน ≥70 / findings</td></tr>
       <tr><td>ถาม-ตอบ</td><td>/chat</td><td>SSE + citations</td></tr></tbody></table>
       <p class="muted">อ่านเพิ่ม: 13-USER_GUIDELINE · 14-INSTALLATION · 19-OPERATING_REPORT (PDF/DOCX/PPTX)</p>`,
     login:`<h3 style="color:var(--navy);margin-bottom:8px">เข้าสู่ระบบ</h3>
@@ -991,20 +1015,20 @@ function helpHtml(){
       ${helpFig("02b-create-dialog.png","สร้างโครงการใหม่")}
       ${helpFig("02c-reviewer-dashboard.png","แดชบอร์ดผู้ตรวจสอบ")}`,
     draft:`<h3 style="color:var(--navy);margin-bottom:8px">กระบวนการร่าง 5 Phase</h3>
-      <div class="flow"><span>Phase 0 อัปโหลด</span><span>Phase 1 ช่องว่าง</span><span>Phase 2 ร่าง 13 หมวด</span><span>Phase 3 ตรวจ</span><span>Phase 4 ส่งออก</span></div>
+      <div class="flow"><span>Phase 0 เตรียมข้อมูล</span><span>Phase 1 ผลวิเคราะห์</span><span>Phase 2 สอบถามเพิ่ม</span><span>Phase 3 ร่าง 13 หมวด</span><span>Phase 4 ทบทวน-เผยแพร่</span></div>
       <table class="help-table"><thead><tr><th>Phase</th><th>ทำอะไร</th><th>เกต</th></tr></thead>
       <tbody>
-      <tr><td>0</td><td>อัปโหลด/วางข้อความในแชทโครงการ</td><td>มีไฟล์หรือข้อความ</td></tr>
-      <tr><td>1</td><td>ตารางความครบ · ตอบส่วนขาด · พร้อมร่าง</td><td>ready_to_compose</td></tr>
-      <tr><td>2</td><td>แก้/AI ร่าง · HITL s3 s6 s8 s10 s13</td><td>ครบ 13 + HITL</td></tr>
-      <tr><td>3</td><td>Rule Engine ≥70 + ReviewAgent · ส่งตรวจ</td><td>อนุมัติ/ส่งกลับ</td></tr>
-      <tr><td>4</td><td>ส่งออก Word/PDF</td><td>—</td></tr></tbody></table>
+      <tr><td>0</td><td>อัปโหลด/วางข้อความได้หลายครั้ง แล้วกดเริ่มต้น</td><td>กดเริ่มต้น</td></tr>
+      <tr><td>1</td><td>ตารางความครบ / ผลวิเคราะห์</td><td>วิเคราะห์แล้ว</td></tr>
+      <tr><td>2</td><td>สอบถามเพิ่ม · ดึงกฎระเบียบ · พร้อมร่าง</td><td>ready_to_compose</td></tr>
+      <tr><td>3</td><td>แก้/AI ร่าง · HITL s3 s6 s8 s10 s13</td><td>ยืนยันด้วยตนเอง</td></tr>
+      <tr><td>4</td><td>Rule Engine ≥70 · ส่งตรวจ · ส่งออก</td><td>อนุมัติ/ส่งกลับ</td></tr></tbody></table>
       ${helpFig("03-phase-0-upload.png","Phase 0 อัปโหลด")}
       ${helpFig("04b-phase-1-coverage.png","Phase 1 ความครบ")}
       ${helpFig("08-phase-2-ai-draft.png","Phase 2 ร่างด้วย AI")}
       ${helpFig("05b-hitl-confirm.png","ยืนยัน HITL")}`,
     chat:`<h3 style="color:var(--navy);margin-bottom:8px">ถาม-ตอบ</h3>
-      <p>เมนูถาม-ตอบเปิด /chat — ห้องคลังความรู้ (SSE + citations) คนละประวัติกับแชทร่าง Phase 0–1</p>
+      <p>เมนูถาม-ตอบเปิด /chat — ห้องคลังความรู้ (SSE + citations) คนละประวัติกับแชทร่าง Phase 2</p>
       <ul><li>สร้าง/เปลี่ยนชื่อ/ลบห้องได้</li><li>แนบไฟล์เข้าคลังส่วนตัวแล้วถามด้วย RAG + กราฟ</li><li>สลับแหล่ง: คลังกลาง / ของฉัน / ทั้งคู่</li></ul>
       <p class="muted">คำตอบว่าง → รัน python -m app.seed_raw_docs และตรวจ Mongo + Neo4j</p>
       ${helpFig("13-kb-chat.png","หน้าถาม-ตอบพร้อม citations")}`,
@@ -1044,7 +1068,7 @@ function helpHtml(){
       <tr><td>สร้างโครงการไม่ได้</td><td>งบเป็นเลข ASCII</td></tr>
       </tbody></table>
       <p><strong>เทสต์รอบ 20 ส.ค. 2026:</strong> pytest 1451 + live_llm 10 · Vitest 128 · Playwright headed 15 (0 skipped) — ดู Discussions/18-TEST_EVIDENCE และ 19-APPLICATION_OPERATING_REPORT</p>
-      <p class="muted">การตั้งค่าโมเดล/คลังเป็นหน้าที่ผู้ดูแล — เจ้าหน้าที่ใช้ร่าง / ตรวจสอบ / ถาม-ตอบ เท่านั้น (ไม่มีเมนู Agent API)</p>`
+      <p class="muted">การตั้งค่าโมเดล/คลังเป็นหน้าที่ผู้ดูแล — เจ้าหน้าที่ใช้ร่าง TOR / ตรวจสอบ / ถาม-ตอบ บนเมนูหลักเท่านั้น</p>`
   };
   const tabsHtml = tabs
     .map(([id, l, icon]) => {
@@ -1079,7 +1103,7 @@ function templatesHtml(){
 function adminKbHtml(){
   return `<h1 style="color:var(--navy);font-size:24px;font-weight:800;margin-bottom:16px">ฐานความรู้</h1>
     <div class="gov-card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
-      <select id="akbCat"><option value="law">กฎหมาย</option><option value="regulation">กฎกระทรวง</option><option value="guideline">ระเบียบ/หนังสือ</option><option value="manual">คู่มือ</option><option value="example_tor">ตัวอย่าง TOR</option></select>
+      <select id="akbCat"><option value="law">พ.ร.บ. / กฎหมาย</option><option value="regulation">กฎกระทรวง</option><option value="guideline">ระเบียบกระทรวงการคลัง</option><option value="circular">หนังสือเวียนกรมบัญชีกลาง</option><option value="price_announcement">ประกาศราคากลาง</option><option value="manual">คู่มือปฏิบัติงาน</option><option value="example_tor">ตัวอย่าง TOR</option><option value="template">แม่แบบ</option><option value="other">อื่น ๆ</option></select>
       <button class="btn btn-outline" id="reingest">ประมวลผลใหม่ทั้งชุด</button></div>
       <label class="upload"><input type="file" hidden multiple id="akbUp"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือก</p><span>ผู้ดูแลอัปโหลดเข้าคลังแล้วแบ่ง chunk</span></label>
       <p class="okmsg" id="akbMsg"></p></div>`;
@@ -1254,24 +1278,27 @@ function bindView(){
     renderShell();
   });
   v.querySelector("#p0next")?.addEventListener("click",()=>{state.phase=1;renderShell();});
-  v.querySelector("#intakePasteGo")?.addEventListener("click",()=>{
+  v.querySelector("#intakeStart")?.addEventListener("click",()=>{
     const text=(document.getElementById("intakePaste")||{}).value||"";
-    if(text.trim().length<20){state.intakeMsg="วางข้อความร่างหรือรายละเอียดโครงการอย่างน้อย 20 ตัวอักษร";renderShell();return;}
-    state.files.push({name:"ข้อความผู้ใช้.txt",docClass:"pack",chars:text.trim().length,status:"success"});
+    if(text.trim().length>=20){
+      state.files.push({name:"ข้อความผู้ใช้.txt",docClass:"pack",chars:text.trim().length,status:"success"});
+    }
+    if(!(state.files||[]).length){
+      state.intakeMsg="อัปโหลดหรือวางข้อความอย่างน้อย 20 ตัวอักษรก่อนกดเริ่มต้น";
+      renderShell();
+      return;
+    }
     applyIntakeMaterial();
-    state.intakeMsg="แกะข้อความแล้ว — บอทจะถามส่วนที่ยังขาด";
-    state.intakeMsgs=state.intakeMsgs||[];
-    state.intakeMsgs.push({role:"assistant",text:"อ่านข้อความที่วางแล้ว — จัดเข้า s1–s13 แล้วจะถามส่วนขาด",cites:["document: ข้อความผู้ใช้"]});
+    state.analyzed=true;
+    state.phase=1;
+    state.intakeMsg="วิเคราะห์แล้ว — ดูผลใน Phase 1 แล้วไปสอบถามเพิ่มใน Phase 2";
     renderShell();
   });
   v.querySelector("#intakeUp")?.addEventListener("change",()=>{
     const inp=document.getElementById("intakeUp");
     const files=[...(inp?.files||[])];
     files.forEach(f=>state.files.push({name:f.name,docClass:"pack",chars:Math.max(1200,Math.round(f.size/4)),status:"success"}));
-    applyIntakeMaterial();
-    state.intakeMsg="แกะเอกสารแล้ว — บอทจะถามส่วนที่ยังขาด";
-    state.intakeMsgs=state.intakeMsgs||[];
-    state.intakeMsgs.push({role:"assistant",text:"อ่านไฟล์แล้ว "+files.map(f=>f.name).join(", ")+" — จัดเข้า s1–s13 และ s4.1–s4.14 แล้วจะถามส่วนขาด",cites:["document: ไฟล์ที่อัปโหลด"]});
+    state.intakeMsg="อัปโหลดแล้ว — กดเริ่มต้นเมื่อครบชุดเอกสาร (ยังไม่ประมวลผล)";
     renderShell();
   });
   v.querySelector("#intakeSend")?.addEventListener("click",()=>{
@@ -1291,7 +1318,12 @@ function bindView(){
     if(row) row.status="reference_only";
     renderShell();
   }));
-  v.querySelector("#readyDraft")?.addEventListener("click",()=>{state.readyCompose=true;state.phase=2;renderShell();});
+  v.querySelector("#intakeEnterQa")?.addEventListener("click",()=>{
+    fillNonFactRefs();
+    state.phase=2;
+    renderShell();
+  });
+  v.querySelector("#readyDraft")?.addEventListener("click",()=>{state.readyCompose=true;state.phase=3;renderShell();});
   v.querySelectorAll("[data-scope]").forEach(b=>b.addEventListener("click",()=>{state.chatScope=b.dataset.scope;renderShell();}));
   v.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{
     const box=document.getElementById(b.dataset.qid);
@@ -1325,8 +1357,6 @@ function bindView(){
   v.querySelector("#p1back")?.addEventListener("click",()=>{state.phase=0;renderShell();});
   v.querySelector("#p1next")?.addEventListener("click",()=>{
     if(!canSelectMockPhase(2)) return;
-    state.availability=document.getElementById("av").value; state.security=document.getElementById("sec").value; state.performance=document.getElementById("perf").value;
-    state.readyCompose=true;
     state.phase=2; renderShell();
   });
   v.querySelectorAll("[data-exp]").forEach(b=>b.addEventListener("click",()=>{state.expanded=state.expanded===b.dataset.exp?"":b.dataset.exp;renderShell();}));
@@ -1334,15 +1364,14 @@ function bindView(){
   v.querySelectorAll("[data-ai]").forEach(b=>b.addEventListener("click",()=>draftAi(b.dataset.ai)));
   v.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>saveSec(b.dataset.save,false)));
   v.querySelectorAll("[data-hitl]").forEach(b=>b.addEventListener("click",()=>saveSec(b.dataset.hitl,true)));
-  v.querySelector("#p2back")?.addEventListener("click",()=>{state.phase=1;renderShell();});
-  v.querySelector("#p2next")?.addEventListener("click",()=>{state.phase=3;renderShell();});
   v.querySelector("#p3back")?.addEventListener("click",()=>{state.phase=2;renderShell();});
+  v.querySelector("#p3confirm")?.addEventListener("click",()=>{state.phase4Confirmed=true;state.phase=4;renderShell();});
+  v.querySelector("#p4back")?.addEventListener("click",()=>{state.phase=3;renderShell();});
   v.querySelector("#runRules")?.addEventListener("click",()=>{state.score=filledCount()===13?88:64;renderShell();});
   v.querySelector("#submitRev")?.addEventListener("click",()=>{
-    const p=active(); if(p){p.status="in_review"; p.phase=3; p.updated=today();}
-    state.phase=4; renderShell();
+    const p=active(); if(p){p.status="in_review"; p.phase=4; p.updated=today();}
+    renderShell();
   });
-  v.querySelector("#p4back")?.addEventListener("click",()=>{state.phase=3;renderShell();});
   v.querySelector("#expDocx")?.addEventListener("click",()=>fakeExport("Word (.docx)"));
   v.querySelector("#expPdf")?.addEventListener("click",()=>fakeExport("PDF"));
   v.querySelectorAll("[data-phase]").forEach(b=>b.addEventListener("click",()=>{
@@ -1423,6 +1452,31 @@ function bindView(){
     if(m) m.textContent=state.user?.role==="admin"?"อัปโหลดเข้าคลังกลางแล้ว (จำลอง)":"อัปโหลดเอกสารของฉันแล้ว — เฉพาะบัญชีนี้ (จำลอง)";
     renderShell();
   });
+  v.querySelectorAll("[data-mine-del]").forEach(b=>b.addEventListener("click",()=>{
+    const idx=+b.dataset.mineDel;
+    const mine=(state.files||[]).filter(f=>f.user);
+    const target=mine[idx];
+    if(!target) return;
+    if(!window.confirm("ลบเอกสาร «"+target.name+"» ออกจากคลังของฉัน?")) return;
+    state.files=state.files.filter(f=>f!==target);
+    renderShell();
+  }));
+  v.querySelectorAll("[data-mine-dl]").forEach(b=>b.addEventListener("click",()=>{
+    const mine=(state.files||[]).filter(f=>f.user);
+    const target=mine[+b.dataset.mineDl];
+    if(target) window.alert("ดาวน์โหลด «"+target.name+"» (จำลอง)");
+  }));
+  ["kbAttach","intakeAttach"].forEach(function(id){
+    v.querySelector("#"+id)?.addEventListener("change",()=>{
+      const files=[...(document.getElementById(id)?.files||[])];
+      files.forEach(f=>state.files.push({name:f.name,user:true,docClass:"user",chars:Math.max(200,Math.round(f.size/4)),status:"success"}));
+      if(id==="kbAttach") state.kbMsgs=state.kbMsgs||[];
+      else state.intakeMsgs=state.intakeMsgs||[];
+      const msgs=id==="kbAttach"?state.kbMsgs:state.intakeMsgs;
+      msgs.push({role:"assistant",text:"แนบแล้ว "+files.map(f=>f.name).join(", ")+" — เข้าคลังส่วนตัวสำหรับ RAG ครั้งหน้า"});
+      renderShell();
+    });
+  });
   v.querySelectorAll("label.upload input").forEach(inp=>{
     if(inp.id==="revFile"||inp.dataset.doc||inp.dataset.cf||inp.id==="akbUp"||inp.id==="kbMineUp"||inp.id==="intakeUp") return;
     inp.addEventListener("change",()=>{
@@ -1484,7 +1538,7 @@ function openNewProject(){
     if(!name||!ministry||!/^\d+$/.test(raw)||+raw<1){document.getElementById("npErr").textContent="กรุณากรอกชื่อโครงการ หน่วยงาน และงบประมาณ"; document.getElementById("npErr").classList.remove("hidden"); return;}
     const id="p"+Date.now();
     state.projects.unshift({id,name,ministry,budget:+raw,status:"draft",updated:today(),phase:0});
-    state.activeId=id; state.phase=0; state.readyCompose=false; state.sections=emptySections(); state.files=[]; state.coverage=[]; state.intakeMsg=""; state.intakeMsgs=[]; state.mapping=[]; state.proposed={}; state.score=null;
+    state.activeId=id; state.phase=0; state.readyCompose=false; state.analyzed=false; state.phase4Confirmed=false; state.sections=emptySections(); state.files=[]; state.coverage=[]; state.intakeMsg=""; state.intakeMsgs=[]; state.mapping=[]; state.proposed={}; state.score=null;
     m.classList.add("hidden"); location.hash="#/draft";
   };
 }
@@ -1505,7 +1559,6 @@ function route(){
   const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","chat":"chat","review":"review","help":"help",
     "admin/templates":"templates","admin/knowledge-base":"adminkb","admin/users":"users","admin/ai-settings":"ai"};
   state.page=map[h]||"projects";
-  if(h==="agent"){ location.hash="#/projects"; return; }
   if(state.page==="draft") ensureDraftProject();
   if(state.page.startsWith("admin")||["templates","adminkb","users","ai"].includes(state.page)){
     if(state.user.role!=="admin"){ location.hash="#/projects"; return; }

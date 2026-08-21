@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
@@ -18,6 +19,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import {
   formatChatTimestamp,
+  attachIngestFeedback,
   streamSsePost,
   type ChatCitation,
   type ChatKind,
@@ -26,12 +28,19 @@ import {
   type ChatRoomCard,
   type SearchScope,
 } from "@/lib/chat-sse";
+import { uniqueById } from "@/lib/kb-categories";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 const TITLE_KB = "ถาม-ตอบคลังความรู้";
 const TITLE_DRAFT = "แชทร่าง TOR";
+
+interface PrivateKbFile {
+  id: string;
+  name: string;
+  chunk_count?: number;
+}
 
 function sseFieldText(value: unknown, fallback = ""): string {
   if (typeof value === "string") {
@@ -60,12 +69,14 @@ export function ChatShell({
   streamPath,
   extraToolbar,
   onReady,
+  compact = false,
 }: Readonly<{
   kind: ChatKind;
   projectId?: string;
   streamPath?: (roomId: string) => string;
   extraToolbar?: React.ReactNode;
   onReady?: () => void;
+  compact?: boolean;
 }>) {
   const token = useAuthStore((state) => state.token);
   const [rooms, setRooms] = useState<ChatRoomCard[]>([]);
@@ -76,9 +87,11 @@ export function ChatShell({
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [scope, setScope] = useState<SearchScope>("both");
+  const [mineFiles, setMineFiles] = useState<PrivateKbFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [queueStatus, setQueueStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attachNote, setAttachNote] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -105,6 +118,12 @@ export function ChatShell({
     setMessages(payload.messages || []);
   }, []);
 
+  const loadMine = useCallback(async () => {
+    const response = await apiClient.get("/knowledge-base/catalog");
+    const payload = unwrapData<{ userFiles?: PrivateKbFile[] }>(response);
+    setMineFiles(uniqueById(payload.userFiles || []));
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     apiClient
@@ -120,6 +139,12 @@ export function ChatShell({
 
     async function bootstrap() {
       const list = await loadRooms();
+      if (cancelled) return;
+      try {
+        if (!compact) await loadMine();
+      } catch {
+        /* private catalog is optional in chat */
+      }
       if (cancelled) return;
       const existing =
         (projectId ? list.find((room) => room.project_id === projectId) : undefined) ||
@@ -159,7 +184,7 @@ export function ChatShell({
     return () => {
       cancelled = true;
     };
-  }, [kind, projectId, loadRooms, loadMessages]);
+  }, [kind, projectId, compact, loadRooms, loadMessages, loadMine]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -291,32 +316,70 @@ export function ChatShell({
   async function attach(files: FileList | null) {
     if (!files || !activeId) return;
     setBusy(true);
+    setAttachNote(null);
     try {
+      const notes: string[] = [];
       for (const file of Array.from(files)) {
         const body = new FormData();
         body.append("file", file);
-        await apiClient.post(`/chat/rooms/${activeId}/attachments`, body);
+        const response = await apiClient.post(
+          `/chat/rooms/${activeId}/attachments`,
+          body
+        );
+        const payload = unwrapData<{
+          document_id?: string;
+          name?: string;
+          status?: string;
+          processing_status?: string;
+          chunk_count?: number;
+        }>(response);
+        notes.push(attachIngestFeedback(payload, file.name));
       }
+      try {
+        await loadMine();
+      } catch {
+        /* catalog refresh is best-effort after attach */
+      }
+      const summary = notes.join("\n");
+      setAttachNote(summary);
       setMessages((prev) => [
         ...prev,
         {
           id: `sys-${Date.now()}`,
           role: "assistant",
-          content: `แนบไฟล์แล้ว ${Array.from(files).map((item) => item.name).join(", ")}`,
+          content: summary,
           citations: [],
         },
       ]);
     } catch (err: unknown) {
+      setAttachNote(null);
       setError(apiErrorMessage(err, "อัปโหลดไฟล์ไม่สำเร็จ"));
     } finally {
       setBusy(false);
     }
   }
 
+  async function removeMineFile(documentId: string, fileName: string) {
+    if (!window.confirm(`ลบ «${fileName}» ออกจากคลังของฉัน?`)) return;
+    try {
+      await apiClient.delete(`/knowledge-base/mine/${documentId}`);
+      await loadMine();
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "ลบเอกสารไม่สำเร็จ"));
+    }
+  }
+
   const lastAssistant = messages.findLast((item) => item.role === "assistant");
 
   return (
-    <div className="flex min-h-[70vh] overflow-hidden rounded-xl border bg-white" data-testid="chat-shell">
+    <div
+      className={cn(
+        "flex overflow-hidden rounded-xl border bg-white",
+        compact ? "min-h-[52vh]" : "min-h-[70vh]"
+      )}
+      data-testid="chat-shell"
+    >
+      {compact ? null : (
       <MiniRoomList
         rooms={rooms}
         activeId={activeId}
@@ -334,7 +397,9 @@ export function ChatShell({
         onDelete={handleDelete}
         onToggleCollapse={() => setCollapsed((value) => !value)}
       />
+      )}
       <section className="flex min-w-0 flex-1 flex-col">
+        {compact ? null : (
         <div className="flex flex-wrap items-center gap-1 border-b px-3 py-2">
           <label className="cursor-pointer rounded-md p-1.5 hover:bg-muted" title="แนบไฟล์">
             <Paperclip className="h-4 w-4" />
@@ -380,22 +445,60 @@ export function ChatShell({
           </button>
           {extraToolbar}
         </div>
+        )}
+        {!compact && mineFiles.length ? (
+          <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs" data-testid="chat-mine-files">
+            <Link href="/knowledge-base" className="font-bold text-navy underline">
+              คลังของฉัน
+            </Link>
+            {mineFiles.map((file) => (
+              <span
+                key={file.id}
+                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-900"
+                data-testid={`chat-mine-${file.id}`}
+              >
+                {file.name}
+                <button
+                  type="button"
+                  className="font-bold"
+                  data-testid={`chat-delete-mine-${file.id}`}
+                  onClick={() => {
+                    removeMineFile(file.id, file.name).catch(() => {
+                      /* removeMineFile sets error */
+                    });
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
         {error ? (
           <p className="px-4 py-2 text-sm text-destructive" role="alert">
             {error}
           </p>
+        ) : null}
+        {attachNote ? (
+          <output
+            className="block px-4 py-2 text-sm text-navy"
+            data-testid="chat-attach-feedback"
+          >
+            {attachNote}
+          </output>
         ) : null}
         <div className="flex-1 space-y-3 overflow-y-auto p-4" data-testid="chat-messages">
           {messages.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               {kind === "kb"
                 ? "พิมพ์คำถามจากคลังกฎหมาย หรือเลือกชิปพรอมต์ด้านล่าง — คำตอบมาจากโมเดลในเครื่องพร้อมอ้างอิง"
-                : "วางข้อความหรืออัปโหลดเอกสารด้านบน แล้วถามบอทส่วนที่ยังขาด"}
+                : "บอทจะสรุปผลวิเคราะห์ Phase 1 ให้ก่อน แล้วคุยถามส่วนที่ยังขาดเป็นภาษาพูด"}
             </p>
           ) : null}
           {messages.map((item) => (
             <article
               key={item.id}
+              data-testid={item.role === "assistant" ? "chat-msg-assistant" : "chat-msg-user"}
               className={cn(
                 "max-w-[85%] rounded-xl px-3 py-2 text-sm",
                 item.role === "user"
@@ -443,23 +546,29 @@ export function ChatShell({
         </div>
         <div className="border-t p-3">
           <div className="mb-2 flex flex-wrap gap-1">
-            {prompts.map((prompt) => (
-              <button
-                key={prompt.id}
-                type="button"
-                className="rounded-full border px-2 py-0.5 text-[11px] hover:bg-muted"
-                onClick={() => setDraft(prompt.body)}
-              >
-                {prompt.title}
-              </button>
-            ))}
+            {compact
+              ? null
+              : prompts.map((prompt) => (
+                  <button
+                    key={prompt.id}
+                    type="button"
+                    className="rounded-full border px-2 py-0.5 text-[11px] hover:bg-muted"
+                    onClick={() => setDraft(prompt.body)}
+                  >
+                    {prompt.title}
+                  </button>
+                ))}
           </div>
           <div className="flex items-end gap-2">
             <textarea
               data-testid="chat-input"
               className="min-h-[48px] flex-1 rounded-md border p-2 text-sm"
               value={draft}
-              placeholder={kind === "kb" ? "ถามจากคลังกฎหมาย เช่น งวดจ่ายต้องวางหลักประกันหรือไม่" : "ตอบบอท หรือบอกข้อเท็จจริงโครงการ"}
+              placeholder={
+                kind === "kb"
+                  ? "ถามจากคลังกฎหมาย เช่น งวดจ่ายต้องวางหลักประกันหรือไม่"
+                  : "ตอบเป็นภาษาพูดได้ เช่น วงเงินสองล้านห้าแสนบาท จากงบดำเนินงาน"
+              }
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

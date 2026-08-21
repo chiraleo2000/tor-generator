@@ -743,3 +743,10 @@ class TestDatabaseStatusUpdate:
         # The doc should have been set to "failed" status
         assert mock_doc.processing_status == "failed"
         assert mock_doc.error_message is not None
+
+
+def test_unmapped_filename_category_is_other():
+    from app.rag.document_pipeline import _category_for
+
+    assert _category_for("บันทึกภายใน.txt") == "other"
+    assert _category_for("พระราชบัญญัติ.pdf") == "law"

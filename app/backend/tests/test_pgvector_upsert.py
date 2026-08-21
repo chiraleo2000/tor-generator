@@ -103,3 +103,66 @@ async def test_upsert_optional_fields_and_search_null_distance():
     hits = await provider.search([0.0] * 768)
     assert hits[0].score == pytest.approx(0.0)
     assert hits[0].metadata == {}
+
+
+@pytest.mark.asyncio
+async def test_search_mine_without_owner_returns_empty():
+    session = _SessionCM()
+    provider = PgVectorProvider(session_factory=lambda: session)
+    hits = await provider.search(
+        [0.1] * 768,
+        top_k=5,
+        filter={"search_scope": "mine"},
+    )
+    assert hits == []
+    session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_search_mine_with_owner_queries_store():
+    session = _SessionCM()
+    result = MagicMock()
+    result.all.return_value = []
+    session.execute = AsyncMock(return_value=result)
+    provider = PgVectorProvider(session_factory=lambda: session)
+    owner = str(uuid.uuid4())
+    hits = await provider.search(
+        [0.1] * 768,
+        filter={"search_scope": "mine", "owner_user_id": owner},
+    )
+    assert hits == []
+    session.execute.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_search_global_and_both_query_store():
+    session = _SessionCM()
+    result = MagicMock()
+    result.all.return_value = []
+    session.execute = AsyncMock(return_value=result)
+    provider = PgVectorProvider(session_factory=lambda: session)
+    await provider.search([0.1] * 768, filter={"search_scope": "global"})
+    await provider.search(
+        [0.1] * 768,
+        filter={"search_scope": "both", "owner_user_id": str(uuid.uuid4())},
+    )
+    assert session.execute.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_search_both_without_owner_filters_global_only():
+    session = _SessionCM()
+    result = MagicMock()
+    result.all.return_value = []
+    session.execute = AsyncMock(return_value=result)
+    provider = PgVectorProvider(session_factory=lambda: session)
+    hits = await provider.search(
+        [0.1] * 768,
+        filter={"search_scope": "both"},
+    )
+    assert hits == []
+    session.execute.assert_awaited()
+    stmt = session.execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()
+    assert "owner_id" in compiled
+    assert "is null" in compiled

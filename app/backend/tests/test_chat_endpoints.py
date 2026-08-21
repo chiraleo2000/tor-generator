@@ -214,3 +214,157 @@ def test_chat_sse_streams_tokens(client, mock_officer_user, monkeypatch):
     assert "งวด" in body
     assert "event: done" in body
     persist.add.assert_called()
+
+
+def test_rename_and_delete_room(client, mock_officer_user):
+    room = _make_room()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    mock_db.delete = AsyncMock()
+    _override_db(mock_db)
+
+    renamed = client.patch(
+        f"/api/v1/chat/rooms/{ROOM_ID}",
+        json={"title": "ห้องกฎหมาย"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["data"]["title"] == "ห้องกฎหมาย"
+
+    deleted = client.delete(f"/api/v1/chat/rooms/{ROOM_ID}")
+    assert deleted.status_code == 200
+    assert deleted.json()["data"]["deleted"] is True
+
+    room = _make_room()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    saved = MagicMock()
+    saved.id = uuid.uuid4()
+    saved.name = "reg.pdf"
+    saved.processing_status = "completed"
+    saved.chunk_count = 4
+
+    with (
+        patch("app.api.v1.endpoints.chat._validate_kb_bytes", return_value="application/pdf"),
+        patch("app.api.v1.endpoints.chat.ingest_file_bytes", new_callable=AsyncMock) as ingest,
+    ):
+        ingest.return_value = saved
+        response = client.post(
+            f"/api/v1/chat/rooms/{ROOM_ID}/attachments",
+            files={"file": ("reg.pdf", b"%PDF-1.4 content", "application/pdf")},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["document_id"] == str(saved.id)
+    assert payload["name"] == "reg.pdf"
+    assert payload["status"] == "completed"
+    assert payload["processing_status"] == "completed"
+    assert payload["chunk_count"] == 4
+    ingest.assert_awaited()
+    kwargs = ingest.await_args.kwargs
+    assert kwargs["scope"] == "user"
+    assert kwargs["owner_id"] == USER_ID
+    assert kwargs["corpus_group"] == "user"
+    assert kwargs["category"] == "other"
+
+
+def test_attachment_appears_in_kb_catalog(client, mock_officer_user):
+    from app.api.v1.endpoints.knowledge_base import _catalog_payload
+    from tests.test_knowledge_base_endpoint import _make_kb_document
+
+    room = _make_room()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    attached = _make_kb_document(
+        name="chat-note.pdf",
+        category="other",
+        owner_id=USER_ID,
+        scope="user",
+        corpus_group="user",
+        processing_status="completed",
+        chunk_count=2,
+    )
+    with (
+        patch("app.api.v1.endpoints.chat._validate_kb_bytes", return_value="application/pdf"),
+        patch("app.api.v1.endpoints.chat.ingest_file_bytes", new_callable=AsyncMock) as ingest,
+    ):
+        ingest.return_value = attached
+        response = client.post(
+            f"/api/v1/chat/rooms/{ROOM_ID}/attachments",
+            files={"file": ("chat-note.pdf", b"%PDF-1.4 content", "application/pdf")},
+        )
+    assert response.status_code == 200
+
+    cat_db = AsyncMock()
+    cat_result = MagicMock()
+    cat_result.scalars.return_value.all.return_value = [attached]
+    cat_db.execute = AsyncMock(return_value=cat_result)
+    _override_db(cat_db)
+    catalog = client.get("/api/v1/knowledge-base/catalog")
+    assert catalog.status_code == 200
+    names = {item["name"] for item in catalog.json()["data"]["userFiles"]}
+    assert "chat-note.pdf" in names
+    payload = _catalog_payload([attached], viewer_id=USER_ID)
+    assert {item["name"] for item in payload["userFiles"]} == {"chat-note.pdf"}
+
+
+def test_list_messages_for_owner(client, mock_officer_user):
+    room = _make_room()
+    msg = MagicMock()
+    msg.id = uuid.uuid4()
+    msg.role = "user"
+    msg.content = "งวดจ่าย"
+    msg.citations = []
+    msg.created_at = datetime(2026, 8, 18, 10, 0, 0, tzinfo=timezone.utc)
+    room.messages = [msg]
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.get(f"/api/v1/chat/rooms/{ROOM_ID}/messages")
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["messages"][0]["content"] == "งวดจ่าย"
+
+
+def test_list_prompts(client, mock_officer_user):
+    prompt = MagicMock()
+    prompt.id = uuid.uuid4()
+    prompt.title = "วิธีเฉพาะเจาะจง"
+    prompt.body = "วิธีเฉพาะเจาะจงใช้เมื่อใด"
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [prompt]
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.get("/api/v1/chat/prompts", params={"kind": "kb"})
+    assert response.status_code == 200
+    assert response.json()["data"]["prompts"][0]["title"] == "วิธีเฉพาะเจาะจง"
+
+
+def test_empty_attachment_rejected(client, mock_officer_user):
+    room = _make_room()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+    response = client.post(
+        f"/api/v1/chat/rooms/{ROOM_ID}/attachments",
+        files={"file": ("empty.txt", b"", "text/plain")},
+    )
+    assert response.status_code == 400

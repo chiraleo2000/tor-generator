@@ -1,7 +1,7 @@
 # 11 — USER MANUAL AND HELP GUIDE
 ### ระบบ TOR Generator — คู่มือการใช้งานสำหรับผู้ใช้ทั่วไป (ทีละขั้นตอน)
 
-> **คู่มือปัจจุบันของแอป Docker คือ `13-USER_GUIDELINE.md`** (ภาพจาก Playwright รอบที่ผ่าน)  
+> **คู่มือปัจจุบันของแอป Docker คือ `13-USER_GUIDELINE.md`** (ภาพจาก Playwright 21 ส.ค. 2026)  
 > เดโม UX/UI ที่คลิกได้: https://chiraleo2000.github.io/tor-generator/ (`index.html`) — ไม่ใช่ `06-UXUI-Mockup.html`  
 > ไฟล์นี้เป็นคู่มือจากต้นแบบ HTML รุ่นก่อน มีภาพฝังในไฟล์ อย่าใช้เป็นขั้นตอน Phase 0–1 หรือการติดตั้งของระบบที่รันอยู่
 

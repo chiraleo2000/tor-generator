@@ -32,6 +32,10 @@ def test_owner_filter_dict_scopes():
     assert both["owner_user_id"] == "abc"
     mine = owner_filter_dict(user_id="abc", search_scope="mine")
     assert mine["search_scope"] == "mine"
+    assert mine["owner_user_id"] == "abc"
+    orphan = owner_filter_dict(user_id=None, search_scope="mine")
+    assert orphan == {"search_scope": "mine"}
+    assert "owner_user_id" not in orphan
 
 
 @pytest.mark.asyncio

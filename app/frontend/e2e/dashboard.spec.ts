@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, skipReason, skipUnlessLive } from "./helpers";
+import { login, pauseLikeUser, skipReason, skipUnlessLive, typeLikeUser } from "./helpers";
 
 test.describe("Dashboard", () => {
   // Live Docker stack only. Unit-only CI sets E2E!=1 so this suite is skipped.
@@ -11,9 +11,12 @@ test.describe("Dashboard", () => {
     await expect(page.getByText("รายการโครงการ TOR")).toBeVisible();
     await page.getByTestId("new-project").click();
     await expect(page.getByTestId("new-project-dialog")).toBeVisible();
-    await page.getByTestId("new-project-name").fill("โครงการทดสอบ E2E");
-    await page.getByTestId("new-project-ministry").fill("กรมบัญชีกลาง");
-    await page.getByTestId("new-project-budget").fill("100000");
+    await typeLikeUser(page.getByTestId("new-project-name"), "โครงการทดสอบ E2E");
+    await pauseLikeUser(page, 300);
+    await typeLikeUser(page.getByTestId("new-project-ministry"), "กรมบัญชีกลาง");
+    await pauseLikeUser(page, 300);
+    await typeLikeUser(page.getByTestId("new-project-budget"), "100000");
+    await pauseLikeUser(page, 400);
     await page.getByTestId("create-project-submit").click();
     await expect(page.getByTestId("draft-page")).toBeVisible({ timeout: 20_000 });
   });

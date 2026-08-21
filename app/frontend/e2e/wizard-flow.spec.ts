@@ -5,8 +5,8 @@ import {
   saveEvidence,
   skipReason,
   skipUnlessLive,
-  unlockPhase2ViaMockedIntake,
   walkFivePhases,
+  walkLiveDraftToCompose,
 } from "./helpers";
 
 test.describe("TOR 5-phase draft", () => {
@@ -22,14 +22,15 @@ test.describe("TOR 5-phase draft", () => {
   });
 
   test("Phase 2 AI draft uses LM Studio Gemma", async ({ page }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(900_000);
     await login(page);
     await createProjectAndOpenDraft(page);
-    await unlockPhase2ViaMockedIntake(page);
-    const aiButton = page.getByTestId("draft-ai-s1");
-    await expect(aiButton).toBeVisible();
-    await aiButton.click();
-    await expect(aiButton).toBeEnabled({ timeout: 360_000 });
+    await walkLiveDraftToCompose(page);
+    await expect(page.getByTestId("phase3-draft")).toBeVisible();
+    await expect(page.getByTestId("draft-chat")).toBeVisible();
+    await expect(page.getByTestId("section-preview-s1")).toContainText(/\S.{20,}/, {
+      timeout: 360_000,
+    });
     await expect(page.getByText("ร่างด้วย AI ไม่สำเร็จ")).toHaveCount(0);
     await saveEvidence(page, "08-phase-2-ai-draft");
   });

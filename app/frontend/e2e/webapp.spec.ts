@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { Buffer } from "node:buffer";
 import { login, saveEvidence, skipReason, skipUnlessLive } from "./helpers";
 
 test.describe("Help and standalone review", () => {
@@ -31,6 +32,10 @@ test.describe("Help and standalone review", () => {
     await expect(
       page.getByRole("heading", { name: "เอกสารที่ผู้ใช้อัปโหลด (เฉพาะบัญชีนี้)" }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "พ.ร.บ. / กฎหมาย" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "หนังสือเวียนกรมบัญชีกลาง" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "ประกาศราคากลาง" })).toBeVisible();
+    await expect(page.getByTestId("kb-mine-count")).toBeVisible();
     await saveEvidence(page, "11-knowledge-base");
   });
 
@@ -40,7 +45,42 @@ test.describe("Help and standalone review", () => {
     await expect(page).toHaveURL(/\/review/);
     await expect(page.getByTestId("review-page")).toBeVisible();
     await expect(page.getByText("อัปโหลด TOR ที่ต้องการตรวจสอบ")).toBeVisible();
-    await expect(page.getByRole("button", { name: "เริ่มตรวจสอบ TOR" })).toBeDisabled();
+    await expect(page.getByTestId("review-extract")).toBeDisabled();
+    await expect(page.getByTestId("review-stepper")).toBeVisible();
     await saveEvidence(page, "12-standalone-review");
+  });
+
+  test("standalone review extract then confirm run", async ({ page }) => {
+    const envelope = (data: unknown) => ({
+      ok: true,
+      data,
+      meta: { request_id: "e2e", timestamp: new Date().toISOString() },
+    });
+    await page.route("**/api/v1/review/extract", async (route) => {
+      await route.fulfill({
+        json: envelope({ id: "job-1", extracted_text: "ร่าง TOR ทดสอบวงเงิน" }),
+      });
+    });
+    await page.route("**/api/v1/review/run", async (route) => {
+      await route.fulfill({
+        json: envelope({ quality_score: 72, findings: [] }),
+      });
+    });
+    await login(page);
+    await page.getByTestId("nav-review").click();
+    await page.locator("[data-testid=review-page] input[type=file]").first().setInputFiles({
+      name: "tor.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4 test"),
+    });
+    await page.getByTestId("review-extract").click();
+    await expect(page.getByTestId("review-extract-preview")).toContainText("ร่าง TOR ทดสอบ");
+    await page.getByTestId("review-back").click();
+    await expect(page.getByTestId("review-extract")).toBeVisible();
+    await page.getByTestId("review-extract").click();
+    await expect(page.getByTestId("review-extract-preview")).toBeVisible();
+    await page.getByTestId("review-confirm-run").click();
+    await expect(page.getByTestId("review-result")).toContainText("คะแนนความพร้อม 72/100");
+    await saveEvidence(page, "12a-review-detail");
   });
 });

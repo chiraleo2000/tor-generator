@@ -538,7 +538,17 @@ class TestKnowledgeBaseDocumentModel:
 
     def test_kb_document_category_values(self):
         """Test all valid category values."""
-        categories = ["law", "regulation", "guideline", "manual", "example_tor"]
+        categories = [
+            "law",
+            "regulation",
+            "guideline",
+            "circular",
+            "price_announcement",
+            "manual",
+            "example_tor",
+            "template",
+            "other",
+        ]
         for category in categories:
             doc = KnowledgeBaseDocument(
                 name="ทดสอบ",

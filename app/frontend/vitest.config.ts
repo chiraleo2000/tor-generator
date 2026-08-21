@@ -26,10 +26,15 @@ export default defineConfig({
         "src/lib/**/*.ts",
         "src/lib/**/*.tsx",
         "src/stores/**/*.ts",
+        "src/components/draft/**/*.tsx",
+        "src/app/**/review/page.tsx",
         "src/app/**/admin/ai-settings/page.tsx",
         "src/app/**/knowledge-base/page.tsx",
       ],
-      exclude: ["src/app/**/admin/knowledge-base/page.tsx"],
+      exclude: [
+        "src/app/**/admin/knowledge-base/page.tsx",
+        "src/components/draft/draft-workspace.tsx",
+      ],
     },
   },
 });

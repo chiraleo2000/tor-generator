@@ -6,7 +6,7 @@ Help text in the running app is under `/help` (`app/frontend`). The current oper
 
 Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.html` at repo root, branch `gh-pages`). `06-UXUI-Mockup.html` is the older PoC mock.
 
-เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–19**. แอป **v0.2.3** เพิ่มเส้นทาง backend `/api/v1/agent` และ `/api/v1/kb-chat` คู่กับพื้นที่ทำงาน 5 Phase:
+เอกสารชุดปัจจุบันของสแตกที่รันด้วย Docker + LM Studio Gemma + Mongo + Neo4j คือ **13–20**. เส้นทางหลักบน UI คือพื้นที่ทำงาน **5 Phase** + เมนูถาม-ตอบ `/chat` / ฐานความรู้ / ตรวจสอบ:
 
 | File | Topic |
 |------|--------|
@@ -15,8 +15,8 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 | `15-APPLICATION_DESCRIPTION.md` | คำอธิบายแอป |
 | `16-BACKEND_ARCHITECTURE.md` | สถาปัตยกรรม backend |
 | `17-FRONTEND_ARCHITECTURE.md` | สถาปัตยกรรม frontend |
-| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — Vitest 128 / pytest 1451+10 live / E2E headed 15 · 0 skipped (20 ส.ค. 2026 คืน) |
-| `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (20 ส.ค. 2026; Vitest 128 / pytest 1451+10 / E2E headed 15 · cov ~84%/89%) |
+| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — Vitest 167 / pytest 1500+14 live / E2E headed 20+3 realistic · พิมพ์ช้า + LM Studio จริง (21 ส.ค. 2026) |
+| `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (21 ส.ค. 2026; Vitest 167 / pytest 1500+14 / E2E headed 20 · cov 86%/87.09%) |
 | `19-APPLICATION_OPERATING_REPORT.docx` | ฉบับ Word (TH Sarabun New, ตาราง, ภาพจอ, ไดอะแกรม) |
 | `19-APPLICATION_OPERATING_REPORT.pdf` | ฉบับ PDF ส่งออกจาก Word |
 | `19-APPLICATION_OPERATING_REPORT.pptx` | สไลด์นำเสนอ (สร้างจาก `_build_report_exports.py`) |

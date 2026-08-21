@@ -1,11 +1,11 @@
 # รายงานการทำงานของแอป TOR Generator
 
-**เวอร์ชัน 0.2.3** · วันที่จัดทำ **20 สิงหาคม 2026**  
+**เวอร์ชัน 0.2.3** · วันที่จัดทำ **21 สิงหาคม 2026**  
 แหล่งความจริง: โค้ดใน `app/frontend` + `app/backend` และผล unit tests ที่รันจริงในวันเดียวกัน
 
 แอปนี้ช่วยเจ้าหน้าที่พัสดุ**ร่างและตรวจ TOR** (ขอบเขตของงาน) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 โดยบังคับโครง 13 ส่วน (`s1`–`s13`) รับชุดเอกสาร จัดเข้าช่อง ตรวจด้วย Rule Engine แล้วยืนยันหมวดเสี่ยงด้วยคน ก่อนส่งออก Word/PDF รูปแบบราชการ
 
-ภาพหน้าจอการใช้งานจริงอยู่ที่ `test-evidence/` (Playwright **headed** 20 ส.ค. 2026)  
+ภาพหน้าจอการใช้งานจริงอยู่ที่ `test-evidence/` (Playwright **headed** 21 ส.ค. 2026 · พิมพ์ช้า + LM Studio จริง)  
 ภาพผล unit tests: [Vitest](test-evidence/19-vitest-output.png) · [pytest](test-evidence/19-pytest-output.png) · [แผนที่เทสต์→การใช้งาน](test-evidence/19-unit-test-usage-map.png)  
 ไดอะแกรม: [สถาปัตยกรรม](test-evidence/19-diagram-architecture.png) · [5 Phase](test-evidence/19-diagram-phases.png)
 
@@ -25,7 +25,7 @@
 | AI ค่าเริ่มต้น (dev) | แชท `google/gemma-4-e4b` · ฝังเวกเตอร์ EmbeddingGemma 768 มิติ · ในเครื่องผ่าน LM Studio |
 | AI production แนะนำ | Amazon Bedrock บนบัญชี AWS — คู่มือ `20-AWS_BEDROCK_SETUP.md` · ตัวเลือก on-prem/cloud อื่นสลับได้จาก Admin |
 | บทบาท | `officer` / `reviewer` / `admin` |
-| เทสต์รอบนี้ | **Vitest 128** · **pytest 1451** (+ **live_llm 10**) · **Playwright headed 15** · coverage backend ~84% · frontend statements ~89% · **0 skipped** |
+| เทสต์รอบนี้ | **Vitest 167** · **pytest 1500** (+ **live_llm 14**) · **Playwright headed 20** + guide **3** · **0 failed** |
 
 ```mermaid
 flowchart LR
@@ -182,19 +182,19 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  P0["Phase 0<br/>อัปโหลดชุดเอกสาร"] --> P1["Phase 1<br/>ช่องว่าง + พร้อมร่าง"]
-  P1 --> P2["Phase 2<br/>ร่าง 13 หมวด"]
-  P2 --> P3["Phase 3<br/>Rule Engine + ส่งตรวจ"]
-  P3 --> P4["Phase 4<br/>Word / PDF"]
+  P0["Phase 0<br/>อัปโหลด แล้วกดเริ่มวิเคราะห์"] --> P1["Phase 1<br/>ตารางความครบ + fill-references"]
+  P1 --> P2["Phase 2<br/>สอบถามเพิ่มในแชท"]
+  P2 --> P3["Phase 3<br/>ร่าง 13 หมวด + HITL"]
+  P3 --> P4["Phase 4<br/>Rule Engine + Word/PDF"]
 ```
 
 | Phase | ผู้ใช้ทำอะไร | API หลัก | เกต |
 |-------|--------------|----------|-----|
-| **0** | สร้างโครงการ แล้วลากไฟล์เข้าแชท (ไม่ต้องเลือก 9 ประเภท) | `POST .../intake/upload` `.../analyze` `.../chat` | มีไฟล์หรือข้อความ → ปลด Phase 1 |
-| **1** | ดูตารางความครบ ตอบคำถามส่วนขาด ดึงอ้างอิงกฎหมาย กดพร้อมร่าง | `GET .../coverage` `POST .../fill-reference` `.../confirm-ready` | `ready_to_compose=true` → ปลด Phase 2 |
-| **2** | แก้/ให้ AI ร่างทีละหมวด ยืนยัน HITL | `GET/PUT .../sections` `POST .../draft-section` | ครบ 13 + HITL → ปลดส่งตรวจ |
-| **3** | ดูคะแนนและข้อค้นพบ แล้วส่งขออนุมัติ | `POST .../review` `POST .../submit` | reviewer/admin อนุมัติหรือส่งกลับ |
-| **4** | ส่งออก DOCX/PDF (เก็บ MinIO) | `POST .../export` | e-Bidding อยู่นอกแอป — ไม่มีช่องติ๊กปลอม |
+| **0** | สร้างโครงการ วางข้อความหรืออัปโหลด แล้วกด **เริ่มวิเคราะห์** (ไม่วิเคราะห์อัตโนมัติ) | `POST .../intake/upload` `.../text` `.../analyze` | มีเนื้อหา + กดวิเคราะห์ → ปลด Phase 1 |
+| **1** | ดูตารางความครบ ระบบดึงกฎระเบียบอัตโนมัติ | `GET .../coverage` `POST .../fill-references` | วิเคราะห์แล้ว → ปลด Phase 2 |
+| **2** | ตอบคำถามส่วนขาด ดึงอ้างอิงรายช่อง กดพร้อมร่าง | `POST .../chat` `POST .../fill-reference` `.../confirm-ready` | `ready_to_compose=true` → ปลด Phase 3 |
+| **3** | แก้/ให้ AI ร่างทีละหมวด ยืนยัน HITL แล้วยืนยันไปทบทวน | `GET/PUT .../sections` `POST .../draft-section` `.../confirm-phase4` | ครบ 13 + HITL → ปลด Phase 4 |
+| **4** | รัน Rule Engine ส่งขออนุมัติ ส่งออก DOCX/PDF | `POST .../review` `POST .../submit` `POST .../export` | reviewer/admin อนุมัติหรือส่งกลับ |
 
 เกตฝั่ง UI (`phase-gate.ts`): จะข้ามไป Phase 2 ไม่ได้จนกว่า `ready_to_compose` หรือมีหลักฐาน intake
 
@@ -228,43 +228,20 @@ flowchart TD
 
 Timeout ต่อหมวดค่าเริ่มต้น 180 วินาทีสำหรับ LM Studio (จำกัดสูงสุด 300) เพราะ Gemma มักเกิน 60 วินาทีของคลาวด์
 
-### 5.3 เส้นทางเอเจนต์ทั้งฉบับ (API — ยังไม่มีหน้า Next.js)
+### 5.3 ถาม-ตอบคลังความรู้
 
-`/api/v1/agent` ไม่แทนที่ 5 Phase เป็นเส้นขนาน: ingest → แผนที่ 27 ช่อง → ถามส่วนขาด (สูงสุด 20 รอบ) → ยืนยัน → ร่างทั้งฉบับ → HITL → ส่งออก
-
-```mermaid
-flowchart TD
-  I[ingest] --> M[map_sections]
-  M --> D[detect_gaps]
-  D -->|ยังขาด| Fill[fill_slot]
-  Fill --> D
-  D -->|ครบหรือครบรอบ| C[confirm]
-  C -->|ยังไม่ยืนยัน| Fill
-  C -->|ยืนยัน| DA[draft_all]
-  DA --> VD[validate_draft]
-  VD -->|ต้องแก้| DA
-  VD --> HR[human_review]
-  HR -->|ส่งกลับ| DA
-  HR -->|อนุมัติ| EX[export]
-```
-
-สถานะเก็บใน `agent_sessions.graph_state` + Redis — **ไม่มี LangGraph checkpointer บน Postgres**
-
-### 5.4 ถาม-ตอบคลังความรู้
-
-หน้า `/chat` ใช้ห้อง `kind=kb` บน `/api/v1/chat` (SSE + ชิปอ้างอิง + แนบไฟล์เข้าคลังส่วนตัว)  
-แชทร่าง Phase 0–1 ใช้ `kind=draft_intake` คนละประวัติ  
-`/api/v1/kb-chat` เป็น API สำรอง ยังไม่มีหน้า UI
+หน้า `/chat` ใช้ห้อง `kind=kb` บน `/api/v1/chat` (SSE + ชิปอ้างอิง + แนบไฟล์เข้าคลังส่วนตัวแล้วขึ้นข้อความสำเร็จจาก ingest)  
+แชทร่าง Phase 2 ใช้ `kind=draft_intake` คนละประวัติ · โหมดค้นของฉัน fail-closed ถ้าไม่มีเจ้าของไฟล์
 
 ![ถาม-ตอบคลัง](test-evidence/13-kb-chat.png)
 
-### 5.5 ตรวจไฟล์ TOR ภายนอก
+### 5.4 ตรวจไฟล์ TOR ภายนอก
 
-หน้า `/review`: สกัดข้อความ (`POST /review/extract`) แล้วเทียบหลายไฟล์ด้วย Jaccard (`POST /review/compare-projects`) ไม่ต้องสร้างโครงการ ถ้า API เทียบไม่มี จะเทียบในเบราว์เซอร์แทน
+หน้า `/review` สามขั้นใน UI: เลือกไฟล์ → **สกัดข้อความ** (`POST /review/extract` + ตัวอย่าง) → **ยืนยันเริ่มตรวจสอบ** (`POST /review/run`) แล้วเทียบ Jaccard (`POST /review/compare-projects`) ไม่ต้องสร้างโครงการ ถ้า API เทียบไม่มี จะเทียบในเบราว์เซอร์แทน
 
 ![ตรวจไฟล์ภายนอก](test-evidence/12-standalone-review.png)
 
-### 5.6 การอนุมัติโครงการ
+### 5.5 การอนุมัติโครงการ
 
 เจ้าหน้าที่ส่งตรวจ → สถานะกำลังดำเนินการ → reviewer/admin กด **อนุมัติ** หรือ **ส่งกลับ** บนแดชบอร์ด (`POST /projects/{id}/approve|reject`)  
 เจ้าหน้าที่แก้โครงการที่อยู่ในคิวตรวจไม่ได้จนกว่าจะถูกส่งกลับ
@@ -348,9 +325,7 @@ flowchart TD
 | Review | `POST .../review` `GET .../suggestions` | Phase 3 |
 | Export | `POST .../export` `GET .../export/{job}` | Phase 4 |
 | Chat | `POST /chat/rooms` `.../messages` (SSE) | ถาม-ตอบ + แชทร่าง |
-| KB | `GET /knowledge-base` `POST .../mine` `POST .../upload` | คลังกลาง/ส่วนตัว |
-| Agent | `POST /agent/sessions` `.../answer` `.../confirm` `.../review` | เส้นขนาน |
-| KB-chat | `POST /kb-chat/sessions` | API สำรอง |
+| KB | `GET /knowledge-base` `POST .../mine` `DELETE .../mine/{id}` `POST .../upload` | คลังกลาง/ส่วนตัว (ลบของฉันได้) |
 | Standalone review | `POST /review/extract` `.../compare-projects` | ตรวจไฟล์นอกโครงการ |
 | Admin | `GET/PUT /admin/ai-settings` `POST .../test` `CRUD /admin/users` `/templates` | ระบบ |
 | Health | `GET /health` `GET /ready` | ตรวจ postgres redis minio mongo neo4j |
@@ -441,25 +416,25 @@ flowchart TD
 
 ## 10. Unit tests — ผลจริงและวิธีอ่านเพื่อเข้าใจการใช้งาน
 
-รันเมื่อ **20 ส.ค. 2026** บนเครื่องเดียวกันกับรายงานนี้
+รันเมื่อ **21 ส.ค. 2026** บนเครื่องเดียวกันกับรายงานนี้
 
 ### 10.1 ภาพผลลัพธ์
 
 ![Vitest ผ่าน](test-evidence/19-vitest-output.png)
 
-![pytest 1451 ผ่าน](test-evidence/19-pytest-output.png)
+![pytest 1500 ผ่าน](test-evidence/19-pytest-output.png)
 
 ![แผนที่: การใช้งาน ↔ เทสต์ที่ล็อกพฤติกรรม](test-evidence/19-unit-test-usage-map.png)
 
 | ชุด | คำสั่ง | ผลรอบนี้ | อธิบายการใช้งาน |
 |-----|--------|-----------|-----------------|
-| Frontend unit | `cd app/frontend && npm run test:coverage` | **128 ผ่าน** / 30 ไฟล์ · statements ~89% | รวม Admin AI SGLang/Custom RAG · Bedrock-first |
-| Backend unit | `cd app/backend && python -m pytest -m "not live_llm"` | **1451 ผ่าน** · **0 ข้าม** · ~84% cov | auth, intake, เอเจนต์, Rule Engine, RAG/ACL, custom RAG, admission, corpus PDF, ส่งออก, แอดมิน |
-| E2E headed | `npm run test:e2e:headed` | **15 ผ่าน** (~2.4 นาที) | Chromium มองเห็นได้ · ภาพใน `test-evidence/` |
-| Backend live LLM | `cd app/backend && python -m pytest -m live_llm` | **10 ผ่าน** (~1m12s) | LM Studio Gemma 4 + EmbeddingGemma ที่พอร์ต 1234 |
-| Guide shots | `npm run test:e2e:guide` | (ชุดเสริม) | รีเฟรช PNG คู่มือผู้ใช้ |
+| Frontend unit | `cd app/frontend && npm run test:unit` | **167 ผ่าน** / 39 ไฟล์ | รวม Phase0–4 · ตรวจ TOR 3 ขั้น · chat attach · fill-references UI |
+| Backend unit | `cd app/backend && python -m pytest -m "not live_llm"` | **1500 ผ่าน** | auth, intake, Rule Engine, RAG fail-closed, catalog ACL, แนบแชท category=other, ส่งออก, แอดมิน |
+| E2E headed | `npm run test:e2e:headed` | **20 ผ่าน** | พิมพ์ช้า · วิเคราะห์/แชท/ร่าง AI ยิง Gemma จริง + `realistic-flow` (ตรวจ TOR ไม่ mock · KB other CRUD) |
+| Backend live LLM | `cd app/backend && python -m pytest -m live_llm` | **14 ผ่าน** | 10 เดิม + 4 realistic workflow (ร่าง/แชท RAG/ตรวจ TOR/KB other) |
+| Guide shots | `npm run test:e2e:guide` | **3 ผ่าน** | รีเฟรช PNG คู่มือผู้ใช้ |
 
-รวม backend unit + live = **1461** เคสผ่าน · `npm run test:e2e` (ไม่มี `--headed`) เป็น **headless** จึงไม่เห็นหน้าต่างเบราว์เซอร์
+รวม backend unit + live = **1485** เคสผ่าน · `npm run test:e2e` (ไม่มี `--headed`) เป็น **headless** จึงไม่เห็นหน้าต่างเบราว์เซอร์
 
 ### 10.2 Frontend — ไฟล์เทสต์กับการใช้งาน
 
@@ -522,8 +497,7 @@ npm run test:e2e:headed
 - ถ้าไม่ได้เปิดเซิร์ฟเวอร์ LLM ในเครื่อง Phase 2 / แชทจะโชว์ข้อผิดพลาด — กรอกมือและส่งออกจากข้อความที่มีอยู่ได้
 - Neo4j ไม่ขึ้น → GraphRAG ลดเหลือ pgvector แชทยังตอบได้แต่ไม่มีกราฟ
 - ไม่มี e-GP จริง และไม่มี LangGraph checkpointer
-- `/api/v1/agent` และ `/api/v1/kb-chat` **ยังไม่มีหน้า Next.js** — ใช้ 5 Phase + `/chat`
-- ตัวเลข coverage รอบก่อน (19 ส.ค.): backend ~85% · frontend ~89.8% รายงาน HTML ที่ `app/backend/htmlcov/` และ `app/frontend/coverage/`
+- ตัวเลข coverage รอบล่าสุด: backend **86%** · frontend statements **84.95%** / lines **87.09%** รายงาน HTML ที่ `app/backend/htmlcov/` และ `app/frontend/coverage/`
 
 ---
 

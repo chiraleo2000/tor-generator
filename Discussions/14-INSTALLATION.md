@@ -207,25 +207,24 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**20 ส.ค. 2026**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**21 ส.ค. 2026**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — Playwright headed พิมพ์ช้าแบบผู้ใช้และรอผล Gemma — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
-![Playwright 15 passed](test-evidence/15-playwright-report.png)
+![Playwright 17 passed](test-evidence/15-playwright-report.png)
 
 | ชุด | ผล |
 |-----|-----|
-| pytest ไม่รวม `live_llm` | **1451 ผ่าน** / ครอบคลุม **~84%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) · **0 skipped** |
+| pytest ไม่รวม `live_llm` | **1475 ผ่าน** / ครอบคลุม **84%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) · **0 skipped** |
 | pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) เมื่อรันชุดนั้น |
-| Vitest | **128 ผ่าน** (รวมหน้า `/review`, timestamp แชท, alert คลังความรู้) |
-| Playwright headed (แอป) | **15 ผ่าน** / 0 ล้ม (20 ส.ค. 2026 ~17:20 น. · ~3.1 นาที รวม Phase 2 AI · `test:e2e:headed`) |
+| Vitest coverage | **145 ผ่าน** / 34 ไฟล์ · statements **86.51%** · lines **87.71%** |
+| Playwright headed (แอป) | **17 ผ่าน** / 0 ล้ม (21 ส.ค. 2026 · ~14.0 นาที รวมวิเคราะห์ ~3.8 นาที และร่าง AI ~7.0 นาที · `test:e2e:headed`) |
 | Guide screenshots | **3 ผ่าน** (`test:e2e:guide` headed · รีเฟรช PNG ใน `test-evidence/`) |
-| Smoke API 3 เครื่องมือ | ร่าง s1, Phase 3 คะแนน 79 + 11 ข้อเสนอแนะ, `/review` extract+run, `/chat` SSE 5 citations, kb-chat มีคำตอบ |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 
-![Backend coverage 87%](test-evidence/13-backend-coverage.png)
+![Backend coverage 84%](test-evidence/13-backend-coverage.png)
 
-![Frontend coverage 91.39%](test-evidence/14-frontend-coverage.png)
+![Frontend coverage 86.51%](test-evidence/14-frontend-coverage.png)
 
 รอบนี้แก้ pgvector จริง: คอลัมน์ `metadata` ชนกับ `Table.metadata` ทำให้ upsert ฝังเวกเตอร์ไม่ได้ และ `search()` ล้มตอนสร้าง SQL — ตอนนี้ insert ใช้ `__table__` / `excluded["metadata"]` และ `Vector.cosine_distance` `seed_kb` ข้าม bind-mount ที่อ่านไม่ได้ (Errno 5) และรองรับไฟล์ชื่อสั้น + sidecar `.kbname` เพราะชื่อไทยยาวเกิน NAME_MAX ของ Linux Gemma 4 ใช้ reasoning tokens — `LMStudioLocalProvider` ตั้ง `max_tokens` เริ่มต้น 4096
 

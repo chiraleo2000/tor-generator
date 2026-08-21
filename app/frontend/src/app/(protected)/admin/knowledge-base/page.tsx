@@ -6,6 +6,7 @@ import { Select } from "@/components/ui/select";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
+import { KB_CATEGORIES } from "@/lib/kb-categories";
 
 interface KBDoc {
   id: string;
@@ -63,13 +64,7 @@ export default function AdminKnowledgeBasePage() {
         <Select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          options={[
-            { value: "law", label: "กฎหมาย" },
-            { value: "regulation", label: "กฎกระทรวง" },
-            { value: "guideline", label: "ระเบียบ/หนังสือ" },
-            { value: "manual", label: "คู่มือ" },
-            { value: "example_tor", label: "ตัวอย่าง TOR" },
-          ]}
+          options={KB_CATEGORIES.map((item) => ({ value: item.id, label: item.label }))}
         />
         <Button
           type="button"
@@ -141,6 +136,29 @@ export default function AdminKnowledgeBasePage() {
                 <p className="text-xs text-destructive">{doc.error_message}</p>
               )}
             </div>
+            <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                setError(null);
+                try {
+                  const response = await apiClient.get(`/knowledge-base/${doc.id}/file`, {
+                    responseType: "blob",
+                  });
+                  const url = URL.createObjectURL(response.data as Blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = doc.name;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                } catch (err: unknown) {
+                  setError(apiErrorMessage(err, "ดาวน์โหลดไม่สำเร็จ"));
+                }
+              }}
+            >
+              ดาวน์โหลด
+            </Button>
             <Button
               size="sm"
               variant="destructive"
@@ -157,6 +175,7 @@ export default function AdminKnowledgeBasePage() {
             >
               ลบ
             </Button>
+            </div>
           </div>
         ))}
       </div>

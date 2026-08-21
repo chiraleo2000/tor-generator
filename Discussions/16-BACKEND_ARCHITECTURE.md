@@ -44,11 +44,11 @@ Persistence is **section-keyed** (`s1`…`s13`, plus `s4.1`–`s4.14`). The live
 
 | Phase | Stored as | Main APIs |
 |-------|-----------|-----------|
-| 0 Upload pack | GridFS originals + `analysis_json.slot_map` | `POST /projects/{id}/intake/upload`, `POST /projects/{id}/intake/analyze` |
-| 1 Gaps + ready | coverage rows, `ready_to_compose` | `GET .../intake/coverage`, `POST .../intake/fill-reference`, `POST .../intake/confirm-ready`, `POST .../intake/chat` (SSE) |
-| 2 Draft 13 sections | `tor_sections` (`content` + `ai_draft`; s4.* as `sub_key`) | `GET /projects/{id}/sections`, `PUT /projects/{id}/sections/{key}`, `POST /projects/{id}/draft-section` |
-| 3 Review | `quality_score`, project `status` | `POST /projects/{id}/review` (Rule Engine + ReviewAgent), `GET /projects/{id}/suggestions`, `POST /projects/{id}/submit` |
-| 4 Publish | MinIO objects | `POST /projects/{id}/export` |
+| 0 Upload pack | GridFS + `extracted_fields.intake_texts` | `POST /projects/{id}/intake/upload`, `POST .../intake/text`, `POST .../intake/analyze` (user-gated, not auto) |
+| 1 Coverage | `analysis_json.slot_map` | `GET .../intake/coverage`, `POST .../intake/fill-references` |
+| 2 Q&A + ready | coverage rows, `ready_to_compose` | `POST .../intake/chat` (SSE), `POST .../intake/fill-reference`, `POST .../intake/confirm-ready` |
+| 3 Draft 13 sections | `tor_sections` (`content` + `ai_draft`; s4.* as `sub_key`) | `GET /projects/{id}/sections`, `PUT /projects/{id}/sections/{key}`, `POST /projects/{id}/draft-section`, `POST .../intake/confirm-phase4` |
+| 4 Review + publish | `quality_score`, MinIO objects | `POST /projects/{id}/review`, `GET /projects/{id}/suggestions`, `POST /projects/{id}/submit`, `POST /projects/{id}/export` |
 
 KB Q&A (not a draft phase) uses `/api/v1/chat/rooms` with `kind=kb`. Draft intake chat uses `kind=draft_intake` on the same room APIs plus the intake routes above. Legacy `POST /projects/{id}/extraction` remains for compatibility; the live UI does not use the 9-class upload form.
 
@@ -69,7 +69,7 @@ The agent workflow graph (`compile_agent_workflow_graph`) uses the same factory:
 
 Embeddings are 768-d EmbeddingGemma; optional Gemma graph extract writes Neo4j `Document.owner_id` (null for this shared corpus). Run it from the **host** (`POSTGRES_HOST=127.0.0.1`, `LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1`). Do not ingest old `documents/knowledge-base` JSON as the live corpus.
 
-Officer uploads (`POST /api/v1/knowledge-base/mine`, chat attachments, intake files) use `scope=user`, `owner_id=<that user>`, `corpus_group=user`. pgvector search joins `knowledge_base_documents.owner_id`; GraphRAG `expand` keeps the same ACL. Another officer never sees those chunks. Admin `POST /knowledge-base/upload` remains the shared/mandatory path.
+Officer uploads (`POST /api/v1/knowledge-base/mine`, chat attachments, intake files) use `scope=user`, `owner_id=<that user>`, `corpus_group=user`, and chat attachments set `category=other`. Officers download their files at `GET /knowledge-base/mine/{id}/file` (admins use `GET /knowledge-base/{id}/file`). `hybrid_retrieve` accepts `search_scope` of `global` / `mine` / `both`. Another officer never sees those chunks. Admin `POST /knowledge-base/upload` remains the shared/mandatory path.
 
 Alembic `006_kb_corpus_group` adds `knowledge_base_documents.corpus_group`.
 
@@ -131,7 +131,7 @@ python -m pytest tests/test_real_procurement_pdfs.py tests/test_live_lm_studio.p
 
 Latest counts and headed screenshots: `discussions/18-TEST_EVIDENCE.md`. Live LM Studio tests need both chat and embedding models loaded at `http://127.0.0.1:1234/v1`.
 
-**20 ส.ค. 2026 verification:** pytest `-m "not live_llm"` **1451** passed (~84% cov, **0 skipped** after `corpus.repo_root()` fix); `live_llm` **10** passed against LM Studio; live smoke covered draft-section LangGraph, agent ingest (`gap_filling`), `POST /projects/{id}/review` (Rule Engine + ReviewAgent suggestions), standalone `/review/extract`+`/run`, `/chat` SSE, and `/kb-chat` with citations (`RELEVANCE_THRESHOLD=0.25`, `hybrid_retrieve` uses runtime `session_factory`).
+**21 ส.ค. 2026 verification:** pytest `-m "not live_llm"` **1500** passed (**86%** cov, **0 skipped**); `live_llm` **14** passed against LM Studio including `test_live_realistic_workflow.py`; headed Playwright **20** passed with human-like typing, live Gemma, and `realistic-flow.spec.ts` (unmocked `/review` + KB other CRUD). Live smoke covered draft-section LangGraph, `POST .../intake/fill-references`, standalone `/review/extract`+`/run`, `/chat` SSE, and private-KB attach ingest (`category=other`, `GET .../mine/{id}/file`).
 
 `POST /api/v1/review/compare-projects` accepts `project_ids` and `extract_ids` (job ids from `POST /review/extract`). Pairwise Jaccard is computed in `_token_set` / `_jaccard`; missing ids are skipped. Combined length must be ≥ 2.
 

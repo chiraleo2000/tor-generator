@@ -18,7 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import infra as runtime
+from app.api.v1.endpoints.knowledge_base import _validate_kb_bytes
 from app.deps import get_current_user, get_db
+from app.domain.corpus import GROUP_USER
 from app.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.llm_admission import AdmissionTimeoutError, admit
 from app.models.chat_message import ChatMessage
@@ -264,7 +266,7 @@ async def upload_attachment(
     content = await file.read()
     if not content:
         raise ValidationError(message="ไฟล์ว่าง", field="file")
-    mime = file.content_type or "application/pdf"
+    mime = _validate_kb_bytes(content, file.content_type or "", file.filename or "")
     factory = runtime.session_factory or request.app.state.db_session_factory
     doc = await ingest_file_bytes(
         db=db,
@@ -275,13 +277,17 @@ async def upload_attachment(
         owner_id=current_user.id,
         project_id=str(room.project_id) if room.project_id else None,
         session_factory=factory,
+        corpus_group=GROUP_USER,
+        category="other",
     )
+    status = doc.processing_status
     return _ok(
         request,
         {
             "document_id": str(doc.id),
             "name": doc.name,
-            "status": doc.processing_status,
+            "status": status,
+            "processing_status": status,
             "chunk_count": doc.chunk_count,
         },
     )

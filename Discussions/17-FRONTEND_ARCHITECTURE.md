@@ -36,11 +36,13 @@ Axios `apiClient` uses `withCredentials: true` so the HttpOnly cookie `tor_acces
 
 | Phase | UI |
 |-------|-----|
-| 0 | Bulk upload + project intake chat (`IntakeChatPanel`) — no 9-class form |
-| 1 | Same chat: coverage table, gap questions, fill-reference, confirm ready |
-| 2 | Flow-track of 13 sections; s4 chips; HITL confirm vs save; AI draft writes `content` |
-| 3 | Completeness + Rule Engine + ReviewAgent suggestions (`GET …/suggestions`) + submit |
-| 4 | Word / PDF export (MinIO) — surfaces failed/timeout status instead of silent return |
+| 0 | `Phase0Upload` — อัปโหลด/วางข้อความหลายครั้ง ปุ่ม **เริ่มวิเคราะห์** (`intake-start-analyze`) ไม่ auto-analyze |
+| 1 | `Phase1Coverage` — ตารางความครบ + auto `POST .../intake/fill-references` |
+| 2 | `Phase2Qa` — แชท intake + ดึงอ้างอิงรายช่อง + ยืนยันพร้อมร่าง |
+| 3 | `Phase3Draft` — 13 หมวด, ร่างด้วย AI, HITL |
+| 4 | `Phase4Review` + `Phase4Export` — Rule Engine, ส่งขออนุมัติ, Word/PDF |
+
+Forward transitions go through `ConfirmPhaseDialog` (`useConfirmPhase`). Standalone `/review` is three UI steps: เลือกไฟล์ → สกัดข้อความ → ยืนยันเริ่มตรวจสอบ (`POST /review/extract` then `POST /review/run`). Private KB files download at `GET /knowledge-base/mine/{id}/file`. Chat attachments ingest with `category=other` into the owner's catalog.
 
 Create-project from the dashboard opens **สร้างโครงการใหม่** (name, agency, ASCII budget, type, optional template) then routes to `/projects/{id}/draft`. Phase is persisted with `PATCH /projects/{id}/phase`. The leftover `/draft` index is not the primary intake path. `/chat` uses `kind=kb` (typing dots while streaming; `formatChatTimestamp` when `created_at` is present); Phase 0–1 uses `kind=draft_intake`.
 
@@ -48,14 +50,14 @@ Standalone `/review` extracts each compare file (`POST /review/extract`) then ca
 
 Admin **การตั้งค่า AI** (`/admin/ai-settings`) lists every chat and embedding vendor in every mode — `on_prem` / `cloud` / `hybrid` is a label only and does **not** remap the other side. Mix example: Claude chat + local EmbeddingGemma (`LOCAL_EMBEDDING_SERVER`). Test (`ai-settings-test`) probes chat and embeddings separately. Cloud providers: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible. Help FAQ names `google/gemma-4-e4b` and `text-embedding-embeddinggemma-300m`. API error strings are read through `apiErrorMessage` in `src/lib/api-error.ts`. Review findings are mapped in `src/lib/review-findings.ts` so nested objects are never stringified to `[object Object]`.
 
-There are **no Next.js pages** for `/api/v1/agent` or `/api/v1/kb-chat` in v0.2.0. The live UI stays on the 5-phase draft workspace and `/chat`. Those endpoints are backend-only until a later UI wave.
+The live UI is the 5-phase draft workspace, `/chat`, `/knowledge-base`, `/review`, and admin pages.
 
 ## UI testing
 
 | Command | What it does |
 |---------|----------------|
 | `npm run test:unit` | Vitest + Testing Library (jsdom) |
-| `npm run test:e2e:headed` | Playwright Chromium **visible** (`HEADED=1`, slowMo) against http://localhost:3000 |
+| `npm run test:e2e:headed` | Playwright Chromium **visible** (`HEADED=1`, slowMo 400ms, type delay 70ms) against http://localhost:3000 — live LM Studio, wait for results |
 | `npm run test:e2e:guide` | Extra screenshots for the user guideline (`CAPTURE_GUIDE=1`) |
 | `npm run test:e2e:ui` | Playwright UI mode |
 
@@ -75,7 +77,7 @@ docker compose -p tor-app --env-file .env up -d --build frontend
 
 Problems that name `frontend/...` or `backend/...` at the repo root are stale. Those folders are not on disk. Live sources are `app/frontend` and `app/backend`. Close leftover tabs, then **Developer: Reload Window**. SonarLint excludes only `frontend/**` and `backend/**` at the repo root — not `**/frontend/**`, which would skip this app tree. The root `tsconfig.json` lists `.vscode/tsconfig-placeholder.ts` so TypeScript does not raise TS18002 (`files` empty) and does not infer a project over leftover root paths.
 
-Last headed run numbers and screenshots: `discussions/18-TEST_EVIDENCE.md`. User-facing walkthrough: `discussions/13-USER_GUIDELINE.md`. Playwright now includes `e2e/chat.spec.ts` (ถาม-ตอบ + intake upload).
+Last headed run (**21 ส.ค. 2026**): Vitest **167** · pytest **1500+14** · E2E headed **20**. Screenshots: `discussions/18-TEST_EVIDENCE.md`. User-facing walkthrough: `discussions/13-USER_GUIDELINE.md`. Playwright `e2e/chat.spec.ts` types a real question and waits for Gemma; `e2e/realistic-flow.spec.ts` runs unmocked review + KB other CRUD; intake analyze is live (not mocked).
 
 `e2e/reports.spec.ts` and `e2e/guide-shots.spec.ts` stay out of `npm run test:e2e` unless `CAPTURE_REPORTS=1` / `CAPTURE_GUIDE=1`.
 

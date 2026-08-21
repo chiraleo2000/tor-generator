@@ -344,7 +344,15 @@ class TestUploadDocument:
         )
         assert response.status_code == 400
 
-    def test_upload_invalid_category_returns_422(self, client, mock_admin_user):
+    def test_upload_oversized_file_returns_400(self, client, mock_admin_user):
+        huge = b"%PDF-1.4 " + b"x" * (20 * 1024 * 1024 + 10)
+        response = client.post(
+            "/api/v1/knowledge-base/upload",
+            files={"file": ("big.pdf", io.BytesIO(huge), "application/pdf")},
+            data={"category": "manual"},
+        )
+        assert response.status_code == 400
+
         """Uploading with an invalid category returns 422."""
         file_content = b"%PDF-1.4 fake pdf"
         response = client.post(
@@ -676,6 +684,36 @@ class TestCatalogGroupingAndAcl:
         assert user_group["mandatory"] is False
         group_names = {item["name"] for item in user_group["items"]}
         assert "ของคนอื่น.pdf" not in group_names
+        raw_example = {item["name"] for item in body["raw"].get("example_tor", [])}
+        assert "ของฉัน.pdf" in raw_example
+        assert "ของคนอื่น.pdf" not in raw_example
+        assert body["totals"]["files"] == 3
+
+    def test_catalog_user_files_match_chat_attachment_owner(self):
+        from app.api.v1.endpoints.knowledge_base import _catalog_payload
+
+        attached = _make_kb_document(
+            name="reg.pdf",
+            category="other",
+            owner_id=USER_ID,
+            scope="user",
+            corpus_group="user",
+        )
+        other = _make_kb_document(
+            doc_id=uuid.uuid4(),
+            name="secret.pdf",
+            category="other",
+            owner_id=uuid.UUID("99999999-9999-9999-9999-999999999999"),
+            scope="user",
+            corpus_group="user",
+        )
+        payload = _catalog_payload([attached, other], viewer_id=USER_ID)
+        names = {item["name"] for item in payload["userFiles"]}
+        assert names == {"reg.pdf"}
+        mine = payload["userFiles"][0]
+        assert mine["category"] == "other"
+        assert mine["processing_status"] == "completed"
+        assert "secret.pdf" not in {item["name"] for item in payload["raw"].get("other", [])}
 
 
 class TestMineUploads:
@@ -715,6 +753,38 @@ class TestMineUploads:
         assert kwargs["corpus_group"] == "user"
         assert response.json()["data"]["name"] == "เงื่อนไขโครงการ.pdf"
 
+    def test_officer_upload_other_category_returns_202(self, client, mock_officer_user):
+        saved = _make_kb_document(
+            name="บันทึกภายใน.pdf",
+            category="other",
+            owner_id=USER_ID,
+            scope="user",
+            corpus_group="user",
+            processing_status="completed",
+            chunk_count=1,
+        )
+        mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        mock_db.flush = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        with patch(
+            "app.api.v1.endpoints.knowledge_base.ingest_file_bytes",
+            new_callable=AsyncMock,
+            return_value=saved,
+        ) as ingest:
+            response = client.post(
+                "/api/v1/knowledge-base/mine",
+                files={"file": ("notes.pdf", io.BytesIO(b"%PDF-1.4 other"), "application/pdf")},
+                data={"category": "other", "name": "บันทึกภายใน.pdf"},
+            )
+        assert response.status_code == 202
+        assert ingest.await_args.kwargs["category"] == "other"
+        assert response.json()["data"]["category"] == "other"
+
     def test_officer_deletes_own_file(self, client, mock_officer_user):
         document = _make_kb_document(
             owner_id=USER_ID, scope="user", corpus_group="user"
@@ -745,6 +815,137 @@ class TestMineUploads:
         app.dependency_overrides[get_db] = override_db
         response = client.delete(f"/api/v1/knowledge-base/mine/{DOC_ID}")
         assert response.status_code == 404
+
+
+    def test_officer_downloads_own_file(self, client, mock_officer_user):
+        document = _make_kb_document(
+            owner_id=USER_ID, scope="user", corpus_group="user"
+        )
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = document
+        mock_db.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        with patch(
+            "app.api.v1.endpoints.knowledge_base._kb_original_bytes",
+            return_value=b"%PDF-1.4 mine",
+        ):
+            response = client.get(f"/api/v1/knowledge-base/mine/{DOC_ID}/file")
+        assert response.status_code == 200
+        assert response.content == b"%PDF-1.4 mine"
+
+
+    def test_officer_cannot_download_someone_elses_file(self, client, mock_officer_user):
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.get(f"/api/v1/knowledge-base/mine/{DOC_ID}/file")
+        assert response.status_code == 404
+
+
+    def test_admin_downloads_central_file(self, client, mock_admin_user):
+        document = _make_kb_document()
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = document
+        mock_db.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        with patch(
+            "app.api.v1.endpoints.knowledge_base._kb_original_bytes",
+            return_value=b"%PDF-1.4 central",
+        ):
+            response = client.get(f"/api/v1/knowledge-base/{DOC_ID}/file")
+        assert response.status_code == 200
+        assert response.content == b"%PDF-1.4 central"
+
+
+    def test_officer_cannot_download_central_file_via_admin_path(
+        self, client, mock_officer_user
+    ):
+        response = client.get(f"/api/v1/knowledge-base/{DOC_ID}/file")
+        assert response.status_code == 403
+
+
+def test_admin_download_missing_document(client, mock_admin_user):
+    mock_db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    mock_db.execute = AsyncMock(return_value=result)
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+    response = client.get(f"/api/v1/knowledge-base/{DOC_ID}/file")
+    assert response.status_code == 404
+
+
+def test_kb_original_bytes_from_disk(tmp_path):
+    from app.api.v1.endpoints.knowledge_base import (
+        _file_download_response,
+        _kb_original_bytes,
+    )
+    from app.exceptions import NotFoundError
+
+    path = tmp_path / "doc.txt"
+    path.write_bytes(b"hello-tor")
+    doc = MagicMock()
+    doc.mongo_gridfs_id = None
+    doc.storage_path = str(path)
+    doc.name = "doc.txt"
+    doc.file_type = "txt"
+    with patch(
+        "app.api.v1.endpoints.knowledge_base.store_from_client",
+        return_value=None,
+    ):
+        assert _kb_original_bytes(doc) == b"hello-tor"
+        response = _file_download_response(doc)
+        assert response.media_type == "text/plain"
+        missing = MagicMock()
+        missing.mongo_gridfs_id = None
+        missing.storage_path = str(tmp_path / "missing.txt")
+        missing.name = "missing.txt"
+        try:
+            _kb_original_bytes(missing)
+            raise AssertionError("expected NotFoundError")
+        except NotFoundError:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_purge_aux_stores_swallows_backend_errors():
+    from app.api.v1.endpoints.knowledge_base import _purge_aux_stores
+
+    doc = MagicMock()
+    doc.id = uuid.uuid4()
+    doc.mongo_gridfs_id = "grid-1"
+    store = MagicMock()
+    store.delete_file.side_effect = RuntimeError("grid miss")
+    graph = MagicMock()
+    graph.delete_document = AsyncMock(side_effect=RuntimeError("neo miss"))
+    with (
+        patch("app.api.v1.endpoints.knowledge_base.store_from_client", return_value=store),
+        patch("app.api.v1.endpoints.knowledge_base.runtime") as runtime,
+        patch("app.api.v1.endpoints.knowledge_base.GraphRAGStore", return_value=graph),
+    ):
+        runtime.mongo_client = object()
+        runtime.neo4j_driver = object()
+        await _purge_aux_stores(doc)
+    store.delete_file.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

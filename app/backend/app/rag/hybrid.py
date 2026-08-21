@@ -7,7 +7,9 @@ from uuid import UUID
 
 from app import infra as runtime
 from app.config import get_settings
+from app.providers.base import SearchResult
 from app.providers.factory import ProviderFactory
+from app.rag.acl import document_is_visible
 from app.rag.custom_rag_client import build_custom_rag_client
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
 from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk
@@ -29,6 +31,30 @@ def owner_filter_dict(
     if user_id is not None:
         payload["owner_user_id"] = str(user_id)
     return payload
+
+
+def _chunk_from_hit(
+    item: SearchResult, *, user_id: UUID | str | None, search_scope: str
+) -> RetrievedChunk | None:
+    metadata = item.metadata or {}
+    if not document_is_visible(
+        document_owner_id=metadata.get("owner_id"),
+        viewer_id=user_id,
+        search_scope=search_scope,
+    ):
+        return None
+    return RetrievedChunk(
+        id=item.id,
+        text=item.text,
+        score=item.score,
+        document_type=metadata.get("document_type"),
+        legal_reference=metadata.get("legal_reference"),
+        section_relevance=metadata.get("section_relevance"),
+        source_document=_meta_source(metadata),
+        section_label=metadata.get("section_label"),
+        page_number=metadata.get("page_number"),
+        metadata=metadata,
+    )
 
 
 def _use_local_rag(rag_sources: str) -> bool:
@@ -78,19 +104,14 @@ async def hybrid_retrieve(
                 query_vector, top_k=top_k, filter=merged_filter
             )
             chunks = [
-                RetrievedChunk(
-                    id=item.id,
-                    text=item.text,
-                    score=item.score,
-                    document_type=(item.metadata or {}).get("document_type"),
-                    legal_reference=(item.metadata or {}).get("legal_reference"),
-                    section_relevance=(item.metadata or {}).get("section_relevance"),
-                    source_document=_meta_source(item.metadata),
-                    section_label=(item.metadata or {}).get("section_label"),
-                    page_number=(item.metadata or {}).get("page_number"),
-                    metadata=item.metadata or {},
+                mapped
+                for mapped in (
+                    _chunk_from_hit(
+                        item, user_id=user_id, search_scope=search_scope
+                    )
+                    for item in search_results
                 )
-                for item in search_results
+                if mapped is not None
             ]
 
     if _use_custom_rag(rag_sources):

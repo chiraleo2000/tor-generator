@@ -14,7 +14,9 @@ import {
   extractCompareFiles,
   extractReviewFile,
   type JaccardComparison,
+  type ReviewExtractJob,
 } from "@/lib/review-compare";
+import { cn } from "@/lib/utils";
 
 interface Finding {
   severity: string;
@@ -35,6 +37,8 @@ interface CompareRow {
   file: File | null;
 }
 
+type ReviewStep = 1 | 2 | 3;
+
 const LAW_REFS = [
   "พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560",
   "ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560",
@@ -43,33 +47,185 @@ const LAW_REFS = [
   "ประกาศราคากลาง (จากคลังความรู้)",
 ];
 
+const STEP_LABELS = ["เลือกไฟล์", "สกัดข้อความ", "ผลการตรวจสอบ"] as const;
+const PREVIEW_MAX = 20000;
+
+function previewSnippet(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= PREVIEW_MAX) return trimmed;
+  return `${trimmed.slice(0, PREVIEW_MAX)}\n…`;
+}
+
+function ReviewStepper({ step }: Readonly<{ step: ReviewStep }>) {
+  return (
+    <ol className="mb-4 flex flex-wrap gap-2 text-[12px]" data-testid="review-stepper">
+      {STEP_LABELS.map((label, index) => {
+        const id = (index + 1) as ReviewStep;
+        return (
+          <li
+            key={label}
+            className={cn(
+              "rounded-full border px-3 py-1 font-bold",
+              step === id
+                ? "border-crimson bg-brand-orange text-navy"
+                : "border-gray-200 bg-gray-50 text-muted-foreground"
+            )}
+          >
+            {id}. {label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function ExtractPreview({
+  preview,
+  busy,
+  onBack,
+  onConfirm,
+}: Readonly<{
+  preview: string;
+  busy: boolean;
+  onBack: () => void;
+  onConfirm: () => void;
+}>) {
+  return (
+    <div className="mt-5" data-testid="review-extract-preview">
+      <h4 className="mb-2 text-sm font-bold text-navy">ตัวอย่างข้อความที่สกัดได้</h4>
+      <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-[12px]">
+        {preview || "(ไม่มีข้อความ)"}
+      </pre>
+      <div className="mt-3 flex flex-col gap-2">
+        <Button
+          variant="outline"
+          className="w-full"
+          data-testid="review-back"
+          onClick={onBack}
+          disabled={busy}
+        >
+          ย้อนกลับ
+        </Button>
+        <Button
+          className="w-full"
+          data-testid="review-confirm-run"
+          onClick={onConfirm}
+          disabled={busy}
+        >
+          {busy ? "กำลังตรวจสอบ..." : "ยืนยันเริ่มตรวจสอบ"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewResults({
+  result,
+  findings,
+  comparisons,
+}: Readonly<{
+  result: ReviewResult | null;
+  findings: Finding[];
+  comparisons: JaccardComparison[];
+}>) {
+  if (!result) {
+    return (
+      <p className="py-10 text-center text-muted-foreground">
+        สกัดข้อความแล้วกดยืนยันเริ่มตรวจสอบเพื่อดูผล
+      </p>
+    );
+  }
+  return (
+    <div>
+      <CheckItem
+        tone={(result.quality_score ?? 0) >= 70 ? "pass" : "warn"}
+        title={`คะแนนความพร้อม ${result.quality_score ?? "—"}/100`}
+        detail={
+          (result.quality_score ?? 0) >= 70
+            ? "ผ่านเกณฑ์เบื้องต้น"
+            : "ยังไม่ผ่านเกณฑ์ 70 — ดูรายการด้านล่าง"
+        }
+      />
+      {findings.map((finding, index) => (
+        <CheckItem
+          key={`${finding.rule}-${index}`}
+          tone={findingCheckTone(finding.severity)}
+          title={finding.message}
+          detail={finding.recommendation || finding.section}
+        />
+      ))}
+      {comparisons.map((row) => (
+        <CheckItem
+          key={`${row.left}-${row.right}`}
+          tone={row.jaccard >= 0.5 ? "pass" : "warn"}
+          title={`เทียบเคียง ${row.left} กับ ${row.right}`}
+          detail={`ความคล้าย ${row.jaccard}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function StandaloneReviewPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [step, setStep] = useState<ReviewStep>(1);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReviewResult | null>(null);
   const [comparisons, setComparisons] = useState<JaccardComparison[]>([]);
   const [compares, setCompares] = useState<CompareRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [extracted, setExtracted] = useState<ReviewExtractJob | null>(null);
 
-  async function run() {
-    if (!file) {
-      return;
-    }
+  function resetToUpload(next: File | null) {
+    setFile(next);
+    setStep(1);
+    setExtracted(null);
+    setResult(null);
+    setComparisons([]);
+    setStatus("");
+    setError(null);
+  }
+
+  function backToUpload() {
+    setStep(1);
+    setStatus("");
+    setError(null);
+  }
+
+  async function extract() {
+    if (!file) return;
     setBusy(true);
-    setStatus("กำลังตรวจสอบเอกสาร...");
+    setStatus("กำลังสกัดข้อความ...");
     setError(null);
     setResult(null);
     try {
       const primary = await extractReviewFile(file);
-      setStatus("สกัดข้อความสำเร็จ — กำลังรัน Rule Engine");
+      setExtracted(primary);
+      setStep(2);
+      setStatus("สกัดข้อความสำเร็จ — ตรวจตัวอย่างแล้วกดยืนยันเริ่มตรวจสอบ");
+    } catch (err: unknown) {
+      setStatus("");
+      setError(apiErrorMessage(err, "สกัดข้อความไม่สำเร็จ"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRun() {
+    if (!extracted) return;
+    setBusy(true);
+    setStatus("กำลังรัน Rule Engine...");
+    setError(null);
+    try {
       const compareJobs = await extractCompareFiles(compares);
-      const compared = await compareExtractJobs(primary, compareJobs);
+      const compared = await compareExtractJobs(extracted, compareJobs);
       const ran = unwrapData<ReviewResult>(
-        await apiClient.post("/review/run", { id: primary.id })
+        await apiClient.post("/review/run", { id: extracted.id })
       );
       setResult(ran);
       setComparisons(compared.comparisons);
+      setStep(3);
       const score = ran.quality_score ?? 0;
       setStatus(
         score >= 70
@@ -85,15 +241,20 @@ export default function StandaloneReviewPage() {
   }
 
   const findings = result?.findings || [];
+  const preview = previewSnippet(extracted?.extracted_text || "");
 
   return (
     <div className="grid gap-4 lg:grid-cols-2" data-testid="review-page">
       <div className="gov-card">
         <h3 className="mb-3 text-navy">อัปโหลด TOR ที่ต้องการตรวจสอบ</h3>
+        <ReviewStepper step={step} />
+        <p className="mb-3 text-sm text-muted-foreground">
+          เลือกไฟล์แล้วสกัดข้อความก่อน — ระบบจะไม่รัน Rule Engine จนกว่าคุณยืนยัน
+        </p>
         <UploadArea
           label="ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก"
           hint="PDF, Word (.docx) หรือรูปภาพสแกน"
-          onFiles={(list) => setFile(list[0] || null)}
+          onFiles={(list) => resetToUpload(list[0] || null)}
         />
         {file ? (
           <p className="mt-2 text-[12.5px]">
@@ -102,7 +263,7 @@ export default function StandaloneReviewPage() {
         ) : null}
         {busy ? (
           <output className="mt-2 block text-sm text-navy">
-            {status || "กำลังตรวจสอบ..."}
+            {status || "กำลังทำงาน..."}
           </output>
         ) : null}
         {error ? (
@@ -182,46 +343,31 @@ export default function StandaloneReviewPage() {
         >
           + เพิ่มโครงการเปรียบเทียบ
         </Button>
-        <Button className="mt-5 w-full" onClick={run} disabled={!file || busy}>
-          {busy ? "กำลังตรวจสอบ..." : "เริ่มตรวจสอบ TOR"}
-        </Button>
+        {step === 1 ? (
+          <Button
+            className="mt-5 w-full"
+            data-testid="review-extract"
+            onClick={extract}
+            disabled={!file || busy}
+          >
+            {busy ? "กำลังสกัดข้อความ..." : "อัปโหลดและสกัดข้อความ"}
+          </Button>
+        ) : null}
+        {step >= 2 && extracted ? (
+          <ExtractPreview
+            preview={preview}
+            busy={busy}
+            onBack={backToUpload}
+            onConfirm={() => {
+              confirmRun().catch(() => undefined);
+            }}
+          />
+        ) : null}
       </div>
 
-      <div className="gov-card">
+      <div className="gov-card" data-testid="review-result">
         <h3 className="mb-3 text-navy">ผลการตรวจสอบ</h3>
-        {!result ? (
-          <p className="py-10 text-center text-muted-foreground">
-            อัปโหลดไฟล์ TOR แล้วกดเริ่มตรวจสอบเพื่อดูผล
-          </p>
-        ) : (
-          <div>
-            <CheckItem
-              tone={(result.quality_score ?? 0) >= 70 ? "pass" : "warn"}
-              title={`คะแนนความพร้อม ${result.quality_score ?? "—"}/100`}
-              detail={
-                (result.quality_score ?? 0) >= 70
-                  ? "ผ่านเกณฑ์เบื้องต้น"
-                  : "ยังไม่ผ่านเกณฑ์ 70 — ดูรายการด้านล่าง"
-              }
-            />
-            {findings.map((finding, index) => (
-              <CheckItem
-                key={`${finding.rule}-${index}`}
-                tone={findingCheckTone(finding.severity)}
-                title={finding.message}
-                detail={finding.recommendation || finding.section}
-              />
-            ))}
-            {comparisons.map((row) => (
-              <CheckItem
-                key={`${row.left}-${row.right}`}
-                tone={row.jaccard >= 0.5 ? "pass" : "warn"}
-                title={`เทียบเคียง ${row.left} กับ ${row.right}`}
-                detail={`ความคล้าย ${row.jaccard}`}
-              />
-            ))}
-          </div>
-        )}
+        <ReviewResults result={result} findings={findings} comparisons={comparisons} />
       </div>
     </div>
   );

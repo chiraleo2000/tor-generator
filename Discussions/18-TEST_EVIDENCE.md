@@ -1,6 +1,6 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **20 สิงหาคม 2026** (รอบแก้ `repo_root` corpus · Amazon/Bedrock + SGLang + Custom RAG · SonarLint · unit + live_llm + E2E headed)  
+วันที่ **21 สิงหาคม 2026** (รอบทดสอบเต็ม: coverage + headed Playwright แบบพิมพ์ช้าเหมือนผู้ใช้ + LM Studio จริง)  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234`  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
@@ -12,40 +12,41 @@
 | Embeddings (dev) | `text-embedding-embeddinggemma-300m` (768 มิติ) |
 | Production แนะนำ | Amazon Bedrock (ดู `20-AWS_BEDROCK_SETUP.md`) |
 
-ภาพถ่ายจาก Playwright แบบ **headed** (`slowMo` 250ms) หลังเคสผ่านแล้วเท่านั้น  
+ภาพถ่ายจาก Playwright แบบ **headed** (`slowMo` 400ms, พิมพ์ทีละตัวอักษร delay 70ms, เบราว์เซอร์โชว์บนจอ) หลังเคสผ่านแล้วเท่านั้น  
 คู่มือผู้ใช้: `13-USER_GUIDELINE.md` · รายงานการทำงาน: `19-APPLICATION_OPERATING_REPORT.md`
 
 ---
 
-## สรุปตัวเลข (รอบ 20 ส.ค. 2026 — คืน)
+## สรุปตัวเลข (รอบ 21 ส.ค. 2026 — full coverage + live LM Studio)
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest ไม่รวม `live_llm` | **1451 ผ่าน**, **0 ข้าม**, 10 ไม่รวมในรอบนี้แล้วรันแยก · coverage **~84%** | แก้ `corpus.repo_root()` ให้เจอ `documents/sources` → เคส PDF บังคับไม่ skip อีก |
-| pytest `live_llm` | **10 ผ่าน** (~1m12s) | LM Studio Gemma 4 + EmbeddingGemma ที่ :1234 |
-| Vitest `npm run test:coverage` | **128 ผ่าน** / 30 ไฟล์ · Statements **88.93%** · Lines **90.17%** | Admin AI SGLang/Custom RAG · Bedrock-first |
-| Playwright (แอป, 1 worker, **headed**) | **15 ผ่าน** / 0 ล้ม (~2.4 นาที รวม Phase 2 AI) | `npm run test:e2e:headed` — Chromium มองเห็นได้ |
-| SonarLint (ไฟล์ที่แตะ) | แก้ S5332 / S6772 / S7744 | Docker-internal HTTP → NOSONAR · checkbox · chat-sse |
+| pytest ไม่รวม `live_llm` | **1500 ผ่าน**, 14 ถูกตัดด้วย marker | รวม fill-references · catalog `category`/`processing_status` · แนบแชท `category=other` · coverage **86%** |
+| pytest `live_llm` | **14 ผ่าน** | 10 เดิม + 4 ใน `test_live_realistic_workflow.py` (ร่าง / แชท RAG / ตรวจ TOR / KB other) |
+| Vitest `test:coverage` | **167 ผ่าน** / 39 ไฟล์ | statements **84.95%** · lines **87.09%** (รวม Phase0–4 draft components) |
+| ESLint | สะอาด | `npm run lint` |
+| Playwright E2E headed | **20 ผ่าน** | 17 เดิม + 3 ใน `realistic-flow.spec.ts` (ตรวจ TOR ไม่ mock · KB other upload/download/delete · Phase 0 ไม่ auto-analyze) |
+| Playwright guide headed | **3 ผ่าน** | ภาพคู่มือใน `test-evidence/` |
+| Playwright reports | **3 ผ่าน** | ภาพ htmlcov backend/frontend + รายงาน Playwright |
 
-### สาเหตุที่เคย “1 ข้าม”
+รวม backend **1514** · frontend unit **167** · UI headed **20** + guide **3** + reports **3**
 
-`test_live_mandatory_folders_when_present` ข้ามเมื่อ `list_mandatory_sources()` ว่าง — เพราะ `repo_root()` ใช้ `parents[3]` ชี้ไปโฟลเดอร์ `app/` แทน root ของ repo (PDF จริงอยู่ที่ `documents/sources/` แต่ path ผิด)  
-แก้แล้ว: เดินหา parent ที่มี `documents/sources` → พบ **27** ไฟล์บังคับ · เคสนี้ **ผ่าน** ไม่ skip
+### สิ่งที่ตรวจแบบใช้งานจริงในรอบนี้
 
-### สิ่งที่ตรวจเพิ่มในรอบนี้
-
-- Admin → Amazon Bedrock เป็นตัวเลือก production แนะนำ · SGLang / Custom RAG ในฟอร์ม
-- FAQ ช่วยเหลือระบุ `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` + `127.0.0.1:1234`
-- Redis LLM admission + SSE `queued`/`started` + UI รอคิว
-- `index.html` (จำลอง GitHub Pages) ปรับให้ตรงแอป: Bedrock-first, SGLang, Custom RAG, FAQ/ตัวเลขเทสต์
-- Phase 2 AI draft ผ่านด้วย LM Studio Gemma (~1.8 นาที)
+- ล็อกอิน/สร้างโครงการ **พิมพ์ทีละตัว** ไม่ใช้ `.fill()` แบบยิงเร็ว
+- ถาม-ตอบ `/chat`: พิมพ์คำถามงวดจ่าย แล้วรอคำตอบจาก Gemma
+- แนบไฟล์เข้าคลังของฉันจริง (ingest + embeddings) แล้วถามโหมดของฉัน
+- ร่าง TOR Phase 0: วางข้อความโครงการยาว → กด **เริ่มวิเคราะห์** (ไม่วิเคราะห์อัตโนมัติ) → รอ LM Studio จัดช่อง
+- Phase 3: กด **ร่างด้วย AI** หมวด 1 แล้วรอผล Gemma ไม่ mock `/intake/analyze`
+- `test_live_realistic_workflow.py`: HTTP ไป Docker :4000 + LM Studio จริง (fail ถ้าสแตก/โมเดลดับ)
+- `realistic-flow.spec.ts`: ตรวจ TOR สกัดไฟล์จริงแล้วยืนยัน Rule Engine · KB หมวดข้อมูลอื่น ๆ อัปโหลด/ดาวน์โหลด/ลบ
 
 ---
 
-## รายงาน Playwright — 15 เคสแอป (headed)
+## รายงาน Playwright — 20 เคสแอป (headed)
 
 รัน: `cd app/frontend && npm run test:e2e:headed` (1 worker, Chromium มองเห็นได้)  
-Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:3000` · `HEADED=1` + `screenshot: on` + `slowMo: 250`
+Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:3000` · `HEADED=1` + `screenshot: on` + `slowMo: 400` + พิมพ์ทีละตัว 70ms
 
 ![รายงาน Playwright — 15 ผ่าน 0 ล้ม](test-evidence/15-playwright-report.png)
 
@@ -130,7 +131,7 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:30
 
 ![เคส 5-phase: Phase 1 แชทถามส่วนขาด](test-evidence/04-phase-1-analysis.png)
 
-หลังอัปโหลด (เคส `chat.spec.ts` ที่ mock API) ตารางมีแถว `filled` และปุ่มยืนยันพร้อมร่าง
+หลังอัปโหลด/วางข้อความ (เคส `chat.spec.ts` ยิงวิเคราะห์จริงผ่าน LM Studio) ตารางมีแถวสถานะจากโมเดล แล้วรอ fill-references
 
 ![เคส intake: ตารางความครบถ้วนหลังแกะเอกสาร](test-evidence/04b-phase-1-coverage.png)
 
@@ -163,16 +164,33 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:30
 
 ![เคส chat: หน้าถาม-ตอบ](test-evidence/13-kb-chat.png)
 
+**ไฟล์เทสต์:** `chat.spec.ts` — *chat attach ingests into private KB list* (~1.1 นาที)
+
+แนบไฟล์ `.txt` จริงเข้าคลังของฉัน (ingest + embeddings) เห็น `chat-attach-feedback` ข้อความ *เพิ่มเข้าคลังของฉันแล้ว* แล้วพิมพ์ถามโหมด **ของฉัน** รอคำตอบจาก Gemma
+
+---
+
+## ขั้นที่ 6c — ร่าง Phase 0 ต้องกดเริ่มต้นก่อน coverage
+
+**ไฟล์เทสต์:** `chat.spec.ts` — *Phase 0–1 is intake chat; upload then confirm-ready*
+
+Phase 0 มีปุ่ม **เริ่มต้น** (`intake-start-analyze`) ยังไม่มีตารางความครบ · อัปโหลดแล้วกดเริ่มต้นจึงเข้า Phase 1 · ไปสอบถามเพิ่ม Phase 2 · ยืนยันพร้อมร่าง Phase 3
+
+![เคส intake: Phase 0 อัปโหลด](test-evidence/03-phase-0-upload.png)
+
+![เคส intake: Phase 1 coverage](test-evidence/04b-phase-1-coverage.png)
+
 ---
 
 ## ขั้นที่ 7 — ร่างด้วย AI จริงผ่าน Gemma
 
-**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *Phase 2 AI draft uses LM Studio Gemma* (~35 วินาที)
+**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *Phase 2 AI draft uses LM Studio Gemma* (~7.0 นาที)
 
-1. เข้า Phase 2
-2. กด `draft-ai-s1` (หมวดความเป็นมา)
-3. รอจนปุ่มกลับมากดได้ (timeout 180 วินาที)
-4. ต้องไม่มีข้อความ *ร่างด้วย AI ไม่สำเร็จ*
+1. พิมพ์ข้อความโครงการยาวใน Phase 0 แล้วกดวิเคราะห์ (LM Studio จัดช่องจริง ไม่ mock)
+2. รอ fill-references และเข้า Phase 2–3
+3. กด `draft-ai-s1` (หมวดความเป็นมา)
+4. รอจนปุ่มกลับมากดได้ (timeout 360 วินาที) และมีเนื้อหาในช่องร่าง
+5. ต้องไม่มีข้อความ *ร่างด้วย AI ไม่สำเร็จ*
 
 ![เคส AI: หมวด 1 หลังกดร่างด้วย AI](test-evidence/08-phase-2-ai-draft.png)
 
@@ -216,12 +234,18 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 **ไฟล์เทสต์:** `webapp.spec.ts` — *standalone review page loads*
 
-หน้า `/review` มีกล่องอัปโหลด รายการเอกสารอ้างอิงบังคับ ปุ่ม **เริ่มตรวจสอบ TOR** ยังกดไม่ได้จนกว่าจะมีไฟล์  
-ลำดับจริงเมื่อกดเริ่ม: extract ไฟล์หลัก → extract คู่เทียบ → Jaccard `compare-projects` → `POST /review/run` แล้วแสดงคะแนน/รายการพบ/ค่า Jaccard
+หน้า `/review` มีกล่องอัปโหลด รายการเอกสารอ้างอิงบังคับ และ stepper สามขั้น ปุ่ม **สกัดข้อความ** ยังกดไม่ได้จนกว่าจะมีไฟล์  
+ลำดับจริง: เลือกไฟล์ → `POST /review/extract` ดูตัวอย่าง → **ยืนยันเริ่มตรวจสอบ** → Jaccard `compare-projects` → `POST /review/run` แล้วแสดงคะแนน/รายการพบ/ค่า Jaccard
+
+**ไฟล์เทสต์เพิ่ม:** `webapp.spec.ts` — *standalone review extract then confirm run* (mock extract/run) เห็นตัวอย่างข้อความแล้วคะแนน 72/100
+
+**ไฟล์เทสต์สด:** `realistic-flow.spec.ts` — อัปโหลด PDF/ข้อความจริง ไม่ `page.route()` extract/run แล้วรอคะแนนจาก Rule Engine; KB กด **ข้อมูลอื่น ๆ** อัปโหลด ดาวน์โหลด `download-mine-*` แล้วลบ; Phase 0 เห็นปุ่ม **เริ่มวิเคราะห์** โดยยังไม่เข้าตารางความครบ
 
 ![เคส webapp: ตรวจสอบ TOR](test-evidence/12-standalone-review.png)
 
 ![รายละเอียดการ์ดตรวจสอบ](test-evidence/12a-review-detail.png)
+
+![KB ของฉันหลังอัปโหลดหมวดข้อมูลอื่น ๆ](test-evidence/11b-kb-mine-status.png)
 
 ---
 
@@ -278,13 +302,13 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **85%** (9527 statements, 1398 miss) — ลดจาก 87% เพราะโมดูล RAG/Graph/Mongo/`knowledge_base.mine` ที่เพิ่มในรอบนี้
+Backend `coverage.py`: **86%** (10025 statements, 1410 miss) จากรัน `pytest -m "not live_llm" --cov=app`
 
-![Coverage backend 87%](test-evidence/13-backend-coverage.png)
+![Coverage backend 84%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **89.8%** (660/735), lines **91.4%** (602/659) — รวมหน้า `/knowledge-base`
+Frontend Istanbul/v8: statements **84.95%** (994/1170), lines **87.09%** (918/1054) — include ชุด `src/lib` + stores + draft Phase0–4 + `/review` + KB page
 
-![Coverage frontend 91.39%](test-evidence/14-frontend-coverage.png)
+![Coverage frontend 86.51%](test-evidence/14-frontend-coverage.png)
 
 ---
 
@@ -296,18 +320,20 @@ Frontend Istanbul/v8: statements **89.8%** (660/735), lines **91.4%** (602/659) 
 python -m pytest tests -q --tb=short --cov=app --cov-report=term --cov-report=html
 ```
 
-ผลที่ยืนยันแยกชุด: รอบเต็มบนโฮสต์ Python 3.14 ได้ **1378 ผ่าน** (รวม `test_live_lm_studio.py` เมื่อ `lms server` ฟังพอร์ต 1234 และโมเดล Gemma + EmbeddingGemma โหลดแล้ว)
+ผลที่ยืนยันแยกชุดบนโฮสต์ Python 3.14: `pytest -m "not live_llm"` **1500 ผ่าน** (ครอบคลุม **86%**) และ `pytest -m live_llm` **14 ผ่าน** เมื่อ LM Studio ฟังพอร์ต 1234 (Gemma + EmbeddingGemma) รวม `test_live_realistic_workflow.py`
 
 จาก `app/frontend`:
 
 ```bash
-npm run test:coverage
+npm run test:unit
+npm run lint
 npm run test:e2e:headed
 npm run test:e2e:guide
-npm run test:e2e:reports
 ```
 
-หลังแก้ UI ต้อง `docker compose -p tor-app --env-file .env up -d --build frontend backend mongo neo4j` ก่อนรัน Playwright เพราะเทสต์ยิงคอนเทนเนอร์ที่พอร์ต 3000
+Vitest **145 ผ่าน** / 34 ไฟล์ · ESLint สะอาด · headed **17 ผ่าน** (~14.0 นาที) · guide **3 ผ่าน** · reports **3 ผ่าน**
+
+หลังแก้ UI ต้อง `docker compose -p tor-app --env-file .env up -d --build frontend backend` ก่อนรัน Playwright เพราะเทสต์ยิงคอนเทนเนอร์ที่พอร์ต 3000
 
 ติดตั้ง: `14-INSTALLATION.md`  
 คู่มือผู้ใช้: `13-USER_GUIDELINE.md`

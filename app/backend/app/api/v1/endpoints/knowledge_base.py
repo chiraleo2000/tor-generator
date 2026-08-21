@@ -16,10 +16,12 @@ Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5
 import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,6 +88,38 @@ def _validate_kb_bytes(file_content: bytes, claimed_mime: str, filename: str) ->
             field="file",
         )
     return content_type
+
+
+_DOWNLOAD_MIME = {
+    "pdf": MIME_PDF,
+    "docx": MIME_DOCX,
+    "txt": MIME_TXT,
+}
+
+
+def _kb_original_bytes(document: KnowledgeBaseDocument) -> bytes:
+    store = store_from_client(runtime.mongo_client)
+    grid_id = getattr(document, "mongo_gridfs_id", None)
+    if store is not None and grid_id:
+        try:
+            return store.get_bytes(str(grid_id))
+        except Exception:
+            logger.warning("GridFS read missed for document %s", document.id)
+    path = Path(document.storage_path) if document.storage_path else None
+    if path is not None and path.is_file():
+        return path.read_bytes()
+    raise NotFoundError(message="ไม่พบไฟล์ต้นฉบับ")
+
+
+def _file_download_response(document: KnowledgeBaseDocument) -> Response:
+    payload = _kb_original_bytes(document)
+    filename = quote(document.name or "document")
+    media = _DOWNLOAD_MIME.get(document.file_type, "application/octet-stream")
+    return Response(
+        content=payload,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 async def _purge_aux_stores(document: KnowledgeBaseDocument) -> None:
@@ -175,6 +209,7 @@ def _catalog_item(doc: KnowledgeBaseDocument) -> dict:
         "category": doc.category,
         "chunk_count": doc.chunk_count or 0,
         "processing_status": doc.processing_status,
+        "error_message": getattr(doc, "error_message", None),
         "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else "",
         "corpus_group": group,
         "owner_id": str(owner) if owner else None,
@@ -182,11 +217,19 @@ def _catalog_item(doc: KnowledgeBaseDocument) -> dict:
     }
 
 
+def _catalog_visible(doc, viewer_id: uuid.UUID | None) -> bool:
+    owner = getattr(doc, "owner_id", None)
+    if owner is None:
+        return True
+    return viewer_id is not None and owner == viewer_id
+
+
 def _catalog_payload(documents: list, viewer_id: uuid.UUID | None = None) -> dict:
     grouped: dict[str, list[dict]] = {}
     chunked: dict[str, dict] = {}
     by_group: dict[str, list[dict]] = {}
-    for doc in documents:
+    visible = [doc for doc in documents if _catalog_visible(doc, viewer_id)]
+    for doc in visible:
         item = _catalog_item(doc)
         grouped.setdefault(doc.category, []).append(item)
         bucket = chunked.setdefault(
@@ -195,9 +238,6 @@ def _catalog_payload(documents: list, viewer_id: uuid.UUID | None = None) -> dic
         )
         bucket["files"] += 1
         bucket["chunks"] += doc.chunk_count or 0
-        if item["corpus_group"] == GROUP_USER:
-            if viewer_id is None or doc.owner_id != viewer_id:
-                continue
         by_group.setdefault(item["corpus_group"], []).append(item)
 
     groups = []
@@ -230,8 +270,8 @@ def _catalog_payload(documents: list, viewer_id: uuid.UUID | None = None) -> dic
         "groups": groups,
         "userFiles": user_files,
         "totals": {
-            "files": len(documents),
-            "chunks": sum(doc.chunk_count or 0 for doc in documents),
+            "files": len(visible),
+            "chunks": sum(doc.chunk_count or 0 for doc in visible),
         },
     }
 
@@ -390,6 +430,7 @@ async def upload_knowledge_base_document(
         extra_metadata={
             "corpus_group": corpus_group,
             "scope": "baseline",
+            "owner_id": None,
         },
     )
 
@@ -489,6 +530,25 @@ async def delete_my_knowledge_base_document(
     return _build_success_response(
         request, KBDeleteResponse(id=document_id).model_dump(mode="json")
     )
+
+
+@router.get(
+    "/mine/{document_id}/file",
+    summary="Download my private knowledge-base original",
+)
+async def download_my_knowledge_base_file(
+    document_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    stmt = select(KnowledgeBaseDocument).where(
+        KnowledgeBaseDocument.id == document_id,
+        KnowledgeBaseDocument.owner_id == current_user.id,
+    )
+    document = (await db.execute(stmt)).scalar_one_or_none()
+    if document is None:
+        raise NotFoundError(message="ไม่พบเอกสารที่ต้องการดาวน์โหลด")
+    return _file_download_response(document)
 
 
 # ---------------------------------------------------------------------------
@@ -617,6 +677,22 @@ async def batch_ingest(
     )
 
     return _build_success_response(request, response_data, status_code=202)
+
+
+@router.get(
+    "/{document_id}/file",
+    summary="Download a central knowledge-base original (admin)",
+)
+async def download_knowledge_base_file(
+    document_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_role([Role.ADMIN]))],
+) -> Response:
+    stmt = select(KnowledgeBaseDocument).where(KnowledgeBaseDocument.id == document_id)
+    document = (await db.execute(stmt)).scalar_one_or_none()
+    if document is None:
+        raise NotFoundError(message="ไม่พบเอกสารที่ต้องการดาวน์โหลด")
+    return _file_download_response(document)
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ import {
 /** Extra screenshots for the user guideline. Run with CAPTURE_GUIDE=1. */
 test.describe("Guide screenshots", () => {
   test("register, create dialog, help tabs, admin pages", async ({ page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
 
     await page.goto("/register");
     await expect(page.getByTestId("register-form")).toBeVisible();
@@ -83,7 +83,7 @@ test.describe("Guide screenshots", () => {
   });
 
   test("login error, HITL section, reviewer decide buttons", async ({ page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
 
     await page.goto("/login");
     await page.getByTestId("login-email").fill(DEMO_EMAIL);

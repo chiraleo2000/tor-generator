@@ -30,6 +30,30 @@ export interface ChatPrompt {
   body: string;
 }
 
+export interface AttachIngestPayload {
+  document_id?: string;
+  name?: string;
+  status?: string;
+  processing_status?: string;
+  chunk_count?: number;
+}
+
+export function attachIngestFeedback(
+  payload: AttachIngestPayload,
+  fallbackName: string
+): string {
+  const name = payload.name || fallbackName;
+  const status = payload.status || payload.processing_status || "";
+  const chunks = payload.chunk_count ?? 0;
+  if (status === "failed") {
+    return `ไม่สามารถประมวลผล «${name}» ได้`;
+  }
+  if (status === "completed" || chunks > 0) {
+    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — ใช้ RAG ได้ทันที (${chunks} chunks)`;
+  }
+  return `กำลังประมวลผล «${name}» เข้าคลัง...`;
+}
+
 export function formatChatTimestamp(iso?: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);

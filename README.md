@@ -124,8 +124,11 @@ cd app/backend
 python -m pytest tests -q --tb=short --cov=app --cov-report=term-missing --cov-report=html -m "not live_llm"
 
 # Backend รวมยิง LM Studio จริง (ต้องโหลดแชท+embeddings ที่พอร์ต 1234)
+python -m pytest -m live_llm -v -s
 python -m pytest tests -q --tb=short --cov=app --cov-report=term-missing --cov-report=html
 ```
+
+หมวดคลังส่วนตัวใช้ `category=other` (ป้าย **ข้อมูลอื่น ๆ**) ดาวน์โหลดที่ `GET /api/v1/knowledge-base/mine/{id}/file`
 
 รายงาน HTML: `app/backend/htmlcov/index.html` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main` ตาม `pyproject.toml`)
 
@@ -146,18 +149,16 @@ npm run test:e2e
 npm run test:e2e:headed
 ```
 
-ชุดล่าสุดบนโฮสต์ (**20 ส.ค. 2026**):
+ชุดล่าสุดบนโฮสต์ (**21 ส.ค. 2026**):
 
-ตรวจสด 3 เครื่องมือเจ้าหน้าที่บน Docker `tor-app` + LM Studio (`google/gemma-4-e4b` + EmbeddingGemma): ร่าง TOR (intake + `draft-section` s1 + agent ingest), ตรวจสอบ TOR (Phase 3 คะแนน 79 / 14 findings / 11 ข้อเสนอแนะ และ `/review` extract+run), ถาม-ตอบ (`/chat` SSE 5 citations และ kb-chat คำตอบยาวพร้อม 5 citations)
+ตรวจสด 4 เครื่องมือเจ้าหน้าที่บน Docker `tor-app` + LM Studio (`google/gemma-4-e4b` + EmbeddingGemma): ร่าง TOR (Phase 0 กดเริ่มวิเคราะห์ + `draft-section` s1), ตรวจสอบ TOR (`/review` extract แล้วยืนยันรัน), ถาม-ตอบ (`/chat` SSE + แนบคลัง `category=other`), ฐานความรู้ของฉัน (อัปโหลด/ดาวน์โหลด `GET .../mine/{id}/file` /ลบ)
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm"` | **1451 ผ่าน**, 0 ข้าม · coverage ~84% |
-| pytest `-m live_llm` | **10 ผ่าน** (ต้องมี LM Studio :1234) |
-| pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) |
-| Vitest `npm run test:unit` | **128 ผ่าน** (30 ไฟล์) |
-| Playwright `test:e2e:headed` (1 worker, Docker :3000) | **15 ผ่าน** / 0 ล้ม (~3.1 นาที · UI มองเห็นได้) |
-| Guide `test:e2e:guide` | **3 ผ่าน** (รีเฟรชภาพคู่มือ) |
+| pytest `-m "not live_llm"` | **1500 ผ่าน**, 0 ข้าม · coverage **86%** |
+| pytest `-m live_llm` | **14 ผ่าน** (ต้องมี LM Studio :1234) รวม `test_live_realistic_workflow.py` |
+| Vitest `npm run test:unit` | **167 ผ่าน** (39 ไฟล์) |
+| Playwright `test:e2e:headed` (1 worker, Docker :3000, slowMo 400ms) | **20 ผ่าน** / 0 ล้ม รวม `realistic-flow.spec.ts` |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
 

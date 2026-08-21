@@ -279,12 +279,6 @@ export function Step7Review() {
     }
   }, [projectId, setFormData]);
 
-  // Run review on initial mount
-  React.useEffect(() => {
-    runReview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // --- Inline Editing ---
   const handleStartEdit = (sectionKey: string, content: string) => {
     setEditingSection(sectionKey);
@@ -339,8 +333,7 @@ export function Step7Review() {
           ขั้นตอนที่ 7: ตรวจสอบและข้อเสนอแนะ
         </h2>
         <p className="text-sm text-muted-foreground">
-          ตรวจสอบเอกสาร TOR ฉบับสมบูรณ์ ดูคะแนนคุณภาพ
-          และแก้ไขเนื้อหาแต่ละส่วนได้โดยตรง
+          นำเข้าเนื้อหาจากขั้นตอนก่อนหน้าแล้วกดเริ่มตรวจสอบ — ระบบจะไม่รันจนกว่าคุณยืนยัน
         </p>
       </div>
 
@@ -573,10 +566,14 @@ export function Step7Review() {
       {reviewStatus === "idle" && (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground mb-4">
-            กดปุ่มด้านล่างเพื่อเริ่มตรวจสอบคุณภาพเอกสาร TOR
+            กดยืนยันเพื่อเริ่มตรวจสอบคุณภาพเอกสาร TOR
           </p>
-          <Button onClick={runReview} aria-label="เริ่มตรวจสอบ">
-            ตรวจสอบเอกสาร
+          <Button
+            onClick={runReview}
+            aria-label="เริ่มตรวจสอบ"
+            data-testid="wizard-start-review"
+          >
+            เริ่มตรวจสอบ TOR
           </Button>
         </div>
       )}

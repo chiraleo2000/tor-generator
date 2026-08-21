@@ -328,10 +328,10 @@ function DraftTab() {
       <Flow
         steps={[
           "Phase 0 อัปโหลด",
-          "Phase 1 ช่องว่าง",
-          "Phase 2 ร่าง 13 หมวด",
-          "Phase 3 ตรวจ",
-          "Phase 4 ส่งออก",
+          "Phase 1 ผลวิเคราะห์",
+          "Phase 2 สอบถามเพิ่ม",
+          "Phase 3 ร่าง 13 หมวด",
+          "Phase 4 ทบทวน-เผยแพร่",
         ]}
       />
       <table>
@@ -347,42 +347,42 @@ function DraftTab() {
             <td>
               <strong>0</strong>
             </td>
-            <td>วางข้อความ / อัปโหลดหลายไฟล์ในแชทโครงการ (ไม่ต้องเลือก 9 ประเภท)</td>
-            <td>มีไฟล์หรือข้อความ → ปลด Phase 1</td>
+            <td>วางข้อความ / อัปโหลดหลายครั้ง — กดเริ่มต้นครั้งเดียว (ยังไม่วิเคราะห์)</td>
+            <td>กดเริ่มต้น → วิเคราะห์ เข้า Phase 1</td>
           </tr>
           <tr>
             <td>
               <strong>1</strong>
             </td>
-            <td>ตารางความครบ · ตอบส่วนขาด · ดึงอ้างอิงกฎหมาย · กดพร้อมร่าง</td>
-            <td>
-              <code>ready_to_compose</code> → ปลด Phase 2
-            </td>
+            <td>สรุปสิ่งที่อ่านได้จากเอกสาร (มีข้อความที่ได้) แล้วไปคุยต่อ</td>
+            <td>วิเคราะห์แล้ว → ปลด Phase 2</td>
           </tr>
           <tr>
             <td>
               <strong>2</strong>
             </td>
-            <td>แก้ / ร่างด้วย AI ทีละหมวด · ยืนยัน HITL (s3 s6 s8 s10 s13)</td>
-            <td>ครบ 13 + HITL → ส่งตรวจได้</td>
+            <td>แชทเปิดบทด้วยผล Phase 1 แล้วถามทีละช่อง · ตอบเป็นภาษาพูด ระบบเติมช่องด้านหลัง · ไม่กรอกตาราง</td>
+            <td>
+              <code>ready_to_compose</code> → ปลด Phase 3
+            </td>
           </tr>
           <tr>
             <td>
               <strong>3</strong>
             </td>
-            <td>Rule Engine (≥ 70) + ข้อเสนอแนะ ReviewAgent · ส่งขออนุมัติ</td>
-            <td>reviewer/admin อนุมัติหรือส่งกลับ</td>
+            <td>ระบบร่างทั้ง 13 หมวดอัตโนมัติ · แก้/ขอร่างใหม่ผ่านแชท · ยืนยัน HITL (s3 s6 s8 s10 s13)</td>
+            <td>ยืนยันด้วยตนเอง → ปลด Phase 4</td>
           </tr>
           <tr>
             <td>
               <strong>4</strong>
             </td>
-            <td>ส่งออก Word/PDF (MinIO) — แสดงข้อความถ้าล้มเหลว</td>
-            <td>e-Bidding นอกแอป</td>
+            <td>Rule Engine (≥ 70) + ข้อเสนอแนะ · ส่งขออนุมัติ · ส่งออก Word/PDF</td>
+            <td>reviewer/admin อนุมัติหรือส่งกลับ · e-Bidding นอกแอป</td>
           </tr>
         </tbody>
       </table>
-      <h3>สถานะช่อง (Phase 1)</h3>
+      <h3>สถานะช่อง (Phase 1–2)</h3>
       <table>
         <thead>
           <tr>
@@ -409,9 +409,9 @@ function DraftTab() {
         อย่าเริ่มจากเมนูร่าง TOR ถ้ายังไม่มีโครงการ — สร้างจากแดชบอร์ดก่อน · หมวด HITL
         ต้องกดยืนยันคนก่อนปุ่มส่งขออนุมัติจะเปิด
       </p>
-      <Figure src="/help/03-phase-0-upload.png" alt="Phase 0" caption="Phase 0 — อัปโหลดชุดเอกสารในแชทร่าง" />
-      <Figure src="/help/04b-phase-1-coverage.png" alt="Phase 1" caption="Phase 1 — ตารางความครบ / coverage" />
-      <Figure src="/help/08-phase-2-ai-draft.png" alt="Phase 2 AI" caption="Phase 2 — ร่างด้วย AI (Gemma / คลาวด์ตามการตั้งค่า)" />
+      <Figure src="/help/03-phase-0-upload.png" alt="Phase 0" caption="Phase 0 — อัปโหลดหรือวางข้อความ แล้วกดเริ่มต้น (ยังไม่วิเคราะห์)" />
+      <Figure src="/help/04b-phase-1-coverage.png" alt="Phase 1" caption="Phase 1 — สรุปสิ่งที่อ่านได้จากเอกสาร แล้วไปคุยต่อในแชท" />
+      <Figure src="/help/08-phase-2-ai-draft.png" alt="Phase 3 AI" caption="Phase 3 — ร่างด้วย AI (Gemma / คลาวด์ตามการตั้งค่า)" />
       <Figure src="/help/05b-hitl-confirm.png" alt="HITL" caption="ยืนยัน HITL หมวดเสี่ยง (เช่น หมวด 3)" />
     </GuideBlock>
   );
@@ -422,11 +422,11 @@ function ChatTab() {
     <GuideBlock title="ถาม-ตอบ">
       <p>
         เมนู <strong>ถาม-ตอบ</strong> เปิด <code>/chat</code> — ห้องคลังความรู้รายคน (SSE + ชิปอ้างอิง)
-        คนละประวัติกับแชทร่าง Phase 0–1
+        คนละประวัติกับแชทร่าง Phase 2
       </p>
       <ol>
         <li>ซ้าย: รายการห้องย่อ (ชื่อ · ข้อความล่าสุด · เวลา) — สร้าง เปลี่ยนชื่อ ลบได้</li>
-        <li>แนบไฟล์เข้าคลังส่วนตัว (Mongo) แล้วถามด้วย RAG + กราฟกฎหมาย</li>
+        <li>แนบไฟล์เข้าคลังส่วนตัวแล้วเห็นข้อความสำเร็จ/ล้มเหลวจากผล ingest — ถามด้วย RAG + กราฟกฎหมาย — ลบ/ดูได้ที่ฐานความรู้</li>
         <li>สลับแหล่งค้น: คลังกลาง / ของฉัน / ทั้งคู่</li>
         <li>ระหว่างรอมีจุดพิมพ์ · ข้อความแสดงเวลาเมื่อ API ส่งมา</li>
       </ol>
@@ -452,7 +452,7 @@ function ChatTab() {
             <td>
               <code>draft_intake</code>
             </td>
-            <td>Phase 0–1 ของโครงการ</td>
+            <td>Phase 2 ของโครงการ</td>
             <td>เอกสารชุดร่าง + กฎหมายอ้างอิง</td>
           </tr>
         </tbody>
@@ -461,7 +461,7 @@ function ChatTab() {
         ถ้าคำตอบว่างหรือไม่มี citation — รัน <code>python -m app.seed_raw_docs</code> และตรวจ Mongo + Neo4j
         healthy
       </p>
-      <Figure src="/help/13-kb-chat.png" alt="ถาม-ตอบ" caption="หน้าถาม-ตอบ — ห้องคลังความรู้พร้อม citations" />
+      <Figure src="/help/13-kb-chat.png" alt="ถาม-ตอบ" caption="หน้าถาม-ตอบ — แนบไฟล์เข้าคลังของฉันแล้วถามด้วย RAG" />
     </GuideBlock>
   );
 }
@@ -476,12 +476,13 @@ function KbTab() {
       </p>
       <ul className="list-disc space-y-1 pl-5">
         <li>
-          เจ้าหน้าที่: อัปโหลด <strong>เอกสารของฉัน</strong> ที่ <code>/knowledge-base</code> (เฉพาะบัญชีนี้)
+          เจ้าหน้าที่: ดูคลังกลาง + เอกสารของฉันด้านบนสุดที่ <code>/knowledge-base</code> — แสดงสถานะประมวลผลและหมวด
+          (รวม <strong>ข้อมูลอื่น ๆ</strong>) ลบ/ดาวน์โหลดได้เฉพาะของตัวเอง ไม่แชร์ข้ามคน
         </li>
         <li>ผู้ดูแล: อัปโหลดคลังกลางที่หน้าฐานความรู้ (จัดการ)</li>
         <li>ยังแนบไฟล์เข้าคลังส่วนตัวจากหน้าถาม-ตอบได้</li>
       </ul>
-      <Figure src="/help/11-knowledge-base.png" alt="ฐานความรู้" caption="หน้าฐานความรู้ฝั่งเจ้าหน้าที่" />
+      <Figure src="/help/11-knowledge-base.png" alt="ฐานความรู้" caption="หน้าฐานความรู้ — เอกสารของฉันด้านบน พร้อมสถานะประมวลผลและหมวด" />
       <Figure src="/help/17-admin-kb.png" alt="คลังผู้ดูแล" caption="ฐานความรู้ฝั่งผู้ดูแล (คลังกลาง)" />
     </GuideBlock>
   );
@@ -493,20 +494,21 @@ function ReviewTab() {
       <p>มีสองเส้นทาง:</p>
       <ol>
         <li>
-          <strong>ในโครงการ Phase 3</strong> — Rule Engine (ผ่านเมื่อคะแนน ≥ 70) + ข้อเสนอแนะ ReviewAgent
+          <strong>ในโครงการ Phase 4</strong> — Rule Engine (ผ่านเมื่อคะแนน ≥ 70) + ข้อเสนอแนะ ReviewAgent
         </li>
         <li>
           <strong>
             หน้า <code>/review</code>
           </strong>{" "}
-          — ตรวจไฟล์ TOR ภายนอก โดยไม่ต้องสร้างโครงการ · อ้างอิงกฎหมายบังคับ · เทียบเคียงไฟล์อื่นด้วยความคล้ายข้อความ
+          — ตรวจไฟล์ TOR ภายนอก โดยไม่ต้องสร้างโครงการ · สามขั้น: เลือกไฟล์ → สกัดข้อความ → ยืนยันเริ่มตรวจสอบ · อ้างอิงกฎหมายบังคับ · เทียบเคียงไฟล์อื่นด้วยความคล้ายข้อความ
         </li>
       </ol>
       <p>
         คะแนนต่ำกว่า 70 = ยังไม่ผ่านเกณฑ์เบื้องต้น · น้ำหนักหลัก: กฎหมาย 40% · ความครบ 30% · ความสอดคล้อง 20% ·
         รูปแบบ 10%
       </p>
-      <Figure src="/help/12-standalone-review.png" alt="ตรวจสอบ TOR" caption="หน้าตรวจสอบ TOR ภายนอก" />
+      <Figure src="/help/12-standalone-review.png" alt="ตรวจสอบ TOR" caption="หน้าตรวจสอบ TOR — ขั้น 1 เลือกไฟล์ ปุ่มสกัดข้อความยังกดไม่ได้" />
+      <Figure src="/help/12a-review-detail.png" alt="ผลตรวจสอบ" caption="ขั้น 2–3 — ตัวอย่างข้อความที่สกัดได้ คะแนน Rule Engine หลังยืนยันเริ่มตรวจสอบ" />
     </GuideBlock>
   );
 }
@@ -680,7 +682,7 @@ function FaqTab() {
       </p>
       <p className="rounded-md bg-slate-50 p-2 text-slate-800">
         การตั้งค่าโมเดลและคลังความรู้เป็นหน้าที่<strong>ผู้ดูแล</strong> — เจ้าหน้าที่ใช้เมนูร่าง TOR /
-        ตรวจสอบ / ถาม-ตอบ เท่านั้น (ไม่มีเมนู Agent API บนหน้าจอผู้ใช้)
+        ตรวจสอบ / ถาม-ตอบ บนหน้าจอหลักเท่านั้น
       </p>
       <DocLinks />
     </GuideBlock>

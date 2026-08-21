@@ -24,11 +24,15 @@ class KBCategory(StrEnum):
     Req 11.4: Supported source types for the knowledge base.
     """
 
-    LAW = "law"  # พ.ร.บ. 2560
+    LAW = "law"  # พ.ร.บ. / กฎหมาย
     REGULATION = "regulation"  # กฎกระทรวง
-    GUIDELINE = "guideline"  # ระเบียบกระทรวงการคลัง / หนังสือกรมบัญชีกลาง
+    GUIDELINE = "guideline"  # ระเบียบกระทรวงการคลัง
+    CIRCULAR = "circular"  # หนังสือเวียนกรมบัญชีกลาง
+    PRICE_ANNOUNCEMENT = "price_announcement"  # ประกาศราคากลาง
     MANUAL = "manual"  # คู่มือปฏิบัติงาน
-    EXAMPLE_TOR = "example_tor"  # example TOR documents
+    EXAMPLE_TOR = "example_tor"  # ตัวอย่าง TOR
+    TEMPLATE = "template"  # แม่แบบ
+    OTHER = "other"  # อื่น ๆ
 
 
 class KBFileType(StrEnum):
@@ -134,7 +138,7 @@ class KBUploadRequest(BaseModel):
 
     category: KBCategory = Field(
         ...,
-        description="Document category (law, regulation, guideline, manual, example_tor)",
+        description="Document category such as law, circular, or template",
     )
     name: Optional[str] = Field(
         default=None,

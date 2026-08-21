@@ -36,6 +36,94 @@ def test_document_is_visible_global_and_owner_only():
     ) is False
 
 
+def test_hybrid_post_filter_drops_other_owner_hits():
+    from app.providers.base import SearchResult
+    from app.rag.hybrid import _chunk_from_hit
+
+    foreign = SearchResult(
+        id="1",
+        text="ของคนอื่น",
+        score=0.9,
+        metadata={"owner_id": str(USER_B), "source_document": "secret.pdf"},
+    )
+    mine = SearchResult(
+        id="2",
+        text="ของฉัน",
+        score=0.8,
+        metadata={"owner_id": str(USER_A), "source_document": "mine.pdf"},
+    )
+    shared = SearchResult(
+        id="3",
+        text="กฎหมายกลาง",
+        score=0.7,
+        metadata={"owner_id": None, "source_document": "law.pdf"},
+    )
+    assert _chunk_from_hit(foreign, user_id=USER_A, search_scope="both") is None
+    assert _chunk_from_hit(mine, user_id=USER_A, search_scope="mine") is not None
+    assert _chunk_from_hit(shared, user_id=USER_A, search_scope="mine") is None
+    assert _chunk_from_hit(shared, user_id=USER_A, search_scope="both") is not None
+
+
+def test_mine_scope_returns_only_user_docs():
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_A, search_scope="mine"
+    ) is True
+    assert document_is_visible(
+        document_owner_id=None, viewer_id=USER_A, search_scope="mine"
+    ) is False
+
+
+def test_mine_scope_excludes_other_users():
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_B, search_scope="mine"
+    ) is False
+
+
+def test_both_scope_includes_baseline_and_user():
+    assert document_is_visible(
+        document_owner_id=None, viewer_id=USER_A, search_scope="both"
+    ) is True
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_A, search_scope="both"
+    ) is True
+    assert document_is_visible(
+        document_owner_id=USER_B, viewer_id=USER_A, search_scope="both"
+    ) is False
+
+
+def test_global_scope_excludes_user_docs():
+    assert document_is_visible(
+        document_owner_id=None, viewer_id=USER_A, search_scope="global"
+    ) is True
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_A, search_scope="global"
+    ) is False
+
+
+def test_officer_a_sees_own_private_file_officer_b_does_not():
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_A, search_scope="mine"
+    ) is True
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_A, search_scope="both"
+    ) is True
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_B, search_scope="mine"
+    ) is False
+    assert document_is_visible(
+        document_owner_id=USER_A, viewer_id=USER_B, search_scope="both"
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_graph_expand_mine_without_owner_is_empty():
+    driver = _FakeDriver()
+    store = GraphRAGStore(driver)
+    rows = await store.expand(query_text="งวดจ่าย", search_scope="mine", owner_id=None)
+    assert rows == []
+    assert driver.session_obj.calls == []
+
+
 class _FakeCursor:
     def __init__(self, rows: list[dict]):
         self._rows = rows

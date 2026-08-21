@@ -1,7 +1,7 @@
 """Smoke tests for standalone review and admin users routers."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -82,6 +82,42 @@ def test_standalone_review_extract_empty_file():
     )
     app.dependency_overrides.clear()
     assert response.status_code == 400
+
+
+def test_standalone_review_extract_then_run_with_id():
+    from app.api.v1.endpoints.standalone_review import _REVIEW_JOBS
+
+    user = _user("officer")
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    async def mock_db():
+        yield MagicMock()
+
+    app.dependency_overrides[get_db] = mock_db
+    client = TestClient(app, raise_server_exceptions=False)
+    job_id = None
+    extracted_result = MagicMock()
+    extracted_result.text = "1. ความเป็นมา\nโครงการทดสอบระบบจัดซื้อจัดจ้าง"
+    try:
+        with patch(
+            "app.api.v1.endpoints.standalone_review.extract_text",
+            return_value=extracted_result,
+        ):
+            extracted = client.post(
+                "/api/v1/review/extract",
+                files={"file": ("tor.txt", b"tor body content", "text/plain")},
+            )
+        assert extracted.status_code == 200
+        job_id = extracted.json()["data"]["id"]
+        assert extracted.json()["data"]["extracted_text"]
+        ran = client.post("/api/v1/review/run", json={"id": job_id})
+        assert ran.status_code == 200
+        assert "quality_score" in ran.json()["data"]
+        assert ran.json()["data"]["status"] == "completed"
+    finally:
+        if job_id:
+            _REVIEW_JOBS.pop(job_id, None)
+        app.dependency_overrides.clear()
 
 
 def test_compare_projects_requires_two_ids():

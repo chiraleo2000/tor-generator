@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     ai_queue,
     auth,
     chat,
+    draft_chat,
     drafting,
     export,
     files,
@@ -37,6 +38,7 @@ wizard_router.include_router(wizard.router)
 drafting_router = APIRouter(prefix=PROJECTS_PREFIX, tags=["drafting"])
 drafting_router.include_router(drafting.router)
 drafting_router.include_router(intake.router)
+drafting_router.include_router(draft_chat.router)
 review_router = APIRouter(prefix=PROJECTS_PREFIX, tags=["review"])
 review_router.include_router(review.router)
 export_router = APIRouter(prefix=PROJECTS_PREFIX, tags=["export"])

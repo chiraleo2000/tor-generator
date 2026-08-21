@@ -22,7 +22,7 @@ class KnowledgeBaseDocument(Base):
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     category: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # law|regulation|guideline|manual|example_tor
+    )  # law|regulation|guideline|circular|price_announcement|manual|example_tor|template|other
     file_type: Mapped[str] = mapped_column(
         String(20), nullable=False
     )  # pdf|docx|txt

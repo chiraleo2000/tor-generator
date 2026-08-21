@@ -6,10 +6,10 @@ import { canSelectPhase } from "@/lib/phase-gate";
 
 export const PHASES = [
   { id: 0, title: "เตรียมข้อมูล", sub: "Pre-Drafting" },
-  { id: 1, title: "วิเคราะห์ความต้องการ", sub: "Analysis" },
-  { id: 2, title: "ร่างเนื้อหา TOR", sub: "Drafting 13 หมวด" },
-  { id: 3, title: "ทบทวน/อนุมัติ", sub: "Review & Approval" },
-  { id: 4, title: "เผยแพร่", sub: "Publishing" },
+  { id: 1, title: "ผลวิเคราะห์", sub: "Analysis" },
+  { id: 2, title: "สอบถามเพิ่ม", sub: "Q&A + กฎระเบียบ" },
+  { id: 3, title: "ร่างเนื้อหา TOR", sub: "Drafting 13 หมวด" },
+  { id: 4, title: "ทบทวน/เผยแพร่", sub: "Review & Publish" },
 ] as const;
 
 export function PhaseFlow({
@@ -33,6 +33,7 @@ export function PhaseFlow({
               type="button"
               aria-label={`Phase ${phase.id}`}
               aria-disabled={locked}
+              aria-current={active ? "step" : undefined}
               data-testid={`phase-${phase.id}`}
               onClick={() => {
                 if (locked) return;
@@ -40,7 +41,8 @@ export function PhaseFlow({
               }}
               className={cn(
                 "flex-1 text-center",
-                locked && "cursor-not-allowed opacity-40"
+                locked && "cursor-not-allowed opacity-40",
+                active && "scale-110"
               )}
             >
               <span

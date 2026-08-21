@@ -107,6 +107,8 @@ class GraphRAGStore:
         owner_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return neighbouring graph nodes visible under the RAG ACL."""
+        if search_scope == "mine" and not owner_id:
+            return []
         allow_global = search_scope in {"both", "global"}
         owner = owner_id if search_scope != "global" else None
         visibility = (

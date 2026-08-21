@@ -45,20 +45,20 @@ describe("StandaloneReviewPage", () => {
     vi.clearAllMocks();
   });
 
-  it("shows an alert when review fails", async () => {
+  it("shows an alert when extract fails", async () => {
     vi.mocked(extractReviewFile).mockRejectedValue({
       response: { data: { error: { message: "ไฟล์ว่างเปล่า" } } },
     });
     render(<StandaloneReviewPage />);
     fireEvent.click(screen.getAllByTestId("review-upload")[0]);
-    fireEvent.click(screen.getByRole("button", { name: "เริ่มตรวจสอบ TOR" }));
+    fireEvent.click(screen.getByTestId("review-extract"));
     expect(await screen.findByRole("alert")).toHaveTextContent("ไฟล์ว่างเปล่า");
   });
 
-  it("shows a warning score when Rule Engine is below 70", async () => {
+  it("extracts first, then runs after confirm", async () => {
     vi.mocked(extractReviewFile).mockResolvedValue({
       id: "job-1",
-      extracted_text: "ร่าง",
+      extracted_text: "ร่าง TOR ทดสอบ",
     });
     vi.mocked(extractCompareFiles).mockResolvedValue([]);
     vi.mocked(compareExtractJobs).mockResolvedValue({ comparisons: [] });
@@ -70,8 +70,52 @@ describe("StandaloneReviewPage", () => {
     } as never);
     render(<StandaloneReviewPage />);
     fireEvent.click(screen.getAllByTestId("review-upload")[0]);
-    fireEvent.click(screen.getByRole("button", { name: "เริ่มตรวจสอบ TOR" }));
+    fireEvent.click(screen.getByTestId("review-extract"));
+    expect(await screen.findByTestId("review-extract-preview")).toHaveTextContent(
+      "ร่าง TOR ทดสอบ"
+    );
+    expect(apiClient.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("review-confirm-run"));
     expect(await screen.findByText("คะแนนความพร้อม 40/100")).toBeInTheDocument();
+    expect(screen.getByTestId("review-result")).toBeInTheDocument();
     expect(screen.getByText("ตรวจเสร็จ — ยังไม่ผ่านเกณฑ์ 70 (40/100)")).toBeInTheDocument();
+  });
+
+  it("goes back from preview without running the rule engine", async () => {
+    vi.mocked(extractReviewFile).mockResolvedValue({
+      id: "job-1",
+      extracted_text: "ร่าง TOR ทดสอบ",
+    });
+    render(<StandaloneReviewPage />);
+    fireEvent.click(screen.getAllByTestId("review-upload")[0]);
+    fireEvent.click(screen.getByTestId("review-extract"));
+    expect(await screen.findByTestId("review-extract-preview")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("review-back"));
+    expect(screen.queryByTestId("review-extract-preview")).not.toBeInTheDocument();
+    expect(screen.getByTestId("review-extract")).toBeInTheDocument();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
+  it("shows a 20k-character extract preview with an ellipsis when longer", async () => {
+    const longText = `${"ก".repeat(20050)}ท้าย`;
+    vi.mocked(extractReviewFile).mockResolvedValue({
+      id: "job-long",
+      extracted_text: longText,
+    });
+    render(<StandaloneReviewPage />);
+    fireEvent.click(screen.getAllByTestId("review-upload")[0]);
+    fireEvent.click(screen.getByTestId("review-extract"));
+    const preview = await screen.findByTestId("review-extract-preview");
+    expect(preview.textContent).toContain("…");
+    expect(preview.textContent?.includes("ท้าย")).toBe(false);
+  });
+
+  it("does not extract until the user starts extract", () => {
+    render(<StandaloneReviewPage />);
+    expect(screen.getByTestId("review-extract")).toBeDisabled();
+    expect(extractReviewFile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByTestId("review-upload")[0]);
+    expect(extractReviewFile).not.toHaveBeenCalled();
+    expect(screen.getByTestId("review-extract")).toBeEnabled();
   });
 });

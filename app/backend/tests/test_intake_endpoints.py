@@ -143,7 +143,7 @@ def test_confirm_ready_rejects_reference_only_facts(client, mock_officer_user):
 
 
 @patch("app.api.v1.endpoints.intake.apply_slot_map_to_sections", new_callable=AsyncMock)
-def test_confirm_ready_sets_phase_two(apply_sections, client, mock_officer_user):
+def test_confirm_ready_sets_phase_three(apply_sections, client, mock_officer_user):
     slots = empty_slot_map()
     for key in FACT_REQUIRED_SLOTS:
         slots[key] = {
@@ -165,9 +165,10 @@ def test_confirm_ready_sets_phase_two(apply_sections, client, mock_officer_user)
     )
     assert response.status_code == 200
     assert response.json()["data"]["ready_to_compose"] is True
-    assert project.current_phase >= 2
+    assert project.current_phase >= 3
     assert project.analysis_json["ready_to_compose"] is True
     apply_sections.assert_awaited()
+    mock_db.commit.assert_awaited()
 
 
 @patch("app.api.v1.endpoints.intake.ingest_file_bytes", new_callable=AsyncMock)
@@ -189,3 +190,360 @@ def test_intake_text_appends_pack(ingest_mock, client, mock_officer_user):
     ingest_mock.assert_awaited()
     texts = project.extracted_fields["intake_texts"]
     assert texts[0]["text"].startswith("โครงการทดสอบ")
+
+
+def test_confirm_phase4_sets_phase_four(client, mock_officer_user):
+    slots = empty_slot_map()
+    for key in FACT_REQUIRED_SLOTS:
+        slots[key] = {
+            "content": "ข้อมูลข้อเท็จจริงของโครงการทดสอบ",
+            "status": "filled",
+            "sources": ["ผู้ใช้ตอบในแชท"],
+        }
+    project = _make_project(
+        analysis={"slot_map": slots, "ready_to_compose": True},
+        phase=3,
+    )
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/confirm-phase4",
+        json={"confirm": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["phase4_confirmed"] is True
+    assert project.current_phase >= 4
+    assert project.analysis_json["phase4_confirmed"] is True
+    mock_db.commit.assert_awaited()
+
+
+def test_confirm_phase4_requires_ready(client, mock_officer_user):
+    project = _make_project(phase=3)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/confirm-phase4",
+        json={"confirm": True},
+    )
+    assert response.status_code == 400
+
+
+def test_fill_references_requires_analyze(client, mock_officer_user):
+    project = _make_project()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/fill-references")
+    assert response.status_code == 400
+
+
+@patch("app.api.v1.endpoints.intake.hybrid_retrieve", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.intake.ProviderFactory")
+def test_intake_chat_streams_and_fills_gap(
+    factory, retrieve, client, mock_officer_user, monkeypatch
+):
+    from app.rag.retrieval import RetrievalResult
+
+    slots = empty_slot_map()
+    slots["s1"] = {"content": "", "status": "gap", "sources": []}
+    project = _make_project(analysis={"slot_map": slots, "gap_questions": ["ขอชื่อโครงการ"]})
+    room = MagicMock()
+    room.id = uuid.uuid4()
+    room.user_id = USER_ID
+    room.kind = "draft_intake"
+    room.project_id = PROJECT_ID
+    room.title = "ร่าง"
+    room.updated_at = datetime(2026, 8, 18, tzinfo=timezone.utc)
+    room.messages = []
+
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    room_result = MagicMock()
+    room_result.scalar_one_or_none.return_value = room
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(side_effect=[project_result, room_result])
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    persist = AsyncMock()
+    persist.add = MagicMock()
+    persist.commit = AsyncMock()
+    persist_result = MagicMock()
+    persist_result.scalar_one.return_value = project
+    persist.execute = AsyncMock(return_value=persist_result)
+
+    class _CM:
+        async def __aenter__(self):
+            return persist
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(app.state, "db_session_factory", lambda: _CM(), raising=False)
+
+    chunk = MagicMock()
+    chunk.source_document = "คลัง"
+    chunk.text = "อ้างอิงกฎหมาย"
+    retrieve.return_value = (
+        RetrievalResult(chunks=[chunk], query="q", top_k=5, actual_count=1),
+        [{"label": "พ.ร.บ."}],
+        False,
+    )
+
+    async def fake_stream(*_args, **_kwargs):
+        yield "รับ"
+        yield "ทราบ"
+
+    mock_llm = MagicMock()
+    mock_llm.stream = fake_stream
+    factory.return_value.get_llm.return_value = mock_llm
+
+    with client.stream(
+        "POST",
+        f"/api/v1/projects/{PROJECT_ID}/intake/chat",
+        json={"content": "ความเป็นมาคือกรมบัญชีกลางต้องมีระบบบริหารสัญญาจัดซื้อจัดจ้างภาครัฐ"},
+    ) as response:
+        body = b"".join(response.iter_bytes()).decode("utf-8")
+
+    assert response.status_code == 200
+    assert "event: token" in body
+    assert "event: done" in body
+
+
+@patch("app.api.v1.endpoints.intake.analyze_pack", new_callable=AsyncMock)
+def test_analyze_with_pack_advances_phase(analyze_mock, client, mock_officer_user):
+    slots = empty_slot_map()
+    slots["s1"] = {"content": "โครงการจัดซื้อ", "status": "filled", "sources": []}
+    analyze_mock.return_value = {
+        "slot_map": slots,
+        "gap_questions": ["ขอวงเงิน"],
+        "ready_to_compose": False,
+        "analyzed": True,
+    }
+    project = _make_project()
+    project.extracted_fields = {
+        "intake_texts": [{"name": "ข้อความผู้ใช้.txt", "text": "โครงการทดสอบวงเงิน"}],
+    }
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/analyze")
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["analyzed"] is True
+    assert project.current_phase >= 1
+    analyze_mock.assert_awaited()
+
+
+@patch("app.api.v1.endpoints.intake.extract_text")
+@patch("app.api.v1.endpoints.intake.ingest_file_bytes", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.intake.unlink_path", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.intake.write_temp_bytes", new_callable=AsyncMock)
+def test_intake_upload_does_not_analyze(
+    write_tmp, unlink_mock, ingest_mock, extract_mock, client, mock_officer_user
+):
+    extracted = MagicMock()
+    extracted.text = "เนื้อหาไฟล์โครงการจัดซื้อ"
+    extracted.method = "direct"
+    extract_mock.return_value = extracted
+    write_tmp.return_value = "tmp.bin"
+    project = _make_project()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/upload",
+        files={"files": ("pack.txt", b"hello pack", "text/plain")},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["count"] == 1
+    ingest_mock.assert_awaited()
+    analyze_mock_calls = getattr(project, "analysis_json", {}) or {}
+    assert analyze_mock_calls.get("analyzed") is not True
+
+
+def test_confirm_ready_requires_confirm_flag(client, mock_officer_user):
+    slots = empty_slot_map()
+    for key in FACT_REQUIRED_SLOTS:
+        slots[key] = {
+            "content": "ข้อมูลข้อเท็จจริงของโครงการทดสอบ",
+            "status": "filled",
+            "sources": ["ผู้ใช้ตอบในแชท"],
+        }
+    project = _make_project(analysis={"slot_map": slots}, phase=1)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/confirm-ready",
+        json={"confirm": False},
+    )
+    assert response.status_code == 400
+
+
+@patch("app.api.v1.endpoints.intake.fill_non_fact_reference_slots", new_callable=AsyncMock)
+def test_fill_references_returns_coverage(fill_mock, client, mock_officer_user):
+    slots = empty_slot_map()
+    slots["s3"] = {
+        "content": "คุณสมบัติตาม พ.ร.บ. 2560",
+        "status": "reference_only",
+        "sources": ["พ.ร.บ."],
+    }
+    fill_mock.return_value = {"filled_keys": ["s3"], "slot_map": slots}
+    project = _make_project(analysis={"analyzed": True, "slot_map": empty_slot_map()}, phase=1)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/fill-references")
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["filled_keys"] == ["s3"]
+    keys = [row["key"] for row in body["coverage"]]
+    assert "s3" in keys
+    fill_mock.assert_awaited()
+
+
+@patch("app.api.v1.endpoints.intake.fill_reference_slot", new_callable=AsyncMock)
+def test_fill_reference_single_slot(fill_mock, client, mock_officer_user):
+    fill_mock.return_value = {
+        "content": "อ้างอิงระเบียบกระทรวงการคลัง",
+        "sources": ["ระเบียบ"],
+    }
+    project = _make_project(analysis={"analyzed": True, "slot_map": empty_slot_map()}, phase=1)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/fill-reference",
+        json={"slot_key": "s10"},
+    )
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["slot_key"] == "s10"
+    assert "อ้างอิงระเบียบ" in body["content"]
+    fill_mock.assert_awaited()
+
+
+def test_fill_reference_rejects_unknown_slot(client, mock_officer_user):
+    project = _make_project(analysis={"analyzed": True}, phase=1)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/fill-reference",
+        json={"slot_key": "not-a-slot"},
+    )
+    assert response.status_code == 400
+
+
+def test_open_qa_seeds_brief_from_phase1(client, mock_officer_user):
+    slots = empty_slot_map()
+    slots["s1"] = {
+        "content": "กรมบัญชีกลางจัดซื้อระบบบริหารสัญญา",
+        "status": "filled",
+        "sources": [],
+    }
+    project = _make_project(
+        analysis={"slot_map": slots, "analyzed": True, "gap_questions": ["ขอวงเงิน"]},
+        phase=1,
+    )
+    room = MagicMock()
+    room.id = uuid.uuid4()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    room_result = MagicMock()
+    room_result.scalar_one_or_none.return_value = room
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(side_effect=[project_result, room_result])
+    mock_db.add = MagicMock()
+    mock_db.commit = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-qa")
+    assert response.status_code == 200
+    brief = response.json()["data"]["brief"]
+    assert "กรมบัญชีกลางจัดซื้อระบบบริหารสัญญา" in brief
+    assert "สวัสดี" in brief
+    mock_db.add.assert_called()
+    mock_db.commit.assert_awaited()
+    assert project.analysis_json["phase2_briefed"] is True
+
+    mock_db.add.reset_mock()
+    mock_db.commit.reset_mock()
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            MagicMock(scalar_one_or_none=MagicMock(return_value=project)),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=room)),
+        ]
+    )
+    again = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-qa")
+    assert again.status_code == 200
+    mock_db.add.assert_not_called()
+
+
+def test_open_qa_requires_analyze(client, mock_officer_user):
+    project = _make_project()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-qa")
+    assert response.status_code == 400
+
+
+def test_open_draft_seeds_phase3_brief(client, mock_officer_user):
+    project = _make_project(analysis={"analyzed": True}, phase=3)
+    room = MagicMock()
+    room.id = uuid.uuid4()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    room_result = MagicMock()
+    room_result.scalar_one_or_none.return_value = room
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(side_effect=[project_result, room_result])
+    mock_db.add = MagicMock()
+    mock_db.commit = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-draft")
+    assert response.status_code == 200
+    assert "13 หมวด" in response.json()["data"]["brief"]
+    mock_db.commit.assert_awaited()
+    assert project.analysis_json["phase3_opened"] is True

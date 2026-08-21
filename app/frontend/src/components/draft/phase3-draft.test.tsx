@@ -1,0 +1,236 @@
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { Phase3Draft } from "@/components/draft/phase3-draft";
+import type { SectionPayload } from "@/components/draft/draft-types";
+
+const s1: SectionPayload = {
+  key: "s1",
+  title: "ความเป็นมา",
+  filled: true,
+  content: JSON.stringify({ body: "โครงการจัดซื้อระบบคอมพิวเตอร์" }),
+  human_confirmed: false,
+  hitl: false,
+  matchStatus: "matched",
+};
+
+const s3: SectionPayload = {
+  key: "s3",
+  title: "คุณสมบัติของผู้เสนอราคา",
+  filled: false,
+  content: "",
+  human_confirmed: false,
+  hitl: true,
+  matchStatus: "partial",
+};
+
+const s4: SectionPayload = {
+  key: "s4",
+  title: "ขอบเขตของงาน",
+  filled: false,
+  content: "",
+  human_confirmed: false,
+  hitl: false,
+  matchStatus: "partial",
+  big: true,
+  subs: [
+    { key: "s4.1", title: "สรุปขอบเขตงาน", content: "พัฒนาโมดูล", filled: true },
+  ],
+};
+
+describe("Phase3Draft", () => {
+  it("renders sections, drafts with AI, and confirms", async () => {
+    const onDraft = vi.fn();
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    const onExpand = vi.fn();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <Phase3Draft
+        sections={[s1]}
+        expanded=""
+        openSub=""
+        extracted={{ project_name: "โครงการทดสอบ" }}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={onExpand}
+        onOpenSub={vi.fn()}
+        onSave={onSave}
+        onDraft={onDraft}
+        onBack={vi.fn()}
+        onConfirm={onConfirm}
+      />
+    );
+    expect(screen.getByTestId("phase3-draft")).toHaveTextContent("Phase 3");
+    fireEvent.click(screen.getByRole("button", { name: /หมวด 1: ความเป็นมา/ }));
+    expect(onExpand).toHaveBeenCalledWith("s1");
+    fireEvent.click(screen.getByTestId("phase3-confirm"));
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
+  it("expands a section to show AI draft and HITL confirm", () => {
+    const onDraft = vi.fn();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <Phase3Draft
+        sections={[s3]}
+        expanded="s3"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo="ร่างแล้ว"
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={onSave}
+        onDraft={onDraft}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    fireEvent.click(screen.getByTestId("draft-ai-s3"));
+    expect(onDraft).toHaveBeenCalledWith("s3");
+    fireEvent.click(screen.getByTestId("hitl-confirm-s3"));
+    expect(onSave).toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("save-section-s3"));
+    expect(onSave).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens a scope subsection and reports errors while busy", () => {
+    const onOpenSub = vi.fn();
+    const onBack = vi.fn();
+    render(
+      <Phase3Draft
+        sections={[s4]}
+        expanded="s4"
+        openSub="s4.1"
+        extracted={{}}
+        busy
+        actionError="ร่างด้วย AI ไม่สำเร็จ"
+        actionInfo="กำลังร่างด้วย AI..."
+        onExpand={vi.fn()}
+        onOpenSub={onOpenSub}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={onBack}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("ร่างด้วย AI ไม่สำเร็จ");
+    fireEvent.click(screen.getByRole("button", { name: /สรุปขอบเขตงาน/ }));
+    expect(onOpenSub).toHaveBeenCalledWith("");
+    fireEvent.click(screen.getByTestId("phase2-back"));
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it("renders unfilled sections and plain-text content", () => {
+    const onExpand = vi.fn();
+    render(
+      <Phase3Draft
+        sections={[
+          {
+            ...s1,
+            filled: false,
+            content: "ข้อความร่างแบบไม่ใช่ JSON",
+          },
+        ]}
+        expanded="s1"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={onExpand}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByText("รอร่าง")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /หมวด 1: ความเป็นมา/ }));
+    expect(onExpand).toHaveBeenCalledWith("");
+  });
+
+  it("edits number and select fields", () => {
+    const s6: SectionPayload = {
+      key: "s6",
+      title: "วงเงินงบประมาณ",
+      filled: true,
+      content: JSON.stringify({ budgetAmount: "5000000" }),
+      human_confirmed: false,
+      hitl: true,
+      matchStatus: "matched",
+    };
+    const s11: SectionPayload = {
+      key: "s11",
+      title: "หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ",
+      filled: false,
+      content: "",
+      human_confirmed: false,
+      hitl: false,
+      matchStatus: "partial",
+    };
+    const { rerender } = render(
+      <Phase3Draft
+        sections={[s6]}
+        expanded="s6"
+        openSub=""
+        extracted={{ budget: 5000000 }}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByDisplayValue("5000000")).toBeInTheDocument();
+    rerender(
+      <Phase3Draft
+        sections={[s11]}
+        expanded="s11"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "เกณฑ์ราคา (Price)" },
+    });
+    expect(screen.getByRole("combobox")).toHaveValue("เกณฑ์ราคา (Price)");
+  });
+
+  it("treats JSON arrays as raw body text", () => {
+    render(
+      <Phase3Draft
+        sections={[{ ...s1, content: "[1,2]", filled: true }]}
+        expanded="s1"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByTestId("phase3-draft")).toBeInTheDocument();
+  });
+});

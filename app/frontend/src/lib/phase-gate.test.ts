@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSelectPhase, displayPhase, intakeUnlockedPhase } from "@/lib/phase-gate";
+import { canSelectPhase, displayPhase, hasIntakeMaterial, intakeUnlockedPhase } from "@/lib/phase-gate";
 
 describe("phase-gate", () => {
   it("stays at phase 0 when the project has no text or files", () => {
@@ -8,41 +8,51 @@ describe("phase-gate", () => {
     expect(displayPhase(2, 0)).toBe(0);
   });
 
-  it("unlocks phase 1 after pasted text or uploads", () => {
+  it("does not unlock analysis until the user starts it", () => {
+    expect(
+      hasIntakeMaterial({
+        extractedFields: { intake_texts: [{ name: "ข้อความผู้ใช้.txt", text: "โครงการทดสอบวงเงิน" }] },
+      })
+    ).toBe(true);
     expect(
       intakeUnlockedPhase({
         extractedFields: { intake_texts: [{ name: "ข้อความผู้ใช้.txt", text: "โครงการทดสอบวงเงิน" }] },
       })
-    ).toBe(1);
-    expect(canSelectPhase(0, 1, 1)).toBe(true);
-    expect(canSelectPhase(0, 1, 2)).toBe(false);
+    ).toBe(0);
+    expect(canSelectPhase(0, 0, 1)).toBe(false);
   });
 
-  it("unlocks phase 2 only after ready_to_compose", () => {
+  it("unlocks Q&A (phase 2) after analysis, not compose", () => {
     expect(
       intakeUnlockedPhase({
-        analysisJson: { ready_to_compose: true, intake_files: [{ name: "pack.pdf" }] },
+        analysisJson: { analyzed: true, slot_map: { s1: { status: "gap", content: "" } } },
       })
     ).toBe(2);
     expect(canSelectPhase(1, 2, 2)).toBe(true);
-    expect(canSelectPhase(2, 2, 3)).toBe(true);
+    expect(canSelectPhase(2, 2, 3)).toBe(false);
     expect(canSelectPhase(2, 2, 4)).toBe(false);
   });
 
-  it("unlocks phase 1 from uploaded files or a filled fact slot", () => {
+  it("unlocks draft (phase 3) only after ready_to_compose", () => {
     expect(
       intakeUnlockedPhase({
-        analysisJson: { intake_files: [{ name: "pack.pdf" }] },
+        analysisJson: { ready_to_compose: true, analyzed: true, intake_files: [{ name: "pack.pdf" }] },
       })
-    ).toBe(1);
-    expect(
-      intakeUnlockedPhase({
-        analysisJson: { slot_map: { s1: { status: "filled", content: "โครงการทดสอบ" } } },
-      })
-    ).toBe(1);
+    ).toBe(3);
+    expect(canSelectPhase(2, 3, 3)).toBe(true);
+    expect(canSelectPhase(3, 3, 4)).toBe(false);
   });
 
-  it("clamps a saved phase 1 display back to 0 when intake is empty", () => {
+  it("unlocks phase 4 only after explicit confirm", () => {
+    expect(
+      intakeUnlockedPhase({
+        analysisJson: { ready_to_compose: true, phase4_confirmed: true },
+      })
+    ).toBe(4);
+    expect(canSelectPhase(3, 4, 4)).toBe(true);
+  });
+
+  it("clamps a saved phase display back when intake is empty", () => {
     expect(displayPhase(1, 0)).toBe(0);
     expect(displayPhase(0, 0)).toBe(0);
     expect(canSelectPhase(0, 0, -1)).toBe(false);

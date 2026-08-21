@@ -2,7 +2,7 @@
 
 โฟลเดอร์นี้คือ **แอปที่รันจริงเท่านั้น** อย่าวาง PDF งานวิจัย, extracts กฎหมาย, หรือบันทึกออกแบบที่นี่
 
-แอปปัจจุบันเป็นกระบวนการร่าง **5 Phase (0–4)** ที่ `/projects/{id}/draft` ไม่ใช่วิซาร์ด 8 ขั้น
+แอปปัจจุบันเป็นกระบวนการร่าง **5 Phase (0–4)** ที่ `/projects/{id}/draft` ไม่ใช่วิซาร์ด 8 ขั้น — Phase 0 `Phase0Upload` (กดเริ่มวิเคราะห์) → Phase 1 `Phase1Coverage` → Phase 2 `Phase2Qa` → Phase 3 `Phase3Draft` → Phase 4 `Phase4Review` + `Phase4Export` ผ่าน `ConfirmPhaseDialog`
 
 | เส้นทาง | หน้าที่ |
 |---------|---------|
@@ -41,6 +41,6 @@ python -m app.seed_db
 python -m app.seed_raw_docs
 ```
 
-ตรวจสด 20 ส.ค. 2026: เครื่องมือร่าง TOR / ตรวจสอบ TOR / ถาม-ตอบ ใช้งานได้จริงบนสแตก Docker + LM Studio — รายละเอียดใน [../Discussions/18-TEST_EVIDENCE.md](../Discussions/18-TEST_EVIDENCE.md)
+ตรวจสด 21 ส.ค. 2026: เครื่องมือร่าง TOR / ตรวจสอบ TOR / ถาม-ตอบ / ฐานความรู้ของฉัน ใช้งานได้จริงบนสแตก Docker + LM Studio — รายละเอียดใน [../Discussions/18-TEST_EVIDENCE.md](../Discussions/18-TEST_EVIDENCE.md)
 
 ทดสอบพร้อม coverage: ดูคำสั่งใน [README.md](../README.md) ที่รากรีโป

@@ -3,7 +3,7 @@
 
 > **แอปที่รันจริงตอนนี้ใช้ Docker + FastAPI + Next.js**  
 > ติดตั้งตาม `14-INSTALLATION.md` ไม่ใช้ไฟล์ HTML ด้านล่างเป็น runtime  
-> คู่มือผู้ใช้ปัจจุบัน: `13-USER_GUIDELINE.md`  
+> คู่มือผู้ใช้ปัจจุบัน: `13-USER_GUIDELINE.md` (ภาพ Playwright 21 ส.ค. 2026)  
 > เดโม UX/UI ที่คลิกได้: https://chiraleo2000.github.io/tor-generator/ (`index.html` ที่ราก) — ไม่ใช่ `06-UXUI-Mockup.html`
 
 ---

@@ -32,7 +32,7 @@ def _category_for(name: str) -> str:
         return "guideline"
     if "คู่มือ" in name:
         return "manual"
-    return "guideline"
+    return "other"
 
 
 def _file_type_for(mime_type: str) -> str:

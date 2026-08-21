@@ -1,0 +1,96 @@
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { Phase2Qa } from "@/components/draft/phase2-qa";
+
+vi.mock("@/components/draft/draft-conversation", () => ({
+  DraftConversation: () => <div data-testid="draft-conversation" />,
+}));
+
+const coverage = [
+  {
+    key: "s1",
+    label: "ความเป็นมา",
+    status: "filled",
+    filled: true,
+    fact_required: true,
+    preview: "กรมบัญชีกลางจัดซื้อระบบบริหารสัญญา",
+  },
+  {
+    key: "s10",
+    label: "อัตราค่าปรับ",
+    status: "gap",
+    filled: false,
+    fact_required: false,
+  },
+];
+
+const baseProps = {
+  projectId: "p1",
+  ready: false,
+  busy: false,
+  fillingRefs: false,
+  message: null as string | null,
+  isError: false,
+  apiBase: "/api/v1",
+  onConfirmReady: vi.fn(),
+  onChatReady: vi.fn(),
+};
+
+describe("Phase2Qa", () => {
+  it("keeps confirm disabled until required facts are filled", () => {
+    render(
+      <Phase2Qa
+        {...baseProps}
+        coverage={[
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "gap",
+            filled: false,
+            fact_required: true,
+          },
+        ]}
+      />
+    );
+    expect(screen.getByTestId("intake-confirm-ready")).toBeDisabled();
+    expect(screen.getByText(/ยังขาด ชื่อโครงการ/)).toBeInTheDocument();
+    expect(screen.queryByText("ตารางความครบถ้วน")).not.toBeInTheDocument();
+    expect(screen.getByTestId("draft-conversation")).toBeInTheDocument();
+  });
+
+  it("shows Phase 1 fact chips and confirms without a form table", () => {
+    const onConfirmReady = vi.fn();
+    const { rerender } = render(
+      <Phase2Qa {...baseProps} coverage={coverage} fillingRefs onConfirmReady={onConfirmReady} />
+    );
+    expect(screen.getByTestId("phase2-filling-refs")).toHaveTextContent("กำลังดึงกฎระเบียบ");
+    expect(screen.getByTestId("coverage-row-s1")).toHaveAttribute("data-status", "filled");
+    expect(screen.getByTestId("coverage-row-s1")).toHaveTextContent("กรมบัญชีกลาง");
+    rerender(
+      <Phase2Qa
+        {...baseProps}
+        coverage={coverage}
+        ready
+        fillingRefs={false}
+        message="ดึงกฎระเบียบแล้ว"
+        onConfirmReady={onConfirmReady}
+      />
+    );
+    expect(screen.queryByText("ดึงอ้างอิงกฎหมาย")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("intake-confirm-ready"));
+    expect(onConfirmReady).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("ยืนยันพร้อมร่างแล้ว")).toBeInTheDocument();
+  });
+
+  it("shows an error alert", () => {
+    render(
+      <Phase2Qa
+        {...baseProps}
+        coverage={[]}
+        message="ยังไม่ครบช่องข้อเท็จจริงที่บังคับ"
+        isError
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("ยังไม่ครบช่องข้อเท็จจริงที่บังคับ");
+  });
+});
