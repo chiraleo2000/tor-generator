@@ -628,9 +628,9 @@ async def llm_draft(state: TORDraftState) -> TORDraftState:
     try:
         from app.providers.factory import ProviderFactory
 
-        # Get LLM provider via factory
+        # Get LLM provider via factory (task selects draft routing; SonarLint S930 false positive)
         factory = ProviderFactory()
-        llm = factory.get_llm("draft")
+        llm = factory.get_llm("draft")  # NOSONAR python:S930 — ProviderFactory.get_llm(task=...)
         agent_timeout = state.get("agent_timeout_seconds", LLM_TIMEOUT_SECONDS)
         try:
             draft_content = await _draft_section_with_agent(

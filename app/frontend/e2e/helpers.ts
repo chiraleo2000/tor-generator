@@ -278,8 +278,7 @@ export async function walkLiveFivePhases(page: Page) {
   await saveEvidence(page, "07a-phase-4-reviewing");
   await expect(page.getByTestId("phase4-rule-score")).toBeVisible({ timeout: 360_000 });
   // Keep ASCII digits [0-9] (not \\d) — same convention as backend date/money regexes.
-  // NOSONAR: typescript:S6353 — [0-9] required; S8786 — bounded quantifier avoids backtracking
-  await expect(page.getByTestId("phase4-rule-score")).toContainText(/[0-9]{1,3}\/100/);
+  await expect(page.getByTestId("phase4-rule-score")).toContainText(/[0-9]{1,3}\/100/); // NOSONAR typescript:S6353 — [0-9] required; S8786 bounded quantifier
   await typeLikeUser(
     page.getByTestId("review-chat-input"),
     "สรุปผลการตรวจจาก Rule Engine"
