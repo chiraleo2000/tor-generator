@@ -1,6 +1,6 @@
 [project]
 name = "tor-drafting-app"
-version = "0.2.3"
+version = "0.2.4"
 description = "TOR Drafting and Review Application - Backend API"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -62,7 +62,8 @@ markers = [
 ]
 
 [tool.coverage.run]
-omit = ["app/seed_db.py", "app/seed_kb.py", "app/seed_raw_docs.py", "app/main.py"]
+relative_files = true
+omit = ["*/seed_db.py", "*/seed_kb.py", "*/seed_raw_docs.py", "*/main.py"]
 
 [tool.ruff]
 target-version = "py311"

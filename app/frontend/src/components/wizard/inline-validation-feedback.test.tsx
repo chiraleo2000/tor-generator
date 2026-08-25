@@ -85,6 +85,19 @@ describe("InlineValidationFeedback", () => {
     expect(screen.getByText("ผ่าน")).toBeInTheDocument();
   });
 
+  it("shows quality score with amber color when score is 50-69", () => {
+    render(
+      <InlineValidationFeedback
+        findings={[]}
+        isValidating={false}
+        qualityScore={60}
+        isValid={true}
+        error={null}
+      />
+    );
+    expect(screen.getByText("60/100")).toBeInTheDocument();
+  });
+
   it("shows quality score with red color when score < 50", () => {
     render(
       <InlineValidationFeedback

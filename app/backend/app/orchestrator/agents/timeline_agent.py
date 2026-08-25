@@ -64,7 +64,6 @@ class TimelineDraftingAgent(BaseDraftingAgent):
         rules and adding guidance notes.
         """
         budget = user_input.get("budget") or user_input.get("งบประมาณ")
-        duration = user_input.get("duration") or user_input.get("ระยะเวลา")
 
         feasibility_notes: list[str] = []
         if budget and isinstance(budget, (int, float)):

@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import {
   Shield,
@@ -75,18 +73,17 @@ export function SuggestionItem({
   onAccept,
   onDismiss,
   isProcessing,
-}: SuggestionItemProps) {
+}: Readonly<SuggestionItemProps>) {
   const config = CATEGORY_CONFIG[suggestion.category];
   const { Icon } = config;
 
   return (
-    <div
+    <article
       className={cn(
         "rounded-lg border p-4 transition-colors",
         config.borderColor,
         config.bgColor
       )}
-      role="article"
       aria-label={`ข้อเสนอแนะ: ${config.label} - ${suggestion.section_key}`}
     >
       {/* Header: category badge + score improvement */}
@@ -154,7 +151,7 @@ export function SuggestionItem({
           ปิด
         </Button>
       </div>
-    </div>
+    </article>
   );
 }
 

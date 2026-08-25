@@ -604,7 +604,8 @@ class TestReviewAgentFullReview:
         """Full review produces suggestions from both passes."""
         mock_llm = AsyncMock()
         mock_llm.invoke = AsyncMock(return_value=MagicMock(
-            content=json.dumps([
+            content=json.dumps({
+                "suggestions": [
                 {
                     "category": "clarity",
                     "section_key": "s4",
@@ -612,7 +613,8 @@ class TestReviewAgentFullReview:
                     "suggested_text": "ขอบเขตงานที่ระบุรายละเอียดชัดเจน",
                     "predicted_score_improvement": 2.5,
                 },
-            ]),
+                ]
+            }),
             usage={"total_tokens": 1000},
         ))
 
@@ -688,7 +690,7 @@ class TestReviewAgentFullReview:
 
         mock_llm = AsyncMock()
         mock_llm.invoke = AsyncMock(return_value=MagicMock(
-            content=json.dumps(many_suggestions),
+            content=json.dumps({"suggestions": many_suggestions}),
             usage={"total_tokens": 2000},
         ))
 
@@ -704,7 +706,7 @@ class TestReviewAgentFullReview:
         """All suggestions have valid categories."""
         mock_llm = AsyncMock()
         mock_llm.invoke = AsyncMock(return_value=MagicMock(
-            content=json.dumps([]),
+            content=json.dumps({"suggestions": []}),
             usage={"total_tokens": 100},
         ))
 
@@ -768,7 +770,7 @@ class TestSectionStateReviewIntegration:
         # Mock LLM
         mock_llm = AsyncMock()
         mock_llm.invoke = AsyncMock(return_value=MagicMock(
-            content=json.dumps([]),
+            content=json.dumps({"suggestions": []}),
             usage={"total_tokens": 100},
         ))
 

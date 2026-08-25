@@ -41,6 +41,9 @@ describe("Phase4Review", () => {
     );
     expect(screen.getByText("ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ")).toBeInTheDocument();
     expect(screen.getByText("ส่งขออนุมัติ / สร้าง TOR")).toBeDisabled();
+    expect(screen.getByTestId("phase4-submit-hint")).toHaveTextContent(
+      "กรอกให้ครบ 13 หมวดก่อนส่งขออนุมัติ"
+    );
   });
 
   it("shows score, findings, suggestions, and runs review", async () => {
@@ -84,7 +87,8 @@ describe("Phase4Review", () => {
     expect(screen.getByText("ความชัดเจน: ระบุหน่วยงานให้ชัด")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("run-review"));
     expect(onReview).toHaveBeenCalled();
-    fireEvent.click(screen.getByText("ส่งขออนุมัติ / สร้าง TOR"));
+    expect(screen.queryByTestId("phase4-submit-hint")).toBeNull();
+    fireEvent.click(screen.getByTestId("phase4-submit"));
     expect(onSubmit).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("phase3-back"));
     expect(onBack).toHaveBeenCalled();

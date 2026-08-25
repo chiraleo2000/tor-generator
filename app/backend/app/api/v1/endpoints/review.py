@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Path, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.constants import PROJECT_NOT_FOUND, PROJECT_UUID_DESC
 from app.domain.section_text import section_plain_text
@@ -50,6 +51,15 @@ from app.schemas.responses import MetaInfo, SuccessResponse
 logger = logging.getLogger("tor_app.review")
 
 router = APIRouter()
+
+
+def persist_analysis_json(project: Project, analysis: dict) -> None:
+    """JSONB assignment + flag_modified; no-op on unit-test mocks (spec=Project)."""
+    project.analysis_json = analysis
+    try:
+        flag_modified(project, "analysis_json")
+    except AttributeError:
+        return
 
 
 def _build_response(request: Request, data: object, status_code: int = 200) -> JSONResponse:
@@ -189,8 +199,15 @@ async def run_review(
         for cs in validation_result.categories
     ]
 
-    # Update project quality_score
+    # Update project quality_score and persist findings for refresh
     project.quality_score = validation_result.quality_score
+    analysis = dict(project.analysis_json or {})
+    analysis["review_score"] = validation_result.quality_score
+    analysis["review_is_valid"] = validation_result.is_valid
+    analysis["review_findings"] = [
+        item.model_dump(mode="json") for item in findings_response
+    ]
+    persist_analysis_json(project, analysis)
     await db.flush()
 
     # Invoke ReviewAgent to generate suggestions (async, best-effort)
@@ -274,7 +291,7 @@ async def _generate_suggestions(
 
     # Get LLM provider
     factory = ProviderFactory()
-    llm = factory.get_llm()
+    llm = factory.get_llm("structured")
 
     # Run the ReviewAgent under admission control
     agent = ReviewAgent()

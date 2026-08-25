@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Toast, ToastType } from '@/types';
+import type { Toast } from '@/types';
 
 export interface UIState {
   theme: 'light' | 'dark';

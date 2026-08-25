@@ -71,7 +71,7 @@ services:
       - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       - LM_STUDIO_MODEL=${LM_STUDIO_MODEL:-google/gemma-4-e4b}
       - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-300m}
-      - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-180}
+      - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-300}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       - LLAMA_CPP_BASE_URL=${LLAMA_CPP_BASE_URL:-http://host.docker.internal:8080/v1}
       - OPENAI_CHAT_MODEL=${OPENAI_CHAT_MODEL:-gpt-4o-mini}
@@ -277,8 +277,13 @@ services:
       - tor_network
 
   # ---------------------------------------------------------------------------
-  # SGLang (optional on-prem multi-user inference) — profile: sglang
-  # Requires NVIDIA Container Toolkit. Production on AWS typically uses Bedrock instead.
+  # SGLang (optional on-prem inference)
+  #   docker compose --profile sglang up            → sglang-llm only (:30000)
+  #   docker compose --profile sglang-embed up      → embeddings only (:30001), re-seed
+  # Requires NVIDIA Container Toolkit. One GPU: do not also load Gemma in LM Studio.
+  # Chat uses sglang-llm when /health is up; otherwise falls back to LM Studio :1234.
+  # Do not start sglang-embed on the same GPU as sglang-llm unless re-seeding vectors.
+  # Production on AWS typically uses Bedrock instead.
   # ---------------------------------------------------------------------------
   sglang-llm:
     image: lmsysorg/sglang:latest-runtime
@@ -301,6 +306,8 @@ services:
       - "30000"
       - --mem-fraction-static
       - "0.75"
+      - --grammar-backend
+      - xgrammar
       - --trust-remote-code
     deploy:
       resources:
@@ -320,7 +327,7 @@ services:
 
   sglang-embed:
     image: lmsysorg/sglang:latest-runtime
-    profiles: [sglang]
+    profiles: [sglang-embed]
     ipc: host
     shm_size: "8gb"
     ports:

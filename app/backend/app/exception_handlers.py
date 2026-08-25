@@ -17,18 +17,21 @@ from app.schemas.responses import ErrorDetail, ErrorResponse, MetaInfo
 
 logger = logging.getLogger("tor_app.errors")
 
+_MSG_REQUIRED = "กรุณากรอกข้อมูลให้ครบถ้วน"
+_MSG_INTEGER = "กรุณาระบุเป็นตัวเลขจำนวนเต็ม"
+_MSG_INVALID = "ข้อมูลไม่ถูกต้อง"
 
 # ---------------------------------------------------------------------------
 # Thai field-level error messages for common Pydantic validation errors
 # ---------------------------------------------------------------------------
 
 _THAI_FIELD_ERRORS: dict[str, str] = {
-    "value_error.missing": "กรุณากรอกข้อมูลให้ครบถ้วน",
+    "value_error.missing": _MSG_REQUIRED,
     "value_error.any_str.min_length": "ข้อมูลสั้นเกินไป",
     "value_error.any_str.max_length": "ข้อมูลยาวเกินไป",
-    "type_error.integer": "กรุณาระบุเป็นตัวเลขจำนวนเต็ม",
+    "type_error.integer": _MSG_INTEGER,
     "type_error.float": "กรุณาระบุเป็นตัวเลข",
-    "type_error.none.not_allowed": "กรุณากรอกข้อมูลให้ครบถ้วน",
+    "type_error.none.not_allowed": _MSG_REQUIRED,
     "value_error.email": "รูปแบบอีเมลไม่ถูกต้อง",
     "value_error.url": "รูปแบบ URL ไม่ถูกต้อง",
     "value_error.number.not_gt": "ค่าต้องมากกว่าค่าต่ำสุดที่กำหนด",
@@ -39,12 +42,12 @@ _THAI_FIELD_ERRORS: dict[str, str] = {
 
 # Mapping for Pydantic V2 error types
 _THAI_TYPE_ERRORS: dict[str, str] = {
-    "missing": "กรุณากรอกข้อมูลให้ครบถ้วน",
+    "missing": _MSG_REQUIRED,
     "string_too_short": "ข้อมูลสั้นเกินไป",
     "string_too_long": "ข้อมูลยาวเกินไป",
-    "int_parsing": "กรุณาระบุเป็นตัวเลขจำนวนเต็ม",
+    "int_parsing": _MSG_INTEGER,
     "float_parsing": "กรุณาระบุเป็นตัวเลข",
-    "value_error": "ข้อมูลไม่ถูกต้อง",
+    "value_error": _MSG_INVALID,
     "enum": "ค่าที่ระบุไม่อยู่ในตัวเลือกที่อนุญาต",
     "string_pattern_mismatch": "รูปแบบข้อมูลไม่ถูกต้อง",
     "too_short": "จำนวนรายการน้อยเกินไป",
@@ -78,7 +81,7 @@ def _translate_validation_type(error_type: str) -> str:
     if error_type in _THAI_FIELD_ERRORS:
         return _THAI_FIELD_ERRORS[error_type]
     # Default
-    return "ข้อมูลไม่ถูกต้อง"
+    return _MSG_INVALID
 
 
 def _build_error_response(
@@ -116,7 +119,7 @@ def _build_error_response(
 # ---------------------------------------------------------------------------
 
 
-async def handle_app_exception(request: Request, exc: AppException) -> JSONResponse:
+def handle_app_exception(request: Request, exc: AppException) -> JSONResponse:
     """Handle custom AppException subclasses."""
     logger.warning(
         "AppException [%s] %s: %s (field=%s)",
@@ -140,7 +143,7 @@ async def handle_app_exception(request: Request, exc: AppException) -> JSONRespo
     )
 
 
-async def handle_request_validation_error(
+def handle_request_validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Handle Pydantic request validation errors with Thai messages."""
@@ -177,19 +180,19 @@ async def handle_request_validation_error(
         request=request,
         status_code=422,
         code="VALIDATION_ERROR",
-        message="กรุณากรอกข้อมูลให้ครบถ้วน",
+        message=_MSG_REQUIRED,
         field=first_field,
         details=field_errors,
     )
 
 
-async def handle_http_exception(
+def handle_http_exception(
     request: Request, exc: StarletteHTTPException
 ) -> JSONResponse:
     """Handle Starlette/FastAPI HTTPException and wrap in standard envelope."""
     # Map common status codes to Thai messages
     status_messages: dict[int, tuple[str, str]] = {
-        400: ("VALIDATION_ERROR", "ข้อมูลไม่ถูกต้อง"),
+        400: ("VALIDATION_ERROR", _MSG_INVALID),
         401: ("AUTH_ERROR", "คุณไม่มีสิทธิ์เข้าถึง"),
         403: ("FORBIDDEN", "คุณไม่มีสิทธิ์ดำเนินการนี้"),
         404: ("NOT_FOUND", "ไม่พบข้อมูลที่ต้องการ"),
@@ -231,7 +234,7 @@ async def handle_http_exception(
     )
 
 
-async def handle_generic_exception(request: Request, exc: Exception) -> JSONResponse:
+def handle_generic_exception(request: Request, exc: Exception) -> JSONResponse:
     """Handle unexpected exceptions with a generic Thai error message.
 
     Never exposes internal error details to the client.

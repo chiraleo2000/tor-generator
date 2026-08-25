@@ -17,6 +17,7 @@ from app.providers.constants import (
     LOCAL_LLM_PROVIDERS,
     SGLANG_DEFAULT_EMBEDDING_URL,
 )
+from app.providers.sglang_health import probe_sglang_health_sync
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -202,11 +203,29 @@ class ProviderFactory:
                 "EMBEDDING_PROVIDER is 'openai_compatible' and requires a base URL."
             )
 
-    def get_llm(self) -> LLMProvider:
+    def get_llm(self, task: str = "chat") -> LLMProvider:
+        """Return an LLM client for chat, draft, or structured JSON tasks.
+
+        ``task`` selects local routing (LM Studio vs SGLang) when on-prem.
+        Call as ``get_llm("draft")`` / ``get_llm("structured")``.
+        """
         provider = _attr(self._settings, "llm_provider", "lm_studio")
         if provider in LOCAL_LLM_PROVIDERS:
-            return self._create_local_llm_provider()
+            return self._create_local_llm_provider(self._local_kind_for_task(task))
         return self._create_cloud_llm_provider(provider)
+
+    def _local_kind_for_task(self, task: str) -> str:
+        configured = _attr(self._settings, "llm_provider", "lm_studio")
+        if configured not in LOCAL_LLM_PROVIDERS:
+            return "lm_studio"
+        if configured == "sglang":
+            return "sglang"
+        if task not in {"chat", "draft", "structured"}:
+            return configured
+        sglang_url = _url_for_local_kind(self._settings, "sglang")
+        if probe_sglang_health_sync(sglang_url):
+            return "sglang"
+        return configured
 
     def get_embedding(self) -> EmbeddingProvider:
         provider = _attr(self._settings, "embedding_provider", "local")
@@ -324,15 +343,15 @@ class ProviderFactory:
             )
         return self._create_openai_embedding_provider()
 
-    def _create_local_llm_provider(self) -> LLMProvider:
+    def _create_local_llm_provider(self, kind: str | None = None) -> LLMProvider:
         from app.providers.llm.lm_studio_provider import LMStudioLocalProvider
 
-        kind = _attr(self._settings, "llm_provider", "lm_studio")
-        if kind not in LOCAL_LLM_PROVIDERS:
-            kind = "lm_studio"
+        resolved = kind or _attr(self._settings, "llm_provider", "lm_studio")
+        if resolved not in LOCAL_LLM_PROVIDERS:
+            resolved = "lm_studio"
         return LMStudioLocalProvider(
-            base_url=_url_for_local_kind(self._settings, kind),
-            model_name=_local_chat_model(self._settings, kind),
+            base_url=_url_for_local_kind(self._settings, resolved),
+            model_name=_local_chat_model(self._settings, resolved),
             timeout=_attr(self._settings, "lm_studio_timeout", 180.0),
         )
 

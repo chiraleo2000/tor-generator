@@ -7,13 +7,72 @@ No data leaves the organization — all inference runs on-premise.
 import logging
 from typing import AsyncIterator
 
-from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 from httpx import Timeout
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 
 from app.config import get_settings
 from app.providers.base import LLMProvider, LLMResponse
 
 logger = logging.getLogger(__name__)
+
+
+def endpoint_supports_guided_json(base_url: str) -> bool:
+    lower = (base_url or "").lower()
+    return "sglang" in lower or ":30000" in lower
+
+
+def thinking_request_kwargs(kwargs: dict) -> dict:
+    """Strip local-only flags; attach SGLang guided_json when requested."""
+    payload = dict(kwargs)
+    schema = payload.pop("json_schema", None)
+    schema_name = str(payload.pop("json_schema_name", "response") or "response")
+    guided = bool(payload.pop("_guided_json", False))
+    if isinstance(schema, dict) and guided:
+        extra = dict(payload.get("extra_body") or {})
+        extra["guided_json"] = schema
+        extra["json_schema_name"] = schema_name
+        payload["extra_body"] = extra
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": schema_name, "schema": schema},
+        }
+    if not payload.pop("disable_thinking", False):
+        return payload
+    extra = dict(payload.get("extra_body") or {})
+    extra["enable_thinking"] = False
+    template = extra.get("chat_template_kwargs")
+    merged = dict(template) if isinstance(template, dict) else {}
+    merged["enable_thinking"] = False
+    extra["chat_template_kwargs"] = merged
+    payload["extra_body"] = extra
+    return payload
+
+
+def message_text(message: object) -> str:
+    """Prefer visible content; Gemma 4 may put JSON only in reasoning fields."""
+    content = getattr(message, "content", None)
+    if isinstance(content, str) and content.strip():
+        return content
+    for attr in ("reasoning_content", "reasoning"):
+        value = getattr(message, attr, None)
+        if isinstance(value, str) and value.strip():
+            return value
+    return content if isinstance(content, str) else ""
+
+
+def delta_text(delta: object) -> str:
+    content = getattr(delta, "content", None)
+    if isinstance(content, str) and content:
+        return content
+    for attr in ("reasoning_content", "reasoning"):
+        value = getattr(delta, attr, None)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _timeout_error(exc: BaseException) -> bool:
+    return isinstance(exc, (TimeoutError, APITimeoutError)) or "Timeout" in type(exc).__name__
 
 
 class LMStudioLocalProvider(LLMProvider):
@@ -46,6 +105,7 @@ class LMStudioLocalProvider(LLMProvider):
             base_url=self._base_url,
             api_key="not-needed",
             timeout=Timeout(self._timeout, connect=10.0),
+            max_retries=0,
         )
 
     async def invoke(
@@ -73,7 +133,12 @@ class LMStudioLocalProvider(LLMProvider):
             request_kwargs: dict = {
                 "model": self._model_name,
                 "messages": messages,
-                **kwargs,
+                **thinking_request_kwargs(
+                    {
+                        **kwargs,
+                        "_guided_json": endpoint_supports_guided_json(self._base_url),
+                    }
+                ),
             }
             request_kwargs.setdefault("max_tokens", 4096)
             if tools:
@@ -85,7 +150,7 @@ class LMStudioLocalProvider(LLMProvider):
             usage = response.usage
 
             return LLMResponse(
-                content=choice.message.content or "",
+                content=message_text(choice.message),
                 model=response.model or self._model_name,
                 usage={
                     "prompt_tokens": usage.prompt_tokens if usage else 0,
@@ -141,23 +206,25 @@ class LMStudioLocalProvider(LLMProvider):
                 model=self._model_name,
                 messages=messages,
                 stream=True,
-                **kwargs,
+                **thinking_request_kwargs(kwargs),
             )
 
             async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-
-        except APITimeoutError as exc:
-            logger.exception(
-                "LM Studio stream timed out after %.1fs",
-                self._timeout,
-            )
-            raise TimeoutError(
-                f"LM Studio did not respond within {self._timeout}s"
-            ) from exc
+                if not chunk.choices:
+                    continue
+                text = delta_text(chunk.choices[0].delta)
+                if text:
+                    yield text
 
         except APIConnectionError as exc:
+            if _timeout_error(exc):
+                logger.exception(
+                    "LM Studio stream timed out after %.1fs",
+                    self._timeout,
+                )
+                raise TimeoutError(
+                    f"LM Studio did not respond within {self._timeout}s"
+                ) from exc
             logger.exception(
                 "Cannot connect to LM Studio at %s",
                 self._base_url,
@@ -166,7 +233,15 @@ class LMStudioLocalProvider(LLMProvider):
                 f"LM Studio endpoint unreachable at {self._base_url}"
             ) from exc
 
-        except Exception:
+        except Exception as exc:
+            if _timeout_error(exc):
+                logger.exception(
+                    "LM Studio stream timed out after %.1fs",
+                    self._timeout,
+                )
+                raise TimeoutError(
+                    f"LM Studio did not respond within {self._timeout}s"
+                ) from exc
             logger.exception("LM Studio stream failed")
             raise
 

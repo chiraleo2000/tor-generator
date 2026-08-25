@@ -106,7 +106,7 @@ function OverviewTab() {
           </tr>
           <tr>
             <td>ตรวจสอบ TOR</td>
-            <td>Phase 3 + <code>/review</code></td>
+            <td>Phase 4 + <code>/review</code></td>
             <td>คะแนน ≥ 70 / findings / suggestions</td>
           </tr>
           <tr>
@@ -354,14 +354,14 @@ function DraftTab() {
             <td>
               <strong>1</strong>
             </td>
-            <td>สรุปสิ่งที่อ่านได้จากเอกสาร (มีข้อความที่ได้) แล้วไปคุยต่อ</td>
-            <td>วิเคราะห์แล้ว → ปลด Phase 2</td>
+            <td>ดูตารางผลวิเคราะห์ แล้วนับถอยหลังสั้น ๆ หรือกด <strong>ไปเลย</strong> — ไม่ดึงกฎหมายอัตโนมัติ</td>
+            <td>ไป Phase 2 อัตโนมัติ (ไม่มีไดอะล็อก)</td>
           </tr>
           <tr>
             <td>
               <strong>2</strong>
             </td>
-            <td>แชทเปิดบทด้วยผล Phase 1 แล้วถามทีละช่อง · ตอบเป็นภาษาพูด ระบบเติมช่องด้านหลัง · ไม่กรอกตาราง</td>
+            <td>ตารางสถานะจาก Phase 1 คู่แชทถามช่องที่ขาด · ตอบเป็นภาษาพูด · ติ๊กแนบอ้างอิงกฎหมายตอนส่งคำตอบเท่านั้น ไม่มีปุ่มต่อแถว</td>
             <td>
               <code>ready_to_compose</code> → ปลด Phase 3
             </td>
@@ -370,14 +370,14 @@ function DraftTab() {
             <td>
               <strong>3</strong>
             </td>
-            <td>ระบบร่างทั้ง 13 หมวดอัตโนมัติ · แก้/ขอร่างใหม่ผ่านแชท · ยืนยัน HITL (s3 s6 s8 s10 s13)</td>
-            <td>ยืนยันด้วยตนเอง → ปลด Phase 4</td>
+            <td>ระบบร่างทั้ง 13 หมวดอัตโนมัติ · แก้/ยอมรับผ่านแชท · ยืนยัน HITL (s3 s6 s8 s10 s13)</td>
+            <td>ร่างครบ 13 หมวด + ยืนยันเอง → ปลด Phase 4</td>
           </tr>
           <tr>
             <td>
               <strong>4</strong>
             </td>
-            <td>Rule Engine (≥ 70) + ข้อเสนอแนะ · ส่งขออนุมัติ · ส่งออก Word/PDF</td>
+            <td>แชทรีวิวสรุปคะแนน/finding · Rule Engine รันอัตโนมัติเมื่อเข้าขั้น · ส่งขออนุมัติ · ส่งออก Word/PDF</td>
             <td>reviewer/admin อนุมัติหรือส่งกลับ · e-Bidding นอกแอป</td>
           </tr>
         </tbody>
@@ -405,14 +405,35 @@ function DraftTab() {
           </tr>
         </tbody>
       </table>
+      <ol>
+        <li>
+          Phase 0: อัปโหลดหรือวางข้อความ แล้วกดเริ่มวิเคราะห์ — ต้องยืนยันในกล่องโต้ตอบ (ยังไม่วิเคราะห์ตอนอัปโหลด)
+        </li>
+        <li>
+          Phase 1: ดูตารางความครบ แล้วนับถอยหลังสั้น ๆ หรือกด <strong>ไปเลย</strong> — ไม่มีไดอะล็อกไป Phase 2 และไม่ดึงกฎหมายอัตโนมัติ
+        </li>
+        <li>
+          Phase 2: ตารางสถานะคู่แชทถามช่องข้อเท็จจริงที่ขาด ถ้าต้องการอ้างอิงกฎหมายให้ติ๊ก{" "}
+          <strong>แนบอ้างอิงกฎหมายประกอบคำตอบนี้</strong> ตอนส่ง แล้วกดพร้อมร่าง
+        </li>
+        <li>
+          Phase 3: ระบบร่าง 13 หมวดอัตโนมัติถ้ายังไม่ครบ — แก้/ยอมรับในแชท ยืนยัน HITL แล้วกด{" "}
+          <strong>ไปทบทวน (Phase 4)</strong>
+        </li>
+        <li>
+          Phase 4: แชทรีวิว + Rule Engine รันอัตโนมัติเมื่อเข้าขั้น ส่งขออนุมัติ และส่งออก Word/PDF
+        </li>
+      </ol>
       <p className="rounded-md bg-amber-50 p-2 text-amber-900">
         อย่าเริ่มจากเมนูร่าง TOR ถ้ายังไม่มีโครงการ — สร้างจากแดชบอร์ดก่อน · หมวด HITL
         ต้องกดยืนยันคนก่อนปุ่มส่งขออนุมัติจะเปิด
       </p>
       <Figure src="/help/03-phase-0-upload.png" alt="Phase 0" caption="Phase 0 — อัปโหลดหรือวางข้อความ แล้วกดเริ่มต้น (ยังไม่วิเคราะห์)" />
-      <Figure src="/help/04b-phase-1-coverage.png" alt="Phase 1" caption="Phase 1 — สรุปสิ่งที่อ่านได้จากเอกสาร แล้วไปคุยต่อในแชท" />
-      <Figure src="/help/08-phase-2-ai-draft.png" alt="Phase 3 AI" caption="Phase 3 — ร่างด้วย AI (Gemma / คลาวด์ตามการตั้งค่า)" />
+      <Figure src="/help/e2e-phase-1-coverage.png" alt="Phase 1" caption="Phase 1 — ตารางผลวิเคราะห์ แล้วไปคุยต่อ Phase 2 อัตโนมัติ" />
+      <Figure src="/help/e2e-phase-2-qa.png" alt="Phase 2" caption="Phase 2 — ตารางสถานะ คู่แชทถามช่องที่ขาด และตัวเลือกแนบอ้างอิงตอนส่งคำตอบ" />
+      <Figure src="/help/e2e-phase-3-draft.png" alt="Phase 3" caption="Phase 3 — ร่าง 13 หมวดด้วยแชท DraftChat และยืนยัน HITL" />
       <Figure src="/help/05b-hitl-confirm.png" alt="HITL" caption="ยืนยัน HITL หมวดเสี่ยง (เช่น หมวด 3)" />
+      <Figure src="/help/e2e-phase-4-review-chat.png" alt="Phase 4" caption="Phase 4 — แชทรีวิว คะแนน Rule Engine และส่งออก" />
     </GuideBlock>
   );
 }
@@ -426,7 +447,10 @@ function ChatTab() {
       </p>
       <ol>
         <li>ซ้าย: รายการห้องย่อ (ชื่อ · ข้อความล่าสุด · เวลา) — สร้าง เปลี่ยนชื่อ ลบได้</li>
-        <li>แนบไฟล์เข้าคลังส่วนตัวแล้วเห็นข้อความสำเร็จ/ล้มเหลวจากผล ingest — ถามด้วย RAG + กราฟกฎหมาย — ลบ/ดูได้ที่ฐานความรู้</li>
+        <li>
+          แนบไฟล์ด้วยไอคอนคลิป — ระบบสร้างห้องถ้ายังไม่มี แล้วแสดงข้อความ ingest เช่น *ถูกเพิ่มเข้าคลังของฉันแล้ว*
+          (หมวดข้อมูลอื่น ๆ) จากนั้นถามด้วย RAG และเปิดดูที่ฐานความรู้ได้
+        </li>
         <li>สลับแหล่งค้น: คลังกลาง / ของฉัน / ทั้งคู่</li>
         <li>ระหว่างรอมีจุดพิมพ์ · ข้อความแสดงเวลาเมื่อ API ส่งมา</li>
       </ol>
@@ -461,7 +485,8 @@ function ChatTab() {
         ถ้าคำตอบว่างหรือไม่มี citation — รัน <code>python -m app.seed_raw_docs</code> และตรวจ Mongo + Neo4j
         healthy
       </p>
-      <Figure src="/help/13-kb-chat.png" alt="ถาม-ตอบ" caption="หน้าถาม-ตอบ — แนบไฟล์เข้าคลังของฉันแล้วถามด้วย RAG" />
+      <Figure src="/help/13-kb-chat.png" alt="ถาม-ตอบ" caption="หน้าถาม-ตอบ — ห้องย่อและแชทคลังความรู้" />
+      <Figure src="/help/13b-chat-attach.png" alt="แนบไฟล์" caption="แนบไฟล์แล้วเห็นข้อความเพิ่มเข้าคลังของฉัน" />
     </GuideBlock>
   );
 }
@@ -494,7 +519,7 @@ function ReviewTab() {
       <p>มีสองเส้นทาง:</p>
       <ol>
         <li>
-          <strong>ในโครงการ Phase 4</strong> — Rule Engine (ผ่านเมื่อคะแนน ≥ 70) + ข้อเสนอแนะ ReviewAgent
+          <strong>ในโครงการ Phase 4</strong> — แชทรีวิว + Rule Engine รันอัตโนมัติเมื่อเข้าขั้น (ผ่านเมื่อคะแนน ≥ 70) + ข้อเสนอแนะ ReviewAgent
         </li>
         <li>
           <strong>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Phase0Upload } from "@/components/draft/phase0-upload";
 import { Phase1Coverage, type CoverageRow } from "@/components/draft/phase1-coverage";
 import { Phase2Qa } from "@/components/draft/phase2-qa";
@@ -37,8 +37,9 @@ export function IntakeChatPanel({
   const [uploadedNames, setUploadedNames] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [fillingRefs, setFillingRefs] = useState(false);
-  const filledRefsFor = useRef<string>("");
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "analyzing" | "done">(
+    "idle"
+  );
   const { ask, dialog } = useConfirmPhase();
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
@@ -64,41 +65,13 @@ export function IntakeChatPanel({
     });
   }, [refreshCoverage]);
 
-  useEffect(() => {
-    if (phase < 1) {
-      filledRefsFor.current = "";
-      return undefined;
-    }
-    if (filledRefsFor.current === projectId) return undefined;
-    filledRefsFor.current = projectId;
-    let cancelled = false;
-    setFillingRefs(true);
-    setMessage("กำลังดึงกฎระเบียบที่เกี่ยวข้อง...");
-    apiClient
-      .post(`/projects/${projectId}/intake/fill-references`)
-      .then(() => {
-        if (cancelled) return undefined;
-        return refreshCoverage();
-      })
-      .then(() => {
-        if (cancelled) return;
-        setMessage("ดึงกฎระเบียบแล้ว — พร้อมไปขั้นถัดไปเมื่อข้อมูลข้อเท็จจริงครบ");
-      })
-      .catch(() => {
-        if (!cancelled) setMessage(null);
-      })
-      .finally(() => {
-        if (!cancelled) setFillingRefs(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, projectId, refreshCoverage]);
-
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
+    const names = Array.from(files).map((file) => file.name);
     setBusy(true);
+    setUploadStatus("uploading");
     setMessage(null);
+    setUploadedNames((prev) => [...prev, ...names]);
     try {
       const body = new FormData();
       for (const file of Array.from(files)) {
@@ -106,15 +79,13 @@ export function IntakeChatPanel({
       }
       await apiClient.post(`/projects/${projectId}/intake/upload`, body);
       setHasPack(true);
-      setUploadedNames((prev) => [
-        ...prev,
-        ...Array.from(files).map((file) => file.name),
-      ]);
-      setMessage("อัปโหลดแล้ว — กดเริ่มวิเคราะห์เมื่อครบชุดเอกสาร (ยังไม่ประมวลผล)");
+      setMessage("อัปโหลดแล้ว — กดเริ่มวิเคราะห์เมื่อครบชุดเอกสาร");
     } catch (err: unknown) {
+      setUploadedNames((prev) => prev.filter((name) => !names.includes(name)));
       setMessage(apiErrorMessage(err, "อัปโหลดไม่สำเร็จ"));
     } finally {
       setBusy(false);
+      setUploadStatus("idle");
     }
   }
 
@@ -133,16 +104,17 @@ export function IntakeChatPanel({
     const confirmed = await ask(PHASE_FORWARD_CONFIRM[1]);
     if (!confirmed) return;
     setBusy(true);
+    setUploadStatus("analyzing");
     setMessage(null);
     try {
       if (draftText.trim().length >= 20) {
         await saveText();
       }
-      await apiClient.post(`/projects/${projectId}/intake/analyze`);
+      await apiClient.post(`/projects/${projectId}/intake/analyze`, {}, { timeout: 90_000 });
       await refreshCoverage();
       onAnalyzed();
-      setMessage("วิเคราะห์แล้ว — ดูผลใน Phase 1 แล้วไปสอบถามเพิ่มใน Phase 2");
     } catch (err: unknown) {
+      setUploadStatus("idle");
       setMessage(apiErrorMessage(err, "วิเคราะห์ไม่สำเร็จ — อัปโหลดหรือวางข้อความก่อน"));
     } finally {
       setBusy(false);
@@ -165,12 +137,6 @@ export function IntakeChatPanel({
     }
   }
 
-  async function enterQa() {
-    const confirmed = await ask(PHASE_FORWARD_CONFIRM[2]);
-    if (!confirmed) return;
-    onEnterQa();
-  }
-
   const canStart = hasPack || draftText.trim().length >= 20;
   const isError = Boolean(message && isIntakeErrorMessage(message));
 
@@ -185,6 +151,7 @@ export function IntakeChatPanel({
           uploadedNames={uploadedNames}
           message={message}
           isError={isError}
+          status={uploadStatus}
           onDraftText={setDraftText}
           onBlurSave={() => {
             if (draftText.trim().length < 20) return;
@@ -204,14 +171,11 @@ export function IntakeChatPanel({
         <Phase1Coverage
           coverage={coverage}
           gaps={gaps}
-          fillingRefs={fillingRefs}
           ready={ready}
           busy={busy}
           message={message}
           isError={isError}
-          onEnterQa={() => {
-            enterQa().catch(() => undefined);
-          }}
+          onEnterQa={onEnterQa}
         />
       ) : null}
       {phase === 2 ? (
@@ -220,7 +184,6 @@ export function IntakeChatPanel({
           coverage={coverage}
           ready={ready}
           busy={busy}
-          fillingRefs={fillingRefs}
           message={message}
           isError={isError}
           apiBase={apiBase}

@@ -9,6 +9,8 @@ from typing import Any
 
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, INTAKE_SLOT_ORDER
 from app.providers.factory import ProviderFactory
+from app.providers.structured_invoke import invoke_with_schema
+from app.schemas.llm_structured import GapQuestionsResult, json_schema_for
 
 logger = logging.getLogger("tor_app.gap_detector")
 
@@ -86,7 +88,7 @@ class GapDetector:
         llm = self._llm
         if llm is None:
             try:
-                llm = ProviderFactory().get_llm()
+                llm = ProviderFactory().get_llm("structured")
             except Exception as exc:
                 logger.warning("Gap question LLM unavailable: %s", exc)
                 return fallback
@@ -94,12 +96,15 @@ class GapDetector:
         meta = project_context or {}
         user = f"โครงการ: {meta.get('name', '')}\nช่องที่ขาด: {labels}"
         try:
-            response = await asyncio.wait_for(
-                llm.invoke(
+            payload = await asyncio.wait_for(
+                invoke_with_schema(
+                    llm,
                     [
                         {"role": "system", "content": QUESTION_PROMPT},
                         {"role": "user", "content": user},
                     ],
+                    json_schema_for(GapQuestionsResult),
+                    "gap_questions",
                     temperature=0.4,
                     max_tokens=2048,
                 ),
@@ -107,12 +112,6 @@ class GapDetector:
             )
         except Exception as exc:
             logger.warning("Gap question generation failed: %s", exc)
-            return fallback
-        from app.rag.graph_extract import parse_json_lenient
-
-        try:
-            payload = parse_json_lenient(getattr(response, "content", "") or "")
-        except ValueError:
             return fallback
         raw = payload.get("questions") if isinstance(payload, dict) else None
         if not isinstance(raw, list):

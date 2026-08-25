@@ -5,7 +5,6 @@ Provides date conversion (Gregorian → Buddhist Era), numeral conversion
 """
 
 from datetime import date, datetime
-from typing import Union
 
 # Thai digit mapping (U+0E50 – U+0E59)
 _ARABIC_TO_THAI: dict[str, str] = {
@@ -68,7 +67,7 @@ def buddhist_era_to_gregorian(year: int) -> int:
 
 
 def format_thai_date(
-    d: Union[date, datetime],
+    d: date | datetime,
     use_thai_numerals: bool = False,
 ) -> str:
     """Format a date in Thai government format: วันที่ DD เดือน MMMM พ.ศ. YYYY.
@@ -120,7 +119,7 @@ def to_arabic_numerals(text: str) -> str:
 
 
 def format_section_number(
-    number: Union[int, str],
+    number: int | str,
     use_thai_numerals: bool = False,
 ) -> str:
     """Format a section number with optional Thai numeral conversion.

@@ -9,7 +9,8 @@ from typing import Any
 
 from app.domain.slots import INTAKE_SLOT_ORDER
 from app.providers.factory import ProviderFactory
-from app.rag.graph_extract import parse_json_lenient
+from app.providers.structured_invoke import invoke_with_schema
+from app.schemas.llm_structured import IntakeAnalyzeResult, IncrementalClassifyResult, json_schema_for
 from app.services.intake_service import ANALYZE_PROMPT, empty_slot_map
 
 logger = logging.getLogger("tor_app.section_mapper")
@@ -93,7 +94,7 @@ class SectionMapper:
     def _llm_client(self) -> Any:
         if self._llm is not None:
             return self._llm
-        return ProviderFactory().get_llm()
+        return ProviderFactory().get_llm("structured")
 
     async def map_content(
         self,
@@ -129,18 +130,20 @@ class SectionMapper:
             f"{content}"
         )
         llm = self._llm_client()
-        response = await asyncio.wait_for(
-            llm.invoke(
+        payload = await asyncio.wait_for(
+            invoke_with_schema(
+                llm,
                 [
                     {"role": "system", "content": ANALYZE_PROMPT},
                     {"role": "user", "content": user},
                 ],
+                json_schema_for(IntakeAnalyzeResult),
+                "intake_analyze",
                 temperature=0.2,
                 max_tokens=8192,
             ),
             timeout=ANALYSIS_TIMEOUT,
         )
-        payload = parse_json_lenient(getattr(response, "content", "") or "")
         incoming = payload.get("slot_map") if isinstance(payload, dict) else None
         return incoming if isinstance(incoming, dict) else {}
 
@@ -188,18 +191,20 @@ class SectionMapper:
     async def _classify(self, answer_text: str, questions: list[str]) -> list[dict[str, Any]]:
         llm = self._llm_client()
         user = f"คำถามล่าสุด: {questions}\n\nคำตอบ: {answer_text}"
-        response = await asyncio.wait_for(
-            llm.invoke(
+        payload = await asyncio.wait_for(
+            invoke_with_schema(
+                llm,
                 [
                     {"role": "system", "content": INCREMENTAL_PROMPT},
                     {"role": "user", "content": user},
                 ],
+                json_schema_for(IncrementalClassifyResult),
+                "intake_incremental",
                 temperature=0.2,
                 max_tokens=2048,
             ),
             timeout=INCREMENTAL_TIMEOUT,
         )
-        payload = parse_json_lenient(getattr(response, "content", "") or "")
         targets = payload.get("targets") if isinstance(payload, dict) else None
         if not isinstance(targets, list):
             return []

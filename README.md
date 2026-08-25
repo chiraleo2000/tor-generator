@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.2.3**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ  
+แอปที่รันจริงคือ **v0.2.4**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ  
 **Production แนะนำ:** Amazon Bedrock (ดู [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md))  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
 
@@ -149,16 +149,16 @@ npm run test:e2e
 npm run test:e2e:headed
 ```
 
-ชุดล่าสุดบนโฮสต์ (**21 ส.ค. 2026**):
+ชุดล่าสุดบนโฮสต์ (**24 ส.ค. 2026**):
 
-ตรวจสด 4 เครื่องมือเจ้าหน้าที่บน Docker `tor-app` + LM Studio (`google/gemma-4-e4b` + EmbeddingGemma): ร่าง TOR (Phase 0 กดเริ่มวิเคราะห์ + `draft-section` s1), ตรวจสอบ TOR (`/review` extract แล้วยืนยันรัน), ถาม-ตอบ (`/chat` SSE + แนบคลัง `category=other`), ฐานความรู้ของฉัน (อัปโหลด/ดาวน์โหลด `GET .../mine/{id}/file` /ลบ)
+`npm run test:e2e:headed` เปิด Chromium ให้เห็นจริง (slowMo 400ms) ทั้ง **21 เคส** บน Docker `:3000` + LM Studio — รวมล็อกอิน แดชบอร์ด แอดมิน คู่มือทุกแท็บ ฐานความรู้ ตรวจ TOR ถาม-ตอบ แนบไฟล์คลัง วิซาร์ด Phase 0–4 และร่าง Gemma
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm"` | **1500 ผ่าน**, 0 ข้าม · coverage **86%** |
-| pytest `-m live_llm` | **14 ผ่าน** (ต้องมี LM Studio :1234) รวม `test_live_realistic_workflow.py` |
-| Vitest `npm run test:unit` | **167 ผ่าน** (39 ไฟล์) |
-| Playwright `test:e2e:headed` (1 worker, Docker :3000, slowMo 400ms) | **20 ผ่าน** / 0 ล้ม รวม `realistic-flow.spec.ts` |
+| pytest `-m "not live_llm"` | **1533 ผ่าน** · cov **85%** |
+| pytest `-m live_llm` | **14 ผ่าน** |
+| Vitest `npm run test:coverage` | **177 ผ่าน** / 42 ไฟล์ · lines **82.36%** |
+| Playwright `test:e2e:headed` | **21 ผ่าน** / 0 ล้ม (~4.7 นาที · เบราว์เซอร์โชว์บนจอ) |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
 

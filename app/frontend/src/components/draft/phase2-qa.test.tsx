@@ -28,7 +28,6 @@ const baseProps = {
   projectId: "p1",
   ready: false,
   busy: false,
-  fillingRefs: false,
   message: null as string | null,
   isError: false,
   apiBase: "/api/v1",
@@ -54,29 +53,25 @@ describe("Phase2Qa", () => {
     );
     expect(screen.getByTestId("intake-confirm-ready")).toBeDisabled();
     expect(screen.getByText(/ยังขาด ชื่อโครงการ/)).toBeInTheDocument();
-    expect(screen.queryByText("ตารางความครบถ้วน")).not.toBeInTheDocument();
+    expect(screen.getByText("รายละเอียดที่จัดเข้าช่อง")).toBeInTheDocument();
     expect(screen.getByTestId("draft-conversation")).toBeInTheDocument();
   });
 
-  it("shows Phase 1 fact chips and confirms without a form table", () => {
+  it("shows the coverage table and confirms without a fill-reference button", () => {
     const onConfirmReady = vi.fn();
-    const { rerender } = render(
-      <Phase2Qa {...baseProps} coverage={coverage} fillingRefs onConfirmReady={onConfirmReady} />
-    );
-    expect(screen.getByTestId("phase2-filling-refs")).toHaveTextContent("กำลังดึงกฎระเบียบ");
-    expect(screen.getByTestId("coverage-row-s1")).toHaveAttribute("data-status", "filled");
-    expect(screen.getByTestId("coverage-row-s1")).toHaveTextContent("กรมบัญชีกลาง");
-    rerender(
+    render(
       <Phase2Qa
         {...baseProps}
         coverage={coverage}
         ready
-        fillingRefs={false}
-        message="ดึงกฎระเบียบแล้ว"
+        message="พร้อมไปร่าง"
         onConfirmReady={onConfirmReady}
       />
     );
+    expect(screen.getByTestId("coverage-row-s1")).toHaveAttribute("data-status", "filled");
+    expect(screen.getByTestId("coverage-row-s1")).toHaveTextContent("กรมบัญชีกลาง");
     expect(screen.queryByText("ดึงอ้างอิงกฎหมาย")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("intake-ref-chips")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("intake-confirm-ready"));
     expect(onConfirmReady).toHaveBeenCalledTimes(1);
     expect(screen.getByText("ยืนยันพร้อมร่างแล้ว")).toBeInTheDocument();

@@ -48,6 +48,62 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _section_done_event(section_key: str, label: str, content: str, drafted_count: int) -> str:
+    return _sse(
+        "section_done",
+        {
+            "section_key": section_key,
+            "title": label,
+            "content": content,
+            "drafted_count": drafted_count,
+            "total": len(TOR_SECTION_ORDER),
+        },
+    )
+
+
+async def _existing_section_text(
+    session_factory: Any,
+    project_id: uuid.UUID,
+    section_key: str,
+) -> str | None:
+    async with session_factory() as persist:
+        row = await _get_section(persist, project_id, section_key)
+        text = (row.content or "").strip() if row else ""
+    return text or None
+
+
+async def _iter_llm_section_sse(
+    redis: Any,
+    request_id: str,
+    section_key: str,
+    slot_map: dict[str, Any],
+    user_id: uuid.UUID,
+    parts: list[str],
+    errors: list[str],
+) -> AsyncIterator[str]:
+    try:
+        async with admit(redis, "llm", f"{request_id}-{section_key}"):
+            async for token in draft_single_section(
+                section_key, slot_map, user_id=user_id
+            ):
+                parts.append(token)
+                yield _sse("token", {"section_key": section_key, "text": token})
+    except AdmissionTimeoutError:
+        errors.append("หมดเวลารอคิว LLM")
+        yield _sse(
+            "section_error",
+            {"section_key": section_key, "message": errors[-1]},
+        )
+    except Exception as exc:
+        logger.exception("Draft failed for %s", section_key)
+        errors.append(str(exc)[:200])
+        yield _sse(
+            "section_error",
+            {"section_key": section_key, "message": errors[-1]},
+        )
+
+
+
 def _ok(request: Request, data: Any) -> JSONResponse:
     payload = SuccessResponse(
         ok=True,
@@ -126,6 +182,12 @@ async def start_draft_chat(
 
         for section_key in TOR_SECTION_ORDER:
             label = TOR_SECTION_LABELS.get(section_key, section_key)
+            existing = await _existing_section_text(session_factory, project_id, section_key)
+            if existing:
+                drafted_count += 1
+                yield _section_done_event(section_key, label, existing, drafted_count)
+                continue
+
             yield _sse(
                 "section_start",
                 {
@@ -135,47 +197,26 @@ async def start_draft_chat(
                     "total": len(TOR_SECTION_ORDER),
                 },
             )
-
             parts: list[str] = []
-            try:
-                async with admit(redis, "llm", f"{request_id}-{section_key}"):
-                    async for token in draft_single_section(
-                        section_key, slot_map, user_id=current_user.id
-                    ):
-                        parts.append(token)
-                        yield _sse("token", {"section_key": section_key, "text": token})
-            except AdmissionTimeoutError:
+            errors: list[str] = []
+            async for event in _iter_llm_section_sse(
+                redis, request_id, section_key, slot_map, current_user.id, parts, errors
+            ):
+                yield event
+            if errors:
+                continue
+            full_text = "".join(parts).strip()
+            if not full_text:
                 yield _sse(
                     "section_error",
-                    {"section_key": section_key, "message": "หมดเวลารอคิว LLM"},
+                    {"section_key": section_key, "message": "โมเดลคืนร่างว่าง"},
                 )
                 continue
-            except Exception as exc:
-                logger.exception("Draft failed for %s", section_key)
-                yield _sse(
-                    "section_error",
-                    {"section_key": section_key, "message": str(exc)[:200]},
-                )
-                continue
-
-            full_text = "".join(parts)
-            # Save to database
             async with session_factory() as persist:
                 await _save_section(persist, project_id, section_key, full_text)
                 await persist.commit()
-
             drafted_count += 1
-            yield _sse(
-                "section_done",
-                {
-                    "section_key": section_key,
-                    "title": label,
-                    "content": full_text,
-                    "drafted_count": drafted_count,
-                    "total": len(TOR_SECTION_ORDER),
-                },
-            )
-            # Small pause between sections to not overwhelm LM Studio
+            yield _section_done_event(section_key, label, full_text, drafted_count)
             await asyncio.sleep(0.5)
 
         yield _sse(
@@ -209,6 +250,16 @@ async def draft_chat_message(
         redis = getattr(request.app.state, "redis", None)
 
         if intent == "accept":
+            if not section_key:
+                yield _sse("error", {"message": "กรุณาระบุหมวดที่ยอมรับ เช่น 'ยอมรับ หมวด 6'"})
+                return
+            async with session_factory() as persist:
+                row = await _get_section(persist, project_id, section_key)
+                if row is None:
+                    yield _sse("error", {"message": f"ยังไม่มีร่างหมวด {section_key}"})
+                    return
+                row.is_approved = True
+                await persist.commit()
             yield _sse("accepted", {"section_key": section_key, "message": "ยอมรับแล้ว"})
             return
 

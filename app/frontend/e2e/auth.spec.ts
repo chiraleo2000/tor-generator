@@ -11,6 +11,7 @@ import {
 
 test.describe("Login", () => {
   // Live Docker stack only. Unit-only CI sets E2E!=1 so this suite is skipped.
+  // NOSONAR: Playwright live-stack spec. Skipped unless E2E=1 (see skipReason in helpers).
   test.skip(skipUnlessLive, skipReason);
 
   test("shows validation when password is missing", async ({ page }) => {
@@ -30,6 +31,7 @@ test.describe("Login", () => {
     await pauseLikeUser(page, 300);
     await page.getByTestId("login-submit").click();
     await expect(page.getByTestId("login-error")).toBeVisible({ timeout: 15_000 });
+    await saveEvidence(page, "00c-login-error");
   });
 
   test("logs in with demo officer account", async ({ page }) => {

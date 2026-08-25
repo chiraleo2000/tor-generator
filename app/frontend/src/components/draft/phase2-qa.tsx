@@ -2,14 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { DraftConversation } from "@/components/draft/draft-conversation";
-import type { CoverageRow } from "@/components/draft/phase1-coverage";
+import { CoverageTable, type CoverageRow } from "@/components/draft/phase1-coverage";
 
 export function Phase2Qa({
   projectId,
   coverage,
   ready,
   busy,
-  fillingRefs,
   message,
   isError,
   apiBase,
@@ -20,7 +19,6 @@ export function Phase2Qa({
   coverage: CoverageRow[];
   ready: boolean;
   busy: boolean;
-  fillingRefs: boolean;
   message: string | null;
   isError: boolean;
   apiBase: string;
@@ -36,19 +34,14 @@ export function Phase2Qa({
       <div className="gov-card">
         <h3 className="text-navy">Phase 2: คุยต่อจากผลวิเคราะห์ — ทีละช่อง</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          บอทเปิดด้วยสิ่งที่อ่านได้จาก Phase 1 แล้วถามทีละช่องที่ยังขาด — ตอบเป็นภาษาพูด ระบบบันทึกด้านหลังเอง ไม่มีตารางกรอก
+          ตารางด้านล่างคือสถานะจาก Phase 1 — บอทจะถามช่องที่ยังขาดทีละข้อ
+          ถ้าต้องการอ้างอิงกฎหมาย ให้ติ๊กตัวเลือกตอนส่งคำตอบ ไม่มีปุ่มดึงให้ล่วงหน้า
         </p>
-        {fillingRefs ? (
-          <p className="mt-2 text-sm text-navy" data-testid="phase2-filling-refs">
-            กำลังดึงกฎระเบียบที่เกี่ยวข้องไว้ด้านหลัง...
-          </p>
-        ) : (
-          <p className="mt-2 text-sm text-navy">
-            {factReady
-              ? "ข้อเท็จจริงหลักครบแล้ว — ยืนยันเมื่อพร้อมไปร่าง TOR"
-              : "ตอบช่องที่บอทถามอยู่ แล้วระบบจะไปช่องถัดไปให้"}
-          </p>
-        )}
+        <p className="mt-2 text-sm text-navy">
+          {factReady
+            ? "ข้อเท็จจริงหลักครบแล้ว — ยืนยันเมื่อพร้อมไปร่าง TOR"
+            : "ตอบช่องที่บอทถามอยู่ แล้วระบบจะไปช่องถัดไปให้"}
+        </p>
         {message ? (
           <p
             className={`mt-2 text-sm ${isError ? "text-destructive" : "text-brand-green"}`}
@@ -59,6 +52,7 @@ export function Phase2Qa({
         ) : null}
       </div>
       <FactStatusChips coverage={facts} />
+      {coverage.length ? <CoverageTable coverage={coverage} gaps={[]} /> : null}
       <Button
         type="button"
         className="mt-1"
@@ -73,7 +67,8 @@ export function Phase2Qa({
         projectId={projectId}
         mode="intake"
         apiBase={apiBase}
-        placeholder="ตอบช่องที่บอทถาม เป็นภาษาพูดได้เลย"
+        placeholder="ตอบช่องที่บอทถามเป็นภาษาพูด"
+        coverage={coverage}
         onCoverage={() => onChatReady()}
       />
     </div>
@@ -87,7 +82,7 @@ function FactStatusChips({ coverage }: Readonly<{ coverage: CoverageRow[] }>) {
       {coverage.map((row) => (
         <span
           key={row.key}
-          data-testid={`coverage-row-${row.key}`}
+          data-testid={`phase2-chip-${row.key}`}
           data-status={row.status}
           title={row.preview || row.label}
           className={

@@ -8,6 +8,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { findingCheckTone, type ReviewFinding } from "@/lib/review-findings";
 import type { ReviewSuggestion } from "@/components/draft/draft-types";
+import { ReviewChat } from "@/components/draft/review-chat";
 
 export function Phase4Review({
   projectId,
@@ -22,6 +23,7 @@ export function Phase4Review({
   onBack,
   onReview,
   onSubmit,
+  onAcceptHitl,
 }: Readonly<{
   projectId: string;
   filledCount: number;
@@ -33,8 +35,9 @@ export function Phase4Review({
   busy: boolean;
   error: string | null;
   onBack: () => void;
-  onReview: () => Promise<void>;
+  onReview: (force?: boolean) => Promise<void>;
   onSubmit: () => Promise<void>;
+  onAcceptHitl?: (sectionKey: string) => Promise<void>;
 }>) {
   const pct = Math.round((filledCount / total) * 100);
   return (
@@ -58,10 +61,12 @@ export function Phase4Review({
         <CheckItem tone="warn" title="ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ" />
       )}
       {score != null ? (
-        <CheckItem
-          tone={score >= 70 ? "pass" : "warn"}
-          title={`คะแนนคุณภาพจาก Rule Engine ${score}/100`}
-        />
+        <div data-testid="phase4-rule-score">
+          <CheckItem
+            tone={score >= 70 ? "pass" : "warn"}
+            title={`คะแนนคุณภาพจาก Rule Engine ${score}/100`}
+          />
+        </div>
       ) : (
         <CheckItem tone="warn" title="ยังไม่ได้รันตรวจสอบ" detail="กดรัน Rule Engine เพื่อตรวจกฎหมาย ความครบถ้วน และความสอดคล้อง" />
       )}
@@ -92,19 +97,44 @@ export function Phase4Review({
         </p>
       ) : null}
       <RequirementsUpload projectId={projectId} />
+      <ReviewChat
+        score={score}
+        findings={findings}
+        busy={busy}
+        onReview={onReview}
+        onAcceptHitl={onAcceptHitl || (async () => undefined)}
+      />
       <div className="mt-4 flex justify-between">
         <Button variant="secondary" onClick={onBack} data-testid="phase3-back">
           ย้อนกลับไปแก้ไข
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onReview} disabled={busy} data-testid="run-review">
+          <Button
+            variant="outline"
+            onClick={() => {
+              onReview(true).catch(() => undefined);
+            }}
+            disabled={busy}
+            data-testid="run-review"
+          >
             {busy ? "กำลังตรวจสอบ..." : "รัน Rule Engine"}
           </Button>
-          <Button onClick={onSubmit} disabled={pct < 100 || !hitlReady || busy}>
+          <Button
+            onClick={onSubmit}
+            disabled={pct < 100 || !hitlReady || busy}
+            data-testid="phase4-submit"
+          >
             ส่งขออนุมัติ / สร้าง TOR
           </Button>
         </div>
       </div>
+      {pct < 100 || !hitlReady ? (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="phase4-submit-hint">
+          {pct < 100
+            ? "กรอกให้ครบ 13 หมวดก่อนส่งขออนุมัติ"
+            : "ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจครบ 5 หมวดก่อนส่ง"}
+        </p>
+      ) : null}
     </div>
   );
 }

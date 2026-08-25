@@ -70,4 +70,46 @@ describe("DraftConversation", () => {
       "/projects/p1/intake/chat"
     );
   });
+
+  it("offers a legal-reference checkbox on send, not chips", async () => {
+    render(
+      <DraftConversation projectId="p1" mode="intake" apiBase="/api/v1" />
+    );
+    await screen.findByTestId("chat-msg-assistant");
+    expect(screen.queryByTestId("intake-ref-chips")).not.toBeInTheDocument();
+    const box = screen.getByTestId("intake-attach-legal") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    fireEvent.change(screen.getByTestId("chat-input"), {
+      target: { value: "วงเงินสองล้านบาท" },
+    });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    await waitFor(() => expect(streamSsePost).toHaveBeenCalled());
+    expect(vi.mocked(streamSsePost).mock.calls[0][1]).toMatchObject({
+      content: "วงเงินสองล้านบาท",
+      attach_legal_reference: true,
+    });
+  });
+
+  it("shows the open-qa brief when the room has no messages yet", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          room_id: "r1",
+          brief: "ขอข้อมูล ความเป็นมา (s1): ความเป็นมาคืออะไร?",
+          coverage: [],
+        },
+      },
+    } as never);
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: { ok: true, data: { messages: [] } },
+    } as never);
+    render(
+      <DraftConversation projectId="p1" mode="intake" apiBase="/api/v1" />
+    );
+    expect(await screen.findByTestId("chat-msg-assistant")).toHaveTextContent(
+      "ขอข้อมูล ความเป็นมา"
+    );
+  });
 });

@@ -8,7 +8,7 @@ interface AuthGuardProps {
   children: React.ReactNode;
 }
 
-export function AuthGuard({ children }: AuthGuardProps) {
+export function AuthGuard({ children }: Readonly<AuthGuardProps>) {
   const router = useRouter();
   const { isAuthenticated, isLoading, restoreSession } = useAuthStore();
 

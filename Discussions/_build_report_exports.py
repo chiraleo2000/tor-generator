@@ -339,7 +339,7 @@ def build_docx(arch: Path, phases: Path) -> None:
         ["เครื่องมือ", "หน้า", "ทำอะไร", "ผลที่ควรเห็น"],
         [
             ["ร่าง TOR", "/projects/{id}/draft", "5 Phase: อัปโหลด → เติมช่อง → ร่าง 13 หมวด (+ AI) → HITL", "มีเนื้อหา s1–s13 พร้อมส่งตรวจ"],
-            ["ตรวจสอบ TOR", "Phase 3 + /review", "Rule Engine ≥ 70 + ReviewAgent · ตรวจไฟล์ภายนอก", "คะแนน / findings / suggestions"],
+            ["ตรวจสอบ TOR", "Phase 4 + /review", "Rule Engine ≥ 70 + ReviewAgent · ตรวจไฟล์ภายนอก", "คะแนน / findings / suggestions"],
             ["ถาม-ตอบ", "/chat", "ห้องคลังความรู้ SSE + citations จาก RAG", "คำตอบยาวพร้อมชิปอ้างอิง"],
         ],
     )
@@ -376,7 +376,7 @@ def build_docx(arch: Path, phases: Path) -> None:
         ["คอมโพเนนต์", "บทบาท"],
         [
             ["DraftWorkspace", "พื้นที่ทำงาน Phase 0–4 ทั้งก้อน"],
-            ["IntakeChatPanel", "แชทร่าง + อัปโหลดชุดเอกสาร (Phase 0–1)"],
+            ["IntakeChatPanel", "แชทร่าง + อัปโหลดชุดเอกสาร (Phase 0–2)"],
             ["ChatShell + MiniRoomList", "โครงห้องแชทแบบย่อ (ถาม-ตอบคลัง)"],
             ["PhaseFlow", "แถบ 5 Phase + ล็อกตามเกต"],
             ["NewProjectDialog", "สร้างโครงการ (ชื่อ หน่วยงาน วงเงิน ASCII ประเภท แม่แบบ)"],
@@ -431,24 +431,24 @@ def build_docx(arch: Path, phases: Path) -> None:
         doc,
         ["Phase", "ผู้ใช้ทำอะไร", "API หลัก", "เกต"],
         [
-            ["0", "สร้างโครงการ แล้วลากไฟล์เข้าแชท", "intake/upload analyze chat", "มีไฟล์หรือข้อความ → ปลด Phase 1"],
-            ["1", "ตารางความครบ ดึงอ้างอิงกฎหมาย กดพร้อมร่าง", "coverage fill-reference confirm-ready", "ready_to_compose → ปลด Phase 2"],
-            ["2", "แก้หรือให้ AI ร่างทีละหมวด ยืนยัน HITL", "sections draft-section", "ครบ 13 + HITL → ปลดส่งตรวจ"],
-            ["3", "ดูคะแนนและข้อค้นพบ แล้วส่งขออนุมัติ", "review submit", "reviewer/admin อนุมัติหรือส่งกลับ"],
-            ["4", "ส่งออก DOCX/PDF เก็บ MinIO", "export", "e-Bidding อยู่นอกแอป"],
+            ["0", "สร้างโครงการ วางข้อความหรืออัปโหลด แล้วกดเริ่มวิเคราะห์", "intake/upload text analyze", "มีเนื้อหา + กดวิเคราะห์ → ปลด Phase 1"],
+            ["1", "ตารางความครบ ดึงกฎหมายครั้งเดียว นับ 10 วินาทีหรือกดไปเลย", "coverage fill-references", "วิเคราะห์แล้ว → ปลด Phase 2 (ไม่มีไดอะล็อก)"],
+            ["2", "ตารางคู่แชทถามช่องที่ขาด ดึงอ้างอิงจากชิป แล้วกดพร้อมร่าง", "chat fill-reference confirm-ready", "ready_to_compose → ปลด Phase 3"],
+            ["3", "ร่าง 13 หมวดอัตโนมัติ ยืนยัน HITL แล้วไปทบทวน", "sections draft-section draft-chat confirm-phase4", "ครบ 13 หมวดร่างแล้ว → ปลด Phase 4"],
+            ["4", "แชทรีวิว Rule Engine อัตโนมัติ ส่งออก DOCX/PDF", "review submit export", "reviewer/admin อนุมัติหรือส่งกลับ"],
         ],
     )
     add_image(doc, EVIDENCE / "03-phase-0-upload.png", "ภาพที่ 5  Phase 0 อัปโหลดชุดเอกสาร")
     add_image(doc, EVIDENCE / "04b-phase-1-coverage.png", "ภาพที่ 6  Phase 1 ตารางความครบ")
-    add_image(doc, EVIDENCE / "05-phase-2-draft.png", "ภาพที่ 7  Phase 2 ร่าง 13 หมวด")
+    add_image(doc, EVIDENCE / "05-phase-2-draft.png", "ภาพที่ 7  Phase 3 ร่าง 13 หมวด")
     add_image(doc, EVIDENCE / "05b-hitl-confirm.png", "ภาพที่ 8  ยืนยัน HITL ก่อนส่งตรวจ")
-    add_image(doc, EVIDENCE / "06-phase-3-review.png", "ภาพที่ 9  Phase 3 Rule Engine")
+    add_image(doc, EVIDENCE / "e2e-phase-4-review-chat.png", "ภาพที่ 9  Phase 4 แชทรีวิวและ Rule Engine")
     add_image(doc, EVIDENCE / "07-phase-4-publish.png", "ภาพที่ 10  Phase 4 ส่งออก Word/PDF")
 
     add_heading(doc, "5.2 กราฟร่างรายหมวด (LangGraph)", 2)
     add_body(
         doc,
-        "ปุ่มร่างด้วย AI ใน Phase 2 เดิน validate_input → retrieve_context (RAG) → llm_draft (เอเจนต์ s1–s13) "
+        "ปุ่มร่างด้วย AI ใน Phase 3 เดิน validate_input → retrieve_context (RAG) → llm_draft (เอเจนต์ s1–s13) "
         "→ rule_guardrail (คะแนน ≥ 70 ผ่าน, ไม่ผ่าน retry สูงสุด 3 ครั้ง) → human_review → finalize  "
         "Timeout ต่อหมวดค่าเริ่มต้น 180 วินาทีสำหรับ LM Studio (สูงสุด 300)",
     )
@@ -524,9 +524,9 @@ def build_docx(arch: Path, phases: Path) -> None:
         [
             ["Auth", "POST /auth/login  GET /auth/me", "คุกกี้ JWT"],
             ["Projects", "GET/POST /projects  PATCH .../phase", "วงจรโครงการ"],
-            ["Intake", ".../intake/upload analyze coverage confirm-ready chat", "Phase 0–1"],
-            ["Draft", "GET/PUT .../sections  POST .../draft-section", "Phase 2"],
-            ["Review / Export", "POST .../review submit export", "Phase 3–4"],
+            ["Intake", ".../intake/upload analyze coverage confirm-ready chat", "Phase 0–2"],
+            ["Draft", "GET/PUT .../sections  POST .../draft-section draft-chat", "Phase 3"],
+            ["Review / Export", "POST .../review submit export", "Phase 4"],
             ["Chat / KB", "/chat/rooms  /knowledge-base/mine", "ถาม-ตอบและคลัง"],
             ["Agent", "POST /agent/sessions", "เส้นขนาน (ยังไม่มีหน้า UI)"],
             ["Admin", "GET/PUT /admin/ai-settings  /admin/users", "ระบบ"],
@@ -855,7 +855,7 @@ def build_pptx(arch: Path, phases: Path) -> None:
         ["เครื่องมือ", "หน้า", "ผลที่ควรเห็น"],
         [
             ["ร่าง TOR", "/projects/{id}/draft · 5 Phase", "เนื้อหา s1–s13 พร้อมส่งตรวจ"],
-            ["ตรวจสอบ TOR", "Phase 3 + /review", "คะแนน ≥70 / findings / suggestions"],
+            ["ตรวจสอบ TOR", "Phase 4 + /review", "คะแนน ≥70 / findings / suggestions"],
             ["ถาม-ตอบ", "/chat (SSE + citations)", "คำตอบยาวพร้อมชิปอ้างอิงจากคลัง"],
         ],
         height=3.0,
@@ -873,7 +873,7 @@ def build_pptx(arch: Path, phases: Path) -> None:
             ["คำขอ", "Browser → /api/v1 (โดเมนเดียว) → rewrite backend:4000 timeout 5 นาที"],
             ["สถานะ", "Zustand: auth / project / ui  ·  JWT ไม่อยู่ใน localStorage"],
             ["ร่าง", "DraftWorkspace คือ UI จริง  ·  วิซาร์ด 8 ขั้นเป็นเส้นเข้ากันได้"],
-            ["เกตเฟส", "phase-gate.ts ล็อก Phase 2 จนกว่า ready_to_compose"],
+            ["เกตเฟส", "phase-gate.ts วิเคราะห์แล้วเลือก Phase 2 ได้ · ready_to_compose ปลด Phase 3"],
             ["แชท", "ChatShell + SSE  ·  kind=kb ที่ /chat  คนละประวัติกับ draft_intake"],
         ],
         height=4.6,
@@ -1023,11 +1023,11 @@ def build_pptx(arch: Path, phases: Path) -> None:
         s,
         ["ฟังก์ชัน", "ผลต่อการใช้งาน"],
         [
-            ["canSelectPhase", "กด Phase 2 ไม่ได้จนกว่าอัปโหลด/ยืนยันพร้อมร่าง"],
+            ["canSelectPhase", "วิเคราะห์แล้วเลือก Phase 2 ได้ · Phase 3 ต้อง ready_to_compose"],
             ["validatePassword", "สมัครได้เมื่อรหัสผ่านครบกฎ (ตัวเลขต้องเป็น ASCII)"],
             ["streamSsePost", "แชทคลังและแชทร่างสตรีมคำตอบ"],
             ["get_agent_for_section", "ปุ่มร่างด้วย AI เรียกเอเจนต์ถูกหมวด"],
-            ["RuleEngine.validate", "Phase 3 ให้คะแนนตาม พ.ร.บ. 2560"],
+            ["RuleEngine.validate", "Phase 4 ให้คะแนนตาม พ.ร.บ. 2560"],
             ["ProviderFactory", "แอดมินผสมแชทคลาวด์กับ embeddings ในเครื่องได้"],
             ["require_project_access", "เจ้าหน้าที่ไม่เห็นโครงการหรือคลังของคนอื่น"],
         ],

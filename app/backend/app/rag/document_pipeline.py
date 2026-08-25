@@ -43,6 +43,11 @@ def _file_type_for(mime_type: str) -> str:
     return "txt"
 
 
+def _should_extract_legal_graph(scope: str) -> bool:
+    """Private officer uploads stay in RAG only — legal GraphRAG is for shared corpora."""
+    return scope != "user"
+
+
 async def ingest_file_bytes(
     *,
     db: AsyncSession,
@@ -114,12 +119,17 @@ async def ingest_file_bytes(
         await unlink_path(tmp_path)
         return doc
 
-    if runtime.neo4j_driver is not None:
+    try:
+        await db.refresh(doc)
+    except Exception:
+        logger.exception("refresh document after ingest failed for %s", filename)
+
+    if _should_extract_legal_graph(scope) and runtime.neo4j_driver is not None:
         try:
             from app.rag.extraction import extract_text
 
             extracted = extract_text(str(tmp_path), mime_type)
-            llm = factory.get_llm()
+            llm = factory.get_llm("structured")
             nodes, rels = await extract_graph_from_text(
                 llm, extracted.text, document_name=filename
             )

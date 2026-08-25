@@ -26,38 +26,96 @@ describe("DraftChat", () => {
       data: {
         ok: true,
         data: {
-          sections: [
-            {
-              section_key: "s1",
-              title: "ความเป็นมา",
-              has_content: true,
-              content_preview: "ร่างหมวด 1",
-              human_confirmed: false,
-            },
-          ],
-          drafted_count: 1,
+          sections: [],
+          drafted_count: 0,
           total: 13,
           all_drafted: false,
         },
       },
     } as never);
-    vi.mocked(streamSsePost).mockImplementation(async (_url, _body, _token, onEvent) => {
-      onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+    vi.mocked(streamSsePost).mockImplementation(async (_url, body, _token, onEvent) => {
+      const key = (body as { section_key?: string }).section_key || "s1";
+      onEvent("section_start", { section_key: key, title: "ความเป็นมา" });
       onEvent("token", { text: "กรม" });
       onEvent("section_done", { content: "กรมบัญชีกลางจัดซื้อระบบ", drafted_count: 1 });
-      onEvent("all_done", { drafted_count: 1 });
     });
   });
 
   it("auto-starts drafting and shows a completed section with actions", async () => {
+    let drafted = false;
+    vi.mocked(apiClient.get).mockImplementation(async () => ({
+      data: {
+        ok: true,
+        data: {
+          sections: [],
+          drafted_count: drafted ? 13 : 0,
+          total: 13,
+          all_drafted: drafted,
+        },
+      },
+    } as never));
+    vi.mocked(streamSsePost).mockImplementation(async (_url, body, _token, onEvent) => {
+      const key = (body as { section_key?: string }).section_key || "s1";
+      onEvent("section_start", { section_key: key, title: "ความเป็นมา" });
+      onEvent("token", { text: "กรม" });
+      onEvent("section_done", { content: "กรมบัญชีกลางจัดซื้อระบบ", drafted_count: 1 });
+      drafted = true;
+    });
     const onSectionDone = vi.fn();
-    render(<DraftChat projectId="p1" onAllDrafted={vi.fn()} onSectionDone={onSectionDone} />);
+    const onAllDrafted = vi.fn();
+    render(<DraftChat projectId="p1" onAllDrafted={onAllDrafted} onSectionDone={onSectionDone} />);
     expect(await screen.findByTestId("draft-chat")).toBeInTheDocument();
     await waitFor(() => expect(streamSsePost).toHaveBeenCalled());
+    expect(vi.mocked(streamSsePost).mock.calls[0][0]).toContain("/draft-chat/message");
     expect(await screen.findByTestId("draft-accept-s1")).toBeInTheDocument();
-    expect(screen.getByText(/ตรวจร่างแต่ละหมวด/)).toBeInTheDocument();
+    expect(screen.getByText(/กำลังเริ่มร่าง TOR ทั้ง 13 หมวด/)).toBeInTheDocument();
+    await waitFor(() => expect(onAllDrafted).toHaveBeenCalled());
     expect(onSectionDone).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("draft-edit-s1"));
     expect(screen.getByTestId("draft-chat-input")).toHaveValue("แก้ไข หมวด 1: ");
+  });
+
+  it("does not restart drafting when all 13 sections already exist", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          sections: [],
+          drafted_count: 13,
+          total: 13,
+          all_drafted: true,
+        },
+      },
+    } as never);
+    const onAllDrafted = vi.fn();
+    render(<DraftChat projectId="p1" onAllDrafted={onAllDrafted} />);
+    await waitFor(() => expect(onAllDrafted).toHaveBeenCalled());
+    expect(streamSsePost).not.toHaveBeenCalled();
+  });
+
+  it("retries a section once when the first stream fails", async () => {
+    let drafted = false;
+    let calls = 0;
+    vi.mocked(apiClient.get).mockImplementation(async () => ({
+      data: {
+        ok: true,
+        data: {
+          sections: [],
+          drafted_count: drafted ? 13 : 0,
+          total: 13,
+          all_drafted: drafted,
+        },
+      },
+    } as never));
+    vi.mocked(streamSsePost).mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error("ตัดการเชื่อมต่อ");
+      }
+      drafted = true;
+    });
+    render(<DraftChat projectId="p1" />);
+    await waitFor(() => expect(calls).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByTestId("draft-chat-count")).toHaveTextContent("13/13");
   });
 });

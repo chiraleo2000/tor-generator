@@ -51,6 +51,9 @@ export function attachIngestFeedback(
   if (status === "completed" || chunks > 0) {
     return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — ใช้ RAG ได้ทันที (${chunks} chunks)`;
   }
+  if (payload.document_id) {
+    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — กำลังจัดทำดัชนี RAG`;
+  }
   return `กำลังประมวลผล «${name}» เข้าคลัง...`;
 }
 

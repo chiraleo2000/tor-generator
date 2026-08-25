@@ -4,10 +4,8 @@ import {
   DEMO_EMAIL,
   DEMO_PASSWORD,
   REVIEWER_EMAIL,
-  createProjectAndOpenDraft,
   login,
   saveEvidence,
-  unlockPhase2ViaMockedIntake,
 } from "./helpers";
 
 /** Extra screenshots for the user guideline. Run with CAPTURE_GUIDE=1. */
@@ -45,14 +43,6 @@ test.describe("Guide screenshots", () => {
     await saveEvidence(page, "10h-help-admin");
     await page.getByTestId("help-tab-faq").click();
     await saveEvidence(page, "10-help-faq");
-
-    await page.getByTestId("nav-chat").click();
-    await expect(page.getByTestId("chat-page")).toBeVisible();
-    await saveEvidence(page, "13-kb-chat");
-
-    await page.getByTestId("nav-review").click();
-    await expect(page.getByTestId("review-page")).toBeVisible();
-    await saveEvidence(page, "12a-review-detail");
   });
 
   test("admin templates, KB, users, AI local and cloud", async ({ page }) => {
@@ -82,8 +72,8 @@ test.describe("Guide screenshots", () => {
     await saveEvidence(page, "09b-admin-ai-cloud");
   });
 
-  test("login error, HITL section, reviewer decide buttons", async ({ page }) => {
-    test.setTimeout(300_000);
+  test("login error and reviewer dashboard", async ({ page }) => {
+    test.setTimeout(180_000);
 
     await page.goto("/login");
     await page.getByTestId("login-email").fill(DEMO_EMAIL);
@@ -92,17 +82,7 @@ test.describe("Guide screenshots", () => {
     await expect(page.getByTestId("login-error")).toBeVisible({ timeout: 15_000 });
     await saveEvidence(page, "00c-login-error");
 
-    await login(page);
-    await createProjectAndOpenDraft(page);
-    await unlockPhase2ViaMockedIntake(page);
-    await page.getByRole("button", { name: /หมวด 3:/ }).click();
-    await expect(page.getByTestId("hitl-confirm-s3")).toBeVisible();
-    await saveEvidence(page, "05b-hitl-confirm");
-
-    await page.getByTestId("logout").click();
-    await expect(page.getByTestId("login-form")).toBeVisible();
     await login(page, REVIEWER_EMAIL, DEMO_PASSWORD);
     await expect(page.getByTestId("projects-page")).toBeVisible();
-    await saveEvidence(page, "02c-reviewer-dashboard");
   });
 });

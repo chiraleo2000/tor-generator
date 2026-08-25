@@ -11,6 +11,7 @@ import {
 vi.mock("@/lib/api-client", () => ({
   apiClient: {
     post: vi.fn(),
+    get: vi.fn(),
   },
 }));
 
@@ -43,6 +44,9 @@ vi.mock("@/components/brand/upload-area", () => ({
 describe("StandaloneReviewPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
+    window.history.replaceState(null, "", "/review");
+    vi.mocked(apiClient.get).mockRejectedValue(new Error("no stored job"));
   });
 
   it("shows an alert when extract fails", async () => {
@@ -76,7 +80,9 @@ describe("StandaloneReviewPage", () => {
     );
     expect(apiClient.post).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("review-confirm-run"));
-    expect(await screen.findByText("คะแนนความพร้อม 40/100")).toBeInTheDocument();
+    expect(await screen.findByTestId("review-score")).toHaveTextContent(
+      "คะแนนความพร้อม 40/100"
+    );
     expect(screen.getByTestId("review-result")).toBeInTheDocument();
     expect(screen.getByText("ตรวจเสร็จ — ยังไม่ผ่านเกณฑ์ 70 (40/100)")).toBeInTheDocument();
   });
@@ -117,5 +123,20 @@ describe("StandaloneReviewPage", () => {
     fireEvent.click(screen.getAllByTestId("review-upload")[0]);
     expect(extractReviewFile).not.toHaveBeenCalled();
     expect(screen.getByTestId("review-extract")).toBeEnabled();
+  });
+
+  it("restores a completed job from sessionStorage after refresh", async () => {
+    sessionStorage.setItem("tor-standalone-review-job", "job-restore");
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: { id: "job-restore", quality_score: 88, findings: [], status: "completed" },
+      },
+    } as never);
+    render(<StandaloneReviewPage />);
+    expect(await screen.findByTestId("review-score")).toHaveTextContent(
+      "คะแนนความพร้อม 88/100"
+    );
+    expect(apiClient.get).toHaveBeenCalledWith("/review/job-restore");
   });
 });

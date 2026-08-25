@@ -52,4 +52,20 @@ describe("ProjectRowActions", () => {
     expect(screen.queryByTestId("approve-project")).toBeNull();
     expect(screen.getByRole("button", { name: "แก้ไข" })).toBeDisabled();
   });
+
+  it("exposes archive-project for an officer draft", () => {
+    const onArchive = vi.fn();
+    render(
+      <ProjectRowActions
+        project={{ ...base, status: "draft" }}
+        role="officer"
+        onView={vi.fn()}
+        onEdit={vi.fn()}
+        onArchive={onArchive}
+        onDecide={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByTestId("archive-project"));
+    expect(onArchive).toHaveBeenCalledTimes(1);
+  });
 });

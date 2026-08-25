@@ -3,8 +3,14 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
   if (!err || typeof err !== "object") {
     return fallback;
   }
-  const response = (err as { response?: { data?: { error?: { message?: unknown } } } })
-    .response;
-  const message = response?.data?.error?.message;
+  const record = err as {
+    code?: string;
+    message?: string;
+    response?: { data?: { error?: { message?: unknown } } };
+  };
+  if (record.code === "ECONNABORTED" || /timeout/i.test(record.message ?? "")) {
+    return "หมดเวลารอโมเดล — วางข้อความที่มีรหัสช่อง เช่น (s1): แล้วกดวิเคราะห์อีกครั้ง";
+  }
+  const message = record.response?.data?.error?.message;
   return typeof message === "string" && message.trim() ? message : fallback;
 }

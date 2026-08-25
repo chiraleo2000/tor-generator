@@ -1,6 +1,6 @@
 # รายงานการทำงานของแอป TOR Generator
 
-**เวอร์ชัน 0.2.3** · วันที่จัดทำ **21 สิงหาคม 2026**  
+**เวอร์ชัน 0.2.3** · วันที่จัดทำ **24 สิงหาคม 2026**  
 แหล่งความจริง: โค้ดใน `app/frontend` + `app/backend` และผล unit tests ที่รันจริงในวันเดียวกัน
 
 แอปนี้ช่วยเจ้าหน้าที่พัสดุ**ร่างและตรวจ TOR** (ขอบเขตของงาน) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 โดยบังคับโครง 13 ส่วน (`s1`–`s13`) รับชุดเอกสาร จัดเข้าช่อง ตรวจด้วย Rule Engine แล้วยืนยันหมวดเสี่ยงด้วยคน ก่อนส่งออก Word/PDF รูปแบบราชการ
@@ -25,7 +25,7 @@
 | AI ค่าเริ่มต้น (dev) | แชท `google/gemma-4-e4b` · ฝังเวกเตอร์ EmbeddingGemma 768 มิติ · ในเครื่องผ่าน LM Studio |
 | AI production แนะนำ | Amazon Bedrock บนบัญชี AWS — คู่มือ `20-AWS_BEDROCK_SETUP.md` · ตัวเลือก on-prem/cloud อื่นสลับได้จาก Admin |
 | บทบาท | `officer` / `reviewer` / `admin` |
-| เทสต์รอบนี้ | **Vitest 167** · **pytest 1500** (+ **live_llm 14**) · **Playwright headed 20** + guide **3** · **0 failed** |
+| เทสต์รอบนี้ | **Vitest 177** · **pytest 1533** (+ **live_llm 14**) · **Playwright headed 21** + guide **3** + reports **3** · **0 failed** |
 
 ```mermaid
 flowchart LR
@@ -73,7 +73,7 @@ JWT อยู่ในคุกกี้ HttpOnly `tor_access_token` (`SameSite=
 | เครื่องมือ | หน้า | ทำอะไร | ผลที่ควรเห็น |
 |-----------|------|--------|-------------|
 | **ร่าง TOR** | `/projects/{id}/draft` | 5 Phase: อัปโหลด → เติมช่อง → ร่าง 13 หมวด (+ AI) → HITL | มีเนื้อหา s1–s13 พร้อมส่งตรวจ |
-| **ตรวจสอบ TOR** | Phase 3 ในโครงการ + `/review` | Rule Engine ≥ 70 + ข้อเสนอแนะ ReviewAgent · ตรวจไฟล์ภายนอก | คะแนน / findings / suggestions |
+| **ตรวจสอบ TOR** | Phase 4 ในโครงการ + `/review` | Rule Engine ≥ 70 + ข้อเสนอแนะ ReviewAgent · ตรวจไฟล์ภายนอก | คะแนน / findings / suggestions |
 | **ถาม-ตอบ** | `/chat` | ห้องคลังความรู้ SSE + citations จาก RAG | คำตอบยาวพร้อมชิปอ้างอิง |
 
 ---
@@ -121,7 +121,7 @@ sequenceDiagram
 | คอมโพเนนต์ | บทบาท |
 |-------------|--------|
 | `DraftWorkspace` | พื้นที่ทำงาน Phase 0–4 ทั้งก้อน |
-| `IntakeChatPanel` | แชทร่าง + อัปโหลดชุดเอกสาร (Phase 0–1) |
+| `IntakeChatPanel` | แชทร่าง + อัปโหลดชุดเอกสาร (Phase 0–2) |
 | `ChatShell` + `MiniRoomList` | โครงห้องแชทแบบย่อ (ถาม-ตอบคลัง) |
 | `PhaseFlow` | แถบ 5 Phase + ล็อกตามเกต |
 | `NewProjectDialog` | สร้างโครงการ (ชื่อ หน่วยงาน วงเงิน ASCII ประเภท แม่แบบ) |
@@ -182,37 +182,39 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  P0["Phase 0<br/>อัปโหลด แล้วกดเริ่มวิเคราะห์"] --> P1["Phase 1<br/>ตารางความครบ + fill-references"]
-  P1 --> P2["Phase 2<br/>สอบถามเพิ่มในแชท"]
+  P0["Phase 0<br/>อัปโหลด แล้วกดเริ่มวิเคราะห์"] --> P1["Phase 1<br/>ตารางความครบ + fill-references ครั้งเดียว"]
+  P1 --> P2["Phase 2<br/>ตาราง + แชทถามช่องที่ขาด"]
   P2 --> P3["Phase 3<br/>ร่าง 13 หมวด + HITL"]
-  P3 --> P4["Phase 4<br/>Rule Engine + Word/PDF"]
+  P3 --> P4["Phase 4<br/>แชทรีวิว + Rule Engine + Word/PDF"]
 ```
 
 | Phase | ผู้ใช้ทำอะไร | API หลัก | เกต |
 |-------|--------------|----------|-----|
 | **0** | สร้างโครงการ วางข้อความหรืออัปโหลด แล้วกด **เริ่มวิเคราะห์** (ไม่วิเคราะห์อัตโนมัติ) | `POST .../intake/upload` `.../text` `.../analyze` | มีเนื้อหา + กดวิเคราะห์ → ปลด Phase 1 |
-| **1** | ดูตารางความครบ ระบบดึงกฎระเบียบอัตโนมัติ | `GET .../coverage` `POST .../fill-references` | วิเคราะห์แล้ว → ปลด Phase 2 |
-| **2** | ตอบคำถามส่วนขาด ดึงอ้างอิงรายช่อง กดพร้อมร่าง | `POST .../chat` `POST .../fill-reference` `.../confirm-ready` | `ready_to_compose=true` → ปลด Phase 3 |
-| **3** | แก้/ให้ AI ร่างทีละหมวด ยืนยัน HITL แล้วยืนยันไปทบทวน | `GET/PUT .../sections` `POST .../draft-section` `.../confirm-phase4` | ครบ 13 + HITL → ปลด Phase 4 |
-| **4** | รัน Rule Engine ส่งขออนุมัติ ส่งออก DOCX/PDF | `POST .../review` `POST .../submit` `POST .../export` | reviewer/admin อนุมัติหรือส่งกลับ |
+| **1** | ดูตารางความครบ ระบบดึงกฎระเบียบอัตโนมัติครั้งเดียวต่อโครงการ (ไม่ทับ `filled`) แล้วนับ 10 วินาทีหรือกด **ไปเลย** | `GET .../coverage` `POST .../fill-references` | วิเคราะห์แล้ว → ปลด Phase 2 (ไม่มีไดอะล็อก) |
+| **2** | ตารางสถานะคู่แชทถามช่องข้อเท็จจริง ดึงอ้างอิงจากชิป/แชท กดพร้อมร่าง | `POST .../chat` `POST .../fill-reference` `.../confirm-ready` | `ready_to_compose=true` → ปลด Phase 3 |
+| **3** | ระบบร่าง 13 หมวดอัตโนมัติถ้ายังไม่ครบ แก้/ยอมรับในแชท ยืนยัน HITL แล้วกดไปทบทวน | `GET/PUT .../sections` `POST .../draft-section` `.../draft-chat/*` `.../confirm-phase4` | ครบ 13 หมวดร่างแล้ว → ปลด Phase 4 |
+| **4** | แชทรีวิว Rule Engine รันอัตโนมัติ ส่งขออนุมัติ ส่งออก DOCX/PDF | `POST .../review` `POST .../submit` `POST .../export` | reviewer/admin อนุมัติหรือส่งกลับ |
 
-เกตฝั่ง UI (`phase-gate.ts`): จะข้ามไป Phase 2 ไม่ได้จนกว่า `ready_to_compose` หรือมีหลักฐาน intake
+เกตฝั่ง UI (`phase-gate.ts`): วิเคราะห์แล้วเลือกได้ถึง Phase 2 · `ready_to_compose` ปลด Phase 3 · `phase4_confirmed` ปลด Phase 4
 
 ![Phase 0 อัปโหลด](test-evidence/03-phase-0-upload.png)
 
 ![Phase 1 ตารางความครบ](test-evidence/04b-phase-1-coverage.png)
 
-![Phase 2 ร่าง](test-evidence/05-phase-2-draft.png)
+![Phase 2 ตารางคู่แชท](test-evidence/e2e-phase-2-qa.png)
 
 ![ยืนยัน HITL](test-evidence/05b-hitl-confirm.png)
 
-![Phase 3 ตรวจ](test-evidence/06-phase-3-review.png)
+![Phase 3 ร่าง 13 หมวด](test-evidence/05-phase-2-draft.png)
+
+![Phase 4 ทบทวนและแชทรีวิว](test-evidence/e2e-phase-4-review-chat.png)
 
 ![Phase 4 ส่งออก](test-evidence/07-phase-4-publish.png)
 
 ### 5.2 กราฟร่างรายหมวด (LangGraph)
 
-ใช้ตอนกด **ร่างด้วย AI** ใน Phase 2 (`POST /projects/{id}/draft-section`)
+ใช้ตอนกด **ร่างด้วย AI** ใน Phase 3 (`POST /projects/{id}/draft-section`)
 
 ```mermaid
 flowchart TD
@@ -255,7 +257,7 @@ Timeout ต่อหมวดค่าเริ่มต้น 180 วินา�
 | สร้างโครงการ | ฟอร์มชื่อ หน่วยงาน วงเงิน (ตัวเลข ASCII) ประเภท แม่แบบ | แล้วเข้า `/projects/{id}/draft` |
 | Intake หลายไฟล์ | PDF/DOCX/PPTX/TXT ตรวจ magic bytes | ต้นฉบับ GridFS |
 | แผนที่ช่องอัตโนมัติ | NLP จัดเข้า s1–s13 / s4.1–s4.14 | ตารางความครบใน Phase 1 |
-| แชทร่าง | SSE ถามส่วนขาด ดึงอ้างอิงกฎหมาย | ไม่ปนกับ `/chat` |
+| แชทร่าง | SSE ถามส่วนขาด ติ๊กแนบอ้างอิงกฎหมายตอนส่งคำตอบ | Phase 2 · ไม่มีปุ่มต่อแถว · ไม่ปนกับ `/chat` |
 | ร่างด้วย AI รายหมวด | เอเจนต์เฉพาะทาง + RAG + Rule Engine | ล้มเหลวถ้า LLM ในเครื่องไม่เปิด — กรอกมือได้ |
 | HITL 5 หมวด | ปุ่มยืนยันก่อนส่งตรวจ | s3 สมบัติ, s6 งบ, s8 งวด, s10 ค่าปรับ, s13 เงื่อนไข |
 | Rule Engine | คะแนน 0–100 ผ่านที่ 70 | ดูหมวด 8 |
@@ -286,7 +288,7 @@ Timeout ต่อหมวดค่าเริ่มต้น 180 วินา�
 | `applyRequestAuth` `shouldRedirectToLogin` | `api-client.ts` | แนบโทเค็น / เด้ง login เมื่อ 401 |
 | `unwrapData` `snakeToCamelProject` | `api-unwrap.ts` | แปลงซอง `{ ok, data }` เป็นอ็อบเจ็กต์ UI |
 | `apiErrorMessage` | `api-error.ts` | ข้อความผิดพลาดภาษาไทย ไม่โชว์ `[object Object]` |
-| `toReviewFinding` `findingCheckTone` | `review-findings.ts` | แผนที่ข้อค้นพบ Rule Engine บน Phase 3 |
+| `toReviewFinding` `findingCheckTone` | `review-findings.ts` | แผนที่ข้อค้นพบ Rule Engine บน Phase 4 |
 | `jaccard` `localCompareExtracts` `compareExtractJobs` | `review-compare.ts` | เทียบ TOR ภายนอก |
 | `llmOptionsForMode` `nextFormOnModeChange` | `ai-settings.ts` | ฟอร์มตั้งค่า AI — โหมดไม่บังคับสลับฝั่ง embeddings |
 | `pageMeta` | `page-meta.ts` | หัวเรื่อง/คำบรรยายแต่ละหน้า |
@@ -320,9 +322,9 @@ Timeout ต่อหมวดค่าเริ่มต้น 180 วินา�
 |-------|----------------|---------|
 | Auth | `POST /auth/login` `GET /auth/me` `POST /auth/logout` | คุกกี้ JWT |
 | Projects | `GET/POST /projects` `PATCH .../phase` `POST .../submit\|approve\|reject` | วงจรโครงการ |
-| Intake | `.../intake/upload` `analyze` `coverage` `fill-reference` `confirm-ready` `chat` | Phase 0–1 |
-| Draft | `GET/PUT .../sections/{key}` `POST .../draft-section` | Phase 2 |
-| Review | `POST .../review` `GET .../suggestions` | Phase 3 |
+| Intake | `.../intake/upload` `analyze` `coverage` `fill-references` `fill-reference` `confirm-ready` `chat` | Phase 0–2 |
+| Draft | `GET/PUT .../sections/{key}` `POST .../draft-section` `.../draft-chat/*` | Phase 3 |
+| Review | `POST .../review` `GET .../suggestions` | Phase 4 |
 | Export | `POST .../export` `GET .../export/{job}` | Phase 4 |
 | Chat | `POST /chat/rooms` `.../messages` (SSE) | ถาม-ตอบ + แชทร่าง |
 | KB | `GET /knowledge-base` `POST .../mine` `DELETE .../mine/{id}` `POST .../upload` | คลังกลาง/ส่วนตัว (ลบของฉันได้) |
@@ -429,7 +431,7 @@ Timeout ต่อหมวดค่าเริ่มต้น 180 วินา�
 | ชุด | คำสั่ง | ผลรอบนี้ | อธิบายการใช้งาน |
 |-----|--------|-----------|-----------------|
 | Frontend unit | `cd app/frontend && npm run test:unit` | **167 ผ่าน** / 39 ไฟล์ | รวม Phase0–4 · ตรวจ TOR 3 ขั้น · chat attach · fill-references UI |
-| Backend unit | `cd app/backend && python -m pytest -m "not live_llm"` | **1500 ผ่าน** | auth, intake, Rule Engine, RAG fail-closed, catalog ACL, แนบแชท category=other, ส่งออก, แอดมิน |
+| Backend unit | `cd app/backend && python -m pytest -m "not live_llm"` | **1533 ผ่าน** | auth, intake, Rule Engine, RAG fail-closed, catalog ACL, แนบแชท category=other, ส่งออก, แอดมิน |
 | E2E headed | `npm run test:e2e:headed` | **20 ผ่าน** | พิมพ์ช้า · วิเคราะห์/แชท/ร่าง AI ยิง Gemma จริง + `realistic-flow` (ตรวจ TOR ไม่ mock · KB other CRUD) |
 | Backend live LLM | `cd app/backend && python -m pytest -m live_llm` | **14 ผ่าน** | 10 เดิม + 4 realistic workflow (ร่าง/แชท RAG/ตรวจ TOR/KB other) |
 | Guide shots | `npm run test:e2e:guide` | **3 ผ่าน** | รีเฟรช PNG คู่มือผู้ใช้ |
@@ -442,7 +444,7 @@ Timeout ต่อหมวดค่าเริ่มต้น 180 วินา�
 |-----------|---------------------------|
 | `auth-store.test.ts` `api-client.test.ts` `password-rules.test.ts` | สมัคร/ล็อกอิน รหัสผ่านครบกฎ คุกกี้+Bearer เด้ง `/login` เมื่อ 401 |
 | `new-project-dialog.test.ts` `project-store.test.ts` | สร้างโครงการด้วยวงเงินตัวเลข ASCII แล้วเข้าพื้นที่ร่าง |
-| `phase-gate.test.ts` `phase-flow.test.tsx` | กด Phase 2 ไม่ได้จนกว่าอัปโหลด/ยืนยันพร้อมร่าง |
+| `phase-gate.test.ts` `phase-flow.test.tsx` | วิเคราะห์แล้วเลือก Phase 2 ได้ · Phase 3 ต้อง `ready_to_compose` |
 | `tor-sections.test.ts` | ป้าย 13 หมวด + HITL ตรงกับแบ็กเอนด์ |
 | `chat-sse.test.ts` `mini-room-list.test.tsx` | ห้องถาม-ตอบสตรีม SSE ไม่ปนกับแชทร่าง |
 | `knowledge-base/page.test.tsx` | เจ้าหน้าที่เห็นคลังกลางและอัปโหลดเอกสารของฉัน |

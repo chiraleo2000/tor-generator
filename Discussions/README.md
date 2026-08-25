@@ -15,8 +15,8 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 | `15-APPLICATION_DESCRIPTION.md` | คำอธิบายแอป |
 | `16-BACKEND_ARCHITECTURE.md` | สถาปัตยกรรม backend |
 | `17-FRONTEND_ARCHITECTURE.md` | สถาปัตยกรรม frontend |
-| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — Vitest 167 / pytest 1500+14 live / E2E headed 20+3 realistic · พิมพ์ช้า + LM Studio จริง (21 ส.ค. 2026) |
-| `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (21 ส.ค. 2026; Vitest 167 / pytest 1500+14 / E2E headed 20 · cov 86%/87.09%) |
+| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — Vitest 192 / pytest 1557 / E2E headed 16+3 skipped + guide 3 (25 ส.ค. 2026 · v0.2.4) |
+| `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (24 ส.ค. 2026 อัปเดตเส้นทาง 5 Phase) |
 | `19-APPLICATION_OPERATING_REPORT.docx` | ฉบับ Word (TH Sarabun New, ตาราง, ภาพจอ, ไดอะแกรม) |
 | `19-APPLICATION_OPERATING_REPORT.pdf` | ฉบับ PDF ส่งออกจาก Word |
 | `19-APPLICATION_OPERATING_REPORT.pptx` | สไลด์นำเสนอ (สร้างจาก `_build_report_exports.py`) |

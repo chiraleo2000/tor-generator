@@ -22,7 +22,7 @@ export function UploadArea({
         type="file"
         className="hidden"
         multiple
-        accept=".pdf,.docx,.doc,.png,.jpg,.jpeg"
+        accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg"
         onChange={(event) => {
           if (event.target.files?.length) onFiles(event.target.files);
         }}

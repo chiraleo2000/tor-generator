@@ -29,6 +29,7 @@ from app.orchestrator.agents.registry import get_agent_for_section
 from app.orchestrator.state import TORDraftState
 
 if TYPE_CHECKING:
+    from app.rag.retrieval import RetrievalFilter
     from app.rule_engine.engine import RuleEngine
 
 logger = logging.getLogger(__name__)
@@ -177,7 +178,7 @@ def _build_rag_query(target_section: str, user_input: dict) -> str:
     return " ".join(query_parts)
 
 
-def _build_section_filter(target_section: str) -> dict | None:
+def _build_section_filter(target_section: str) -> RetrievalFilter | None:
     """Build metadata filter for section-relevant RAG retrieval.
 
     Maps target sections to relevant document types and legal references
@@ -629,7 +630,7 @@ async def llm_draft(state: TORDraftState) -> TORDraftState:
 
         # Get LLM provider via factory
         factory = ProviderFactory()
-        llm = factory.get_llm()
+        llm = factory.get_llm("draft")
         agent_timeout = state.get("agent_timeout_seconds", LLM_TIMEOUT_SECONDS)
         try:
             draft_content = await _draft_section_with_agent(

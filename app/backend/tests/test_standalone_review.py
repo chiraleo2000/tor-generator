@@ -85,38 +85,69 @@ def test_standalone_review_extract_empty_file():
 
 
 def test_standalone_review_extract_then_run_with_id():
-    from app.api.v1.endpoints.standalone_review import _REVIEW_JOBS
+    from app.models.review_job import ReviewJob
 
     user = _user("officer")
     app.dependency_overrides[get_current_user] = lambda: user
+    jobs: dict[str, ReviewJob] = {}
+
+    async def fake_save(_db, job: ReviewJob):
+        jobs[str(job.id)] = job
+        return job
+
+    async def fake_fetch(_db, job_id, _owner_id):
+        return jobs.get(str(job_id))
+
+    async def fake_result(_db, job: ReviewJob, payload):
+        job.result_json = payload
+        job.status = "completed"
 
     async def mock_db():
         yield MagicMock()
 
     app.dependency_overrides[get_db] = mock_db
     client = TestClient(app, raise_server_exceptions=False)
-    job_id = None
     extracted_result = MagicMock()
     extracted_result.text = "1. ความเป็นมา\nโครงการทดสอบระบบจัดซื้อจัดจ้าง"
     try:
-        with patch(
-            "app.api.v1.endpoints.standalone_review.extract_text",
-            return_value=extracted_result,
+        with (
+            patch(
+                "app.api.v1.endpoints.standalone_review.extract_text",
+                return_value=extracted_result,
+            ),
+            patch(
+                "app.api.v1.endpoints.standalone_review.store_review_original",
+                return_value=None,
+            ),
+            patch(
+                "app.api.v1.endpoints.standalone_review.save_review_job",
+                side_effect=fake_save,
+            ),
+            patch(
+                "app.api.v1.endpoints.standalone_review.fetch_review_job",
+                side_effect=fake_fetch,
+            ),
+            patch(
+                "app.api.v1.endpoints.standalone_review.save_review_result",
+                side_effect=fake_result,
+            ),
         ):
             extracted = client.post(
                 "/api/v1/review/extract",
                 files={"file": ("tor.txt", b"tor body content", "text/plain")},
             )
-        assert extracted.status_code == 200
-        job_id = extracted.json()["data"]["id"]
-        assert extracted.json()["data"]["extracted_text"]
-        ran = client.post("/api/v1/review/run", json={"id": job_id})
-        assert ran.status_code == 200
-        assert "quality_score" in ran.json()["data"]
-        assert ran.json()["data"]["status"] == "completed"
+            assert extracted.status_code == 200
+            job_id = extracted.json()["data"]["id"]
+            assert extracted.json()["data"]["extracted_text"]
+            ran = client.post("/api/v1/review/run", json={"id": job_id})
+            assert ran.status_code == 200
+            assert "quality_score" in ran.json()["data"]
+            assert ran.json()["data"]["status"] == "completed"
+            got = client.get(f"/api/v1/review/{job_id}")
+            assert got.status_code == 200
+            assert got.json()["data"]["quality_score"] == ran.json()["data"]["quality_score"]
+            assert got.json()["data"]["extracted_text"]
     finally:
-        if job_id:
-            _REVIEW_JOBS.pop(job_id, None)
         app.dependency_overrides.clear()
 
 
@@ -190,7 +221,7 @@ def test_jaccard_helpers():
 
 
 def test_compare_extract_jobs_jaccard():
-    from app.api.v1.endpoints.standalone_review import _REVIEW_JOBS
+    from app.models.review_job import ReviewJob
 
     user = _user("officer")
     app.dependency_overrides[get_current_user] = lambda: user
@@ -199,32 +230,42 @@ def test_compare_extract_jobs_jaccard():
         yield MagicMock()
 
     app.dependency_overrides[get_db] = mock_db
-    left_id = str(uuid.uuid4())
-    right_id = str(uuid.uuid4())
+    left_id = uuid.uuid4()
+    right_id = uuid.uuid4()
     shared = "ความเป็นมา ของโครงการ ทดสอบ ระบบ"
-    _REVIEW_JOBS[left_id] = {
-        "id": left_id,
-        "filename": "tor-a.docx",
-        "extracted_text": shared,
-        "status": "extracted",
-        "result": None,
+    jobs = {
+        str(left_id): ReviewJob(
+            id=left_id,
+            owner_id=user.id,
+            filename="tor-a.docx",
+            extracted_text=shared,
+            status="extracted",
+            result_json={},
+        ),
+        str(right_id): ReviewJob(
+            id=right_id,
+            owner_id=user.id,
+            filename="tor-b.docx",
+            extracted_text=shared,
+            status="extracted",
+            result_json={},
+        ),
     }
-    _REVIEW_JOBS[right_id] = {
-        "id": right_id,
-        "filename": "tor-b.docx",
-        "extracted_text": shared,
-        "status": "extracted",
-        "result": None,
-    }
+
+    async def fake_fetch(_db, job_id, _owner_id):
+        return jobs.get(str(job_id))
+
     client = TestClient(app, raise_server_exceptions=False)
     try:
-        response = client.post(
-            "/api/v1/review/compare-projects",
-            json={"extract_ids": [left_id, right_id]},
-        )
+        with patch(
+            "app.api.v1.endpoints.standalone_review.fetch_review_job",
+            side_effect=fake_fetch,
+        ):
+            response = client.post(
+                "/api/v1/review/compare-projects",
+                json={"extract_ids": [str(left_id), str(right_id)]},
+            )
     finally:
-        _REVIEW_JOBS.pop(left_id, None)
-        _REVIEW_JOBS.pop(right_id, None)
         app.dependency_overrides.clear()
     assert response.status_code == 200
     comparisons = response.json()["data"]["comparisons"]
@@ -232,12 +273,12 @@ def test_compare_extract_jobs_jaccard():
     assert comparisons[0]["jaccard"] == 1.0
     assert comparisons[0]["left"] == "tor-a.docx"
     assert comparisons[0]["right"] == "tor-b.docx"
-    assert comparisons[0]["left_id"] == left_id
-    assert comparisons[0]["right_id"] == right_id
+    assert comparisons[0]["left_id"] == str(left_id)
+    assert comparisons[0]["right_id"] == str(right_id)
 
 
 def test_compare_mixed_project_and_extract():
-    from app.api.v1.endpoints.standalone_review import _REVIEW_JOBS
+    from app.models.review_job import ReviewJob
 
     user = _user("officer")
     app.dependency_overrides[get_current_user] = lambda: user
@@ -258,23 +299,33 @@ def test_compare_mixed_project_and_extract():
         yield mock_db
 
     app.dependency_overrides[get_db] = override_db
-    extract_id = str(uuid.uuid4())
-    _REVIEW_JOBS[extract_id] = {
-        "id": extract_id,
-        "filename": "compare.pdf",
-        "extracted_text": "ขอบเขต งาน ทดสอบ",
-        "status": "extracted",
-        "result": None,
-    }
+    extract_id = uuid.uuid4()
+    job = ReviewJob(
+        id=extract_id,
+        owner_id=user.id,
+        filename="compare.pdf",
+        extracted_text="ขอบเขต งาน ทดสอบ",
+        status="extracted",
+        result_json={},
+    )
+
+    async def fake_fetch(_db, job_id, _owner_id):
+        if str(job_id) == str(extract_id):
+            return job
+        return None
+
     project_id = str(uuid.uuid4())
     client = TestClient(app, raise_server_exceptions=False)
     try:
-        response = client.post(
-            "/api/v1/review/compare-projects",
-            json={"project_ids": [project_id], "extract_ids": [extract_id]},
-        )
+        with patch(
+            "app.api.v1.endpoints.standalone_review.fetch_review_job",
+            side_effect=fake_fetch,
+        ):
+            response = client.post(
+                "/api/v1/review/compare-projects",
+                json={"project_ids": [project_id], "extract_ids": [str(extract_id)]},
+            )
     finally:
-        _REVIEW_JOBS.pop(extract_id, None)
         app.dependency_overrides.clear()
     assert response.status_code == 200
     comparisons = response.json()["data"]["comparisons"]

@@ -36,15 +36,15 @@ Axios `apiClient` uses `withCredentials: true` so the HttpOnly cookie `tor_acces
 
 | Phase | UI |
 |-------|-----|
-| 0 | `Phase0Upload` — อัปโหลด/วางข้อความหลายครั้ง ปุ่ม **เริ่มวิเคราะห์** (`intake-start-analyze`) ไม่ auto-analyze |
-| 1 | `Phase1Coverage` — ตารางความครบ + auto `POST .../intake/fill-references` |
-| 2 | `Phase2Qa` — แชท intake + ดึงอ้างอิงรายช่อง + ยืนยันพร้อมร่าง |
-| 3 | `Phase3Draft` — 13 หมวด, ร่างด้วย AI, HITL |
-| 4 | `Phase4Review` + `Phase4Export` — Rule Engine, ส่งขออนุมัติ, Word/PDF |
+| 0 | `Phase0Upload` — อัปโหลด/วางข้อความหลายครั้ง (`กำลังอัปโหลด...` + รายชื่อไฟล์) ปุ่ม **เริ่มวิเคราะห์** (`intake-start-analyze`) แล้วแผง `phase0-analyzing` จนเสร็จ ไม่ auto-analyze |
+| 1 | `Phase1Coverage` — ตารางความครบ แล้วนับสั้น ๆ หรือกด **ไปเลย** (`phase1-skip`) ไม่มีไดอะล็อกไป Phase 2 และไม่เรียก `fill-references` อัตโนมัติ |
+| 2 | `Phase2Qa` — CoverageTable + ชิปสถานะข้อเท็จจริง + `DraftConversation` (ติ๊ก `intake-attach-legal` ตอนส่งคำตอบ) + ยืนยันพร้อมร่าง |
+| 3 | `Phase3Draft` + `DraftChat` — ร่าง 13 หมวดอัตโนมัติถ้ายังไม่ครบ, HITL, ปุ่ม **ไปทบทวน (Phase 4)** (`phase3-confirm`) |
+| 4 | `Phase4Review` + `ReviewChat` + `Phase4Export` — Rule Engine รันอัตโนมัติเมื่อเข้าขั้น, ส่งขออนุมัติ, Word/PDF |
 
-Forward transitions go through `ConfirmPhaseDialog` (`useConfirmPhase`). Standalone `/review` is three UI steps: เลือกไฟล์ → สกัดข้อความ → ยืนยันเริ่มตรวจสอบ (`POST /review/extract` then `POST /review/run`). Private KB files download at `GET /knowledge-base/mine/{id}/file`. Chat attachments ingest with `category=other` into the owner's catalog.
+Forward transitions go through `ConfirmPhaseDialog` (`useConfirmPhase`) **ยกเว้น Phase 1→2** (นับถอยหลัง / ไปเลย / คลิกแถบ stepper ไม่ถามไดอะล็อก). Standalone `/review` is three UI steps: เลือกไฟล์ → สกัดข้อความ → ยืนยันเริ่มตรวจสอบ (`POST /review/extract` then `POST /review/run`). Private KB files download at `GET /knowledge-base/mine/{id}/file`. Chat attachments ingest with `category=other` into the owner's catalog.
 
-Create-project from the dashboard opens **สร้างโครงการใหม่** (name, agency, ASCII budget, type, optional template) then routes to `/projects/{id}/draft`. Phase is persisted with `PATCH /projects/{id}/phase`. The leftover `/draft` index is not the primary intake path. `/chat` uses `kind=kb` (typing dots while streaming; `formatChatTimestamp` when `created_at` is present); Phase 0–1 uses `kind=draft_intake`.
+Create-project from the dashboard opens **สร้างโครงการใหม่** (name, agency, ASCII budget, type, optional template) then routes to `/projects/{id}/draft`. Phase is persisted with `PATCH /projects/{id}/phase`. The leftover `/draft` index is not the primary intake path. `/chat` uses `kind=kb` (typing dots while streaming; `formatChatTimestamp` when `created_at` is present); Phase 2 intake chat uses `kind=draft_intake`.
 
 Standalone `/review` extracts each compare file (`POST /review/extract`) then calls `POST /review/compare-projects` with `{ extract_ids }` (Jaccard). A 404/405/501 on that path falls back to local Jaccard on `extracted_text`. Errors use `role="alert"`; score &lt; 70 is shown as not meeting the threshold. Admin/officer list pages that used to swallow load failures now set `apiErrorMessage` + `role="alert"`.
 
@@ -61,9 +61,11 @@ The live UI is the 5-phase draft workspace, `/chat`, `/knowledge-base`, `/review
 | `npm run test:e2e:guide` | Extra screenshots for the user guideline (`CAPTURE_GUIDE=1`) |
 | `npm run test:e2e:ui` | Playwright UI mode |
 
-E2E specs live in `app/frontend/e2e/` with their own `e2e/tsconfig.json` (`types: ["node"]`) so opening a spec does not raise TS2580 on `Buffer`. They require `E2E=1` and a running UI (Docker or `next dev`) plus seed users. A locked Phase 2 chip uses `aria-disabled`; the walk-through clicks it with `{ force: true }` to prove the UI stays on Phase 0.
+E2E specs live in `app/frontend/e2e/` with their own `e2e/tsconfig.json` (`types: ["node"]`) so opening a spec does not raise TS2580 on `Buffer`. They require `E2E=1` and a running UI (Docker or `next dev`) plus seed users. Live specs keep `test.skip(skipUnlessLive, skipReason)` **with a `NOSONAR` comment** so SonarLint typescript:S1607 does not flag the skip as an ignored unit test. A locked Phase 2 chip uses `aria-disabled`; the walk-through clicks it with `{ force: true }` to prove the UI stays on Phase 0.
 
-Stable selectors: `login-form`, `new-project`, `draft-page`, `phase-0`…`phase-4`, `intake-chat-panel`, `intake-upload`, `intake-confirm-ready`, `chat-page`, `chat-shell`, `nav-chat`, `help-tab-faq`, `nav-knowledge-base`, `nav-admin-ai-settings`, `admin-ai-settings-page`, `ai-settings-test`, `ai-settings-status`, `approve-project`, `reject-project`, `hitl-confirm-s3`.
+Stable selectors: `login-form`, `new-project`, `draft-page`, `phase-0`…`phase-4`, `intake-chat-panel`, `intake-upload`, `intake-start-analyze`, `phase0-file-list`, `phase0-analyzing`, `phase1-skip`, `phase1-countdown`, `intake-confirm-ready`, `intake-attach-legal`, `phase3-confirm`, `review-chat`, `review-chat-input`, `run-review`, `chat-page`, `chat-shell`, `nav-chat`, `help-tab-faq`, `nav-knowledge-base`, `nav-admin-ai-settings`, `admin-ai-settings-page`, `ai-settings-test`, `ai-settings-status`, `approve-project`, `reject-project`, `hitl-confirm-s3`.
+
+Walk Phase 0–4 on mocked APIs: `e2e/intake-ui.spec.ts` (`walkMockedIntakeToPhase4`). Live analyze + Gemma compose: `e2e/wizard-flow.spec.ts` + `e2e/chat.spec.ts`.
 
 ## Build
 
@@ -77,7 +79,7 @@ docker compose -p tor-app --env-file .env up -d --build frontend
 
 Problems that name `frontend/...` or `backend/...` at the repo root are stale. Those folders are not on disk. Live sources are `app/frontend` and `app/backend`. Close leftover tabs, then **Developer: Reload Window**. SonarLint excludes only `frontend/**` and `backend/**` at the repo root — not `**/frontend/**`, which would skip this app tree. The root `tsconfig.json` lists `.vscode/tsconfig-placeholder.ts` so TypeScript does not raise TS18002 (`files` empty) and does not infer a project over leftover root paths.
 
-Last headed run (**21 ส.ค. 2026**): Vitest **167** · pytest **1500+14** · E2E headed **20**. Screenshots: `discussions/18-TEST_EVIDENCE.md`. User-facing walkthrough: `discussions/13-USER_GUIDELINE.md`. Playwright `e2e/chat.spec.ts` types a real question and waits for Gemma; `e2e/realistic-flow.spec.ts` runs unmocked review + KB other CRUD; intake analyze is live (not mocked).
+Last headed run (**24 ส.ค. 2026**): `npm run test:e2e:headed` **21 ผ่าน** / 0 ล้ม (~4.7 นาที) — Chromium เปิดบนจอ. Vitest coverage **177 ผ่าน**, lines **82.36%**. Screenshots: `discussions/18-TEST_EVIDENCE.md`.
 
 `e2e/reports.spec.ts` and `e2e/guide-shots.spec.ts` stay out of `npm run test:e2e` unless `CAPTURE_REPORTS=1` / `CAPTURE_GUIDE=1`.
 

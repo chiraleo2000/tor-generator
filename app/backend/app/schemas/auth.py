@@ -45,12 +45,15 @@ class RegisterRequest(BaseModel):
     )
 
 
+_EMAIL_ADDRESS_DESC = "Email address"
+
+
 class RegisterResponse(BaseModel):
     """Response body for successful registration."""
 
     id: uuid.UUID = Field(..., description="Unique user ID")
     name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
+    email: str = Field(..., description=_EMAIL_ADDRESS_DESC)
     organization: str = Field(..., description="Organization name")
     role: str = Field(..., description="Assigned role")
     created_at: datetime = Field(..., description="Account creation timestamp")
@@ -63,7 +66,7 @@ class LoginRequest(BaseModel):
 
     email: EmailStr = Field(
         ...,
-        description="Email address",
+        description=_EMAIL_ADDRESS_DESC,
         examples=["somchai@example.go.th"],
     )
     password: str = Field(
@@ -80,7 +83,7 @@ class UserResponse(BaseModel):
 
     id: uuid.UUID = Field(..., description="Unique user ID")
     name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
+    email: str = Field(..., description=_EMAIL_ADDRESS_DESC)
     organization: str = Field(..., description="Organization name")
     role: str = Field(..., description="Assigned role")
     created_at: datetime = Field(..., description="Account creation timestamp")

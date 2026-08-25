@@ -10,7 +10,6 @@ Requirements: 8.1, 8.3, 8.4, 16.3
 import io
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Optional, Union
 
 from docx import Document
 from docx.enum.section import WD_ORIENT
@@ -58,7 +57,7 @@ class TORContent:
     project_type: str = "general"
     sections: dict[str, str] = field(default_factory=dict)
     sub_sections: dict[str, dict[str, str]] = field(default_factory=dict)
-    export_date: Optional[Union[date, datetime]] = None
+    export_date: date | datetime | None = None
     use_thai_numerals: bool = False
 
 

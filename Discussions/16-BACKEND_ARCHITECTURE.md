@@ -27,7 +27,7 @@ flowchart LR
 
 | Layer | Path | Role |
 |-------|------|------|
-| HTTP | `app/api/v1/endpoints/` | Auth, projects, intake (Phase 0–1), drafting, **agent sessions**, **kb-chat**, chat rooms/SSE, wizard compat, review, templates, knowledge-base, export, admin users, admin AI settings, health |
+| HTTP | `app/api/v1/endpoints/` | Auth, projects, intake (Phase 0–2), drafting, **agent sessions**, **kb-chat**, chat rooms/SSE, wizard compat, review, templates, knowledge-base, export, admin users, admin AI settings, health |
 | Domain | `app/domain/` | Canonical s1–s13, NLP mapping, file magic bytes |
 | Orchestrator | `app/orchestrator/` | Per-section LangGraph (`graph.py`) plus **agent workflow graph** (`agent_graph.py`) |
 | RAG | `app/rag/` | Extract (PDF/DOCX/PPTX/TXT), chunk, ingest, retrieve |

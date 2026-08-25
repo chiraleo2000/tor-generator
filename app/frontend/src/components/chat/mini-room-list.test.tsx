@@ -32,6 +32,7 @@ describe("MiniRoomList", () => {
     expect(screen.getByTestId("chat-room-list")).toBeInTheDocument();
     expect(screen.getByText("งวดจ่าย")).toBeInTheDocument();
     expect(screen.getByText("อ้างระเบียบข้อ 85")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-room-item")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("chat-new-room"));
     expect(onNew).toHaveBeenCalled();
   });

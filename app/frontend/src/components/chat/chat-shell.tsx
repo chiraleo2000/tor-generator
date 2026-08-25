@@ -314,18 +314,27 @@ export function ChatShell({
   }
 
   async function attach(files: FileList | null) {
-    if (!files || !activeId) return;
+    if (!files?.length) {
+      return;
+    }
     setBusy(true);
-    setAttachNote(null);
+    setError(null);
+    setAttachNote("กำลังอัปโหลดเข้าคลังของฉัน...");
     try {
+      let roomId = activeId;
+      if (!roomId) {
+        roomId = await handleNew();
+      }
+      if (!roomId) {
+        setAttachNote(null);
+        setError("ยังไม่มีห้องแชทสำหรับแนบไฟล์");
+        return;
+      }
       const notes: string[] = [];
       for (const file of Array.from(files)) {
         const body = new FormData();
         body.append("file", file);
-        const response = await apiClient.post(
-          `/chat/rooms/${activeId}/attachments`,
-          body
-        );
+        const response = await apiClient.post(`/chat/rooms/${roomId}/attachments`, body);
         const payload = unwrapData<{
           document_id?: string;
           name?: string;
@@ -408,7 +417,14 @@ export function ChatShell({
               className="sr-only"
               multiple
               data-testid="chat-attach"
-              onChange={(event) => attach(event.target.files)}
+              onChange={(event) => {
+                const input = event.currentTarget;
+                attach(input.files)
+                  .catch(() => undefined)
+                  .finally(() => {
+                    input.value = "";
+                  });
+              }}
             />
           </label>
           <ScopeButton current={scope} value="global" onClick={setScope} icon={Globe} label="คลังกลาง" />
@@ -475,7 +491,7 @@ export function ChatShell({
           </div>
         ) : null}
         {error ? (
-          <p className="px-4 py-2 text-sm text-destructive" role="alert">
+          <p className="px-4 py-2 text-sm text-destructive" role="alert" data-testid="chat-error">
             {error}
           </p>
         ) : null}
@@ -533,6 +549,7 @@ export function ChatShell({
                   {item.citations.map((cite) => (
                     <span
                       key={`${cite.type}-${cite.label}`}
+                      data-testid="chat-citation"
                       className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-navy"
                     >
                       {cite.type}: {cite.label}

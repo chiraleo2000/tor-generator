@@ -23,6 +23,8 @@ from typing import Any
 from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE
 from app.orchestrator.section_state import SECTION_NAMES_TH, SECTION_ORDER
 from app.providers.base import LLMProvider
+from app.providers.structured_invoke import invoke_with_schema
+from app.schemas.llm_structured import ReviewSuggestionsResult, json_schema_for
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +120,9 @@ REVIEW_SYSTEM_PROMPT = (
     "3. ความชัดเจน (clarity) — ภาษากระชับ ชัดเจน ไม่กำกวม\n"
     "4. ความถูกต้องตามกฎหมาย (compliance) — สอดคล้องกับ พ.ร.บ. 2560\n\n"
     "=== รูปแบบผลลัพธ์ ===\n"
-    "ตอบในรูปแบบ JSON array ของ suggestions ดังนี้:\n"
+    "ตอบในรูปแบบ JSON object ที่มีคีย์ suggestions เป็น array ดังนี้:\n"
     "```json\n"
-    "[\n"
+    '{ "suggestions": [\n'
     '  {\n'
     '    "category": "consistency|completeness|clarity|compliance",\n'
     '    "section_key": "s1|s2|...|s13",\n'
@@ -128,7 +130,7 @@ REVIEW_SYSTEM_PROMPT = (
     '    "suggested_text": "ข้อความที่แนะนำให้แก้ไข",\n'
     '    "predicted_score_improvement": 1.0\n'
     '  }\n'
-    "]\n"
+    "] }\n"
     "```\n\n"
     "=== กฎการให้คำแนะนำ ===\n"
     "- ให้คำแนะนำ 3-20 ข้อ เรียงจากสำคัญมากไปน้อย\n"
@@ -158,7 +160,7 @@ class ReviewAgent:
     Usage:
         agent = ReviewAgent()
         result = await agent.review(
-            llm=provider_factory.get_llm(),
+            llm=provider_factory.get_llm("structured"),
             sections={"s1": "content...", "s2": "content..."},
             project_metadata={"budget": 5000000, "project_type": "it"},
         )
@@ -475,14 +477,17 @@ class ReviewAgent:
         ]
 
         try:
-            response = await llm.invoke(
-                messages=messages,
-                temperature=0.2,  # Low temperature for consistent, analytical output
+            payload = await invoke_with_schema(
+                llm,
+                messages,
+                json_schema_for(ReviewSuggestionsResult),
+                "review_suggestions",
+                temperature=0.2,
                 max_tokens=4096,
             )
+            import json
 
-            # Parse the JSON response
-            suggestions = self._parse_llm_suggestions(response.content)
+            suggestions = self._parse_llm_suggestions(json.dumps(payload, ensure_ascii=False))
 
             logger.info(
                 "LLM review produced %d suggestions",
@@ -539,7 +544,7 @@ class ReviewAgent:
         parts.append(
             "=== คำสั่ง ===\n"
             "วิเคราะห์เอกสาร TOR ข้างต้นและให้คำแนะนำการปรับปรุง "
-            "ในรูปแบบ JSON array ตามที่กำหนดใน system prompt\n"
+            "ในรูปแบบ JSON ตามที่กำหนดใน system prompt\n"
             "เน้น: ความสอดคล้องระหว่างส่วน, ความครบถ้วน, ความชัดเจน, "
             "และความถูกต้องตามกฎหมาย"
         )
@@ -587,6 +592,9 @@ class ReviewAgent:
                 logger.warning("No JSON array found in LLM review output")
                 return []
 
+        if isinstance(data, dict):
+            raw_items = data.get("suggestions")
+            data = raw_items if isinstance(raw_items, list) else []
         if not isinstance(data, list):
             logger.warning("LLM review output is not a JSON array")
             return []

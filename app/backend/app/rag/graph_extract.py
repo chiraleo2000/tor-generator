@@ -7,6 +7,8 @@ import logging
 from typing import Any
 
 from app.providers.base import LLMProvider
+from app.providers.structured_invoke import invoke_with_schema
+from app.schemas.llm_structured import GraphExtractResult, json_schema_for
 
 logger = logging.getLogger(__name__)
 
@@ -51,19 +53,21 @@ async def extract_graph_from_text(
     document_name: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     excerpt = text[:12000]
-    response = await llm.invoke(
-        [
-            {"role": "system", "content": GRAPH_PROMPT},
-            {
-                "role": "user",
-                "content": f"เอกสาร: {document_name}\n\n{excerpt}",
-            },
-        ],
-        temperature=0.1,
-        max_tokens=2048,
-    )
     try:
-        payload = parse_json_object(response.content)
+        payload = await invoke_with_schema(
+            llm,
+            [
+                {"role": "system", "content": GRAPH_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"เอกสาร: {document_name}\n\n{excerpt}",
+                },
+            ],
+            json_schema_for(GraphExtractResult),
+            "graph_extract",
+            temperature=0.1,
+            max_tokens=2048,
+        )
     except ValueError:
         logger.warning("Graph JSON parse failed for %s", document_name)
         return [], []

@@ -17,7 +17,7 @@ function hasBeenAnalyzed(analysis: Record<string, unknown>): boolean {
   return Object.keys(slotMap).length > 0;
 }
 
-/** Highest selectable phase: 0 upload-only, 2 analyzed, 3 compose, 4 confirmed. */
+/** Highest selectable phase: 0 before analyze, 2 after analyze, 3 compose, 4 confirmed. */
 export function intakeUnlockedPhase(
   project: Pick<Project, "analysisJson" | "extractedFields">
 ): number {

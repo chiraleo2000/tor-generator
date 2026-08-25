@@ -456,6 +456,31 @@ def test_fill_reference_single_slot(fill_mock, client, mock_officer_user):
     fill_mock.assert_awaited()
 
 
+@patch("app.api.v1.endpoints.intake.fill_reference_slot", new_callable=AsyncMock)
+def test_fill_reference_skips_filled_fact_slot(fill_mock, client, mock_officer_user):
+    fill_mock.return_value = {"content": "ไม่ควรทับ", "sources": ["x"]}
+    slots = empty_slot_map()
+    slots["s1"] = {"content": "กรมบัญชีกลางจัดซื้อระบบ", "status": "filled", "sources": []}
+    project = _make_project(analysis={"analyzed": True, "slot_map": slots}, phase=1)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/fill-reference",
+        json={"slot_key": "s1"},
+    )
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["skipped"] is True
+    assert body["action"] == "skipped"
+    assert "กรมบัญชีกลาง" in body["content"]
+    fill_mock.assert_not_called()
+
+
 def test_fill_reference_rejects_unknown_slot(client, mock_officer_user):
     project = _make_project(analysis={"analyzed": True}, phase=1)
     mock_db = AsyncMock()
@@ -514,6 +539,38 @@ def test_open_qa_seeds_brief_from_phase1(client, mock_officer_user):
     again = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-qa")
     assert again.status_code == 200
     mock_db.add.assert_not_called()
+
+
+def test_open_qa_reasks_when_fact_gap_remains(client, mock_officer_user):
+    slots = empty_slot_map()
+    project = _make_project(
+        analysis={
+            "slot_map": slots,
+            "analyzed": True,
+            "phase2_briefed": True,
+            "phase2_followup_slot": None,
+        },
+        phase=2,
+    )
+    room = MagicMock()
+    room.id = uuid.uuid4()
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            MagicMock(scalar_one_or_none=MagicMock(return_value=project)),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=room)),
+        ]
+    )
+    mock_db.add = MagicMock()
+    mock_db.commit = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-qa")
+    assert response.status_code == 200
+    mock_db.add.assert_called()
+    seeded = mock_db.add.call_args[0][0]
+    assert "s1" in seeded.content
+    assert project.analysis_json["phase2_followup_slot"] == "s1"
 
 
 def test_open_qa_requires_analyze(client, mock_officer_user):

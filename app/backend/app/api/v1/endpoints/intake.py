@@ -36,6 +36,8 @@ from app.services.intake_service import (
     INTAKE_CHAT_SYSTEM,
     analyze_pack,
     append_intake_text,
+    append_next_slot_question,
+    apply_reference_to_slot,
     apply_slot_map_to_sections,
     build_phase2_opening,
     build_phase3_opening,
@@ -47,11 +49,13 @@ from app.services.intake_service import (
     fill_reference_slot,
     has_been_analyzed,
     has_intake_material,
+    is_fill_reference_request,
     is_ready_to_compose,
     load_project,
     merge_analysis,
     missing_fact_keys,
     next_asking_slot,
+    parse_fill_reference_request,
     ready_criteria_met,
     slot_map_for_prompt,
     slot_map_of,
@@ -92,6 +96,23 @@ async def _persist_intake_assistant(
         await persist.commit()
 
 
+async def _attach_legal_to_filled(
+    slot_map: dict[str, Any],
+    filled_keys: list[str],
+    user_id: uuid.UUID,
+    attach: bool,
+) -> str:
+    if not attach or not filled_keys:
+        return ""
+    target = filled_keys[-1]
+    filled = await fill_reference_slot(target, user_id)
+    action = apply_reference_to_slot(slot_map, target, filled, force_append=True)
+    if action == "skipped":
+        return ""
+    label = INTAKE_SLOT_LABELS.get(target, target)
+    return f"แนบอ้างอิงกฎหมายประกอบ {label} แล้ว โดยไม่ทับข้อเท็จจริงที่วิเคราะห์ไว้\n\n"
+
+
 class FillReferenceBody(BaseModel):
     slot_key: str = Field(..., min_length=2, max_length=20)
 
@@ -99,6 +120,7 @@ class FillReferenceBody(BaseModel):
 class IntakeChatBody(BaseModel):
     content: str = Field(..., min_length=1)
     search_scope: str = "both"
+    attach_legal_reference: bool = False
 
 
 class ConfirmReadyBody(BaseModel):
@@ -286,18 +308,42 @@ async def intake_fill_reference(
     project = await _project(db, project_id, current_user)
     if body.slot_key not in INTAKE_SLOT_LABELS:
         raise ValidationError(message="รหัสช่องไม่ถูกต้อง", field="slot_key")
-    filled = await fill_reference_slot(body.slot_key, current_user.id)
     analysis = dict(project.analysis_json or {})
     slot_map = dict(analysis.get("slot_map") or empty_slot_map())
-    slot_map[body.slot_key] = {
-        "content": filled["content"],
-        "status": "reference_only",
-        "sources": filled["sources"],
-    }
+    existing = slot_map.get(body.slot_key)
+    if (
+        isinstance(existing, dict)
+        and existing.get("status") == "filled"
+        and body.slot_key in FACT_REQUIRED_SLOTS
+    ):
+        return _ok(
+            request,
+            {
+                "slot_key": body.slot_key,
+                "action": "skipped",
+                "skipped": True,
+                "content": existing.get("content") or "",
+                "sources": existing.get("sources") or [],
+                "coverage": coverage_table(slot_map),
+            },
+        )
+    filled = await fill_reference_slot(body.slot_key, current_user.id)
+    action = apply_reference_to_slot(slot_map, body.slot_key, filled)
     analysis["slot_map"] = slot_map
     project.analysis_json = analysis
     await db.flush()
-    return _ok(request, {"slot_key": body.slot_key, **filled, "coverage": coverage_table(slot_map)})
+    current = slot_map.get(body.slot_key) or {}
+    return _ok(
+        request,
+        {
+            "slot_key": body.slot_key,
+            "action": action,
+            "skipped": action == "skipped",
+            "content": current.get("content") or filled.get("content") or "",
+            "sources": current.get("sources") or filled.get("sources") or [],
+            "coverage": coverage_table(slot_map),
+        },
+    )
 
 
 @router.post("/{project_id}/intake/confirm-ready")
@@ -342,6 +388,7 @@ async def intake_open_qa(
     slot_map = slot_map_of(project)
     brief = build_phase2_opening(slot_map, list(analysis.get("gap_questions") or []))
     asking = next_asking_slot(slot_map)
+    analysis["current_asking_slot"] = asking
     if not analysis.get("phase2_briefed"):
         db.add(
             ChatMessage(
@@ -352,7 +399,19 @@ async def intake_open_qa(
             )
         )
         analysis["phase2_briefed"] = True
-        analysis["current_asking_slot"] = asking
+        analysis["phase2_followup_slot"] = asking
+        project.analysis_json = analysis
+        await db.commit()
+    elif asking and analysis.get("phase2_followup_slot") != asking:
+        db.add(
+            ChatMessage(
+                room_id=room.id,
+                role="assistant",
+                content=build_slot_question(asking),
+                citations=[],
+            )
+        )
+        analysis["phase2_followup_slot"] = asking
         project.analysis_json = analysis
         await db.commit()
     return _ok(
@@ -494,7 +553,8 @@ async def intake_chat(
         else None,
     )
     filled_keys: list[str] = []
-    if asking and fill_current_slot(slot_map, asking, body.content):
+    ref_key = parse_fill_reference_request(body.content)
+    if asking and not ref_key and fill_current_slot(slot_map, asking, body.content):
         filled_keys.append(asking)
         asking = next_asking_slot(slot_map)
     analysis["slot_map"] = slot_map
@@ -507,6 +567,79 @@ async def intake_chat(
 
     async def generate() -> AsyncIterator[str]:
         import asyncio
+
+        if ref_key:
+            filled = await fill_reference_slot(ref_key, current_user.id)
+            action = apply_reference_to_slot(slot_map, ref_key, filled)
+            label = INTAKE_SLOT_LABELS.get(ref_key, ref_key)
+            if action == "skipped":
+                reply = f"หมวด {label} มีข้อเท็จจริงอยู่แล้ว จึงไม่ทับข้อมูลนั้นครับ"
+            else:
+                reply = f"ดึงอ้างอิงกฎหมายให้หมวด {label} แล้วครับ"
+            asking_now = analysis.get("current_asking_slot")
+            asking_key = asking_now if isinstance(asking_now, str) else None
+            reply = append_next_slot_question(reply, asking_key)
+            await _persist_intake_assistant(
+                request.app.state.db_session_factory,
+                project.id,
+                room.id,
+                slot_map,
+                reply,
+                [],
+                asking_slot=asking_key,
+            )
+            yield _sse(
+                "done",
+                {
+                    "content": reply,
+                    "citations": [],
+                    "coverage": coverage_table(slot_map),
+                    "filled_slots": filled_keys,
+                    "current_slot": asking_key,
+                    "next_question": build_slot_question(asking_key) if asking_key else None,
+                    "all_fact_filled": not missing_fact_keys(slot_map),
+                    "reference_action": action,
+                    "reference_slot": ref_key,
+                },
+            )
+            return
+
+        if is_fill_reference_request(body.content):
+            asking_now = analysis.get("current_asking_slot")
+            asking_key = asking_now if isinstance(asking_now, str) else None
+            reply = append_next_slot_question(
+                "ระบุหมวดที่ต้องการดึงอ้างอิง เช่น ดึงอ้างอิงกฎหมายให้ s10",
+                asking_key,
+            )
+            await _persist_intake_assistant(
+                request.app.state.db_session_factory,
+                project.id,
+                room.id,
+                slot_map,
+                reply,
+                [],
+                asking_slot=asking_key,
+            )
+            yield _sse(
+                "done",
+                {
+                    "content": reply,
+                    "citations": [],
+                    "coverage": coverage_table(slot_map),
+                    "filled_slots": filled_keys,
+                    "current_slot": asking_key,
+                    "next_question": build_slot_question(asking_key) if asking_key else None,
+                    "all_fact_filled": not missing_fact_keys(slot_map),
+                },
+            )
+            return
+
+        attached = await _attach_legal_to_filled(
+            slot_map,
+            filled_keys,
+            current_user.id,
+            body.attach_legal_reference,
+        )
 
         result, citations, degraded = await hybrid_retrieve(
             body.content,
@@ -567,7 +700,12 @@ async def intake_chat(
                     ):
                         parts_local.append(token)
                         await event_q.put(("token", {"text": token}))
-                full_text = "".join(parts_local)
+                full_text = append_next_slot_question(
+                    attached + "".join(parts_local),
+                    analysis.get("current_asking_slot")
+                    if isinstance(analysis.get("current_asking_slot"), str)
+                    else None,
+                )
                 await _persist_intake_assistant(
                     request.app.state.db_session_factory,
                     project.id,

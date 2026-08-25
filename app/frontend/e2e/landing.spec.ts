@@ -3,6 +3,7 @@ import { saveEvidence, skipReason, skipUnlessLive } from "./helpers";
 
 test.describe("Landing page", () => {
   // Live Docker stack only. Unit-only CI sets E2E!=1 so this suite is skipped.
+  // NOSONAR: Playwright live-stack spec. Skipped unless E2E=1 (see skipReason in helpers).
   test.skip(skipUnlessLive, skipReason);
 
   test("sends guests to login", async ({ page }) => {
@@ -17,5 +18,6 @@ test.describe("Landing page", () => {
     await expect(page.getByTestId("register-form")).toBeVisible();
     await expect(page.getByRole("heading", { name: "สมัครสมาชิก" })).toBeVisible();
     await expect(page.getByLabel("ชื่อ-นามสกุล")).toBeVisible();
+    await saveEvidence(page, "00b-register");
   });
 });

@@ -81,6 +81,10 @@ export function Phase3Draft({
   projectId?: string;
   onRefresh?: () => void;
 }>) {
+  const [allDrafted, setAllDrafted] = useState(false);
+  const filledCount = sections.filter((section) => section.filled).length;
+  const canReview = !projectId || allDrafted || filledCount >= 13;
+
   return (
     <div className="space-y-4" data-testid="phase3-draft">
       <div className="gov-card">
@@ -100,11 +104,19 @@ export function Phase3Draft({
           </p>
         ) : null}
         {actionInfo ? <p className="mb-3 text-sm text-brand-green">{actionInfo}</p> : null}
+        {allDrafted ? (
+          <p className="mb-3 text-sm font-bold text-green-800" data-testid="phase3-all-drafted">
+            ร่างครบ 13 หมวดแล้ว — กดไปทบทวน (Phase 4) เพื่อรัน Rule Engine และส่งออก
+          </p>
+        ) : null}
       </div>
       {projectId ? (
         <DraftChat
           projectId={projectId}
-          onAllDrafted={() => onRefresh?.()}
+          onAllDrafted={() => {
+            setAllDrafted(true);
+            onRefresh?.();
+          }}
           onSectionDone={onRefresh}
         />
       ) : null}
@@ -131,8 +143,14 @@ export function Phase3Draft({
         <Button variant="secondary" onClick={onBack} data-testid="phase2-back">
           ย้อนกลับ
         </Button>
-        <Button onClick={() => { onConfirm().catch(() => undefined); }} data-testid="phase3-confirm">
-          ยืนยันด้วยตนเอง — ไปทบทวน/เผยแพร่
+        <Button
+          onClick={() => {
+            onConfirm().catch(() => undefined);
+          }}
+          disabled={!canReview}
+          data-testid="phase3-confirm"
+        >
+          ไปทบทวน (Phase 4)
         </Button>
       </div>
       </div>

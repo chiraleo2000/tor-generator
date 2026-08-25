@@ -13,6 +13,7 @@ describe("Phase0Upload", () => {
         uploadedNames={[]}
         message={null}
         isError={false}
+        status="idle"
         onDraftText={vi.fn()}
         onBlurSave={vi.fn()}
         onUpload={vi.fn()}
@@ -34,16 +35,17 @@ describe("Phase0Upload", () => {
         draftText="โครงการจัดซื้อครุภัณฑ์คอมพิวเตอร์"
         busy={false}
         canStart
-        uploadedNames={["pack.pdf"]}
-        message="อัปโหลดแล้ว — กดเริ่มวิเคราะห์เมื่อครบชุดเอกสาร (ยังไม่ประมวลผล)"
+        uploadedNames={["pB0.pdf"]}
+        message="อัปโหลดแล้ว — กดเริ่มวิเคราะห์เมื่อครบชุดเอกสาร"
         isError={false}
+        status="idle"
         onDraftText={onDraftText}
         onBlurSave={onBlurSave}
         onUpload={onUpload}
         onAnalyze={onAnalyze}
       />
     );
-    expect(screen.getByTestId("phase0-file-list")).toHaveTextContent("pack.pdf");
+    expect(screen.getByTestId("phase0-file-list")).toHaveTextContent("pB0.pdf");
     fireEvent.change(screen.getByTestId("intake-paste"), {
       target: { value: "ข้อความใหม่" },
     });
@@ -54,22 +56,46 @@ describe("Phase0Upload", () => {
     expect(onAnalyze).toHaveBeenCalledTimes(1);
   });
 
-  it("shows an error alert and busy upload label", () => {
+  it("replaces the form with analyzing progress", () => {
     render(
       <Phase0Upload
-        draftText=""
+        draftText="โครงการทดสอบวางข้อความอย่างน้อยยี่สิบตัวอักษร"
         busy
-        canStart={false}
-        uploadedNames={[]}
-        message="อัปโหลดไม่สำเร็จ"
-        isError
+        canStart
+        uploadedNames={["pB0.pdf"]}
+        message={null}
+        isError={false}
+        status="analyzing"
         onDraftText={vi.fn()}
         onBlurSave={vi.fn()}
         onUpload={vi.fn()}
         onAnalyze={vi.fn()}
       />
     );
-    expect(screen.getByText("กำลังอัปโหลด...")).toBeInTheDocument();
+    expect(screen.getByTestId("phase0-analyzing")).toHaveTextContent("อย่าปิดหน้านี้");
+    expect(screen.getByTestId("phase0-file-list")).toHaveTextContent("pB0.pdf");
+    expect(screen.queryByTestId("intake-paste")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("intake-start-analyze")).not.toBeInTheDocument();
+  });
+
+  it("shows an error alert and busy upload label with the file name", () => {
+    render(
+      <Phase0Upload
+        draftText=""
+        busy
+        canStart={false}
+        uploadedNames={["pB0.pdf"]}
+        message="อัปโหลดไม่สำเร็จ"
+        isError
+        status="uploading"
+        onDraftText={vi.fn()}
+        onBlurSave={vi.fn()}
+        onUpload={vi.fn()}
+        onAnalyze={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId("phase0-uploading")).toHaveTextContent("กำลังอัปโหลด...");
+    expect(screen.getByTestId("phase0-file-list")).toHaveTextContent("pB0.pdf");
     expect(screen.getByRole("alert")).toHaveTextContent("อัปโหลดไม่สำเร็จ");
   });
 });

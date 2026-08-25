@@ -108,34 +108,13 @@ describe("IntakeChatPanel", () => {
     await waitFor(() =>
       expect(
         vi.mocked(apiClient.post).mock.calls.some(
-          (call) => call[0] === "/projects/p1/intake/analyze"
+          (call) =>
+            call[0] === "/projects/p1/intake/analyze" &&
+            call[2]?.timeout === 90_000
         )
       ).toBe(true)
     );
-    expect(onAnalyzed).toHaveBeenCalled();
-  });
-
-  it("posts fill-references once Phase 1 is active", async () => {
-    vi.mocked(apiClient.get).mockResolvedValue(
-      coveragePayload({ ready_to_compose: true, has_material: true }) as never
-    );
-    render(
-      <IntakeChatPanel
-        projectId="p1"
-        phase={1}
-        onAnalyzed={onAnalyzed}
-        onEnterQa={onEnterQa}
-        onReady={onReady}
-      />
-    );
-    await waitFor(() =>
-      expect(
-        vi.mocked(apiClient.post).mock.calls.some((call) =>
-          String(call[0]).includes("/intake/fill-references")
-        )
-      ).toBe(true)
-    );
-    expect(await screen.findByTestId("phase1-coverage")).toBeInTheDocument();
+    await waitFor(() => expect(onAnalyzed).toHaveBeenCalled(), { timeout: 3000 });
   });
 
   it("confirms ready from Phase 2", async () => {
@@ -176,7 +155,38 @@ describe("IntakeChatPanel", () => {
     expect(onReady).toHaveBeenCalled();
   });
 
-  it("enters QA from Phase 1 after confirm", async () => {
+  it("does not post fill-references on Phase 1 or Phase 2", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      coveragePayload({ has_material: true, ready_to_compose: false }) as never
+    );
+    const { rerender } = render(
+      <IntakeChatPanel
+        projectId="p1"
+        phase={1}
+        onAnalyzed={onAnalyzed}
+        onEnterQa={onEnterQa}
+        onReady={onReady}
+      />
+    );
+    await screen.findByTestId("phase1-coverage");
+    rerender(
+      <IntakeChatPanel
+        projectId="p1"
+        phase={2}
+        onAnalyzed={onAnalyzed}
+        onEnterQa={onEnterQa}
+        onReady={onReady}
+      />
+    );
+    await screen.findByTestId("phase2-qa");
+    expect(
+      vi.mocked(apiClient.post).mock.calls.filter((call) =>
+        String(call[0]).includes("/intake/fill-references")
+      )
+    ).toHaveLength(0);
+  });
+
+  it("enters QA from Phase 1 via skip", async () => {
     vi.mocked(apiClient.get).mockResolvedValue(
       coveragePayload({ has_material: true, ready_to_compose: false }) as never
     );
@@ -189,9 +199,8 @@ describe("IntakeChatPanel", () => {
         onReady={onReady}
       />
     );
-    fireEvent.click(await screen.findByTestId("intake-enter-qa"));
-    expect(await screen.findByTestId("confirm-phase-dialog")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("confirm-phase-ok"));
+    const skipBtn = await screen.findByTestId("phase1-skip");
+    fireEvent.click(skipBtn);
     await waitFor(() => expect(onEnterQa).toHaveBeenCalled());
   });
 });

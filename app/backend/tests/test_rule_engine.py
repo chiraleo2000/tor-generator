@@ -420,8 +420,9 @@ class TestRuleRegistration:
 
     def test_register_rule_to_invalid_category_raises(self, engine: RuleEngine):
         """Registering a rule to an invalid category raises ValueError."""
+        rule = AlwaysPassRule()
         with pytest.raises(ValueError, match="Unknown category"):
-            engine.register_rule("nonexistent", AlwaysPassRule())
+            engine.register_rule("nonexistent", rule)
 
     def test_multiple_rules_per_category(
         self, engine: RuleEngine, sample_tor_document: dict

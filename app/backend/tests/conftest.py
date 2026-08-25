@@ -57,6 +57,15 @@ def _clear_ai_runtime_overlay():
     clear_runtime_overlay()
 
 
+@pytest.fixture(autouse=True)
+def _disable_sglang_auto_promote(monkeypatch):
+    """Unit tests must not probe the live SGLang container."""
+    monkeypatch.setattr(
+        "app.providers.factory.probe_sglang_health_sync",
+        lambda _url="": False,
+    )
+
+
 @pytest.fixture
 def sample_snapshot_data() -> dict:
     """Sample JSONB data for project version snapshots."""

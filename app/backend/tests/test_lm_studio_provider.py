@@ -50,6 +50,7 @@ class TestLMStudioProviderInit:
     def test_client_uses_not_needed_api_key(self):
         provider = LMStudioLocalProvider(base_url="http://localhost:1234/v1")
         assert provider._client.api_key == "not-needed"
+        assert provider._client.max_retries == 0
 
     def test_client_uses_provided_base_url(self):
         provider = LMStudioLocalProvider(base_url="http://my-server:8080/v1")
@@ -420,6 +421,44 @@ class TestStream:
                 pass
 
     @pytest.mark.asyncio
+    async def test_stream_httpx_timeout_name_raises_timeout_error(self):
+        class ReadTimeout(Exception):
+            pass
+
+        self.provider._client.chat.completions.create = AsyncMock(
+            side_effect=ReadTimeout("read timed out")
+        )
+        with pytest.raises(TimeoutError, match="did not respond within"):
+            async for _ in self.provider.stream(
+                messages=[{"role": "user", "content": "test"}]
+            ):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_reasoning_content_when_delta_empty(self):
+        delta = MagicMock()
+        delta.content = ""
+        delta.reasoning_content = "ร่าง"
+        choice = MagicMock()
+        choice.delta = delta
+        chunk = MagicMock()
+        chunk.choices = [choice]
+
+        async def mock_stream():
+            yield chunk
+
+        self.provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_stream()
+        )
+        collected = [
+            token
+            async for token in self.provider.stream(
+                messages=[{"role": "user", "content": "test"}]
+            )
+        ]
+        assert collected == ["ร่าง"]
+
+    @pytest.mark.asyncio
     async def test_stream_connection_error_raises_connection_error(self):
         """Test that connection failure during stream raises ConnectionError."""
         from openai import APIConnectionError
@@ -456,3 +495,89 @@ class TestStream:
         assert call_kwargs["temperature"] == 0.5
         assert call_kwargs["max_tokens"] == 500
         assert call_kwargs["stream"] is True
+
+
+    @pytest.mark.asyncio
+    async def test_disable_thinking_sets_extra_body(self):
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 1
+        mock_usage.completion_tokens = 1
+        mock_usage.total_tokens = 2
+        mock_message = MagicMock()
+        mock_message.content = "{}"
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        mock_create = AsyncMock(return_value=mock_response)
+        self.provider._client.chat.completions.create = mock_create
+
+        await self.provider.invoke(
+            messages=[{"role": "user", "content": "json"}],
+            disable_thinking=True,
+        )
+        sent = mock_create.call_args.kwargs
+        assert sent["extra_body"]["enable_thinking"] is False
+        assert "disable_thinking" not in sent
+
+    @pytest.mark.asyncio
+    async def test_sglang_url_sends_guided_json(self):
+        provider = LMStudioLocalProvider(
+            base_url="http://sglang-llm:30000/v1",
+            model_name="test-model",
+            timeout=30.0,
+        )
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 1
+        mock_usage.completion_tokens = 1
+        mock_usage.total_tokens = 2
+        mock_message = MagicMock()
+        mock_message.content = "{}"
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        mock_create = AsyncMock(return_value=mock_response)
+        provider._client.chat.completions.create = mock_create
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+        await provider.invoke(
+            messages=[{"role": "user", "content": "json"}],
+            json_schema=schema,
+            json_schema_name="sample",
+            disable_thinking=True,
+        )
+        sent = mock_create.call_args.kwargs
+        assert sent["extra_body"]["guided_json"] == schema
+        assert sent["response_format"]["type"] == "json_schema"
+        assert "json_schema" not in sent
+
+    @pytest.mark.asyncio
+    async def test_uses_reasoning_content_when_message_empty(self):
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 1
+        mock_usage.completion_tokens = 4
+        mock_usage.total_tokens = 5
+        mock_message = MagicMock()
+        mock_message.content = ""
+        mock_message.reasoning_content = '{"slot_map": {}}'
+        mock_message.reasoning = None
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        self.provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+        result = await self.provider.invoke(
+            messages=[{"role": "user", "content": "json"}]
+        )
+        assert result.content == '{"slot_map": {}}'

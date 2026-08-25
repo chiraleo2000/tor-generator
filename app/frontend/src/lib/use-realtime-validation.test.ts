@@ -212,7 +212,7 @@ describe("useRealtimeValidation", () => {
     });
 
     // Verify we have results
-    expect(result.current.findings.length).toBe(1);
+    expect(result.current.findings).toHaveLength(1);
 
     // Clear
     act(() => {

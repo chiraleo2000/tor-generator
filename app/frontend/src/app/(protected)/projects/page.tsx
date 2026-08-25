@@ -11,6 +11,7 @@ import { StatusPill } from "@/components/brand/status-pill";
 import { Modal } from "@/components/brand/modal";
 import { Button } from "@/components/ui/button";
 import { apiErrorMessage } from "@/lib/api-error";
+import { decideArchiveProject } from "@/lib/drafting-guard";
 import type { Project } from "@/types";
 
 function formatBudget(value: number) {
@@ -100,6 +101,16 @@ export default function ProjectsPage() {
                       onView={() => setViewing(project)}
                       onEdit={() => router.push(`/projects/${project.id}/draft`)}
                       onArchive={() => {
+                        const decision = decideArchiveProject(
+                          project.id,
+                          project.name,
+                          (message) => window.confirm(message)
+                        );
+                        if (decision === "blocked") {
+                          setError("ไม่สามารถลบโครงการที่กำลังร่างอยู่");
+                          return;
+                        }
+                        if (decision === "cancelled") return;
                         setError(null);
                         archiveProject(project.id).catch((err: unknown) =>
                           setError(apiErrorMessage(err, "ลบโครงการไม่สำเร็จ"))

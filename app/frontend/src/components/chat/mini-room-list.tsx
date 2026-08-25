@@ -140,6 +140,7 @@ function RoomGroup({
           <button
             type="button"
             className="flex min-w-0 flex-1 items-start gap-2 text-left"
+            data-testid="chat-room-item"
             onClick={() => onSelect(room.id)}
           >
             <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-navy text-[11px] font-bold text-white">

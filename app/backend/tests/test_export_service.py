@@ -54,20 +54,19 @@ async def test_retry_succeeds_on_second_attempt():
 
 
 @pytest.mark.asyncio
-async def test_retry_fails_after_second_attempt():
+async def test_retry_fails_after_second_attempt(monkeypatch: pytest.MonkeyPatch):
     job = ExportJob(uuid.uuid4(), uuid.uuid4())
 
     async def always_fail(*_args, **_kwargs):
         raise RuntimeError("still down")
 
-    with (
-        patch.object(ExportService, "_generate_and_upload", side_effect=always_fail),
-        patch("app.services.export_service.asyncio.sleep", new_callable=AsyncMock),
-        pytest.raises(RuntimeError, match="still down"),
-    ):
-        await ExportService._attempt_export_with_retry(
-            AsyncMock(), MagicMock(), _snapshot(), job
-        )
+    monkeypatch.setattr(ExportService, "_generate_and_upload", always_fail)
+    monkeypatch.setattr("app.services.export_service.asyncio.sleep", AsyncMock())
+    db = AsyncMock()
+    minio = MagicMock()
+    snap = _snapshot()
+    with pytest.raises(RuntimeError, match="still down"):
+        await ExportService._attempt_export_with_retry(db, minio, snap, job)
 
     assert job.retry_count == 1
     assert job.status == "failed"

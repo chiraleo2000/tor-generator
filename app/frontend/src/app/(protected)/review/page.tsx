@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UploadArea } from "@/components/brand/upload-area";
@@ -9,6 +9,12 @@ import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { findingCheckTone } from "@/lib/review-findings";
+import {
+  persistReviewJobId,
+  readReviewJobId,
+  restoredReviewFromPayload,
+  reviewRestoreStatus,
+} from "@/lib/review-job-persist";
 import {
   compareExtractJobs,
   extractCompareFiles,
@@ -137,15 +143,17 @@ function ReviewResults({
   }
   return (
     <div>
-      <CheckItem
-        tone={(result.quality_score ?? 0) >= 70 ? "pass" : "warn"}
-        title={`คะแนนความพร้อม ${result.quality_score ?? "—"}/100`}
-        detail={
-          (result.quality_score ?? 0) >= 70
-            ? "ผ่านเกณฑ์เบื้องต้น"
-            : "ยังไม่ผ่านเกณฑ์ 70 — ดูรายการด้านล่าง"
-        }
-      />
+      <div data-testid="review-score">
+        <CheckItem
+          tone={(result.quality_score ?? 0) >= 70 ? "pass" : "warn"}
+          title={`คะแนนความพร้อม ${result.quality_score ?? "—"}/100`}
+          detail={
+            (result.quality_score ?? 0) >= 70
+              ? "ผ่านเกณฑ์เบื้องต้น"
+              : "ยังไม่ผ่านเกณฑ์ 70 — ดูรายการด้านล่าง"
+          }
+        />
+      </div>
       {findings.map((finding, index) => (
         <CheckItem
           key={`${finding.rule}-${index}`}
@@ -177,7 +185,48 @@ export default function StandaloneReviewPage() {
   const [busy, setBusy] = useState(false);
   const [extracted, setExtracted] = useState<ReviewExtractJob | null>(null);
 
+  function applyRestoredJob(data: Record<string, unknown>) {
+    const restored = restoredReviewFromPayload(data);
+    if (!restored) return;
+    persistReviewJobId(restored.id);
+    if (restored.extractedText) {
+      setExtracted({
+        id: restored.id,
+        extracted_text: restored.extractedText,
+        status: restored.status,
+      });
+    }
+    if (restored.step === 3 && typeof restored.qualityScore === "number") {
+      setResult({
+        quality_score: restored.qualityScore,
+        findings: restored.findings as Finding[],
+      });
+      setStep(3);
+      setStatus(reviewRestoreStatus(restored.qualityScore));
+      return;
+    }
+    setStep(2);
+    setStatus("สกัดข้อความสำเร็จ — ตรวจตัวอย่างแล้วกดยืนยันเริ่มตรวจสอบ");
+  }
+
+  useEffect(() => {
+    const jobId = readReviewJobId();
+    if (!jobId) return undefined;
+    let cancelled = false;
+    apiClient
+      .get(`/review/${jobId}`)
+      .then((response) => {
+        if (cancelled) return;
+        applyRestoredJob(unwrapData<Record<string, unknown>>(response));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function resetToUpload(next: File | null) {
+    persistReviewJobId(null);
     setFile(next);
     setStep(1);
     setExtracted(null);
@@ -201,6 +250,7 @@ export default function StandaloneReviewPage() {
     setResult(null);
     try {
       const primary = await extractReviewFile(file);
+      persistReviewJobId(primary.id);
       setExtracted(primary);
       setStep(2);
       setStatus("สกัดข้อความสำเร็จ — ตรวจตัวอย่างแล้วกดยืนยันเริ่มตรวจสอบ");
@@ -223,6 +273,7 @@ export default function StandaloneReviewPage() {
       const ran = unwrapData<ReviewResult>(
         await apiClient.post("/review/run", { id: extracted.id })
       );
+      persistReviewJobId(extracted.id);
       setResult(ran);
       setComparisons(compared.comparisons);
       setStep(3);
@@ -253,7 +304,7 @@ export default function StandaloneReviewPage() {
         </p>
         <UploadArea
           label="ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก"
-          hint="PDF, Word (.docx) หรือรูปภาพสแกน"
+          hint="PDF, Word (.docx), ข้อความ (.txt) หรือรูปภาพสแกน"
           onFiles={(list) => resetToUpload(list[0] || null)}
         />
         {file ? (
@@ -262,7 +313,7 @@ export default function StandaloneReviewPage() {
           </p>
         ) : null}
         {busy ? (
-          <output className="mt-2 block text-sm text-navy">
+          <output className="mt-2 block text-sm text-navy" data-testid="review-busy">
             {status || "กำลังทำงาน..."}
           </output>
         ) : null}
@@ -276,6 +327,7 @@ export default function StandaloneReviewPage() {
             className={`mt-2 text-sm ${
               (result?.quality_score ?? 0) >= 70 ? "text-brand-green" : "text-navy"
             }`}
+            data-testid="review-status"
           >
             {status}
           </p>

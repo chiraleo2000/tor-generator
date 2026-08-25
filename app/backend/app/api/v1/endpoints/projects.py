@@ -74,6 +74,19 @@ router = APIRouter()
 MAX_VERSIONS_PER_PROJECT = 50
 
 
+def officer_can_submit(
+    status: str,
+    current_phase: int,
+    has_review_score: bool = False,
+) -> bool:
+    """Draft/rejected always; archived after Phase 4 or a stored Rule Engine score."""
+    if status in {"draft", "rejected"}:
+        return True
+    if status != "archived":
+        return False
+    return current_phase >= 4 or has_review_score
+
+
 def _first_nonempty(*candidates: str) -> str:
     for item in candidates:
         if str(item or "").strip():
@@ -552,7 +565,11 @@ async def submit_project(
     if project is None:
         raise NotFoundError(message=PROJECT_NOT_FOUND)
     require_project_access(project.owner_id, current_user)
-    if project.status not in ("draft", "rejected"):
+    if not officer_can_submit(
+        str(project.status or ""),
+        int(project.current_phase or 0),
+        project.quality_score is not None,
+    ):
         raise ValidationError(message="สามารถส่งตรวจสอบได้เฉพาะโครงการที่เป็นร่างหรือถูกส่งกลับ")
     project.status = "in_review"
     await db.flush()

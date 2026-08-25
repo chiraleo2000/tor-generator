@@ -110,5 +110,8 @@ describe("formatChatTimestamp", () => {
     expect(attachIngestFeedback({ status: "processing" }, "wait.pdf")).toContain(
       "กำลังประมวลผล"
     );
+    expect(
+      attachIngestFeedback({ document_id: "d1", status: "pending", name: "note.txt" }, "note.txt")
+    ).toContain("ถูกเพิ่มเข้าคลังของฉันแล้ว");
   });
 });

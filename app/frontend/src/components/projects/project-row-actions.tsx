@@ -60,7 +60,13 @@ export function ProjectRowActions({
       >
         {project.status === "approved" ? "ปรับปรุง" : "แก้ไข"}
       </Button>
-      <Button size="sm" variant="outline" onClick={onArchive}>
+      <Button
+        size="sm"
+        variant="outline"
+        data-testid="archive-project"
+        aria-label={`ลบโครงการ ${project.name}`}
+        onClick={onArchive}
+      >
         ลบ
       </Button>
     </div>

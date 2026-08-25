@@ -346,7 +346,7 @@ def _find_closest_token_index(char_offset: int, token_char_offsets: list[int]) -
 
 def _get_section_label_at_token(
     token_idx: int,
-    section_token_indices: list[int],
+    _section_token_indices: list[int],
     sections: list[tuple[int, str]],
     token_char_offsets: list[int],
 ) -> str | None:

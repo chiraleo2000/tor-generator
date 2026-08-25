@@ -12,6 +12,7 @@ from app.models.kb_chunk import KBChunk
 from app.models.knowledge_base_document import KnowledgeBaseDocument
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
+from app.models.review_job import ReviewJob
 from app.models.suggestion import Suggestion
 from app.models.template import Template
 from app.models.template_version import TemplateVersion
@@ -24,6 +25,7 @@ __all__ = [
     "User",
     "Project",
     "ProjectVersion",
+    "ReviewJob",
     "TORSection",
     "Template",
     "TemplateVersion",

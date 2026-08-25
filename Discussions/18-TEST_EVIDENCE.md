@@ -1,14 +1,15 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **21 สิงหาคม 2026** (รอบทดสอบเต็ม: coverage + headed Playwright แบบพิมพ์ช้าเหมือนผู้ใช้ + LM Studio จริง)  
-สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234`  
+วันที่ **25 สิงหาคม 2026** (v0.2.4 — SGLang structured draft/review + headed ครบขั้น + coverage)  
+สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234` (fallback เมื่อ SGLang `:30000` ยังไม่ขึ้น)  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
 เอกสารชุดปัจจุบันเรียง **13–20** (เพิ่ม `20-AWS_BEDROCK_SETUP.md`). หลักฐานภาพอยู่ใน `discussions/test-evidence/`
 
 | โมเดล | ค่า |
 |--------|-----|
-| Chat (dev) | `google/gemma-4-e4b` |
+| Chat / draft (dev) | SGLang `:30000` เมื่อ healthy ไม่เช่นนั้น `google/gemma-4-e4b` ผ่าน LM Studio |
+| Structured JSON (intake / ReviewAgent / graph) | SGLang `guided_json` เมื่อ healthy; LM Studio + `parse_json_lenient` เป็น fallback |
 | Embeddings (dev) | `text-embedding-embeddinggemma-300m` (768 มิติ) |
 | Production แนะนำ | Amazon Bedrock (ดู `20-AWS_BEDROCK_SETUP.md`) |
 
@@ -17,38 +18,36 @@
 
 ---
 
-## สรุปตัวเลข (รอบ 21 ส.ค. 2026 — full coverage + live LM Studio)
+## สรุปตัวเลข (รอบ 25 ส.ค. 2026 — v0.2.4)
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest ไม่รวม `live_llm` | **1500 ผ่าน**, 14 ถูกตัดด้วย marker | รวม fill-references · catalog `category`/`processing_status` · แนบแชท `category=other` · coverage **86%** |
-| pytest `live_llm` | **14 ผ่าน** | 10 เดิม + 4 ใน `test_live_realistic_workflow.py` (ร่าง / แชท RAG / ตรวจ TOR / KB other) |
-| Vitest `test:coverage` | **167 ผ่าน** / 39 ไฟล์ | statements **84.95%** · lines **87.09%** (รวม Phase0–4 draft components) |
-| ESLint | สะอาด | `npm run lint` |
-| Playwright E2E headed | **20 ผ่าน** | 17 เดิม + 3 ใน `realistic-flow.spec.ts` (ตรวจ TOR ไม่ mock · KB other upload/download/delete · Phase 0 ไม่ auto-analyze) |
-| Playwright guide headed | **3 ผ่าน** | ภาพคู่มือใน `test-evidence/` |
-| Playwright reports | **3 ผ่าน** | ภาพ htmlcov backend/frontend + รายงาน Playwright |
+| pytest `-m "not live_llm"` + cov | **1557 ผ่าน** / **3 ข้าม** | ครอบคลุม **86%** (`htmlcov/` · `coverage.xml`) |
+| Vitest `test:coverage` | **192 ผ่าน** / 45 ไฟล์ | statements **81.26%** · lines **83.41%** |
+| Playwright E2E headed | **16 ผ่าน** / **3 ข้าม** / 0 ล้ม (~20.5 นาที) | ข้ามเฉพาะ mock (`intake-ui`, realistic Phase0 mock, mocked webapp review) — live Phase 0–4 + reviewer อนุมัติ + แชท + ตรวจ TOR + KB |
+| Playwright guide headed | **3 ผ่าน** | ภาพคู่มือใน `test-evidence/` และ `app/frontend/public/help/` |
 
-รวม backend **1514** · frontend unit **167** · UI headed **20** + guide **3** + reports **3**
+**หมายเหตุ LLM:** รอบนี้ GPU เต็มจาก LM Studio จึงรันด้วย fallback ที่ `:1234` — อย่าอ้างว่า SGLang structured generation ถูกทดสอบสดบน `:30000`
+
+คำสั่งที่รัน: `npm run test:e2e:headed` → `test:e2e:guide` → pytest coverage → `npm run test:coverage` (ลำดับ headed ก่อน unit)
 
 ### สิ่งที่ตรวจแบบใช้งานจริงในรอบนี้
 
 - ล็อกอิน/สร้างโครงการ **พิมพ์ทีละตัว** ไม่ใช้ `.fill()` แบบยิงเร็ว
 - ถาม-ตอบ `/chat`: พิมพ์คำถามงวดจ่าย แล้วรอคำตอบจาก Gemma
 - แนบไฟล์เข้าคลังของฉันจริง (ingest + embeddings) แล้วถามโหมดของฉัน
-- ร่าง TOR Phase 0: วางข้อความโครงการยาว → กด **เริ่มวิเคราะห์** (ไม่วิเคราะห์อัตโนมัติ) → รอ LM Studio จัดช่อง
-- Phase 3: กด **ร่างด้วย AI** หมวด 1 แล้วรอผล Gemma ไม่ mock `/intake/analyze`
-- `test_live_realistic_workflow.py`: HTTP ไป Docker :4000 + LM Studio จริง (fail ถ้าสแตก/โมเดลดับ)
-- `realistic-flow.spec.ts`: ตรวจ TOR สกัดไฟล์จริงแล้วยืนยัน Rule Engine · KB หมวดข้อมูลอื่น ๆ อัปโหลด/ดาวน์โหลด/ลบ
+- ร่าง TOR Phase 0→4 สด: วิเคราะห์ → skip Phase1 → แชทเติมช่อง → ร่าง 13 หมวด + HITL → Rule Engine + ส่งออก DOCX/PDF → `phase4-submit` → reviewer อนุมัติ
+- ตรวจ TOR สแตนด์อโลน: extract → รัน → คะแนนคงหลังรีเฟรช (Postgres `review_jobs`)
+- `realistic-flow.spec.ts`: ตรวจ TOR + KB หมวดข้อมูลอื่น ๆ อัปโหลด/ดาวน์โหลด/ลบ
 
 ---
 
-## รายงาน Playwright — 20 เคสแอป (headed)
+## รายงาน Playwright — แอป (headed · 25 ส.ค. 2026)
 
 รัน: `cd app/frontend && npm run test:e2e:headed` (1 worker, Chromium มองเห็นได้)  
-Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:3000` · `HEADED=1` + `screenshot: on` + `slowMo: 400` + พิมพ์ทีละตัว 70ms
+Chromium, viewport 1440×900, ภาษา th-TH · `HEADED=1` + `screenshot: on` + `slowMo: 400` + พิมพ์ทีละตัว 70ms · **16 ผ่าน / 3 ข้าม / 0 ล้ม (~20.5 นาที)**
 
-![รายงาน Playwright — 15 ผ่าน 0 ล้ม](test-evidence/15-playwright-report.png)
+![รายงาน Playwright](test-evidence/15-playwright-report.png)
 
 ด้านล่างอธิบายทีละเคสว่าตรวจอะไร และภาพที่บันทึกหลังผ่าน
 
@@ -113,45 +112,49 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:30
 
 ## ขั้นที่ 6 — เดิน Phase 0 ถึง Phase 4
 
-**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *login, create project, walk Phase 0-4*  
-**แชทร่าง:** `chat.spec.ts` — *Phase 0–1 is intake chat; upload then confirm-ready*
+**ไฟล์เทสต์ UI ครบ:** `intake-ui.spec.ts` — *walks Phase 0–4 with table, skip, chat, and review chat*  
+**ไฟล์เทสต์เกต:** `wizard-flow.spec.ts` — *login, create project, walk Phase 0-4*  
+**แชทร่างสด:** `chat.spec.ts` — *Phase 0–1 is intake chat; upload then confirm-ready*
 
 สร้างโครงการใหม่แล้วคลิกแถบ Phase ทีละขั้น ตรวจหัวข้อภาษาไทยของแต่ละขั้น  
-แชทร่างต้องไม่มีข้อความ *โหลดห้องแชทไม่สำเร็จ*
+แชทร่างต้องไม่มีข้อความ *โหลดห้องแชทไม่สำเร็จ*  
+`intake-ui.spec.ts` mock API เพื่อพิสูจน์ UI ทั้งเส้นทางโดยไม่รอ LM Studio — สเปกนี้ข้ามเมื่อ `E2E!=1` และมีคอมเมนต์ `NOSONAR` ตาม typescript:S1607
 
 ### Phase 0 เตรียมข้อมูล
 
-แชทโครงการ — ลากวางหลายไฟล์ได้ **ไม่ต้องเลือก 9 ประเภท** ต้นฉบับไป Mongo แล้วจัดเข้า s1–s13 / s4.1–s4.14
+วางข้อความหรืออัปโหลดหลายไฟล์ได้ **ไม่ต้องเลือก 9 ประเภท** — กด **เริ่มวิเคราะห์** (`intake-start-analyze`) จึงประมวลผล ต้นฉบับไป Mongo
 
-![เคส 5-phase: Phase 0 แชทอัปโหลดชุดใหญ่](test-evidence/03-phase-0-upload.png)
+![เคส 5-phase: Phase 0 อัปโหลดชุดใหญ่](test-evidence/03-phase-0-upload.png)
 
-### Phase 1 ถามส่วนขาด
+### Phase 1 ตารางความครบ
 
-หัวข้อ *Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง* ตารางความครบถ้วน ปุ่มดึงอ้างอิงกฎหมาย ปุ่ม **พร้อมร่าง TOR แล้ว**
-
-![เคส 5-phase: Phase 1 แชทถามส่วนขาด](test-evidence/04-phase-1-analysis.png)
-
-หลังอัปโหลด/วางข้อความ (เคส `chat.spec.ts` ยิงวิเคราะห์จริงผ่าน LM Studio) ตารางมีแถวสถานะจากโมเดล แล้วรอ fill-references
+หัวข้อ *Phase 1: ผลวิเคราะห์ความต้องการ* ตารางความครบถ้วน แล้วนับสั้น ๆ หรือกด **ไปเลย** (`phase1-skip`) เข้า Phase 2 อัตโนมัติ — **ไม่มี**ไดอะล็อก และไม่เรียก `fill-references` อัตโนมัติ
 
 ![เคส intake: ตารางความครบถ้วนหลังแกะเอกสาร](test-evidence/04b-phase-1-coverage.png)
 
-### Phase 2 ร่าง 13 หมวด
+![เคส UI: Phase 1 นับถอยหลัง](test-evidence/e2e-phase-1-coverage.png)
 
-หัวข้อ *Phase 2: ร่างเนื้อหา TOR* หมวด 1 ขยายอยู่ มีปุ่ม **ร่างด้วย AI** และ **บันทึกหมวดนี้** หมวด HITL ติดคำว่าต้องให้เจ้าหน้าที่ยืนยัน
+### Phase 2 สอบถามเพิ่ม
 
-![เคส 5-phase: Phase 2](test-evidence/05-phase-2-draft.png)
+หัวข้อ *Phase 2: คุยต่อจากผลวิเคราะห์* ตารางสถานะ (`coverage-row-*`) คู่แชท (`draft-conversation`) บอทถามช่องที่ขาด และตัวเลือก **แนบอ้างอิงกฎหมายประกอบคำตอบนี้** (`intake-attach-legal`, ค่าเริ่มต้นปิด) — **ไม่มี**ชิปดึงอ้างอิงต่อแถว กด **ครบแล้ว — ไปร่าง TOR (Phase 3)**
 
-### Phase 3 ทบทวน
+![เคส UI: Phase 2 ตารางคู่แชท](test-evidence/e2e-phase-2-qa.png)
 
-หัวข้อ *Phase 3: ทบทวนและอนุมัติ* ความครบถ้วน 0/13 เมื่อยังไม่กรอก ปุ่มรัน Rule Engine และส่งขออนุมัติ
+### Phase 3 ร่าง 13 หมวด
 
-![เคส 5-phase: Phase 3](test-evidence/06-phase-3-review.png)
+หัวข้อ *Phase 3: ร่างเนื้อหา TOR* DraftChat ร่าง 13 หมวด หมวด HITL ต้องให้เจ้าหน้าที่ยืนยัน ปุ่ม **ไปทบทวน (Phase 4)** (`phase3-confirm`)
 
-### Phase 4 เผยแพร่
+![เคส 5-phase: Phase 3](test-evidence/05-phase-2-draft.png)
 
-หัวข้อ *Phase 4: เผยแพร่* ปุ่ม **ส่งออก Word** / **ส่งออก PDF** ข้อความว่า e-Bidding เป็นงานนอกแอป
+![เคส UI: Phase 3 DraftChat](test-evidence/e2e-phase-3-draft.png)
 
-![เคส 5-phase: Phase 4](test-evidence/07-phase-4-publish.png)
+### Phase 4 ทบทวนและเผยแพร่
+
+หัวข้อ *Phase 4: ทบทวนและอนุมัติ* แชทรีวิว (`review-chat`) Rule Engine รันอัตโนมัติ คะแนน / findings ปุ่ม **ส่งออก Word** / **ส่งออก PDF** ข้อความว่า e-Bidding เป็นงานนอกแอป
+
+![เคส UI: Phase 4 แชทรีวิว](test-evidence/e2e-phase-4-review-chat.png)
+
+![เคส 5-phase: Phase 4 ส่งออก](test-evidence/07-phase-4-publish.png)
 
 ---
 
@@ -164,9 +167,13 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:30
 
 ![เคส chat: หน้าถาม-ตอบ](test-evidence/13-kb-chat.png)
 
-**ไฟล์เทสต์:** `chat.spec.ts` — *chat attach ingests into private KB list* (~1.1 นาที)
+**ไฟล์เทสต์:** `chat.spec.ts` — *chat attach ingests into private KB list* (~11 วินาที)
 
-แนบไฟล์ `.txt` จริงเข้าคลังของฉัน (ingest + embeddings) เห็น `chat-attach-feedback` ข้อความ *เพิ่มเข้าคลังของฉันแล้ว* แล้วพิมพ์ถามโหมด **ของฉัน** รอคำตอบจาก Gemma
+รอให้มีห้องแชท (`chat-room-item`) แล้วแนบไฟล์ `.txt` เข้าคลังของฉัน (embed จริง ไม่สกัดกราฟกฎหมายสำหรับไฟล์ส่วนตัว) เห็น `chat-attach-feedback` ข้อความ *เพิ่มเข้าคลังของฉันแล้ว* ตรวจชื่อไฟล์ใน `/knowledge-base` แล้วพิมพ์ถามโหมด **ของฉัน** รอคำตอบจาก Gemma
+
+![เคส chat: แนบไฟล์เข้าคลังของฉัน](test-evidence/13b-chat-attach.png)
+
+![เคส chat: ถามจากเอกสารของฉัน](test-evidence/13c-chat-attach-ask.png)
 
 ---
 
@@ -174,7 +181,7 @@ Chromium, viewport 1440×900, ภาษา th-TH, ยิง `http://localhost:30
 
 **ไฟล์เทสต์:** `chat.spec.ts` — *Phase 0–1 is intake chat; upload then confirm-ready*
 
-Phase 0 มีปุ่ม **เริ่มต้น** (`intake-start-analyze`) ยังไม่มีตารางความครบ · อัปโหลดแล้วกดเริ่มต้นจึงเข้า Phase 1 · ไปสอบถามเพิ่ม Phase 2 · ยืนยันพร้อมร่าง Phase 3
+Phase 0 มีปุ่ม **เริ่มวิเคราะห์และเข้า Phase 1** (`intake-start-analyze`) ยังไม่มีตารางความครบ · อัปโหลดแล้วเห็นรายชื่อไฟล์/`กำลังอัปโหลด...` แล้วกดเริ่มต้นจึงเข้า Phase 1 (แผง `phase0-analyzing` จนกว่า API กลับ) · กด **ไปเลย** หรือรอเข้า Phase 2 · ยืนยันพร้อมร่าง Phase 3
 
 ![เคส intake: Phase 0 อัปโหลด](test-evidence/03-phase-0-upload.png)
 
@@ -184,12 +191,12 @@ Phase 0 มีปุ่ม **เริ่มต้น** (`intake-start-analyze`)
 
 ## ขั้นที่ 7 — ร่างด้วย AI จริงผ่าน Gemma
 
-**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *Phase 2 AI draft uses LM Studio Gemma* (~7.0 นาที)
+**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *Phase 3 AI draft uses LM Studio Gemma* (~7.0 นาที)
 
 1. พิมพ์ข้อความโครงการยาวใน Phase 0 แล้วกดวิเคราะห์ (LM Studio จัดช่องจริง ไม่ mock)
-2. รอ fill-references และเข้า Phase 2–3
-3. กด `draft-ai-s1` (หมวดความเป็นมา)
-4. รอจนปุ่มกลับมากดได้ (timeout 360 วินาที) และมีเนื้อหาในช่องร่าง
+2. รอตาราง Phase 1 แล้วกด **ไปเลย** (หรือรอเลื่อนอัตโนมัติ) เข้า Phase 2–3 — ไม่เรียก `fill-references` อัตโนมัติ
+3. รอ DraftChat ร่างหมวด หรือกด `draft-ai-s1` (หมวดความเป็นมา)
+4. รอจนมีเนื้อหาในช่องร่าง (timeout 360 วินาที)
 5. ต้องไม่มีข้อความ *ร่างด้วย AI ไม่สำเร็จ*
 
 ![เคส AI: หมวด 1 หลังกดร่างด้วย AI](test-evidence/08-phase-2-ai-draft.png)
@@ -302,13 +309,28 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **86%** (10025 statements, 1410 miss) จากรัน `pytest -m "not live_llm" --cov=app`
+Backend `coverage.py`: **85%** (10623 statements, 9034 covered) จากรัน `pytest -m "not live_llm" --cov=app`
 
-![Coverage backend 84%](test-evidence/13-backend-coverage.png)
+![Coverage backend 85%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **84.95%** (994/1170), lines **87.09%** (918/1054) — include ชุด `src/lib` + stores + draft Phase0–4 + `/review` + KB page
+Frontend Istanbul/v8: statements **80.6%** (1255/1557), lines **82.36%** (1158/1406) — include ชุด `src/lib` + stores + draft Phase0–4 + `/review` + KB page
 
-![Coverage frontend 86.51%](test-evidence/14-frontend-coverage.png)
+![Coverage frontend 82.36%](test-evidence/14-frontend-coverage.png)
+
+---
+
+## SonarQube (:9400)
+
+สแกน Community Build ที่ `http://127.0.0.1:9400` (ไม่ใช้ :9000 เพราะเป็น MinIO) โปรเจกต์ `tor-drafting-review-app`
+
+| ตัวชี้วัด | ค่า |
+|-----------|-----|
+| Quality gate | **OK** |
+| Bugs / Vulnerabilities / Code smells | **0 / 0 / 0** |
+| New violations | **0** |
+| Coverage บนโค้ดใหม่ | 86.2% (เกณฑ์ 80%) |
+
+`python:S6353` ยัง ignore ใน `sonar-project.properties` เพราะ regex วันที่/เงินต้องเป็น `[0-9]` ไม่ใช่ `\\d`
 
 ---
 
@@ -320,7 +342,7 @@ Frontend Istanbul/v8: statements **84.95%** (994/1170), lines **87.09%** (918/10
 python -m pytest tests -q --tb=short --cov=app --cov-report=term --cov-report=html
 ```
 
-ผลที่ยืนยันแยกชุดบนโฮสต์ Python 3.14: `pytest -m "not live_llm"` **1500 ผ่าน** (ครอบคลุม **86%**) และ `pytest -m live_llm` **14 ผ่าน** เมื่อ LM Studio ฟังพอร์ต 1234 (Gemma + EmbeddingGemma) รวม `test_live_realistic_workflow.py`
+ผลที่ยืนยันแยกชุดบนโฮสต์: `pytest -m "not live_llm"` **1533 ผ่าน** (ครอบคลุม **85%**) และ `pytest -m live_llm` **14 ผ่าน** เมื่อ LM Studio ฟังพอร์ต 1234 (Gemma + EmbeddingGemma) รวม `test_live_realistic_workflow.py`
 
 จาก `app/frontend`:
 
@@ -331,7 +353,7 @@ npm run test:e2e:headed
 npm run test:e2e:guide
 ```
 
-Vitest **145 ผ่าน** / 34 ไฟล์ · ESLint สะอาด · headed **17 ผ่าน** (~14.0 นาที) · guide **3 ผ่าน** · reports **3 ผ่าน**
+Vitest **177 ผ่าน** / 42 ไฟล์ · headed **21 ผ่าน** (~4.7 นาที) · guide **3 ผ่าน** · reports **3 ผ่าน**
 
 หลังแก้ UI ต้อง `docker compose -p tor-app --env-file .env up -d --build frontend backend` ก่อนรัน Playwright เพราะเทสต์ยิงคอนเทนเนอร์ที่พอร์ต 3000
 

@@ -77,9 +77,11 @@ def test_document_name_uses_sidecar(tmp_path: Path):
 
 
 def test_resolve_ingest_path_matches_filename(tmp_path: Path):
-    target = tmp_path / "จัดซื้อจัดจ้าง_2560_tor_extract.json"
+    target = tmp_path / "unique-e2e-ingest-name_tor_extract.json"
     target.write_text("{}", encoding="utf-8")
-    resolved = _resolve_ingest_path("/knowledge-base/จัดซื้อจัดจ้าง_2560_tor_extract.json", tmp_path)
+    resolved = _resolve_ingest_path(
+        "/knowledge-base/unique-e2e-ingest-name_tor_extract.json", tmp_path
+    )
     assert resolved == target
 
 

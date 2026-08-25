@@ -249,7 +249,7 @@ class PDFGenerator:
 
     def _build_sub_sections_html(
         self,
-        parent_num: int,
+        _parent_num: int,
         sub_sections: dict[str, str],
         use_thai_numerals: bool,
     ) -> str:

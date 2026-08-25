@@ -746,7 +746,10 @@ class TestDatabaseStatusUpdate:
 
 
 def test_unmapped_filename_category_is_other():
-    from app.rag.document_pipeline import _category_for
+    from app.rag.document_pipeline import _category_for, _should_extract_legal_graph
 
     assert _category_for("บันทึกภายใน.txt") == "other"
     assert _category_for("พระราชบัญญัติ.pdf") == "law"
+    assert _should_extract_legal_graph("user") is False
+    assert _should_extract_legal_graph("project") is True
+    assert _should_extract_legal_graph("global") is True

@@ -10,6 +10,15 @@ import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import type { CoverageRow } from "@/components/draft/phase1-coverage";
 
+function briefAsMessage(brief: string): ChatMessageItem {
+  return {
+    id: "phase2-brief",
+    role: "assistant",
+    content: brief,
+    citations: [],
+  };
+}
+
 export function DraftConversation({
   projectId,
   mode,
@@ -22,6 +31,7 @@ export function DraftConversation({
   mode: "intake" | "compose";
   apiBase: string;
   placeholder?: string;
+  coverage?: CoverageRow[];
   onCoverage?: (rows: CoverageRow[]) => void;
   onSectionRevised?: () => void;
 }>) {
@@ -31,6 +41,7 @@ export function DraftConversation({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachLegal, setAttachLegal] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -42,7 +53,7 @@ export function DraftConversation({
   const loadMessages = useCallback(async (id: string) => {
     const response = await apiClient.get(`/chat/rooms/${id}/messages`);
     const payload = unwrapData<{ messages?: ChatMessageItem[] }>(response);
-    setMessages(payload.messages || []);
+    return payload.messages || [];
   }, []);
 
   useEffect(() => {
@@ -51,12 +62,29 @@ export function DraftConversation({
     apiClient
       .post(`/projects/${projectId}/intake/${path}`)
       .then(async (response) => {
-        const payload = unwrapData<{ room_id?: string; coverage?: CoverageRow[] }>(response);
+        const payload = unwrapData<{
+          room_id?: string;
+          coverage?: CoverageRow[];
+          brief?: string;
+        }>(response);
         if (!live) return;
         const id = payload.room_id || "";
         setRoomId(id);
-        if (payload.coverage) onCoverageRef.current?.(payload.coverage);
-        if (id) await loadMessages(id);
+        if (payload.coverage?.length) {
+          onCoverageRef.current?.(payload.coverage);
+        }
+        let loaded: ChatMessageItem[] = [];
+        if (id) {
+          loaded = await loadMessages(id);
+        }
+        if (!live) return;
+        if (loaded.length) {
+          setMessages(loaded);
+          return;
+        }
+        if (payload.brief) {
+          setMessages([briefAsMessage(payload.brief)]);
+        }
       })
       .catch(() => {
         if (live) setError("โหลดบทสนทนาร่างไม่สำเร็จ");
@@ -73,12 +101,12 @@ export function DraftConversation({
     }
   }, [messages]);
 
-  async function sendIntake(content: string) {
+  async function sendIntake(content: string, withLegal: boolean) {
     const controller = new AbortController();
     abortRef.current = controller;
     await streamSsePost(
       `${apiBase}/projects/${projectId}/intake/chat`,
-      { content, search_scope: "both" },
+      { content, search_scope: "both", attach_legal_reference: withLegal },
       token,
       (event, data) => {
         if (event === "token") {
@@ -126,7 +154,9 @@ export function DraftConversation({
   async function send() {
     const content = draft.trim();
     if (!content || busy) return;
+    const withLegal = mode === "intake" && attachLegal;
     setDraft("");
+    setAttachLegal(false);
     setBusy(true);
     setError(null);
     const sentAt = new Date().toISOString();
@@ -139,9 +169,12 @@ export function DraftConversation({
       if (mode === "compose") {
         await sendCompose(content);
       } else {
-        await sendIntake(content);
+        await sendIntake(content, withLegal);
       }
-      if (roomId) await loadMessages(roomId);
+      if (roomId) {
+        const loaded = await loadMessages(roomId);
+        if (loaded.length) setMessages(loaded);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "ส่งข้อความไม่สำเร็จ");
     } finally {
@@ -177,30 +210,45 @@ export function DraftConversation({
         ))}
         <div ref={endRef} />
       </div>
-      <div className="flex items-end gap-2 border-t p-3">
-        <textarea
-          data-testid="chat-input"
-          className="min-h-[48px] flex-1 rounded-md border p-2 text-sm"
-          value={draft}
-          placeholder={placeholder || "ตอบเป็นภาษาพูดได้เลย"}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
+      <div className="border-t p-3">
+        <div className="flex items-end gap-2">
+          <textarea
+            data-testid="chat-input"
+            className="min-h-[48px] flex-1 rounded-md border p-2 text-sm"
+            value={draft}
+            placeholder={placeholder || "ตอบเป็นภาษาพูดได้เลย"}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                send().catch(() => undefined);
+              }
+            }}
+          />
+          <Button
+            type="button"
+            data-testid="chat-send"
+            disabled={busy || !draft.trim()}
+            onClick={() => {
               send().catch(() => undefined);
-            }
-          }}
-        />
-        <Button
-          type="button"
-          data-testid="chat-send"
-          disabled={busy || !draft.trim()}
-          onClick={() => {
-            send().catch(() => undefined);
-          }}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+            }}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+        {mode === "intake" ? (
+          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              data-testid="intake-attach-legal"
+              checked={attachLegal}
+              disabled={busy}
+              onChange={(event) => setAttachLegal(event.target.checked)}
+            />
+            {" "}
+            <span>แนบอ้างอิงกฎหมายประกอบคำตอบนี้</span>
+          </label>
+        ) : null}
       </div>
     </div>
   );

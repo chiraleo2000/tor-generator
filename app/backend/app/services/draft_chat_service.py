@@ -6,6 +6,7 @@ conversational editing through accept/edit/redraft commands.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, AsyncIterator
 from uuid import UUID
@@ -16,6 +17,8 @@ from app.rag.hybrid import hybrid_retrieve
 from app.services.intake_service import resolve_draft_section_key, slot_content
 
 logger = logging.getLogger("tor_app.draft_chat")
+
+DRAFT_STREAM_TIMEOUT_SEC = 90
 
 DRAFT_SYSTEM_PROMPT = (
     "คุณเป็นผู้เชี่ยวชาญร่าง TOR (Terms of Reference) ภาครัฐไทย "
@@ -66,6 +69,20 @@ def _section_prompt_context(
     return "\n".join(parts)
 
 
+def fallback_section_prose(section_key: str, slot_map: dict[str, Any]) -> str:
+    """Official-language fallback when the local LLM stream times out."""
+    label = TOR_SECTION_LABELS.get(section_key, section_key)
+    facts = slot_content(slot_map, section_key).strip()
+    if not facts:
+        facts = "ใช้ข้อมูลจากเอกสารโครงการที่รับเข้าในขั้นตอนวิเคราะห์ความต้องการ"
+    return (
+        f"{label} กำหนดไว้ดังนี้ {facts} "
+        "ให้ดำเนินการให้ถูกต้องตามพระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ "
+        "พ.ศ. 2560 และระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ "
+        "พ.ศ. 2560 รวมทั้งหนังสือเวียนกรมบัญชีกลางที่เกี่ยวข้อง"
+    )
+
+
 async def draft_single_section(
     section_key: str,
     slot_map: dict[str, Any],
@@ -89,16 +106,26 @@ async def draft_single_section(
         rag_context = ""
 
     user_prompt = _section_prompt_context(section_key, slot_map, rag_context)
-    llm = ProviderFactory().get_llm()
-    async for token in llm.stream(
-        [
-            {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-        max_tokens=2048,
-    ):
-        yield token
+    llm = ProviderFactory().get_llm("draft")
+    yielded = False
+    try:
+        async with asyncio.timeout(DRAFT_STREAM_TIMEOUT_SEC):
+            async for token in llm.stream(
+                [
+                    {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=2048,
+                disable_thinking=True,
+            ):
+                yielded = True
+                yield token
+    except OSError:
+        # TimeoutError and ConnectionError are OSError subclasses on Python 3.
+        logger.warning("draft stream failed for %s; using slot fallback", section_key)
+        if not yielded:
+            yield fallback_section_prose(section_key, slot_map)
 
 
 async def edit_section_draft(
@@ -118,7 +145,7 @@ async def edit_section_draft(
         f"ข้อเสนอแนะจากผู้ใช้:\n{feedback}\n\n"
         "กรุณาแก้ไขร่างตามข้อเสนอแนะ คืนร่างใหม่ทั้งหมด (ไม่ต้องใส่หัวข้อหมวดซ้ำ)"
     )
-    llm = ProviderFactory().get_llm()
+    llm = ProviderFactory().get_llm("draft")
     async for token in llm.stream(
         [
             {"role": "system", "content": EDIT_SYSTEM_PROMPT},
@@ -126,6 +153,7 @@ async def edit_section_draft(
         ],
         temperature=0.3,
         max_tokens=2048,
+        disable_thinking=True,
     ):
         yield token
 

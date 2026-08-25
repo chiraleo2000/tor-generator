@@ -20,7 +20,7 @@ export default defineConfig({
     fileParallelism: false,
     coverage: {
       provider: "v8",
-      reporter: ["text", "html"],
+      reporter: ["text", "html", "lcov"],
       reportsDirectory: "./coverage",
       include: [
         "src/lib/**/*.ts",
@@ -30,6 +30,7 @@ export default defineConfig({
         "src/app/**/review/page.tsx",
         "src/app/**/admin/ai-settings/page.tsx",
         "src/app/**/knowledge-base/page.tsx",
+        "src/components/wizard/inline-validation-feedback.tsx",
       ],
       exclude: [
         "src/app/**/admin/knowledge-base/page.tsx",

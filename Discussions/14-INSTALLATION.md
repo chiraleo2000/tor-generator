@@ -65,6 +65,35 @@ Alembic `006_kb_corpus_group` เพิ่ม `knowledge_base_documents.corpus_g
 3. Load **text-embedding-embeddinggemma-300m** สำหรับ embeddings
 4. ทดสอบในเบราว์เซอร์หรือด้วย `GET http://127.0.0.1:1234/v1/models`
 
+## 2b. SGLang บน GPU ท้องถิ่น (ร่าง/ตรวจแบบ structured JSON)
+
+ถ้ามี NVIDIA GPU + NVIDIA Container Toolkit ให้ใช้ SGLang เป็น engine หลักของ **วิเคราะห์ intake / ReviewAgent / graph extract** (`guided_json` ตาม schema) และเป็นปลายทางแชทเมื่อ `/health` ขึ้น
+
+**GPU หนึ่งตัว — อย่าโหลด Gemma ใน LM Studio คู่กับ `sglang-llm` พร้อมกัน**
+
+```bash
+# โมเดลแชท + guided JSON ที่ :30000 — ไม่สตาร์ท embeddings
+docker compose -p tor-app --env-file .env --profile sglang up -d
+
+# ฝังเวกเตอร์ที่ :30001 เฉพาะตอนยังไม่มีคลัง หรือต้องการ seed ใหม่ (กิน VRAM เพิ่ม)
+docker compose -p tor-app --env-file .env --profile sglang-embed up -d
+```
+
+ตรวจสุขภาพ:
+
+```bash
+curl.exe http://localhost:4000/health
+curl.exe http://localhost:30000/health
+```
+
+เมื่อ `http://localhost:30000/health` ขึ้น แอปจะชี้แชท/ร่าง/งาน JSON ไป SGLang อัตโนมัติ (แม้ `LLM_PROVIDER=lm_studio`)  
+ถ้า SGLang ดับ แชทและร่างร้อยแก้วกลับไป LM Studio ที่ `:1234` — งานที่ต้องเป็น JSON ใช้ `parse_json_lenient` เป็น fallback  
+อย่าอ้างว่า structured generation ถูกทดสอบแล้ว ถ้า `:30000/health` ไม่ขึ้น
+
+แชทยังเก็บห้อง/ข้อความใน Postgres + pgvector ตามเดิม — ไม่ย้ายไป Mongo/Redis และไม่บังคับ Neo4j
+
+Alembic `008_review_jobs` สร้างตาราง `review_jobs` สำหรับตรวจ TOR แบบสแตนด์อโลน (งานไม่หายเมื่อรีสตาร์ท)
+
 ## 3. ขึ้นสแตก
 
 จากรากรีโป:
@@ -151,8 +180,8 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 | **Amazon production** | Amazon Bedrock | Bedrock Titan หรือในเครื่อง | ดู 20-AWS_BEDROCK_SETUP · IAM role หรือ access key |
 | Claude + EmbeddingGemma ในเครื่อง | Claude (Anthropic) | ในเครื่อง | ใส่ Anthropic key · เปิด LM Studio โหลด EmbeddingGemma |
 | Claude + OpenAI embeddings | Claude (Anthropic) | ฝังเวกเตอร์ OpenAI | ใส่ Anthropic + OpenAI key · **ต้อง** seed ใหม่หลังบันทึก |
-| Gemma ในเครื่อง (dev) | LM Studio | ในเครื่อง | โหลดทั้งแชทและ EmbeddingGemma ที่พอร์ต 1234 |
-| SGLang multi-user | SGLang | SGLang | `docker compose --profile sglang up` · GPU NVIDIA |
+| Gemma ในเครื่อง (dev) | LM Studio | ในเครื่อง | โหลดทั้งแชทและ EmbeddingGemma ที่พอร์ต 1234 — อย่าคู่กับ sglang-llm บน GPU เดียว |
+| SGLang ร่าง/ตรวจ | SGLang (`:30000`) | pgvector ที่ seed แล้ว | `docker compose --profile sglang up` · GPU NVIDIA · อย่าเปิด `sglang-embed` คู่บน GPU เดียว |
 
 โหมด (`on_prem` / `cloud` / `hybrid`) เป็นป้ายเท่านั้น — ค่าที่เลือกในช่องแชทและฝังเวกเตอร์คือแหล่งที่ใช้จริง · **ทดสอบการเชื่อมต่อ** ยิงทั้งสองฝั่ง · **บันทึก** มีผลทันที
 
@@ -163,6 +192,7 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 ```bash
 curl.exe http://localhost:4000/health
 curl.exe http://localhost:3000
+curl.exe http://localhost:30000/health
 ```
 
 Frontend พร็อกซี `/api/v1/*` ไปที่ backend ภายใน Docker (`BACKEND_INTERNAL_URL=http://backend:4000/api/v1`). `next.config.js` ตั้ง `experimental.proxyTimeout` เป็น 300000 มิลลิวินาที เพราะร่างด้วย AI / แชท SSE มักเกินค่าเริ่มต้น 30 วินาทีของ rewrite proxy
@@ -207,7 +237,7 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**21 ส.ค. 2026**) กับสแตก Docker (`tor-app` + Mongo + Neo4j) + LM Studio ที่พอร์ต 1234 — Playwright headed พิมพ์ช้าแบบผู้ใช้และรอผล Gemma — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**25 ส.ค. 2026** · v0.2.4) กับสแตก Docker (`tor-app` + Mongo + Neo4j) — headed เดิน live Phase 0–4 + แชท + ตรวจ TOR; mock specs ถูกข้ามเมื่อ `HEADED=1` — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
@@ -215,10 +245,9 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest ไม่รวม `live_llm` | **1475 ผ่าน** / ครอบคลุม **84%** ของ `app/` (ตัด `seed_db` / `seed_kb` / `seed_raw_docs` / `main`) · **0 skipped** |
-| pytest `-m live_llm` | **10 ผ่าน** (LM Studio ที่พอร์ต 1234) เมื่อรันชุดนั้น |
-| Vitest coverage | **145 ผ่าน** / 34 ไฟล์ · statements **86.51%** · lines **87.71%** |
-| Playwright headed (แอป) | **17 ผ่าน** / 0 ล้ม (21 ส.ค. 2026 · ~14.0 นาที รวมวิเคราะห์ ~3.8 นาที และร่าง AI ~7.0 นาที · `test:e2e:headed`) |
+| pytest ไม่รวม `live_llm` | **1557 ผ่าน** / **3 ข้าม** / ครอบคลุม **86%** ของ `app/` (ตัด `seed_*` / `main`) |
+| Vitest coverage | **192 ผ่าน** / 45 ไฟล์ · statements **81.26%** · lines **83.41%** |
+| Playwright headed (แอป) | **16 ผ่าน** / **3 ข้าม** / 0 ล้ม (25 ส.ค. 2026 · ~20.5 นาที · live Phase 0–4) + guide **3** |
 | Guide screenshots | **3 ผ่าน** (`test:e2e:guide` headed · รีเฟรช PNG ใน `test-evidence/`) |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 

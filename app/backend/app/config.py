@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     lm_studio_base_url: str = LOCAL_LLM_DEFAULT_URLS["lm_studio"]
     lm_studio_model: str = DEFAULT_CHAT_MODEL
     lm_studio_embedding_model: str = DEFAULT_EMBEDDING_MODEL
-    lm_studio_timeout: float = 180.0
+    lm_studio_timeout: float = 300.0
     ollama_base_url: str = LOCAL_LLM_DEFAULT_URLS["ollama"]
     llama_cpp_base_url: str = LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
     sglang_base_url: str = LOCAL_LLM_DEFAULT_URLS["sglang"]
@@ -185,7 +185,7 @@ class Settings(BaseSettings):
     def drafting_agent_timeout_seconds(self) -> int:
         """Per-section LLM timeout. Local Gemma needs more headroom than cloud."""
         if self.llm_provider in LOCAL_LLM_PROVIDERS:
-            return max(1, min(300, int(self.lm_studio_timeout)))
+            return max(1, min(420, int(self.lm_studio_timeout)))
         return 60
 
     def cache_ttl_seconds(self, hours: int) -> int:

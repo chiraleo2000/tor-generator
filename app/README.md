@@ -2,7 +2,7 @@
 
 โฟลเดอร์นี้คือ **แอปที่รันจริงเท่านั้น** อย่าวาง PDF งานวิจัย, extracts กฎหมาย, หรือบันทึกออกแบบที่นี่
 
-แอปปัจจุบันเป็นกระบวนการร่าง **5 Phase (0–4)** ที่ `/projects/{id}/draft` ไม่ใช่วิซาร์ด 8 ขั้น — Phase 0 `Phase0Upload` (กดเริ่มวิเคราะห์) → Phase 1 `Phase1Coverage` → Phase 2 `Phase2Qa` → Phase 3 `Phase3Draft` → Phase 4 `Phase4Review` + `Phase4Export` ผ่าน `ConfirmPhaseDialog`
+แอปปัจจุบันเป็นกระบวนการร่าง **5 Phase (0–4)** ที่ `/projects/{id}/draft` ไม่ใช่วิซาร์ด 8 ขั้น — Phase 0 `Phase0Upload` (กดเริ่มวิเคราะห์) → Phase 1 `Phase1Coverage` (นับ 10 วินาที / **ไปเลย**) → Phase 2 `Phase2Qa` (ตารางคู่แชท) → Phase 3 `Phase3Draft` + `DraftChat` → Phase 4 `Phase4Review` + `ReviewChat` + `Phase4Export` ไดอะล็อกยืนยันใช้ตอนวิเคราะห์ / พร้อมร่าง / ไปทบทวน ไม่ใช้ตอน Phase 1→2
 
 | เส้นทาง | หน้าที่ |
 |---------|---------|

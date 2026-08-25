@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 export interface CoverageRow {
@@ -11,39 +12,28 @@ export interface CoverageRow {
   preview?: string;
 }
 
-function phase1StatusCopy(
-  fillingRefs: boolean,
-  ready: boolean,
-  factReady: boolean
-) {
-  if (fillingRefs) {
-    return (
-      <div className="mt-2" data-testid="phase1-filling-refs">
-        <p className="text-sm text-navy">กำลังดึงกฎระเบียบที่เกี่ยวข้อง...</p>
-        <progress className="mt-2 w-full" />
-      </div>
-    );
-  }
+function phase1StatusCopy(ready: boolean, factReady: boolean) {
   if (ready) {
     return (
       <p className="mt-2 text-sm text-brand-green" data-testid="phase1-ready-banner">
-        ข้อมูลครบถ้วนแล้ว สามารถยืนยันเพื่อไปขั้นถัดไปได้
+        ข้อมูลครบถ้วนแล้ว — กำลังไปสอบถามเพิ่มใน Phase 2
       </p>
     );
   }
   return (
     <p className="mt-2 text-sm text-navy">
       {factReady
-        ? "ข้อมูลข้อเท็จจริงพร้อม — ไปสอบถามเพิ่มได้เมื่อต้องการเติมช่องที่เหลือ"
-        : "พร้อมไปขั้นถัดไปเมื่อช่องข้อเท็จจริงบังคับครบ"}
+        ? "ข้อมูลข้อเท็จจริงพร้อม — กำลังไปคุยต่อเพื่อเติมช่องที่เหลือ"
+        : "พร้อมไปขั้นถัดไปเมื่อช่องข้อเท็จจริงบังคับครบ — บอทจะถามช่องที่ยังขาด"}
     </p>
   );
 }
 
+const AUTO_TRANSITION_SECONDS = 8;
+
 export function Phase1Coverage({
   coverage,
   gaps,
-  fillingRefs,
   ready = false,
   busy,
   message,
@@ -52,23 +42,59 @@ export function Phase1Coverage({
 }: Readonly<{
   coverage: CoverageRow[];
   gaps: string[];
-  fillingRefs: boolean;
   ready?: boolean;
   busy: boolean;
   message: string | null;
   isError: boolean;
   onEnterQa: () => void;
 }>) {
-  const factReady = coverage.some((row) => row.fact_required && row.filled);
+  const required = coverage.filter((row) => row.fact_required);
+  const factReady = required.length > 0 && required.every((row) => row.filled);
+  const [countdown, setCountdown] = useState(AUTO_TRANSITION_SECONDS);
+  const transitioned = useRef(false);
+  const onEnterQaRef = useRef(onEnterQa);
+  onEnterQaRef.current = onEnterQa;
+
+  useEffect(() => {
+    if (transitioned.current) {
+      return undefined;
+    }
+    setCountdown(AUTO_TRANSITION_SECONDS);
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      const left = AUTO_TRANSITION_SECONDS - Math.floor((Date.now() - startedAt) / 1000);
+      if (left > 0) {
+        setCountdown(left);
+        return;
+      }
+      window.clearInterval(interval);
+      setCountdown(0);
+      if (transitioned.current) {
+        return;
+      }
+      transitioned.current = true;
+      onEnterQaRef.current();
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  function skipToQa() {
+    if (transitioned.current) {
+      return;
+    }
+    transitioned.current = true;
+    onEnterQa();
+  }
+
   return (
     <div className="space-y-4" data-testid="phase1-coverage">
       <div className="gov-card">
         <h3 className="text-navy">Phase 1: ผลวิเคราะห์ความต้องการ</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          สิ่งที่ระบบอ่านได้จากเอกสาร — กดไปคุยต่อใน Phase 2 บอทจะเปิดบทด้วยสรุปนี้ ไม่ต้องกรอกใหม่
+          สิ่งที่ระบบอ่านได้จากเอกสาร — จะไปคุยต่อใน Phase 2 อัตโนมัติ บอทจะถามช่องที่ยังขาด
         </p>
         <FilledFactList coverage={coverage} />
-        {phase1StatusCopy(fillingRefs, ready, factReady)}
+        {phase1StatusCopy(ready, factReady)}
         {message ? (
           <p
             className={`mt-2 text-sm ${isError ? "text-destructive" : "text-brand-green"}`}
@@ -77,19 +103,26 @@ export function Phase1Coverage({
             {message}
           </p>
         ) : null}
+        {countdown > 0 ? (
+          <div className="mt-3 flex items-center gap-3 rounded-lg border border-navy/20 bg-blue-50 px-4 py-2">
+            <span className="text-sm text-navy" data-testid="phase1-countdown">
+              ไปสอบถามเพิ่มอัตโนมัติใน <strong>{countdown}</strong> วินาที...
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              data-testid="phase1-skip"
+              onClick={skipToQa}
+            >
+              ไปเลย
+            </Button>
+          </div>
+        ) : null}
       </div>
       {coverage.length ? (
         <CoverageTable coverage={coverage} gaps={gaps} />
       ) : null}
-      <Button
-        type="button"
-        className="mt-1"
-        data-testid="intake-enter-qa"
-        disabled={busy}
-        onClick={onEnterQa}
-      >
-        ไปคุยต่อใน Phase 2
-      </Button>
     </div>
   );
 }

@@ -17,10 +17,10 @@ interface ErrorBoundaryState {
  * and displays a Thai-language fallback UI with retry option.
  */
 export class ErrorBoundary extends React.Component<
-  ErrorBoundaryProps,
+  Readonly<ErrorBoundaryProps>,
   ErrorBoundaryState
 > {
-  constructor(props: ErrorBoundaryProps) {
+  constructor(props: Readonly<ErrorBoundaryProps>) {
     super(props);
     this.state = { hasError: false, error: null };
   }

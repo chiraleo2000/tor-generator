@@ -80,7 +80,7 @@ class FullDraftGenerator:
         mode = self._deployment_mode
         if mode:
             settings = settings.model_copy(update={"deployment_mode": mode})
-        return ProviderFactory(settings).get_llm()
+        return ProviderFactory(settings).get_llm("draft")
 
     async def generate_all(
         self,

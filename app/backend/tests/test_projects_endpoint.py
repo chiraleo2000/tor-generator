@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.v1.endpoints.projects import officer_can_submit
 from app.deps import get_current_user, get_db
 from app.main import app
 from app.models.project import Project
@@ -56,6 +57,7 @@ def _make_project(
     current_step=1,
     quality_score=None,
     template_id=None,
+    current_phase=0,
 ):
     """Create a mock Project object."""
     project = MagicMock(spec=Project)
@@ -67,7 +69,7 @@ def _make_project(
     project.project_type = project_type
     project.status = status
     project.current_step = current_step
-    project.current_phase = 0
+    project.current_phase = current_phase
     project.analysis_json = {}
     project.extracted_fields = {}
     project.quality_score = quality_score
@@ -735,11 +737,80 @@ class TestPhaseAndExtractionHitl:
         assert sections[0]["key"] == "s1"
 
 
+class TestOfficerCanSubmit:
+    def test_status_matrix(self):
+        assert officer_can_submit("draft", 0) is True
+        assert officer_can_submit("rejected", 1) is True
+        assert officer_can_submit("archived", 4) is True
+        assert officer_can_submit("archived", 3, True) is True
+        assert officer_can_submit("archived", 2) is False
+        assert officer_can_submit("in_review", 4) is False
+        assert officer_can_submit("approved", 4) is False
+
+
 class TestWorkflowAndWorkspaceWrites:
     """Submit / approve / reject, analysis, section save, extraction apply."""
 
     def test_submit_draft_moves_to_in_review(self, client, mock_officer_user):
         project = _make_project(status="draft")
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = project
+        mock_db.execute = AsyncMock(return_value=result)
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        with patch(
+            "app.api.v1.endpoints.projects.AuditService.log",
+            new_callable=AsyncMock,
+        ):
+            response = client.post(f"/api/v1/projects/{PROJECT_ID}/submit")
+        assert response.status_code == 200
+        assert project.status == "in_review"
+
+    def test_submit_archived_phase4_moves_to_in_review(self, client, mock_officer_user):
+        project = _make_project(status="archived", current_phase=4)
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = project
+        mock_db.execute = AsyncMock(return_value=result)
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        with patch(
+            "app.api.v1.endpoints.projects.AuditService.log",
+            new_callable=AsyncMock,
+        ):
+            response = client.post(f"/api/v1/projects/{PROJECT_ID}/submit")
+        assert response.status_code == 200
+        assert project.status == "in_review"
+
+    def test_submit_archived_before_phase4_is_rejected(self, client, mock_officer_user):
+        project = _make_project(status="archived", current_phase=2)
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = project
+        mock_db.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.post(f"/api/v1/projects/{PROJECT_ID}/submit")
+        assert response.status_code == 400
+
+    def test_submit_archived_with_review_score_moves_to_in_review(
+        self, client, mock_officer_user
+    ):
+        project = _make_project(status="archived", current_phase=3, quality_score=82)
         mock_db = AsyncMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = project

@@ -514,7 +514,7 @@ Auth: cookie `tor_access_token` หรือ `Authorization: Bearer`
 | | `POST /projects/{id}/intake/analyze` | จัดเข้า s1–s13 / s4.1–s4.14 |
 | | `GET /projects/{id}/intake/coverage` | ตาราง filled / gap / reference_only |
 | | `POST /projects/{id}/intake/fill-reference` | ดึงอ้างอิงกฎหมายลงช่องว่าง |
-| | `POST /projects/{id}/intake/confirm-ready` | ตั้ง `ready_to_compose` แล้วเข้า Phase 2 |
+| | `POST /projects/{id}/intake/confirm-ready` | ตั้ง `ready_to_compose` แล้วเข้า Phase 3 |
 | | `POST /projects/{id}/intake/chat` | SSE แชทร่างโครงการ |
 | ร่าง | `POST /projects/{id}/draft-section` | เอเจนต์หมวด + เขียน `content` และ `ai_draft` |
 | ผู้ดูแล AI | `GET/PUT /admin/ai-settings` | `llm_provider` และ `embedding_provider` อิสระในทุกโหมด; คีย์มีผลทันที |

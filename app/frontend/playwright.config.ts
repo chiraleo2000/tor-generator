@@ -28,7 +28,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   // Shared demo officer account on the live Docker stack — parallel workers collide.
   workers: 1,
-  timeout: headed ? 900_000 : 180_000,
+  timeout: headed ? 2_100_000 : 180_000,
   expect: { timeout: headed ? 30_000 : 15_000 },
   reporter: [
     ["list"],
@@ -40,11 +40,14 @@ export default defineConfig({
     colorScheme: "light",
     viewport: { width: 1440, height: 900 },
     screenshot: headed ? "on" : "only-on-failure",
-    video: "retain-on-failure",
-    trace: "retain-on-failure",
+    video: headed ? "on" : "retain-on-failure",
+    trace: headed ? "on" : "retain-on-failure",
     actionTimeout: headed ? 60_000 : 20_000,
     navigationTimeout: 30_000,
-    launchOptions: headed ? { slowMo: 400 } : undefined,
+    headless: !headed,
+    launchOptions: headed
+      ? { slowMo: Number(process.env.E2E_SLOWMO_MS || "400") }
+      : undefined,
   },
   projects: [
     {

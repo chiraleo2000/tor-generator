@@ -96,8 +96,9 @@ async def test_get_db_rolls_back_on_exception():
     assert session is mock_session
 
     # athrow is the only call that may raise — commit is not on this path
+    err = RuntimeError("handler error")
     with pytest.raises(RuntimeError, match="handler error"):
-        await gen.athrow(RuntimeError("handler error"))
+        await gen.athrow(err)
 
     mock_session.rollback.assert_called_once()
     mock_session.commit.assert_not_called()

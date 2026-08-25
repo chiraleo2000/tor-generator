@@ -16,7 +16,13 @@ import { unwrapData } from "@/lib/api-unwrap";
 import { useProjectStore } from "@/stores/project-store";
 import { HITL_SECTIONS, TOR_SECTION_ORDER } from "@/lib/tor-sections";
 import { toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
+import {
+  markProjectReviewFinished,
+  markProjectReviewStarted,
+  shouldSkipProjectReview,
+} from "@/lib/review-run-guard";
 import { canSelectPhase, displayPhase, intakeUnlockedPhase } from "@/lib/phase-gate";
+import { clearDraftingProject, markDraftingProject } from "@/lib/drafting-guard";
 import {
   PHASE_FORWARD_CONFIRM,
   useConfirmPhase,
@@ -71,6 +77,12 @@ export function DraftWorkspace() {
 
   useEffect(() => {
     if (!projectId) return;
+    markDraftingProject(projectId);
+    return () => clearDraftingProject(projectId);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
     fetchProject(projectId)
       .then((project) => {
         const nextUnlocked = intakeUnlockedPhase(project);
@@ -78,6 +90,17 @@ export function DraftWorkspace() {
         setPhase(displayPhase(project.currentPhase ?? 0, nextUnlocked));
         if (project.extractedFields) {
           setExtracted(project.extractedFields);
+        }
+        if (project.qualityScore != null) {
+          setReviewScore(project.qualityScore);
+        }
+        const persisted = project.analysisJson?.review_findings;
+        if (Array.isArray(persisted)) {
+          setReviewFindings(
+            persisted
+              .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+              .map((item) => toReviewFinding(item))
+          );
         }
       })
       .catch((err: unknown) =>
@@ -107,7 +130,7 @@ export function DraftWorkspace() {
     if (!canSelectPhase(phase, unlocked, next)) {
       return;
     }
-    if (next > phase) {
+    if (next > phase && next !== 2) {
       const prompt =
         PHASE_FORWARD_CONFIRM[next] || `ไป Phase ${next}?`;
       const ok = await ask(prompt);
@@ -170,7 +193,11 @@ export function DraftWorkspace() {
     }
   }
 
-  async function runProjectReview() {
+  const runProjectReview = useCallback(async (force = false) => {
+    if (shouldSkipProjectReview(projectId, force) || !projectId) {
+      return;
+    }
+    markProjectReviewStarted(projectId);
     setReviewBusy(true);
     setActionError(null);
     setActionInfo("รอคิว AI...");
@@ -194,6 +221,7 @@ export function DraftWorkspace() {
         })
         .catch(() => undefined);
     }, 500);
+    let succeeded = false;
     try {
       const response = await apiClient.post(
         `/projects/${projectId}/review`,
@@ -215,14 +243,17 @@ export function DraftWorkspace() {
       } catch {
         setReviewSuggestions([]);
       }
+      setActionInfo(null);
+      succeeded = true;
     } catch (err: unknown) {
       setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
       setActionInfo(null);
     } finally {
       window.clearInterval(poll);
+      markProjectReviewFinished(projectId, succeeded);
       setReviewBusy(false);
     }
-  }
+  }, [projectId]);
 
   async function exportDocument(format: "docx" | "pdf") {
     setExporting(true);
@@ -281,7 +312,7 @@ export function DraftWorkspace() {
               {activeProject?.name || "โครงการใหม่"}
             </p>
             <p className="text-xs text-muted-foreground">
-              เริ่มที่ Phase 0 — อัปโหลดแล้วกดวิเคราะห์ จากนั้นคุยต่อใน Phase 2 จากผลที่อ่านได้
+              เริ่มที่ Phase 0 — อัปโหลดแล้วกดวิเคราะห์ จากนั้นดูผล Phase 1 แล้วคุยต่อ Phase 2 อัตโนมัติ
             </p>
           </div>
           <StatusPill status={activeProject?.status || "draft"} />
@@ -363,6 +394,10 @@ export function DraftWorkspace() {
             error={actionError}
             onBack={() => persistPhase(3)}
             onReview={runProjectReview}
+            onAcceptHitl={async (sectionKey) => {
+              const section = sections.find((item) => item.key === sectionKey);
+              await saveSection(sectionKey, section?.content || "", true);
+            }}
             onSubmit={async () => {
               try {
                 await apiClient.post(`/projects/${projectId}/submit`);

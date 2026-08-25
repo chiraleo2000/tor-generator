@@ -10,6 +10,7 @@ import {
 
 test.describe("Admin pages", () => {
   // Live Docker stack only. Unit-only CI sets E2E!=1 so this suite is skipped.
+  // NOSONAR: Playwright live-stack spec. Skipped unless E2E=1 (see skipReason in helpers).
   test.skip(skipUnlessLive, skipReason);
 
   test("templates, knowledge base, users, and AI settings load", async ({ page }) => {
@@ -20,6 +21,7 @@ test.describe("Admin pages", () => {
     await expect(page).toHaveURL(/\/admin\/templates/);
     await expect(page.getByTestId("admin-templates-page")).toBeVisible();
     await expect(page.getByRole("heading", { name: "จัดการแม่แบบ" })).toBeVisible();
+    await saveEvidence(page, "16-admin-templates");
 
     await page.getByTestId("nav-admin-knowledge-base").click();
     await expect(page).toHaveURL(/\/admin\/knowledge-base/);
@@ -27,11 +29,13 @@ test.describe("Admin pages", () => {
     await expect(
       page.getByTestId("admin-kb-page").getByRole("heading", { name: "ฐานความรู้" })
     ).toBeVisible();
+    await saveEvidence(page, "17-admin-kb");
 
     await page.getByTestId("nav-admin-users").click();
     await expect(page).toHaveURL(/\/admin\/users/);
     await expect(page.getByTestId("admin-users-page")).toBeVisible();
     await expect(page.getByRole("heading", { name: "ผู้ใช้ระบบ" })).toBeVisible();
+    await saveEvidence(page, "18-admin-users");
 
     await page.getByTestId("nav-admin-ai-settings").click();
     await expect(page).toHaveURL(/\/admin\/ai-settings/);
@@ -45,6 +49,7 @@ test.describe("Admin pages", () => {
       "text-embedding-embeddinggemma-300m"
     );
     await expect(page.locator("#vector-store")).toHaveValue("pgvector");
+    await saveEvidence(page, "09a-admin-ai-local");
 
     await page.locator("#ai-mode").selectOption("cloud");
     await expect(page.locator("#ai-llm")).toHaveValue("lm_studio");
@@ -57,6 +62,7 @@ test.describe("Admin pages", () => {
     await page.locator("#ai-llm").selectOption("claude");
     await expect(page.locator("#anthropic-key")).toBeVisible();
     await expect(page.locator("#embed-model")).toBeVisible();
+    await saveEvidence(page, "09b-admin-ai-cloud");
 
     await page.locator("#ai-llm").selectOption("lm_studio");
     await page.locator("#ai-mode").selectOption("on_prem");

@@ -1,6 +1,3 @@
-"use client";
-
-import * as React from "react";
 import { Loader2, Check, AlertCircle, Edit3 } from "lucide-react";
 import { useWizardStore } from "@/stores/wizard-store";
 import { Button } from "@/components/ui/button";
@@ -19,7 +16,9 @@ interface AutoSaveIndicatorProps {
  *
  * Requirements: 4.2, 4.8
  */
-export function AutoSaveIndicator({ onRetry }: AutoSaveIndicatorProps) {
+export function AutoSaveIndicator({
+  onRetry,
+}: Readonly<AutoSaveIndicatorProps>) {
   const isDirty = useWizardStore((s) => s.isDirty);
   const isAutoSaving = useWizardStore((s) => s.isAutoSaving);
   const autoSaveError = useWizardStore((s) => s.autoSaveError);

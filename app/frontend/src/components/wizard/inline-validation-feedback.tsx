@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { ValidationFinding, ValidationSeverity } from "@/types";
 
@@ -31,7 +29,7 @@ interface FindingItemProps {
   finding: ValidationFinding;
 }
 
-function FindingItem({ finding }: FindingItemProps) {
+function FindingItem({ finding }: Readonly<FindingItemProps>) {
   const [showCorrection, setShowCorrection] = React.useState(false);
 
   return (
@@ -108,18 +106,17 @@ export function InlineValidationFeedback({
   qualityScore,
   isValid,
   error,
-}: InlineValidationFeedbackProps) {
+}: Readonly<InlineValidationFeedbackProps>) {
   // Nothing to show yet
   if (!isValidating && findings.length === 0 && isValid === null && !error) {
     return null;
   }
 
   return (
-    <div
+    <section
       className="mt-3 space-y-2"
       aria-live="polite"
       aria-atomic="false"
-      role="region"
       aria-label="ผลการตรวจสอบแบบเรียลไทม์"
     >
       {/* Loading indicator */}
@@ -164,15 +161,7 @@ export function InlineValidationFeedback({
       {!isValidating && qualityScore !== null && (
         <div className="flex items-center gap-3 text-sm">
           <span className="text-muted-foreground">คะแนนคุณภาพ:</span>
-          <span
-            className={`font-semibold ${
-              qualityScore >= 70
-                ? "text-green-600"
-                : qualityScore >= 50
-                  ? "text-amber-600"
-                  : "text-red-600"
-            }`}
-          >
+          <span className={`font-semibold ${scoreToneClass(qualityScore)}`}>
             {qualityScore}/100
           </span>
           {isValid !== null && (
@@ -208,6 +197,16 @@ export function InlineValidationFeedback({
           <span>เนื้อหาผ่านการตรวจสอบทั้งหมด</span>
         </div>
       )}
-    </div>
+    </section>
   );
+}
+
+function scoreToneClass(score: number): string {
+  if (score >= 70) {
+    return "text-green-600";
+  }
+  if (score >= 50) {
+    return "text-amber-600";
+  }
+  return "text-red-600";
 }
