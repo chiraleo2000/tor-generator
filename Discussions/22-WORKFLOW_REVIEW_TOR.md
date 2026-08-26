@@ -64,7 +64,7 @@ flowchart TD
 4. สร้างงานใน `review_jobs` สถานะ `extracted` เฉพาะเจ้าของบัญชี
 5. คืน `{ id, extracted_text[:20000], status }`
 
-รหัสงานเก็บในเบราว์เซอร์ รีเฟรชหน้าแล้วเรียก `GET /review/{id}` กู้ขั้น ๒ หรือ ๓ ได้
+รหัสงานเก็บใน `sessionStorage` (`tor-standalone-review-job`) และ `?job=` — รีเฟรชแล้วเรียก `GET /review/{id}` กู้ขั้น ๒ (มีข้อความ) หรือขั้น ๓ (มีคะแนน) ได้ เฉพาะเจ้าของบัญชี
 
 ### ขั้น 3 — ยืนยันตรวจและเทียบ
 
@@ -72,9 +72,10 @@ flowchart TD
 2. ถ้ามีอย่างน้อยสองงาน: `POST /review/compare-projects` `{ extract_ids }` สูงสุด ๕ ฉบับ Jaccard ของชุดคำ (คำยาวกว่า ๑ ตัว) UI ถือ ≥ ๐.๕ เป็นโทนผ่าน ถ้าเอพีไอนี้ไม่มี (๔๐๔/๔๐๕/๕๐๑) จะเทียบในเบราว์เซอร์แทน
 3. `POST /review/run` `{ id }` จัดข้อความเข้าหมวดจำลอง ถ้าจัดไม่ได้ทั้งก้อนถือเป็น `s1` แล้วรัน**เครื่องยนต์กฎชุดเดียวกับโครงการ**
 
-แผงผล: คะแนน /๑๐๐ ผ่านเมื่อ **≥ ๗๐** ไม่เช่นนั้น «ยังไม่ผ่านเกณฑ์ ๗๐» พร้อมรายการข้อค้นพบและความคล้าย
+แผงผล: หัวข้อ **คะแนนความพร้อม {score}/100** โทนผ่านเมื่อ **≥ ๗๐** ไม่เช่นนั้น «ยังไม่ผ่านเกณฑ์ ๗๐ — ดูรายการด้านล่าง» พร้อมรายการข้อค้นพบและความคล้าย (Jaccard ≥ ๐.๕ เป็นโทนผ่านบนจอ **ไม่ใช่**เกณฑ์กฎหมาย)
 
-หน้าล้วน**ไม่เรียก** ReviewAgent และไม่มีแชทถามความเห็น — มีแค่เครื่องยนต์กฎ + Jaccard
+หน้าล้วน**ไม่เรียก** ReviewAgent และไม่มีแชทถามความเห็น — มีแค่เครื่องยนต์กฎ + Jaccard  
+ป้ายอัปโหลดรับ `.pdf,.docx,.doc,.txt,.png,.jpg,.jpeg` (คำใบ้เขียน .docx) ตัวสกัดฝั่งเซิร์ฟเวอร์รับ PPTX ได้ถ้าโพสต์ตรง แต่ตัวเลือกไฟล์ไม่โชว์
 
 เอพีไอเทียบรับ `project_ids` ได้ด้วย แต่หน้าจอปัจจุบันส่งแค่ `extract_ids`
 
@@ -93,14 +94,20 @@ flowchart TD
 
 `POST /projects/{id}/review`:
 
-1. รวม `tor_sections` ทั้งโครงการ (รวมหัวข้อย่อยหมวด ๔)
-2. แนบวงเงิน ประเภทงาน และข้อความข้อกำหนดจากขั้นที่ ๐
+1. รวมเอกสารด้วย `assemble_review_document` — **เครื่องยนต์กฎ**ได้ทุกคีย์รวม `s4.N` ส่วน **ReviewAgent** ใช้เฉพาะหมวดแม่
+2. แนบวงเงิน ประเภทงาน และข้อความข้อกำหนดจากขั้นที่ ๐ (หน้าล้วนไม่มีเมทาดาทาวงเงิน จึงกฎทุนจดทะเบียน/ไทม์ไลน์อ่อนกว่า)
 3. `RuleEngine.validate` ทำซ้ำได้ผลเท่ากัน
-4. บันทึกคะแนน findings และ `review_assessment` ในโครงการ
-5. เรียก ReviewAgent สร้างข้อเสนอแนะ ๓–๒๐ ข้อ หมวด compliance / clarity / completeness / consistency พร้อมความเห็นรวม ถ้าโมเดลล้มยังคืนผลกฎ
+4. บันทึก `quality_score`, `analysis_json.review_score` / `review_is_valid` / `review_findings` / `review_assessment`
+5. เรียก ReviewAgent สร้างข้อเสนอแนะสูงสุด ๒๐ ข้อ หมวด compliance / clarity / completeness / consistency พร้อมความเห็นรวม (เป้า ๓ ข้อเป็นพรอม ไม่บังคับถ้าโมเดลคืนน้อยกว่า) ถ้าโมเดลล้มยังคืนผลกฎ
 
-เกตส่งตรวจฝั่ง UI: ครบ ๑๓ หมวด (`isSectionFilled`) — **ไม่ล็อกด้วย HITL หรือคะแนน &lt; ๗๐**  
+ระหว่างรอคิว LLM แสดง *รอคิวระบบอัจฉริยะ…* (`GET /ai/queue/{request_id}`)
+
+เกตส่งตรวจฝั่ง UI: ครบ ๑๓ หมวด (`isSectionFilled`) — **ไม่ล็อกด้วย HITL คะแนน &lt; ๗๐ หรือ `quality_score` ว่าง**  
+ฝั่งเซิร์ฟเวอร์ `officer_can_submit` อนุญาตสถานะ `draft`/`rejected` โดยไม่ดูคะแนน  
 อนุมัติจริงอยู่ที่แดชบอร์ด ไม่ใช่หน้า `/review`
+
+อัปโหลด **ข้อกำหนดเพิ่มเติม** (`GET/POST/DELETE .../review/requirements`) เข้าบริบทเอเจนต์ ไม่เข้าน้ำหนักกฎ  
+ข้อเสนอแนะบนหน้าห้าขั้นเป็นรายการดูอย่างเดียว — `PUT .../suggestions` ใช้ในวิซาร์ดเก่า ไม่ได้เรียกจากขั้นที่ ๔
 
 ---
 
@@ -123,7 +130,7 @@ flowchart TD
 
 **หน้าล้วน:** `review_jobs` + GridFS + รหัสงานในเบราว์เซอร์ — ไม่สร้างแถว `projects`
 
-**ขั้นที่ ๔:** `quality_score`, `analysis_json.review_findings` / `review_assessment`, ตาราง `suggestions`, บันทึก `submit`
+**ขั้นที่ ๔:** `quality_score`, `analysis_json.review_score` / `review_is_valid` / `review_findings` / `review_assessment`, ตาราง `suggestions`, ไฟล์ข้อกำหนดเพิ่มเติม, บันทึก `submit`
 
 ---
 
@@ -136,9 +143,12 @@ flowchart TD
 | GET | `/review/{id}` | กู้งานของเจ้าของ |
 | POST | `/review/compare-projects` | เทียบ ≥ ๒ รายการ |
 | POST | `/projects/{id}/review` | รวมร่าง + กฎ + เอเจนต์ + ความเห็นรวม |
-| POST | `/projects/{id}/review/comment` | ถามความเห็นเข้มงวดจากร่าง |
-| GET/PUT | `/projects/{id}/suggestions` | รายการ / ยอมรับ-ยกเลิก |
+| POST | `/projects/{id}/review/comment` | ถามความเห็นเข้มงวดจากร่าง (ไม่รันกฎใหม่) |
+| GET/POST/DELETE | `/projects/{id}/review/requirements` | ข้อกำหนดเพิ่มเติมขั้นที่ ๔ |
+| GET | `/projects/{id}/suggestions` | รายการบนหน้าห้าขั้น (ไม่มี PUT) |
 | POST | `/projects/{id}/submit` | ส่งตรวจ |
+| POST | `/projects/{id}/export` · GET `.../status` · GET `.../download/{docx\|pdf}` | ส่งออก |
+| GET | `/ai/queue/{request_id}` | คิว LLM ตอนทบทวน |
 | POST | `/projects/{id}/approve` · `reject` | ผู้ตรวจ/ผู้ดูแล |
 
 ---
@@ -153,8 +163,9 @@ flowchart TD
 | คะแนน &lt; ๗๐ ไม่กันส่งตรวจ | คงเป็นคำเตือน — ผู้ตรวจดู findings ที่แดชบอร์ด |
 | แชทรีวิวไม่ยืนยัน HITL ทีละหมวดแล้ว | ถามความเห็นผ่าน `/review/comment` แทน |
 | เกตส่งตรวจ | ครบ ๑๓ หมวดบน UI — ไม่ใช้ HITL เป็นเกต |
-| ไฟล์ PPTX | ไม่ผ่านตัวตรวจชนิดไฟล์ — แปลงเป็น PDF/Word ก่อน |
+| ไฟล์ PPTX | ตัวเลือกบน `/review` ไม่รับ — แปลงเป็น PDF/Word ก่อน (สกัดตรงเอพีไอรับ PPTX ได้) |
 | OCR รูปสแกนคุณภาพต่ำ | ตรวจตัวอย่างข้อความขั้น ๒ ก่อนยืนยันรัน |
+| คู่มือในแอปเขียน «ผ่านเมื่อคะแนน ≥ ๗๐» | หมายถึงโทนบนจอ ไม่ใช่เกตล็อกส่งตรวจ |
 | เส้น `/agent/.../review` | ไม่ใช่หน้า `/review` |
 
 ---
