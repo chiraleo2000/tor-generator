@@ -34,6 +34,7 @@ from app.rbac import require_project_access
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.intake_service import (
     INTAKE_CHAT_SYSTEM,
+    INTAKE_TEXT_CHAR_LIMIT,
     analyze_pack,
     append_intake_text,
     append_next_slot_question,
@@ -67,6 +68,7 @@ from app.services.intake_service import (
 logger = logging.getLogger("tor_app.intake")
 router = APIRouter()
 INTAKE_PASTE_FILENAME = "ข้อความผู้ใช้.txt"
+INTAKE_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 
@@ -132,7 +134,7 @@ class ConfirmReadyBody(BaseModel):
 
 
 class IntakeTextBody(BaseModel):
-    content: str = Field(..., min_length=20, max_length=200_000)
+    content: str = Field(..., min_length=20, max_length=INTAKE_TEXT_CHAR_LIMIT)
 
 
 def _ok(request: Request, data: Any) -> JSONResponse:
@@ -192,6 +194,11 @@ async def intake_upload(
         content = await upload.read()
         if not content:
             continue
+        if len(content) > INTAKE_MAX_UPLOAD_BYTES:
+            raise ValidationError(
+                message=f"ขนาดไฟล์เกินกำหนด สูงสุด {INTAKE_MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+                field="files",
+            )
         mime = upload.content_type or "application/pdf"
         name = upload.filename or "upload.bin"
         tmp_suffix = "." + name.rsplit(".", 1)[-1] if "." in name else ".bin"
@@ -200,7 +207,15 @@ async def intake_upload(
         await unlink_path(tmp_path)
         # Stay on this project pack only — do not ingest into shared/user RAG.
         file_status = "ocr" if extracted.method in {"ocr", "mixed"} else "ok"
-        append_intake_text(project, name, extracted.text, file_status)
+        if not (extracted.text or "").strip():
+            file_status = "empty"
+        append_intake_text(
+            project,
+            name,
+            extracted.text,
+            file_status,
+            warnings=extracted.warnings,
+        )
         saved.append(name)
     await db.flush()
     return _ok(request, {"files": saved, "count": len(saved)})
@@ -231,17 +246,47 @@ async def intake_analyze(
     project = await _project(db, project_id, current_user)
     texts = (project.extracted_fields or {}).get("intake_texts") or []
     pack = "\n\n".join(
-        f"## {item.get('name')}\n{item.get('text')}" for item in texts if isinstance(item, dict)
+        str(item.get("text") or "").strip()
+        for item in texts
+        if isinstance(item, dict) and str(item.get("text") or "").strip()
     )
     filenames = [str(item.get("name")) for item in texts if isinstance(item, dict)]
     if not pack.strip():
         raise ValidationError(message="ยังไม่มีเอกสารให้วิเคราะห์", field="files")
-    result = await analyze_pack(project, pack, filenames)
+
+    async def persist_heuristic(slot_map: dict[str, Any]) -> None:
+        analysis = merge_analysis(
+            project.analysis_json or {},
+            {
+                "slot_map": slot_map,
+                "gap_questions": [
+                    f"ขอข้อมูลสำหรับ {INTAKE_SLOT_LABELS.get(key, key)} ({key})"
+                    for key in FACT_REQUIRED_SLOTS
+                    if (slot_map.get(key) or {}).get("status") != "filled"
+                ],
+                "ready_to_compose": False,
+                "analyzed": True,
+            },
+        )
+        analysis["intake_files"] = analysis.get("intake_files") or (
+            project.analysis_json or {}
+        ).get("intake_files", [])
+        project.analysis_json = analysis
+        try:
+            flag_modified(project, "analysis_json")
+        except AttributeError:
+            pass
+        project.current_phase = max(project.current_phase or 0, 1)
+        await db.flush()
+        await db.commit()
+
+    result = await analyze_pack(project, pack, filenames, persist_heuristic=persist_heuristic)
     analysis = merge_analysis(project.analysis_json or {}, result)
     analysis["intake_files"] = analysis.get("intake_files") or (project.analysis_json or {}).get(
         "intake_files", []
     )
     analysis["analyzed"] = True
+    analysis["standard_fill_keys"] = []
     project.analysis_json = analysis
     try:
         flag_modified(project, "analysis_json")
@@ -249,17 +294,6 @@ async def intake_analyze(
         pass
     project.current_phase = max(project.current_phase or 0, 1)
     await db.flush()
-    # Best-effort: fill legal/standard gaps from knowledge base so Phase 2 is not all-gap.
-    try:
-        filled_refs = await fill_non_fact_reference_slots(
-            project, current_user.id, as_standard=True
-        )
-        analysis = dict(project.analysis_json or {})
-        analysis["standard_fill_keys"] = filled_refs.get("filled_keys") or []
-        project.analysis_json = analysis
-        await db.flush()
-    except Exception as exc:  # noqa: BLE001 — analyze must still return
-        logger.warning("post-analyze standard fill skipped: %s", exc)
     return _ok(
         request,
         {
@@ -269,7 +303,7 @@ async def intake_analyze(
             "ready_to_compose": False,
             "analyzed": True,
             "phase": project.current_phase,
-            "standard_fill_keys": analysis.get("standard_fill_keys") or [],
+            "standard_fill_keys": [],
         },
     )
 

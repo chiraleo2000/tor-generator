@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from app.domain.tor_sections import (
     TOR_SECTION_LABELS,
     TOR_SECTION_ORDER,
 )
+from app.llm_tokens import DRAFT_MAX_TOKENS, clamp_max_tokens
 from app.models.project import Project
 from app.models.tor_section import TORSection
 from app.providers.factory import ProviderFactory
@@ -36,8 +38,15 @@ logger = logging.getLogger(__name__)
 
 # Structured analyze via LLM (local or cloud). Heuristics always seed slots first.
 ANALYZE_USE_LLM = True
-ANALYZE_LLM_TIMEOUT_SEC = 420
-ANALYZE_MAX_TOKENS = 4096
+ANALYZE_LLM_TIMEOUT_SEC = 1800
+ANALYZE_MAX_TOKENS = DRAFT_MAX_TOKENS
+ANALYZE_CONTEXT_WINDOW = 128_000
+ANALYZE_CHUNK_CHARS = 40_000
+ANALYZE_CHUNK_OVERLAP = 2_000
+ANALYZE_MAX_CHUNKS = 4
+INTAKE_TEXT_CHAR_LIMIT = 500_000
+INTAKE_PACK_LIMIT = 200_000
+# LM Studio often serves embeddings/chat sequentially — allow long waits, avoid skip.
 # LM Studio often serves embeddings/chat sequentially — allow long waits, avoid skip.
 FILL_REFERENCES_TOTAL_SEC = 600.0
 FILL_ONE_REFERENCE_SEC = 120.0
@@ -72,9 +81,12 @@ s13 เงื่อนไขอื่น ๆ
 
 กฎเข้ม:
 - ตอบเป็น JSON ล้วน ห้ามแสดงกระบวนการคิด ห้ามคัดลอก system prompt
-- ถ้าไม่พบข้อมูลของช่อง ให้ status=gap และ content ว่าง
+- เอกสารไม่จำเป็นต้องมีรหัส (s1): — อ่านร้อยแก้ว TOR / ขอบเขตงานแล้วจัดเข้าช่อง
+- ถ้ามีชื่อโครงการ วงเงิน จำนวนวัน หน่วยงาน ขอบเขต งวดงาน คุณสมบัติ เกณฑ์คัดเลือก ให้ status=filled
+- ห้ามปล่อย s1 s5 s6 s4.1 เป็น gap ถ้าตัวเลขหรือชื่อโครงการอยู่ในเนื้อหา
 - อย่าสวมข้อความกฎหมาย/ระเบียบเป็นข้อเท็จจริงโครงการ — ใส่ reference_only
 - ข้อความเรื่องนิติบุคคล/ทุนจดทะเบียน/ผลงาน → s3 เท่านั้น ไม่ใช่ s5
+- คัดลอกข้อความจากเอกสารให้ยาวพอใช้ร่างต่อได้ ห้ามสรุปจนหายสาระ
 - เติมทุกช่องที่เอกสารมีข้อมูลจริงให้ filled ให้มากที่สุด
 """
 
@@ -426,7 +438,7 @@ def has_intake_material(project: Project) -> bool:
     return _has_pasted_text(project) or _has_intake_files(project) or _has_filled_slot(project)
 
 
-def project_intake_pack(project: Project, limit: int = 24000) -> str:
+def project_intake_pack(project: Project, limit: int = INTAKE_PACK_LIMIT) -> str:
     """Phase 0 upload/paste text for this project only — never another project."""
     texts = _extracted_dict(project).get("intake_texts") or []
     if not isinstance(texts, list):
@@ -439,7 +451,7 @@ def project_intake_pack(project: Project, limit: int = 24000) -> str:
         if not text:
             continue
         name = str(item.get("name") or "เอกสารขั้นที่ ๐").strip() or "เอกสารขั้นที่ ๐"
-        parts.append(f"[{name}]\n{text[:8000]}")
+        parts.append(f"[{name}]\n{text[:INTAKE_TEXT_CHAR_LIMIT]}")
     return "\n\n".join(parts)[:limit]
 
 
@@ -529,15 +541,24 @@ def clamp_draft_phase(project: Project) -> bool:
     return True
 
 
-def append_intake_text(project: Project, name: str, text: str, file_status: str = "ok") -> None:
+def append_intake_text(
+    project: Project,
+    name: str,
+    text: str,
+    file_status: str = "ok",
+    warnings: list[str] | None = None,
+) -> None:
     analysis = dict(_analysis_dict(project))
     intake_files = list(analysis.get("intake_files") or [])
-    intake_files.append({"name": name, "chars": len(text), "status": file_status})
+    entry: dict[str, Any] = {"name": name, "chars": len(text), "status": file_status}
+    if warnings:
+        entry["warnings"] = list(warnings)
+    intake_files.append(entry)
     analysis["intake_files"] = intake_files
     project.analysis_json = analysis
     fields = dict(_extracted_dict(project))
     pack = list(fields.get("intake_texts") or [])
-    pack.append({"name": name, "text": text[:20000]})
+    pack.append({"name": name, "text": text[:INTAKE_TEXT_CHAR_LIMIT]})
     fields["intake_texts"] = pack
     project.extracted_fields = fields
 
@@ -592,15 +613,44 @@ def _gap_questions_from_slots(
     return questions
 
 
-async def _llm_analyze_slot_map(
+def _analyze_prompt_chunks(pack_text: str) -> list[str]:
+    raw = (pack_text or "").strip()
+    if not raw:
+        return []
+    if len(raw) <= ANALYZE_CHUNK_CHARS:
+        return [raw]
+    chunks: list[str] = []
+    start = 0
+    while start < len(raw):
+        end = min(len(raw), start + ANALYZE_CHUNK_CHARS)
+        chunks.append(raw[start:end])
+        if end >= len(raw):
+            break
+        start = max(end - ANALYZE_CHUNK_OVERLAP, start + 1)
+    if len(chunks) <= ANALYZE_MAX_CHUNKS:
+        return chunks
+    head = chunks[: ANALYZE_MAX_CHUNKS - 1]
+    tail = chunks[-1]
+    if tail in head:
+        return head
+    return head + [tail]
+
+
+async def _llm_analyze_one_chunk(
+    llm: Any,
     pack_text: str,
     filenames: list[str],
 ) -> tuple[dict[str, Any], list[str]]:
-    llm = ProviderFactory().get_llm("structured")  # NOSONAR python:S930 — ProviderFactory.get_llm(task=...)
     user = (
         f"ไฟล์: {', '.join(filenames)}\n\n"
         f"รหัสช่อง:\n{_slot_glossary_for_prompt()}\n\n"
-        f"เนื้อหาที่สกัด (ตัดความยาว):\n{pack_text[:100_000]}"
+        f"เนื้อหาที่สกัด:\n{pack_text}"
+    )
+    max_out = clamp_max_tokens(
+        user,
+        ANALYZE_MAX_TOKENS,
+        context_window=ANALYZE_CONTEXT_WINDOW,
+        system=ANALYZE_PROMPT,
     )
     try:
         payload = await invoke_with_schema(
@@ -612,14 +662,11 @@ async def _llm_analyze_slot_map(
             json_schema_for(IntakeAnalyzeResult),
             "intake_analyze",
             temperature=0.1,
-            max_tokens=ANALYZE_MAX_TOKENS,
+            max_tokens=max_out,
         )
     except (ValueError, OSError):
-        # TimeoutError is an OSError subclass on Python 3.
         logger.warning("intake analyze JSON parse failed")
-        return empty_slot_map(), [
-            "จัดช่องจากโมเดลไม่สำเร็จ กรุณาตอบในแชทว่าโครงการนี้คืออะไร และวงเงินเท่าใด"
-        ]
+        return empty_slot_map(), []
     extra: list[str] = []
     raw_q = payload.get("gap_questions")
     if isinstance(raw_q, list):
@@ -627,8 +674,29 @@ async def _llm_analyze_slot_map(
     return _slot_map_from_llm_payload(payload), extra
 
 
-async def analyze_pack(project: Project, pack_text: str, filenames: list[str]) -> dict[str, Any]:
-    slot_map = _slot_map_from_paste(pack_text, filenames)
+async def _llm_analyze_slot_map(
+    pack_text: str,
+    filenames: list[str],
+) -> tuple[dict[str, Any], list[str]]:
+    llm = ProviderFactory().get_llm("structured")  # NOSONAR python:S930
+    merged = empty_slot_map()
+    extra: list[str] = []
+    for chunk in _analyze_prompt_chunks(pack_text):
+        part, gaps = await _llm_analyze_one_chunk(llm, chunk, filenames)
+        merged = overlay_filled_slots(merged, part)
+        extra.extend(gaps)
+    return merged, extra
+
+
+async def analyze_pack(
+    project: Project,
+    pack_text: str,
+    filenames: list[str],
+    persist_heuristic: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+) -> dict[str, Any]:
+    slot_map = repair_misplaced_slots(_slot_map_from_paste(pack_text, filenames))
+    if persist_heuristic is not None:
+        await persist_heuristic(slot_map)
     llm_gaps: list[str] = []
     paste_filled = sum(1 for key in FACT_REQUIRED_SLOTS if _slot_is_filled(slot_map, key))
     will_call_llm = bool(ANALYZE_USE_LLM) and not facts_are_complete(slot_map)
@@ -645,7 +713,7 @@ async def analyze_pack(project: Project, pack_text: str, filenames: list[str]) -
         except asyncio.CancelledError:
             logger.warning("intake analyze LLM cancelled for project %s", project.id)
             raise
-        except OSError as exc:
+        except Exception as exc:
             logger.warning("intake analyze LLM unavailable: %s", exc)
     else:
         logger.info(

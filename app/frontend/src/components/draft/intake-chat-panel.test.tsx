@@ -126,7 +126,7 @@ describe("IntakeChatPanel", () => {
         vi.mocked(apiClient.post).mock.calls.some(
           (call) =>
             call[0] === "/projects/p1/intake/analyze" &&
-            call[2]?.timeout === 360_000
+            call[2]?.timeout === 900_000
         )
       ).toBe(true)
     );

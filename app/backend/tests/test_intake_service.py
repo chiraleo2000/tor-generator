@@ -12,7 +12,9 @@ import pytest
 from app.domain.slots import FACT_REQUIRED_SLOTS
 from app.models.project import Project
 from app.services.intake_service import (
+    ANALYZE_MAX_CHUNKS,
     ANALYZE_PROMPT,
+    _analyze_prompt_chunks,
     analyze_pack,
     append_intake_text,
     append_next_slot_question,
@@ -410,6 +412,61 @@ def _coded_pack() -> str:
 
 
 @pytest.mark.asyncio
+async def test_analyze_pack_fills_unstructured_tor_without_llm():
+    pack = (
+        "โครงการพัฒนาระบบตอบกลับอัตโนมัติคลังความรู้ปัญญาประดิษฐ์ (ECT AI Chatbot) "
+        "ของสำนักงาน กกต. วงเงินงบประมาณ 15,000,000 บาท "
+        "กำหนดระยะเวลาดำเนินงาน 360 วัน\n"
+        "แนวทางการพัฒนาระบบและสถาปัตยกรรม\n"
+        " - โครงสร้างพื้นฐาน: Containerized บน Kubernetes\n"
+        "แผนการส่งมอบงานและการจ่ายเงิน (4 งวดงาน)\n"
+        " - งวดที่ 1 (ภายใน 60 วัน, 15%): ส่งมอบแผนงานโครงการ\n"
+        " - คุณสมบัติผู้ยื่นข้อเสนอและทีมงาน: เป็นนิติบุคคลไทยทุนจดทะเบียน 3 ล้านบาท\n"
+    )
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", False),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
+        result = await analyze_pack(_project(), pack, ["paste.txt"])
+    factory.assert_not_called()
+    slots = result["slot_map"]
+    assert slots["s1"]["status"] == "filled"
+    assert "15,000,000" in slots["s6"]["content"]
+    assert "360" in slots["s5"]["content"]
+    assert slots["s4.1"]["status"] == "filled"
+    assert slots["s8"]["status"] == "filled"
+    assert slots["s3"]["status"] == "filled"
+
+
+def test_append_intake_text_keeps_long_extracted_body():
+    project = _project()
+    body = "ก" * 50_000
+    append_intake_text(project, "tor.pdf", body, warnings=["OCR page 2 slow"])
+    stored = project.extracted_fields["intake_texts"][0]["text"]
+    assert len(stored) == 50_000
+    assert project.analysis_json["intake_files"][0]["warnings"] == ["OCR page 2 slow"]
+
+
+def test_project_intake_pack_keeps_more_than_8k_chars():
+    project = _project()
+    body = ("วงเงินงบประมาณของโครงการนี้ " * 800) + "ท้ายเอกสารยาว"
+    append_intake_text(project, "tor.pdf", body)
+    pack = project_intake_pack(project)
+    assert "ท้ายเอกสารยาว" in pack
+    assert len(pack) > 8000
+
+
+def test_analyze_prompt_chunks_keeps_head_and_tail():
+    from app.services.intake_service import ANALYZE_CHUNK_CHARS
+
+    raw = "ก" * (ANALYZE_CHUNK_CHARS * 6)
+    chunks = _analyze_prompt_chunks(raw)
+    assert len(chunks) == ANALYZE_MAX_CHUNKS
+    assert chunks[0].startswith("ก")
+    assert chunks[-1].endswith("ก")
+
+
+@pytest.mark.asyncio
 async def test_analyze_pack_fills_coded_paste_without_llm():
     with patch("app.services.intake_service.ProviderFactory") as factory:
         result = await analyze_pack(_project(), _coded_pack(), ["paste.txt"])
@@ -432,6 +489,37 @@ async def test_analyze_pack_can_skip_llm_when_flag_off():
     factory.assert_not_called()
     assert result["analyzed"] is True
     assert result["gap_questions"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_pack_persists_heuristic_before_llm():
+    calls: list[str] = []
+
+    async def persist(slot_map):
+        calls.append(slot_map["s6"]["content"])
+
+    payload = {
+        "slot_map": {
+            "s4.2": {"content": "จากโมเดล", "status": "filled", "sources": ["llm"]},
+        },
+        "gap_questions": [],
+    }
+    llm = MagicMock()
+    llm.invoke = AsyncMock(
+        return_value=MagicMock(content=json.dumps(payload, ensure_ascii=False))
+    )
+    pack = "วงเงินงบประมาณ 15,000,000 บาท กำหนดระยะเวลาดำเนินงาน 360 วัน"
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
+        factory.return_value.get_llm.return_value = llm
+        result = await analyze_pack(_project(), pack, ["a.txt"], persist_heuristic=persist)
+    assert calls
+    assert "15,000,000" in calls[0]
+    assert result["slot_map"]["s6"]["status"] == "filled"
+    assert result["slot_map"]["s4.2"]["status"] == "filled"
+    llm.invoke.assert_awaited()
 
 
 @pytest.mark.asyncio

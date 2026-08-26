@@ -7,23 +7,50 @@ import re
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, INTAKE_SLOT_ORDER
 
 # ASCII [0-9] only: Python \d also matches Thai digits ๐-๙.
+_ASCII_DIGIT = r"[0-9]"  # NOSONAR python:S6353
+
+_SCOPE_DEV_HEADING = "แนวทางการพัฒนาระบบ"
+_SELECT_CRITERIA_HEADING = "เกณฑ์การคัดเลือก"
+_SECURITY_HEADING = "ความมั่นคงปลอดภัย"
+_OWNERSHIP_HEADING = "กรรมสิทธิ์"
+_EXIT_STRATEGY_HEADING = "Exit Strategy"
+_BIDDER_QUAL_HEADING = "คุณสมบัติผู้ยื่น"
+
 _CODE_MARK = re.compile(
-    r"\((s[0-9]+(?:\.[0-9]+)?)\)\s*[:：]",  # NOSONAR python:S6353
+    rf"\((s{_ASCII_DIGIT}+(?:\.{_ASCII_DIGIT}+)?)\)\s*[:：]",
     re.IGNORECASE,
 )
 
 _FACT_ALIASES: dict[str, tuple[str, ...]] = {
     "s1": ("หลักการและเหตุผล", "ที่มาของโครงการ", "ความเป็นมาและความจำเป็น", "ชื่อโครงการ"),
     "s2": ("เป้าหมายของโครงการ", "ผลที่ต้องการ", "วัตถุประสงค์"),
-    "s3": ("คุณสมบัติของผู้เสนอราคา", "คุณสมบัติผู้เสนอราคา", "คุณสมบัติของบริษัท"),
-    "s5": ("ระยะเวลาโครงการ", "กำหนดเวลาดำเนินการ", "ระยะเวลาดำเนินการ"),
+    "s3": (
+        "คุณสมบัติผู้ยื่นข้อเสนอ",
+        "คุณสมบัติของผู้เสนอราคา",
+        "คุณสมบัติผู้เสนอราคา",
+        "คุณสมบัติของบริษัท",
+    ),
+    "s5": (
+        "กำหนดระยะเวลาดำเนินงาน",
+        "ระยะเวลาดำเนินงาน",
+        "ระยะเวลาโครงการ",
+        "กำหนดเวลาดำเนินการ",
+        "ระยะเวลาดำเนินการ",
+    ),
     "s6": ("วงเงิน", "งบประมาณโครงการ", "วงเงินงบประมาณ"),
     "s7": ("สถานที่ส่งมอบ", "สถานที่ตั้ง", "สถานที่ดำเนินการ"),
-    "s4.1": ("ขอบเขตงานหลัก", "ขอบเขตของงาน", "ขอบเขตงาน"),
-    "s8": ("งวดงานและการจ่ายเงิน", "งวดงาน", "การจ่ายเงิน"),
+    "s4.1": (
+        _SCOPE_DEV_HEADING,
+        "ขอบเขตงานหลัก",
+        "ขอบเขตของงาน",
+        "ขอบเขตงาน",
+    ),
+    "s8": ("แผนการส่งมอบงาน", "งวดงานและการจ่ายเงิน", "งวดงาน", "การจ่ายเงิน"),
     "s9": ("การรับประกันผลงาน", "การรับประกัน"),
     "s10": ("อัตราค่าปรับ", "ค่าปรับ"),
-    "s11": ("หลักเกณฑ์การพิจารณา", "การพิจารณาคัดเลือก"),
+    "s11": (_SELECT_CRITERIA_HEADING, "หลักเกณฑ์การพิจารณา", "การพิจารณาคัดเลือก"),
+    "s4.14": (_SECURITY_HEADING,),
+    "s13": (_OWNERSHIP_HEADING, _EXIT_STRATEGY_HEADING, "เงื่อนไขอื่น"),
 }
 
 _QUAL_HINT = re.compile(
@@ -31,11 +58,11 @@ _QUAL_HINT = re.compile(
     re.IGNORECASE,
 )
 _DURATION_HINT = re.compile(
-    r"ระยะเวลา|[0-9]+\s*วัน|[0-9]+\s*เดือน|นับจากวัน|กำหนดส่งมอบ",
+    rf"ระยะเวลา|{_ASCII_DIGIT}{{1,6}}\s{{0,8}}(?:วัน|เดือน)|นับจากวัน|กำหนดส่งมอบ",
     re.IGNORECASE,
 )
 _BUDGET_HINT = re.compile(
-    r"วงเงิน|งบประมาณ|ราคากลาง|[0-9][0-9,]{3,}\s*บาท",
+    rf"วงเงิน|งบประมาณ|ราคากลาง|{_ASCII_DIGIT}(?:{_ASCII_DIGIT}|,){{3,16}}\s{{0,8}}บาท",
     re.IGNORECASE,
 )
 _PLACE_HINT = re.compile(
@@ -47,11 +74,18 @@ _SCOPE_HINT = re.compile(r"ขอบเขต|ระบบงาน|สถาป
 
 
 def extract_slot_contents(text: str) -> dict[str, str]:
-    """Read `(s1):` markers first, then Thai headings for empty keys."""
+    """Read `(s1):` markers first, then Thai headings, then free-form TOR prose."""
     found = _segments_by_code(text)
     for key, body in _segments_by_heading(text).items():
         if key not in found and body:
             found[key] = body
+    for key, body in extract_unstructured_slots(text).items():
+        if not body:
+            continue
+        if key not in found or len(body) > len(found[key]):
+            found[key] = body
+    if not found.get("s4") and found.get("s4.1"):
+        found["s4"] = found["s4.1"]
     return found
 
 
@@ -174,7 +208,7 @@ def _segments_by_heading(text: str) -> dict[str, str]:
         if key in found:
             continue
         pattern = re.compile(
-            rf"(?:^|\n)\s*{re.escape(heading)}\s*[:：]\s*(.+?)(?=\n\s*\S.{{0,40}}[:：]|\Z)",
+            rf"(?:^|\n)\s*{re.escape(heading)}\s*[:：]?\s*(.+?)(?=\n\s*\S.{{0,40}}[:：]|\Z)",
             re.IGNORECASE | re.DOTALL,
         )
         match = pattern.search(text)
@@ -184,3 +218,153 @@ def _segments_by_heading(text: str) -> dict[str, str]:
         if body:
             found[key] = body
     return found
+
+
+_BUDGET_RE = re.compile(
+    rf"วงเงินงบประมาณ\s*({_ASCII_DIGIT}(?:{_ASCII_DIGIT}|,){{0,20}})\s*บาท"
+)
+_MIDPRICE_RE = re.compile(
+    rf"ราคากลาง\s*({_ASCII_DIGIT}(?:{_ASCII_DIGIT}|,){{0,20}})\s*บาท"
+)
+_DAYS_RE = re.compile(
+    rf"(?:กำหนด)?ระยะเวลา(?:ดำเนินงาน|ดำเนินการ)?\s*({_ASCII_DIGIT}{{1,6}})\s*วัน"
+)
+_AGENCY_RE = re.compile(
+    r"(สำนักงาน\s*กกต\.?|สำนักงานคณะกรรมการเลือกตั้ง|"
+    r"กรมบัญชีกลาง|กรม[ก-๙]{2,40})"
+)
+_PENALTY_RE = re.compile(r"ค่าปรับ[^\n]{0,80}")
+_BLOCK_MARKERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        "s4.1",
+        (_SCOPE_DEV_HEADING, "สถาปัตยกรรม"),
+        ("แผนการส่งมอบ", "กฎระเบียบ มาตรฐาน", _BIDDER_QUAL_HEADING),
+    ),
+    (
+        "s8",
+        ("แผนการส่งมอบ", "งวดงานและการจ่ายเงิน"),
+        ("กฎระเบียบ มาตรฐาน", _BIDDER_QUAL_HEADING, _SELECT_CRITERIA_HEADING),
+    ),
+    (
+        "s3",
+        (_BIDDER_QUAL_HEADING, "คุณสมบัติของผู้เสนอราคา"),
+        (_SELECT_CRITERIA_HEADING, "เกณฑ์ตรวจรับ", _SECURITY_HEADING),
+    ),
+    (
+        "s11",
+        (_SELECT_CRITERIA_HEADING, "หลักเกณฑ์การพิจารณา", "เกณฑ์ตรวจรับ"),
+        (_SECURITY_HEADING, _OWNERSHIP_HEADING),
+    ),
+    (
+        "s4.14",
+        (_SECURITY_HEADING, "PDPA"),
+        (_OWNERSHIP_HEADING, _EXIT_STRATEGY_HEADING),
+    ),
+    (
+        "s13",
+        (_OWNERSHIP_HEADING, _EXIT_STRATEGY_HEADING),
+        (),
+    ),
+)
+
+
+def _find_marker(text: str, markers: tuple[str, ...], *, after: int = 0) -> tuple[int, str]:
+    best = -1
+    used = ""
+    for marker in markers:
+        line_at = text.find("\n" + marker, after)
+        if line_at >= 0:
+            idx = line_at + 1
+            if best < 0 or idx < best:
+                best = idx
+                used = marker
+            continue
+        if after == 0 and text.startswith(marker):
+            return 0, marker
+    if best >= 0:
+        return best, used
+    for marker in markers:
+        idx = text.find(marker, after)
+        if idx >= 0 and (best < 0 or idx < best):
+            best = idx
+            used = marker
+    return best, used
+
+
+def _slice_between(
+    text: str, starts: tuple[str, ...], ends: tuple[str, ...]
+) -> str:
+    begin, used = _find_marker(text, starts)
+    if begin < 0:
+        return ""
+    rest = text[begin:]
+    cut = len(rest)
+    skip = max(len(used), 1)
+    for marker in ends:
+        idx, _found = _find_marker(rest, (marker,), after=skip)
+        if 0 <= idx < cut:
+            cut = idx
+    return rest[:cut].strip()
+
+
+def _fill_if_empty(found: dict[str, str], key: str, body: str) -> None:
+    text = (body or "").strip()
+    if key in found or not text:
+        return
+    found[key] = text
+
+
+def extract_unstructured_slots(text: str) -> dict[str, str]:
+    """Map free-form TOR / ขอบเขตงาน prose that has no (s1): codes."""
+    raw = text or ""
+    found: dict[str, str] = {}
+    budget = _BUDGET_RE.search(raw)
+    if budget:
+        line = f"วงเงินงบประมาณ {budget.group(1)} บาท"
+        mid = _MIDPRICE_RE.search(raw)
+        if mid:
+            line += f" ราคากลาง {mid.group(1)} บาท"
+        found["s6"] = line
+    days = _DAYS_RE.search(raw)
+    if days:
+        found["s5"] = f"{days.group(1)} วัน"
+    agency = _AGENCY_RE.search(raw)
+    if agency and ("s6" in found or "s5" in found or "สำนักงาน" in agency.group(1)):
+        found["s7"] = agency.group(1).strip()
+    penalty = _PENALTY_RE.search(raw)
+    late = re.search(r"ค่าปรับส่งมอบ[^\n]{0,60}", raw)
+    if late:
+        found["s10"] = late.group(0).strip()
+    elif penalty:
+        found["s10"] = penalty.group(0).strip()
+    lead_end = raw.find(_SCOPE_DEV_HEADING)
+    lead = raw[: lead_end if lead_end > 80 else 1200].strip()
+    if "โครงการ" in lead and (
+        "s6" in found or "s5" in found or len(lead) > 120
+    ):
+        found["s1"] = lead[:1500]
+        _fill_if_empty(found, "s2", lead[:800])
+    for key, starts, ends in _BLOCK_MARKERS:
+        _fill_if_empty(found, key, _slice_between(raw, starts, ends))
+    scope = found.get("s4.1") or ""
+    if "Kubernetes" in scope or "คลาวด์" in scope or "Containerized" in scope:
+        _fill_if_empty(found, "s4.4", scope)
+    if "RAG" in scope or "OCR" in scope or "Chatbot" in scope:
+        _fill_if_empty(found, "s4.5", scope)
+    if scope and "ระบบ" in scope:
+        _fill_if_empty(found, "s4.3", scope)
+    quals = found.get("s3") or ""
+    if "บุคลากร" in quals or "ทีมงาน" in quals:
+        _fill_if_empty(found, "s4.10", quals)
+    payments = found.get("s8") or ""
+    if "ส่งมอบ" in payments:
+        _fill_if_empty(found, "s4.8", payments)
+    sla = found.get("s13") or ""
+    warranty = sla or payments
+    if "SLA" in warranty or "บำรุงรักษา" in warranty or "รับประกัน" in raw:
+        _fill_if_empty(found, "s9", warranty)
+        _fill_if_empty(found, "s4.9", warranty)
+        _fill_if_empty(found, "s4.11", warranty)
+    if "ISO" in quals or "มาตรฐาน" in raw:
+        _fill_if_empty(found, "s4.7", quals or found.get("s11") or sla)
+    return {key: value for key, value in found.items() if value}

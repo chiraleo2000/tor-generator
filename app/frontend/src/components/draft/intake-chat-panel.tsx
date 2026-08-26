@@ -25,7 +25,7 @@ type CoveragePayload = {
   analyzed?: boolean;
 };
 
-const ANALYZE_HTTP_TIMEOUT_MS = 360_000;
+const ANALYZE_HTTP_TIMEOUT_MS = 900_000;
 const ANALYZE_POLL_MS = 2_500;
 const ANALYZE_RECOVERY_MS = 180_000;
 

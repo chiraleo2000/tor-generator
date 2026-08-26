@@ -228,6 +228,19 @@ class TestExtractPdf:
         assert result.method == "direct"
 
     @patch("app.rag.extraction._ocr_pdf_page")
+    def test_ocr_fallback_for_junk_text_pages(self, mock_ocr: MagicMock, tmp_path: Path):
+        mock_ocr.return_value = "OCR recovered Thai text"
+        pdf_path = tmp_path / "junk.pdf"
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), ".....", fontsize=12)
+        doc.save(str(pdf_path))
+        doc.close()
+        result = extract_pdf(str(pdf_path))
+        mock_ocr.assert_called_once()
+        assert "OCR recovered" in result.text
+
+    @patch("app.rag.extraction._ocr_pdf_page")
     def test_ocr_fallback_for_empty_pages(
         self, mock_ocr: MagicMock, sample_pdf_empty_page: str
     ):
@@ -421,7 +434,7 @@ class TestOcrPage:
         """Returns extracted text on successful OCR."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="Extracted Thai text สวัสดี\n",
+            stdout="Extracted Thai text สวัสดี from a scanned TOR page with enough letters\n",
             stderr="",
         )
 
@@ -429,7 +442,7 @@ class TestOcrPage:
         img_path.write_bytes(b"\x89PNG\r\n")  # Minimal PNG header
 
         result = ocr_page(str(img_path), lang="tha+eng", timeout=30)
-        assert result == "Extracted Thai text สวัสดี"
+        assert "Extracted Thai text สวัสดี" in result
 
         # Verify tesseract was called correctly
         call_args = mock_run.call_args
@@ -437,9 +450,31 @@ class TestOcrPage:
         assert cmd[0] == "tesseract"
         assert "-l" in cmd
         assert "tha+eng" in cmd
+        assert "--psm" in cmd
+        assert cmd[cmd.index("--psm") + 1] == "1"
+        assert mock_run.call_count == 1
         assert call_args[1]["timeout"] == 30
         assert call_args[1]["encoding"] == "utf-8"
         assert call_args[1]["errors"] == "replace"
+
+    @patch("app.rag.extraction.subprocess.run")
+    def test_ocr_retries_block_psm_when_osd_is_sparse(
+        self, mock_run: MagicMock, tmp_path: Path
+    ):
+        sparse = MagicMock(returncode=0, stdout="...", stderr="")
+        dense = MagicMock(
+            returncode=0,
+            stdout="โครงการพัฒนาระบบตอบกลับอัตโนมัติของสำนักงาน",
+            stderr="",
+        )
+        mock_run.side_effect = [sparse, dense]
+        img_path = tmp_path / "page.png"
+        img_path.write_bytes(b"\x89PNG\r\n")
+        result = ocr_page(str(img_path), lang="tha+eng", timeout=30)
+        assert "สำนักงาน" in result
+        assert mock_run.call_count == 2
+        second_cmd = mock_run.call_args_list[1][0][0]
+        assert "6" in second_cmd
 
     @patch("app.rag.extraction.subprocess.run")
     def test_ocr_timeout(self, mock_run: MagicMock, tmp_path: Path):

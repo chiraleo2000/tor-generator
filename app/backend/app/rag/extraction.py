@@ -25,9 +25,29 @@ logger = logging.getLogger(__name__)
 
 # Minimum character count per page to consider text extraction successful
 MIN_TEXT_LENGTH = 10
+# Pages with only a few junk characters should still go through OCR.
+MIN_USABLE_PAGE_CHARS = 80
 
-# Default OCR timeout in seconds
-DEFAULT_OCR_TIMEOUT = 30
+# Default OCR timeout in seconds (Thai scanned TOR pages are slow)
+DEFAULT_OCR_TIMEOUT = 180
+
+
+def _readable_char_count(text: str) -> int:
+    return sum(
+        1
+        for char in text
+        if "\u0e00" <= char <= "\u0e7f" or "A" <= char <= "Z" or "a" <= char <= "z" or "0" <= char <= "9"
+    )
+
+
+def _page_text_usable(text: str) -> bool:
+    stripped = (text or "").strip()
+    if len(stripped) < MIN_TEXT_LENGTH:
+        return False
+    readable = _readable_char_count(stripped)
+    if len(stripped) < MIN_USABLE_PAGE_CHARS:
+        return readable >= 40
+    return readable >= 20
 
 
 class ExtractionMethod(str, Enum):
@@ -123,7 +143,7 @@ def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> Extra
     """Extract text from a PDF file using PyMuPDF.
 
     For each page, attempts direct text extraction first.
-    If text is too short (< 10 chars), falls back to OCR for that page.
+    If the page has too little readable text, falls back to OCR.
 
     Args:
         file_path: Path to the PDF file.
@@ -144,7 +164,7 @@ def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> Extra
         page = doc[page_num]
         text = page.get_text().strip()
 
-        if len(text) >= MIN_TEXT_LENGTH:
+        if _page_text_usable(text):
             # Direct text extraction succeeded
             page_texts.append(text)
             used_direct = True
@@ -255,14 +275,34 @@ def ocr_page(image_path: str, lang: str = "tha+eng", timeout: int = DEFAULT_OCR_
         FileNotFoundError: If Tesseract is not installed/found.
         RuntimeError: If Tesseract exits with a non-zero status.
     """
+    text = _run_tesseract(image_path, lang=lang, timeout=timeout, psm="1")
+    if _readable_char_count(text) >= 40:
+        return text
+    try:
+        alt = _run_tesseract(image_path, lang=lang, timeout=timeout, psm="6")
+    except (RuntimeError, subprocess.TimeoutExpired):
+        return text
+    if _readable_char_count(alt) > _readable_char_count(text):
+        return alt
+    return text
+
+
+def _run_tesseract(
+    image_path: str,
+    *,
+    lang: str,
+    timeout: int,
+    psm: str,
+) -> str:
     cmd = [
         "tesseract",
         image_path,
-        "stdout",  # Output to stdout instead of file
-        "-l", lang,
-        "--psm", "1",  # Automatic page segmentation with OSD
+        "stdout",
+        "-l",
+        lang,
+        "--psm",
+        psm,
     ]
-
     try:
         result = subprocess.run(
             cmd,
@@ -277,12 +317,12 @@ def ocr_page(image_path: str, lang: str = "tha+eng", timeout: int = DEFAULT_OCR_
         raise FileNotFoundError(
             "Tesseract OCR is not installed or not found in PATH. "
             "Install with: apt-get install tesseract-ocr tesseract-ocr-tha"
-        )
-
+        ) from None
     if result.returncode != 0:
         stderr_msg = result.stderr.strip() if result.stderr else "Unknown error"
-        raise RuntimeError(f"Tesseract OCR failed (exit code {result.returncode}): {stderr_msg}")
-
+        raise RuntimeError(
+            f"Tesseract OCR failed (exit code {result.returncode}): {stderr_msg}"
+        )
     return result.stdout.strip()
 
 
