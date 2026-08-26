@@ -303,6 +303,8 @@ class TestExportFormatConsistency:
 
         # Every non-empty paragraph in sections should be in both
         for section_key, section_text in content.sections.items():
+            if content.sub_sections.get(section_key):
+                continue
             paragraphs = section_text.strip().split("\n")
             for para in paragraphs:
                 para = para.strip()
@@ -314,6 +316,14 @@ class TestExportFormatConsistency:
                 assert para in html_texts, (
                     f"Section {section_key} paragraph '{para[:50]}...' missing from PDF HTML"
                 )
+        for sub_map in content.sub_sections.values():
+            for sub_text in sub_map.values():
+                for para in str(sub_text or "").split("\n"):
+                    para = para.strip()
+                    if not para:
+                        continue
+                    assert para in docx_texts
+                    assert para in html_texts
 
     @given(content=_tor_content_strategy())
     @settings(max_examples=100, deadline=None)
@@ -486,7 +496,7 @@ class TestExportFormatConsistency:
         # Filter out purely structural text (separators, placeholders) for this check
         separator = "─" * 60
         placeholder = "(ยังไม่ได้กรอกข้อมูล)"
-        title = "ร่างขอบเขตของงาน (Terms of Reference: TOR)"
+        title = "ร่างขอบเขตของงาน"
 
         # The meaningful content that must be in both
         # (excluding separator formatting differences and title)

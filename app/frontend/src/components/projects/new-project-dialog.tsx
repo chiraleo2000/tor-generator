@@ -114,7 +114,7 @@ export function NewProjectDialog({
       <DialogHeader>
         <DialogTitle>สร้างโครงการใหม่</DialogTitle>
         <DialogDescription>
-          กรอกข้อมูลพื้นฐานแล้วเข้าสู่กระบวนการร่าง TOR แบบ 5 Phase
+          กรอกข้อมูลพื้นฐานแล้วเข้าสู่กระบวนการร่างห้าขั้น
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3 px-1 py-2" data-testid="new-project-dialog">

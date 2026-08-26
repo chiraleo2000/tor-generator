@@ -318,17 +318,17 @@ class TestRunReview:
         mock_engine = MagicMock()
         mock_engine.validate.return_value = mock_validation_result
 
+        async def fake_suggestions(*_args, **_kwargs):
+            return 3, "ต้องแก้ให้สอดคล้องกฎหมายและความต้องการโครงการ"
+
         with patch(
             "app.orchestrator.graph._create_rule_engine",
             return_value=mock_engine,
+        ), patch(
+            "app.api.v1.endpoints.review._generate_suggestions",
+            new=fake_suggestions,
         ):
-            # Also mock _generate_suggestions to avoid LLM calls
-            with patch(
-                "app.api.v1.endpoints.review._generate_suggestions",
-                new_callable=AsyncMock,
-                return_value=3,
-            ):
-                response = client.post(f"/api/v1/projects/{PROJECT_ID}/review")
+            response = client.post(f"/api/v1/projects/{PROJECT_ID}/review")
 
         assert response.status_code == 200
         data = response.json()

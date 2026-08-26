@@ -17,7 +17,7 @@ def test_extract_slot_contents_reads_codes():
     assert "2500000" in found["s6"]
 
 
-def test_overlay_filled_slots_does_not_clobber_facts():
+def test_overlay_filled_slots_keeps_paste_facts():
     base = {
         "s1": {"content": "จากเอกสาร", "status": "filled", "sources": ["paste"]},
         "s10": {"content": "", "status": "gap", "sources": []},
@@ -27,5 +27,22 @@ def test_overlay_filled_slots_does_not_clobber_facts():
         "s10": {"content": "พ.ร.บ.", "status": "reference_only", "sources": ["rag"]},
     }
     merged = overlay_filled_slots(base, incoming)
-    assert merged["s1"]["content"] == "จากโมเดล"
+    assert merged["s1"]["content"] == "จากเอกสาร"
     assert merged["s10"]["status"] == "reference_only"
+
+
+def test_repair_moves_qualifications_out_of_duration():
+    from app.services.intake_heuristic import repair_misplaced_slots
+
+    slots = {
+        "s3": {"content": "", "status": "gap", "sources": []},
+        "s5": {
+            "content": "นิติบุคคลไทยจัดตั้งมาแล้วไม่น้อยกว่า 3 ปี ทุนจดทะเบียนชำระเต็ม",
+            "status": "filled",
+            "sources": ["llm"],
+        },
+    }
+    fixed = repair_misplaced_slots(slots)
+    assert fixed["s5"]["status"] == "gap"
+    assert "นิติบุคคล" in fixed["s3"]["content"]
+    assert fixed["s3"]["status"] == "filled"

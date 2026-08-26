@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.llm_tokens import DRAFT_MAX_TOKENS
 from app.orchestrator.agents.background_agent import BackgroundDraftingAgent
 from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE, BaseDraftingAgent
 from app.orchestrator.agents.registry import (
@@ -58,12 +59,15 @@ async def test_draft_invokes_fake_llm_with_rag_and_feedback():
     assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in user
     assert "ยังไม่ระบุภารกิจ" in user
     assert "โปรดกระชับย่อหน้าแรก" in user
+    assert llm.invoke.await_args.kwargs.get("max_tokens") == DRAFT_MAX_TOKENS
 
 
 def test_background_agent_prompt_uses_thai_preamble():
     prompt = BackgroundDraftingAgent().get_system_prompt()
     assert prompt.startswith(THAI_FORMAL_REGISTER_PREAMBLE)
     assert "ความเป็นมา" in prompt
+    assert "300-800" not in prompt
+    assert "6144" in prompt
 
 
 def test_format_user_input_handles_empty_and_nested():

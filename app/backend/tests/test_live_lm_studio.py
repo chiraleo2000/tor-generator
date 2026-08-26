@@ -134,7 +134,7 @@ async def test_live_gemma_answers_thai_procurement_prompt():
                 "content": "ชื่อวิธีการจัดซื้อจัดจ้าง 3 วิธีตาม พ.ร.บ. 2560 คืออะไร ตอบสั้นๆ",
             },
         ],
-        max_tokens=1024,
+        max_tokens=8192,
         temperature=0,
     )
     text = (response.content or "").strip()
@@ -202,7 +202,7 @@ async def test_live_gemma_uses_retrieved_regulation_chunk():
                 "content": f"บริบท:\n{context}\n\nคำถาม: เอกสารนี้เกี่ยวกับวิธีใด",
             },
         ],
-        max_tokens=1024,
+        max_tokens=8192,
         temperature=0,
     )
     text = (response.content or "").strip()

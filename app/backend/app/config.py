@@ -20,6 +20,9 @@ from app.providers.constants import (
 
 _runtime_overlay: dict[str, Any] = {}
 
+# Per-section local LLM headroom for 32k-token TOR drafts / KB answers
+LOCAL_LLM_TIMEOUT_CAP_SECONDS = 1800
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -77,7 +80,7 @@ class Settings(BaseSettings):
     lm_studio_base_url: str = LOCAL_LLM_DEFAULT_URLS["lm_studio"]
     lm_studio_model: str = DEFAULT_CHAT_MODEL
     lm_studio_embedding_model: str = DEFAULT_EMBEDDING_MODEL
-    lm_studio_timeout: float = 300.0
+    lm_studio_timeout: float = 1800.0
     ollama_base_url: str = LOCAL_LLM_DEFAULT_URLS["ollama"]
     llama_cpp_base_url: str = LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
     sglang_base_url: str = LOCAL_LLM_DEFAULT_URLS["sglang"]
@@ -90,7 +93,7 @@ class Settings(BaseSettings):
     custom_rag_enabled: bool = False
     custom_rag_base_url: str = ""
     custom_rag_api_key: str = ""
-    custom_rag_top_k: int = 5
+    custom_rag_top_k: int = 24
     custom_rag_timeout_seconds: float = 30.0
     rag_sources: Literal["local", "custom", "both"] = "both"
 
@@ -185,7 +188,7 @@ class Settings(BaseSettings):
     def drafting_agent_timeout_seconds(self) -> int:
         """Per-section LLM timeout. Local Gemma needs more headroom than cloud."""
         if self.llm_provider in LOCAL_LLM_PROVIDERS:
-            return max(1, min(420, int(self.lm_studio_timeout)))
+            return max(1, min(LOCAL_LLM_TIMEOUT_CAP_SECONDS, int(self.lm_studio_timeout)))
         return 60
 
     def cache_ttl_seconds(self, hours: int) -> int:

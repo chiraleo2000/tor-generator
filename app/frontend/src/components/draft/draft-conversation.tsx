@@ -42,6 +42,9 @@ export function DraftConversation({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachLegal, setAttachLegal] = useState(false);
+  const [progress, setProgress] = useState<{ filled: number; total: number; percent: number } | null>(
+    null
+  );
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -72,6 +75,14 @@ export function DraftConversation({
         setRoomId(id);
         if (payload.coverage?.length) {
           onCoverageRef.current?.(payload.coverage);
+          const filled = payload.coverage.filter((row) => row.filled || row.status === "filled")
+            .length;
+          const total = payload.coverage.length || 1;
+          setProgress({
+            filled,
+            total,
+            percent: Math.round((filled / total) * 1000) / 10,
+          });
         }
         let loaded: ChatMessageItem[] = [];
         if (id) {
@@ -104,17 +115,34 @@ export function DraftConversation({
   async function sendIntake(content: string, withLegal: boolean) {
     const controller = new AbortController();
     abortRef.current = controller;
+    // No client watchdog — LM Studio often runs chat sequentially; provider timeout bounds the stream.
     await streamSsePost(
       `${apiBase}/projects/${projectId}/intake/chat`,
       { content, search_scope: "both", attach_legal_reference: withLegal },
       token,
       (event, data) => {
+        if (event === "queued" || event === "started") {
+          const label =
+            event === "queued"
+              ? "รอคิวตอบ…"
+              : "กำลังประมวลผล…";
+          setMessages((prev) => {
+            const last = prev.at(-1);
+            if (last?.role !== "assistant" || last.content) return prev;
+            return [...prev.slice(0, -1), { ...last, content: label }];
+          });
+          return;
+        }
         if (event === "token") {
           const piece = typeof data.text === "string" ? data.text : "";
           setMessages((prev) => {
             const last = prev.at(-1);
             if (last?.role !== "assistant") return prev;
-            return [...prev.slice(0, -1), { ...last, content: last.content + piece }];
+            const base =
+              last.content === "รอคิวตอบ…" || last.content === "กำลังประมวลผล…"
+                ? ""
+                : last.content;
+            return [...prev.slice(0, -1), { ...last, content: base + piece }];
           });
         }
         if (event === "done") {
@@ -126,6 +154,25 @@ export function DraftConversation({
           });
           if (Array.isArray(data.coverage)) {
             onCoverageRef.current?.(data.coverage as CoverageRow[]);
+          }
+          const prog = data.progress as
+            | { filled?: number; total?: number; percent?: number }
+            | undefined;
+          if (prog && typeof prog.filled === "number" && typeof prog.total === "number") {
+            setProgress({
+              filled: prog.filled,
+              total: prog.total,
+              percent: typeof prog.percent === "number" ? prog.percent : 0,
+            });
+          } else if (Array.isArray(data.coverage)) {
+            const rows = data.coverage as CoverageRow[];
+            const filled = rows.filter((row) => row.filled || row.status === "filled").length;
+            const total = rows.length || 1;
+            setProgress({
+              filled,
+              total,
+              percent: Math.round((filled / total) * 1000) / 10,
+            });
           }
         }
         if (event === "error") {
@@ -176,7 +223,24 @@ export function DraftConversation({
         if (loaded.length) setMessages(loaded);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "ส่งข้อความไม่สำเร็จ");
+      const aborted =
+        (err instanceof DOMException && err.name === "AbortError") ||
+        (err instanceof Error && err.name === "AbortError");
+      let message = "ส่งข้อความไม่สำเร็จ";
+      if (aborted) {
+        message = "การตอบใช้เวลานานเกินไป — ส่งใหม่ได้เลย";
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+      setError(message);
+      setMessages((prev) => {
+        const last = prev.at(-1);
+        if (last?.role !== "assistant") return prev;
+        if (last.content && last.content !== "รอคิวตอบ…" && last.content !== "กำลังประมวลผล…") {
+          return prev;
+        }
+        return prev.slice(0, -1);
+      });
     } finally {
       setBusy(false);
       abortRef.current = null;
@@ -185,6 +249,23 @@ export function DraftConversation({
 
   return (
     <div className="flex min-h-[48vh] flex-col overflow-hidden rounded-xl border bg-white" data-testid="draft-conversation">
+      {mode === "intake" && progress ? (
+        <div className="border-b px-4 py-2" data-testid="intake-progress">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>ความครบช่องข้อเท็จจริง</span>
+            <span data-testid="intake-progress-label">
+              {progress.filled}/{progress.total} ({progress.percent}%)
+            </span>
+          </div>
+          <div className="mt-1.5 h-2 rounded-full bg-gray-100">
+            <div
+              className="h-2 rounded-full bg-brand-green transition-all"
+              style={{ width: `${Math.min(100, progress.percent)}%` }}
+              data-testid="intake-progress-bar"
+            />
+          </div>
+        </div>
+      ) : null}
       {error ? (
         <p className="px-4 py-2 text-sm text-destructive" role="alert">
           {error}

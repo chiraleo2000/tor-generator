@@ -12,7 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, INTAKE_SLOT_ORDER
-from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_LABELS, TOR_SECTION_ORDER
+from app.domain.tor_sections import (
+    MANDATORY_HUMAN_REVIEW_SECTIONS,
+    SCOPE_SUBSECTIONS,
+    TOR_SECTION_LABELS,
+    TOR_SECTION_ORDER,
+)
 from app.models.project import Project
 from app.models.tor_section import TORSection
 from app.providers.factory import ProviderFactory
@@ -22,18 +27,23 @@ from app.rag.hybrid import hybrid_retrieve
 from app.services.intake_heuristic import (
     extract_slot_contents,
     facts_are_complete,
+    guess_slot_for_answer,
     overlay_filled_slots,
+    repair_misplaced_slots,
 )
 
 logger = logging.getLogger(__name__)
 
-ANALYZE_LLM_TIMEOUT_SEC = 55
-ANALYZE_MAX_TOKENS = 2048
-FILL_REFERENCES_TOTAL_SEC = 40.0
-FILL_ONE_REFERENCE_SEC = 8.0
+# Structured analyze via LLM (local or cloud). Heuristics always seed slots first.
+ANALYZE_USE_LLM = True
+ANALYZE_LLM_TIMEOUT_SEC = 420
+ANALYZE_MAX_TOKENS = 4096
+# LM Studio often serves embeddings/chat sequentially — allow long waits, avoid skip.
+FILL_REFERENCES_TOTAL_SEC = 600.0
+FILL_ONE_REFERENCE_SEC = 120.0
 
 ANALYZE_PROMPT = """คุณเป็นผู้ช่วยจัดทำ TOR ภาครัฐไทย
-จัดข้อความจากเอกสารโครงการเข้าช่องตามรหัสที่กำหนด แล้วตอบเป็น JSON เท่านั้น:
+จัดข้อความจากเอกสารโครงการเข้าช่องตามรหัส แล้วตอบเป็น JSON เท่านั้น:
 
 {
   "slot_map": {
@@ -44,10 +54,34 @@ ANALYZE_PROMPT = """คุณเป็นผู้ช่วยจัดทำ TO
 }
 
 status ได้เฉพาะ filled | gap | reference_only
-รหัสช่อง: s1-s13 และ s4.1-s4.14
-ถ้าไม่พบข้อมูลของช่อง ให้ status=gap และ content ว่าง
-อย่าสวมข้อความกฎหมายเป็นข้อเท็จจริงของโครงการ — กฎหมายใส่ reference_only
+รหัสช่องและความหมาย (ห้ามสลับ):
+s1 ความเป็นมา/ชื่อโครงการ — ไม่ใส่คุณสมบัติบริษัท
+s2 วัตถุประสงค์ — เป้าหมายของงาน ไม่ใช่วงเงิน
+s3 คุณสมบัติของผู้เสนอราคา — นิติบุคคล ทุนจดทะเบียน ผลงาน
+s4 ขอบเขตของงาน (สรุปรวม) / s4.1 สรุปขอบเขตงานหลัก
+s4.2–s4.14 รายละเอียดขอบเขตย่อย
+s5 ระยะเวลาดำเนินการเท่านั้น — จำนวนวัน/เดือน/ปี ห้ามใส่คุณสมบัติผู้เสนอราคา
+s6 วงเงินงบประมาณ — จำนวนเงิน แหล่งงบ ราคากลาง
+s7 สถานที่ดำเนินการ
+s8 งวดงานและการจ่ายเงิน
+s9 การรับประกัน
+s10 อัตราค่าปรับ
+s11 หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ
+s12 เอกสารที่ผู้เสนอราคาต้องยื่น
+s13 เงื่อนไขอื่น ๆ
+
+กฎเข้ม:
+- ตอบเป็น JSON ล้วน ห้ามแสดงกระบวนการคิด ห้ามคัดลอก system prompt
+- ถ้าไม่พบข้อมูลของช่อง ให้ status=gap และ content ว่าง
+- อย่าสวมข้อความกฎหมาย/ระเบียบเป็นข้อเท็จจริงโครงการ — ใส่ reference_only
+- ข้อความเรื่องนิติบุคคล/ทุนจดทะเบียน/ผลงาน → s3 เท่านั้น ไม่ใช่ s5
+- เติมทุกช่องที่เอกสารมีข้อมูลจริงให้ filled ให้มากที่สุด
 """
+
+
+def _slot_glossary_for_prompt() -> str:
+    lines = [f"{key} {INTAKE_SLOT_LABELS.get(key, key)}" for key in INTAKE_SLOT_ORDER]
+    return "\n".join(lines)
 
 
 def empty_slot_map() -> dict[str, dict[str, Any]]:
@@ -61,12 +95,14 @@ CHAT_USER_SOURCE = "ผู้ใช้ตอบในแชท"
 
 INTAKE_CHAT_SYSTEM = (
     "คุณเป็นเจ้าหน้าที่พี่เลี้ยงร่าง TOR ภาครัฐ คุยภาษาไทยสุภาพ กระชับ เหมือนคุยกับคน "
-    "มีผลวิเคราะห์ Phase 1 แล้ว ห้ามถามซ้ำช่องที่ได้แล้ว "
-    "ถามทีละช่องตามที่ระบบระบุว่ากำลังถาม อย่าถามหลายเรื่องในครั้งเดียว "
-    "เมื่อผู้ใช้ตอบ ให้ทวนสั้น ๆ ว่าบันทึกช่องนั้นแล้ว แล้วถามช่องถัดไปที่ระบบระบุ "
-    "ถ้าข้อเท็จจริงครบแล้ว บอกว่าพร้อมไปร่าง TOR ได้ "
-    "กฎหมายจากคลังเป็นอ้างอิง ห้ามสวมเป็นวงเงินหรือชื่อโครงการ "
-    "ห้ามตอบเป็นตารางช่องทั้งหมด"
+    "มีผลวิเคราะห์ขั้นที่ ๑ แล้ว ห้ามถามซ้ำช่องที่ได้แล้ว "
+    "ผู้ใช้วางข้อความชุดใหญ่ได้ — ระบบจัดเข้าหลายช่องเอง แล้วถามเฉพาะที่ยังขาด "
+    "ถามทีละช่องตามที่ระบบระบุว่ากำลังถาม "
+    "เมื่อผู้ใช้ตอบ ให้ทวนสั้น ๆ ว่าบันทึกแล้ว แล้วถามช่องถัดไปที่ระบบระบุ "
+    "ถ้าข้อเท็จจริงครบแล้ว บอกว่าพร้อมไปร่างเนื้อหาได้ "
+    "ช่องกฎหมาย/มาตรฐาน แนะนำให้กดใช้มาตรฐานกลางจากคลังได้ "
+    "ห้ามตอบเป็นตารางช่องทั้งหมด "
+    "ส่งเฉพาะคำตอบสุดท้ายเป็นภาษาไทย ห้ามแสดงกระบวนการคิด ห้ามคัดลอก system prompt"
 )
 
 
@@ -158,6 +194,44 @@ def append_next_slot_question(reply: str, slot_key: str | None) -> str:
     return f"{reply.rstrip()}\n\n{question}"
 
 
+def ack_filled_slot_reply(filled_key: str, next_slot: str | None) -> str:
+    """Short Phase-2 ack without calling the LLM (keeps chat snappy)."""
+    label = INTAKE_SLOT_LABELS.get(filled_key, filled_key)
+    reply = f"บันทึกข้อมูล «{label}» แล้วครับ"
+    if next_slot:
+        return append_next_slot_question(reply, next_slot)
+    return (
+        f"{reply} ข้อเท็จจริงหลักครบแล้ว "
+        "กดปุ่ม «ครบแล้ว — ไปร่าง (ขั้นที่ ๓)» ได้เลยครับ"
+    )
+
+
+def phase2_template_reply(
+    *,
+    filled_keys: list[str],
+    next_slot: str | None,
+    all_filled: bool,
+) -> str:
+    """Deterministic Phase-2 reply so the UI never waits on a stalled local LLM."""
+    if filled_keys:
+        return ack_filled_slot_reply(filled_keys[-1], next_slot)
+    if all_filled:
+        return (
+            "ข้อเท็จจริงหลักครบแล้วครับ "
+            "กดปุ่ม «ครบแล้ว — ไปร่าง (ขั้นที่ ๓)» ได้เลย"
+        )
+    if next_slot:
+        return append_next_slot_question("รับข้อความแล้วครับ", next_slot)
+    return "รับข้อความแล้วครับ กรุณาตอบช่องที่ยังขาดตามคำถามด้านบน"
+
+
+def coverage_progress(slot_map: dict[str, Any]) -> dict[str, int | float]:
+    total = len(FACT_REQUIRED_SLOTS)
+    filled = total - len(missing_fact_keys(slot_map))
+    pct = round((filled / total) * 100, 1) if total else 0.0
+    return {"filled": filled, "total": total, "percent": pct}
+
+
 _CHAT_SKIP_ANSWERS = {
     "สวัสดี",
     "ครับ",
@@ -192,7 +266,7 @@ def fill_current_slot(
     current_slot: str,
     answer: str,
 ) -> bool:
-    """Fill the slot currently being asked. Never writes into a legal/reference gap."""
+    """Fill one slot from a spoken answer (facts or non-fact project text)."""
     text = answer.strip()
     if len(text) < 2:
         return False
@@ -200,18 +274,53 @@ def fill_current_slot(
         return False
     if is_fill_reference_request(text):
         return False
-    if current_slot not in FACT_REQUIRED_SLOTS:
+    if current_slot not in INTAKE_SLOT_ORDER:
         return False
     _write_chat_slot(slot_map, current_slot, text)
     return True
 
 
 def apply_chat_answer_to_slots(slot_map: dict[str, Any], user_text: str) -> list[str]:
-    """Sequential: the spoken answer fills the next empty fact slot only."""
-    target = next_asking_slot(slot_map)
-    if not target or not fill_current_slot(slot_map, target, user_text):
+    """Fill from labelled bulk paste, keyword guess, or the next missing fact."""
+    text = user_text.strip()
+    if not text:
         return []
-    return [target]
+    filled: list[str] = []
+    for key, body in extract_slot_contents(text).items():
+        body = str(body or "").strip()
+        if key not in INTAKE_SLOT_ORDER or not body:
+            continue
+        if _slot_is_filled(slot_map, key):
+            continue
+        _write_chat_slot(slot_map, key, body)
+        filled.append(key)
+    if filled:
+        return filled
+
+    guess = guess_slot_for_answer(text)
+    if guess and guess in INTAKE_SLOT_ORDER and not _slot_is_filled(slot_map, guess):
+        _write_chat_slot(slot_map, guess, text)
+        return [guess]
+
+    target = next_asking_slot(slot_map)
+    if target and fill_current_slot(slot_map, target, text):
+        return [target]
+    return []
+
+
+def phase2_filled_ack(filled_keys: list[str], next_slot: str | None) -> str:
+    if not filled_keys:
+        return phase2_template_reply(filled_keys=[], next_slot=next_slot, all_filled=not next_slot)
+    if len(filled_keys) == 1:
+        return ack_filled_slot_reply(filled_keys[0], next_slot)
+    labels = [INTAKE_SLOT_LABELS.get(key, key) for key in filled_keys]
+    reply = "บันทึกข้อมูลหลายช่องแล้วครับ: " + ", ".join(labels)
+    if next_slot:
+        return append_next_slot_question(reply, next_slot)
+    return (
+        f"{reply} ข้อเท็จจริงหลักครบแล้ว "
+        "กดปุ่ม «ครบแล้ว — ไปร่าง (ขั้นที่ ๓)» ได้เลยครับ"
+    )
 
 
 def slot_map_for_prompt(slot_map: dict[str, Any]) -> str:
@@ -240,7 +349,7 @@ def build_phase2_opening(slot_map: dict[str, Any], gap_questions: list[str]) -> 
         content = str(slot.get("content") or "").strip() if isinstance(slot, dict) else ""
         if _slot_is_filled(slot_map, key):
             filled_lines.append(f"- {label}: {content[:160]}")
-    parts = ["สวัสดีครับ ผมอ่านเอกสารจาก Phase 1 แล้ว สรุปให้ฟังสั้น ๆ นะครับ"]
+    parts = ["สวัสดีครับ ผมอ่านเอกสารจากขั้นที่ ๑ แล้ว สรุปให้ฟังสั้น ๆ นะครับ"]
     if filled_lines:
         parts.append("ข้อมูลที่จัดเข้าช่องได้แล้ว:")
         parts.extend(filled_lines)
@@ -251,7 +360,7 @@ def build_phase2_opening(slot_map: dict[str, Any], gap_questions: list[str]) -> 
         parts.append("ตอบช่องนี้ก่อนได้เลยครับ ไม่ต้องกรอกตาราง")
     else:
         parts.append(
-            "ข้อเท็จจริงหลักครบแล้วครับ ถ้าไม่มีอะไรแก้ กดปุ่มยืนยันด้านบนเพื่อไปร่าง TOR ได้เลย"
+            "ข้อเท็จจริงหลักครบแล้วครับ ถ้าไม่มีอะไรแก้ กดปุ่มยืนยันด้านบนเพื่อไปร่างเนื้อหาได้เลย"
         )
     extra = [str(item).strip() for item in gap_questions if str(item).strip()]
     if extra and nxt:
@@ -317,6 +426,36 @@ def has_intake_material(project: Project) -> bool:
     return _has_pasted_text(project) or _has_intake_files(project) or _has_filled_slot(project)
 
 
+def project_intake_pack(project: Project, limit: int = 24000) -> str:
+    """Phase 0 upload/paste text for this project only — never another project."""
+    texts = _extracted_dict(project).get("intake_texts") or []
+    if not isinstance(texts, list):
+        return ""
+    parts: list[str] = []
+    for item in texts:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        name = str(item.get("name") or "เอกสารขั้นที่ ๐").strip() or "เอกสารขั้นที่ ๐"
+        parts.append(f"[{name}]\n{text[:8000]}")
+    return "\n\n".join(parts)[:limit]
+
+
+def with_project_intake(slot_map: dict[str, Any], project: Project) -> dict[str, Any]:
+    """Copy slot_map and attach this project's Phase 0 pack for drafting prompts."""
+    out = dict(slot_map or {})
+    pack = project_intake_pack(project)
+    if pack:
+        out["_project_intake"] = {
+            "content": pack,
+            "status": "filled",
+            "sources": ["phase0"],
+        }
+    return out
+
+
 def is_ready_to_compose(project: Project) -> bool:
     if not _analysis_dict(project).get("ready_to_compose"):
         return False
@@ -333,6 +472,29 @@ def has_been_analyzed(project: Project) -> bool:
 
 def is_phase4_confirmed(project: Project) -> bool:
     return bool(_analysis_dict(project).get("phase4_confirmed"))
+
+
+def attest_hitl_sections(rows: list) -> None:
+    """Officer confirm-to-review attests mandatory HITL parent rows."""
+    if not rows:
+        return
+    pending = {
+        key
+        for key in MANDATORY_HUMAN_REVIEW_SECTIONS
+        if not any(
+            getattr(row, "section_key", "") == key
+            and not getattr(row, "sub_key", None)
+            and getattr(row, "is_approved", False)
+            for row in rows
+        )
+    }
+    if not pending:
+        return
+    for row in rows:
+        if getattr(row, "sub_key", None):
+            continue
+        if getattr(row, "section_key", "") in pending:
+            row.is_approved = True
 
 
 def intake_unlocked_phase(project: Project) -> int:
@@ -434,10 +596,11 @@ async def _llm_analyze_slot_map(
     pack_text: str,
     filenames: list[str],
 ) -> tuple[dict[str, Any], list[str]]:
-    llm = ProviderFactory().get_llm("structured")
+    llm = ProviderFactory().get_llm("structured")  # NOSONAR python:S930 — ProviderFactory.get_llm(task=...)
     user = (
         f"ไฟล์: {', '.join(filenames)}\n\n"
-        f"เนื้อหาที่สกัด (ตัดความยาว):\n{pack_text[:24000]}"
+        f"รหัสช่อง:\n{_slot_glossary_for_prompt()}\n\n"
+        f"เนื้อหาที่สกัด (ตัดความยาว):\n{pack_text[:100_000]}"
     )
     try:
         payload = await invoke_with_schema(
@@ -467,17 +630,31 @@ async def _llm_analyze_slot_map(
 async def analyze_pack(project: Project, pack_text: str, filenames: list[str]) -> dict[str, Any]:
     slot_map = _slot_map_from_paste(pack_text, filenames)
     llm_gaps: list[str] = []
-    if not facts_are_complete(slot_map):
+    paste_filled = sum(1 for key in FACT_REQUIRED_SLOTS if _slot_is_filled(slot_map, key))
+    will_call_llm = bool(ANALYZE_USE_LLM) and not facts_are_complete(slot_map)
+    if will_call_llm:
         try:
             llm_map, llm_gaps = await asyncio.wait_for(
                 _llm_analyze_slot_map(pack_text, filenames),
                 timeout=ANALYZE_LLM_TIMEOUT_SEC,
             )
             slot_map = overlay_filled_slots(slot_map, llm_map)
+            slot_map = repair_misplaced_slots(slot_map)
         except TimeoutError:
             logger.warning("intake analyze LLM timed out for project %s", project.id)
+        except asyncio.CancelledError:
+            logger.warning("intake analyze LLM cancelled for project %s", project.id)
+            raise
         except OSError as exc:
             logger.warning("intake analyze LLM unavailable: %s", exc)
+    else:
+        logger.info(
+            "intake analyze heuristics-only for project %s (paste_filled=%s use_llm=%s)",
+            project.id,
+            paste_filled,
+            ANALYZE_USE_LLM,
+        )
+    slot_map = repair_misplaced_slots(slot_map)
     return {
         "slot_map": slot_map,
         "gap_questions": _gap_questions_from_slots(slot_map, llm_gaps),
@@ -508,6 +685,7 @@ def apply_reference_to_slot(
     filled: dict[str, Any],
     *,
     force_append: bool = False,
+    as_standard: bool = False,
 ) -> str:
     """Merge RAG text into one slot. Never downgrade a filled fact slot.
 
@@ -519,7 +697,19 @@ def apply_reference_to_slot(
         slot_map[slot_key] = slot
     content = str(slot.get("content") or "").strip()
     incoming = str(filled.get("content") or "").strip()
+    if not incoming:
+        return "skipped"
     incoming_sources = filled.get("sources") if isinstance(filled.get("sources"), list) else []
+    if as_standard and slot_key not in FACT_REQUIRED_SLOTS:
+        sources = list(incoming_sources)
+        if "มาตรฐานกลางจากคลัง" not in sources:
+            sources.append("มาตรฐานกลางจากคลัง")
+        slot_map[slot_key] = {
+            "content": incoming,
+            "status": "filled",
+            "sources": sources,
+        }
+        return "filled"
     if slot.get("status") != "filled" or not content:
         slot_map[slot_key] = {
             "content": incoming,
@@ -538,6 +728,8 @@ def apply_reference_to_slot(
 async def fill_non_fact_reference_slots(
     project: Project,
     user_id: UUID,
+    *,
+    as_standard: bool = True,
 ) -> dict[str, Any]:
     """Pull regulation excerpts into non-fact gap slots without clobbering facts."""
     filled_keys: list[str] = []
@@ -547,7 +739,7 @@ async def fill_non_fact_reference_slots(
         if key in FACT_REQUIRED_SLOTS:
             continue
         remaining = deadline - time.monotonic()
-        if remaining <= 0 or len(filled_keys) >= 8:
+        if remaining <= 0 or len(filled_keys) >= 12:
             break
         analysis = dict(_analysis_dict(project))
         slot_map = _copy_slot_map(analysis.get("slot_map"))
@@ -563,7 +755,7 @@ async def fill_non_fact_reference_slots(
         except TimeoutError:
             last_map = slot_map
             continue
-        if apply_reference_to_slot(slot_map, key, filled) != "filled":
+        if apply_reference_to_slot(slot_map, key, filled, as_standard=as_standard) != "filled":
             last_map = slot_map
             continue
         analysis["slot_map"] = slot_map
@@ -642,20 +834,26 @@ async def apply_slot_map_to_sections(
     project_id: UUID,
     slot_map: dict[str, Any],
 ) -> None:
-    """Copy filled intake slots into TOR sections so Phase 2/3/review have real text."""
+    """Copy filled intake slots into TOR sections so Phase 2/3/review have real text.
+
+    Scope (s4) is stored as subsections s4.1–s4.14 only. Top-level s4 keeps a short
+    overview so Phase 4 export does not duplicate the full body.
+    """
     for key in TOR_SECTION_ORDER:
         if key == "s4":
             continue
         await _upsert_section_text(db, project_id, key, None, slot_content(slot_map, key))
-    parts: list[str] = []
-    for sub_key, title in SCOPE_SUBSECTIONS.items():
+    for sub_key, _title in SCOPE_SUBSECTIONS.items():
         text = slot_content(slot_map, sub_key)
         if not text.strip():
             continue
         await _upsert_section_text(db, project_id, "s4", sub_key, text)
-        parts.append(f"{title}: {text.strip()}")
-    if parts:
-        await _upsert_section_text(db, project_id, "s4", None, "\n\n".join(parts))
+    overview = slot_content(slot_map, "s4.1").strip()
+    if overview:
+        if len(overview) > 360:
+            overview = overview[:360].rstrip() + "…"
+        overview = f"{overview}\n\n(รายละเอียดครบในหัวข้อย่อย ๔.๑–๔.๑๔)"
+        await _upsert_section_text(db, project_id, "s4", None, overview)
 
 
 def resolve_draft_section_key(text: str) -> str | None:
@@ -676,8 +874,9 @@ def resolve_draft_section_key(text: str) -> str | None:
 
 def build_phase3_opening() -> str:
     return (
-        "ข้อมูลจาก Phase 1–2 ถูกจัดเข้าหมวดแล้วครับ "
-        "ผมจะร่างเนื้อหา TOR ทั้ง 13 หมวดให้จากข้อมูลนั้น "
-        "ถ้าต้องการแก้หมวดใด พิมพ์เป็นภาษาพูดได้เลย เช่น "
-        "แก้ความเป็นมาให้เน้น พ.ร.บ. 2560 หรือ ร่างวงเงินใหม่"
+        "ข้อมูลจากขั้นวิเคราะห์ถูกจัดเข้าหมวดแล้วครับ "
+        "ผมจะร่างเนื้อหาทั้ง ๑๓ หมวด โดยหมวดขอบเขตงานจะใส่ลงหัวข้อย่อย "
+        "๔.๑–๔.๑๔ โดยตรง ไม่แยกก้อนยาวทับอีกชั้น "
+        "ถ้าต้องการแก้หมวดใด พิมพ์เป็นภาษาพูดได้ เช่น "
+        "แก้ความเป็นมาให้เน้น พ.ร.บ. ๒๕๖๐ หรือ ร่างวงเงินใหม่"
     )

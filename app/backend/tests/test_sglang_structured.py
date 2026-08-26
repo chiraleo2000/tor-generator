@@ -45,6 +45,21 @@ def test_guided_json_attached_for_sglang_kwargs():
     assert payload["temperature"] == 0.1
 
 
+def test_thinking_enabled_by_default():
+    payload = thinking_request_kwargs({"temperature": 0.2})
+    assert payload["extra_body"]["enable_thinking"] is True
+    assert payload["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
+    assert "disable_thinking" not in payload
+    assert "enable_thinking" not in payload
+
+
+def test_enable_thinking_opt_in():
+    payload = thinking_request_kwargs({"enable_thinking": True, "temperature": 0.2})
+    assert payload["extra_body"]["enable_thinking"] is True
+    assert payload["temperature"] == 0.2
+    assert "enable_thinking" not in payload
+
+
 def test_guided_json_omitted_without_flag():
     payload = thinking_request_kwargs(
         {"json_schema": {"type": "object"}, "_guided_json": False}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/brand/status-pill";
@@ -14,7 +14,7 @@ import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { useProjectStore } from "@/stores/project-store";
-import { HITL_SECTIONS, TOR_SECTION_ORDER } from "@/lib/tor-sections";
+import { TOR_SECTION_ORDER, isSectionFilled } from "@/lib/tor-sections";
 import { toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
 import {
   markProjectReviewFinished,
@@ -22,6 +22,7 @@ import {
   shouldSkipProjectReview,
 } from "@/lib/review-run-guard";
 import { canSelectPhase, displayPhase, intakeUnlockedPhase } from "@/lib/phase-gate";
+import { phaseLabelTh } from "@/lib/phase-handoff";
 import { clearDraftingProject, markDraftingProject } from "@/lib/drafting-guard";
 import {
   PHASE_FORWARD_CONFIRM,
@@ -36,7 +37,7 @@ const EXPORT_WAIT_MESSAGE: Record<"failed" | "timeout", string> = {
 async function waitForExportReady(
   projectId: string
 ): Promise<"completed" | "failed" | "timeout"> {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 66; attempt += 1) {
     const statusRes = await apiClient.get(`/projects/${projectId}/export/status`);
     const status = unwrapData<{ status?: string }>(statusRes).status;
     if (status === "completed") return "completed";
@@ -64,9 +65,12 @@ export function DraftWorkspace() {
   const [reviewSuggestions, setReviewSuggestions] = useState<ReviewSuggestion[]>(
     []
   );
+  const [reviewAssessment, setReviewAssessment] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const hydrateGen = useRef(0);
   const { ask, dialog } = useConfirmPhase();
 
   const loadSections = useCallback(async () => {
@@ -83,11 +87,15 @@ export function DraftWorkspace() {
 
   useEffect(() => {
     if (!projectId) return;
+    const gen = hydrateGen.current + 1;
+    hydrateGen.current = gen;
+    setHydrated(false);
     fetchProject(projectId)
       .then((project) => {
+        if (hydrateGen.current !== gen) return;
         const nextUnlocked = intakeUnlockedPhase(project);
         setUnlocked(nextUnlocked);
-        setPhase(displayPhase(project.currentPhase ?? 0, nextUnlocked));
+        setPhase((prev) => Math.max(prev, displayPhase(project.currentPhase ?? 0, nextUnlocked)));
         if (project.extractedFields) {
           setExtracted(project.extractedFields);
         }
@@ -102,27 +110,50 @@ export function DraftWorkspace() {
               .map((item) => toReviewFinding(item))
           );
         }
+        const assessment = project.analysisJson?.review_assessment;
+        if (typeof assessment === "string" && assessment.trim()) {
+          setReviewAssessment(assessment);
+        }
+        setHydrated(true);
       })
-      .catch((err: unknown) =>
-        setActionError(apiErrorMessage(err, "โหลดโครงการไม่สำเร็จ"))
-      );
+      .catch((err: unknown) => {
+        setActionError(apiErrorMessage(err, "โหลดโครงการไม่สำเร็จ"));
+        setHydrated(true);
+      });
     loadSections().catch((err: unknown) =>
-      setActionError(apiErrorMessage(err, "โหลดหมวด TOR ไม่สำเร็จ"))
+      setActionError(apiErrorMessage(err, "โหลดหมวดเอกสารไม่สำเร็จ"))
     );
   }, [projectId, fetchProject, loadSections]);
 
-  async function persistPhase(next: number, nextUnlocked = unlocked) {
-    if (!canSelectPhase(phase, nextUnlocked, next)) {
+  async function persistPhase(
+    next: number,
+    nextUnlocked = unlocked,
+    options?: { allowDowngrade?: boolean }
+  ) {
+    const allowDowngrade = options?.allowDowngrade ?? false;
+    // Allow advancing when caller passes a higher unlock (e.g. after analyze).
+    const effectiveUnlocked = Math.max(unlocked, nextUnlocked);
+    const allowed = canSelectPhase(phase, effectiveUnlocked, next);
+    if (!allowed) {
+      setActionError(`ยังไป${phaseLabelTh(next)}ไม่ได้ — ทำขั้นก่อนหน้าให้ครบก่อน`);
       return;
     }
-    setUnlocked(nextUnlocked);
+    // Resume/analyze must never yank the server backward (Phase 2 → 1 race).
+    if (!allowDowngrade && next < phase) {
+      setUnlocked(effectiveUnlocked);
+      return;
+    }
+    const previousPhase = phase;
+    const previousUnlocked = unlocked;
+    setUnlocked(effectiveUnlocked);
     setPhase(next);
+    setActionError(null);
     try {
       await apiClient.patch(`/projects/${projectId}/phase`, { phase: next });
     } catch (err: unknown) {
-      if (nextUnlocked < next) {
-        setActionError(apiErrorMessage(err, "เปลี่ยนขั้นตอนไม่สำเร็จ"));
-      }
+      setPhase(previousPhase);
+      setUnlocked(previousUnlocked);
+      setActionError(apiErrorMessage(err, "เปลี่ยนขั้นตอนไม่สำเร็จ"));
     }
   }
 
@@ -132,11 +163,11 @@ export function DraftWorkspace() {
     }
     if (next > phase && next !== 2) {
       const prompt =
-        PHASE_FORWARD_CONFIRM[next] || `ไป Phase ${next}?`;
+        PHASE_FORWARD_CONFIRM[next] || `ไป${phaseLabelTh(next)}?`;
       const ok = await ask(prompt);
       if (!ok) return;
     }
-    await persistPhase(next);
+    await persistPhase(next, unlocked, { allowDowngrade: next < phase });
   }
 
   async function saveSection(
@@ -155,7 +186,7 @@ export function DraftWorkspace() {
   async function draftSection(key: string) {
     setBusy(true);
     setActionError(null);
-    setActionInfo("รอคิว AI...");
+    setActionInfo("รอคิวระบบอัจฉริยะ...");
     const requestId =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
@@ -168,10 +199,10 @@ export function DraftWorkspace() {
           if (payload.status === "waiting") {
             const position = Number(payload.position || 0);
             setActionInfo(
-              position > 0 ? `รอคิว GPU (#${position})...` : "รอคิว AI..."
+              position > 0 ? `รอคิวประมวลผล (ลำดับ ${position})...` : "รอคิวระบบอัจฉริยะ..."
             );
           } else if (payload.status === "running") {
-            setActionInfo("กำลังร่างด้วย AI...");
+            setActionInfo("กำลังร่างด้วยระบบอัจฉริยะ...");
           }
         })
         .catch(() => undefined);
@@ -183,9 +214,9 @@ export function DraftWorkspace() {
         { headers: { "X-AI-Request-Id": requestId } }
       );
       await loadSections();
-      setActionInfo("ร่างด้วย AI สำเร็จ — ตรวจข้อความแล้วบันทึก");
+      setActionInfo("ร่างด้วยระบบอัจฉริยะสำเร็จ — ตรวจข้อความแล้วบันทึก");
     } catch (err: unknown) {
-      setActionError(apiErrorMessage(err, "ร่างด้วย AI ไม่สำเร็จ"));
+      setActionError(apiErrorMessage(err, "ร่างด้วยระบบอัจฉริยะไม่สำเร็จ"));
       setActionInfo(null);
     } finally {
       window.clearInterval(poll);
@@ -200,7 +231,7 @@ export function DraftWorkspace() {
     markProjectReviewStarted(projectId);
     setReviewBusy(true);
     setActionError(null);
-    setActionInfo("รอคิว AI...");
+    setActionInfo("รอคิวระบบอัจฉริยะ...");
     const requestId =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
@@ -213,7 +244,7 @@ export function DraftWorkspace() {
           if (payload.status === "waiting") {
             const position = Number(payload.position || 0);
             setActionInfo(
-              position > 0 ? `รอคิว (#${position})...` : "รอคิว AI..."
+              position > 0 ? `รอคิว (ลำดับ ${position})...` : "รอคิวระบบอัจฉริยะ..."
             );
           } else if (payload.status === "running") {
             setActionInfo("กำลังตรวจสอบ...");
@@ -231,11 +262,15 @@ export function DraftWorkspace() {
       const payload = unwrapData<{
         quality_score?: number;
         findings?: Record<string, unknown>[];
+        overall_assessment?: string;
       }>(response);
       setReviewScore(payload.quality_score ?? null);
       setReviewFindings(
         (payload.findings || []).map((item) => toReviewFinding(item))
       );
+      if (payload.overall_assessment) {
+        setReviewAssessment(payload.overall_assessment);
+      }
       try {
         const sugRes = await apiClient.get(`/projects/${projectId}/suggestions`);
         const sugPayload = unwrapData<{ items?: ReviewSuggestion[] }>(sugRes);
@@ -286,10 +321,7 @@ export function DraftWorkspace() {
     }
   }
 
-  const filledCount = sections.filter((s) => s.filled).length;
-  const hitlReady = HITL_SECTIONS.every((key) =>
-    sections.find((s) => s.key === key && s.human_confirmed)
-  );
+  const filledCount = sections.filter((s) => isSectionFilled(s)).length;
 
   if (!projectId) {
     return (
@@ -312,7 +344,7 @@ export function DraftWorkspace() {
               {activeProject?.name || "โครงการใหม่"}
             </p>
             <p className="text-xs text-muted-foreground">
-              เริ่มที่ Phase 0 — อัปโหลดแล้วกดวิเคราะห์ จากนั้นดูผล Phase 1 แล้วคุยต่อ Phase 2 อัตโนมัติ
+              เริ่มที่ขั้นที่ ๐ — อัปโหลดแล้วกดวิเคราะห์ จากนั้นดูผลขั้นที่ ๑ แล้วคุยต่อขั้นที่ ๒
             </p>
           </div>
           <StatusPill status={activeProject?.status || "draft"} />
@@ -331,7 +363,11 @@ export function DraftWorkspace() {
         </p>
       ) : null}
 
-      {phase === 0 || phase === 1 || phase === 2 ? (
+      {!hydrated ? (
+        <p className="text-sm text-muted-foreground">กำลังโหลดขั้นตอนโครงการ...</p>
+      ) : null}
+
+      {hydrated && (phase === 0 || phase === 1 || phase === 2) ? (
         <IntakeChatPanel
           projectId={projectId}
           phase={phase}
@@ -347,7 +383,7 @@ export function DraftWorkspace() {
         />
       ) : null}
 
-      {phase === 3 ? (
+      {hydrated && phase === 3 ? (
         <Phase3Draft
           projectId={projectId}
           sections={sections}
@@ -364,39 +400,52 @@ export function DraftWorkspace() {
           onRefresh={() => {
             loadSections().catch(() => undefined);
           }}
-          onBack={() => persistPhase(2)}
+          onBack={() => persistPhase(2, unlocked, { allowDowngrade: true })}
           onConfirm={async () => {
+            if (filledCount < 13) {
+              setActionError("ร่างให้ครบ ๑๓ หมวดก่อนเข้าทบทวน");
+              return;
+            }
             const ok = await ask(PHASE_FORWARD_CONFIRM[4]);
             if (!ok) return;
+            setBusy(true);
+            setActionError(null);
             try {
-              await apiClient.post(`/projects/${projectId}/intake/confirm-phase4`, {
-                confirm: true,
-              });
+              if (unlocked < 4) {
+                await apiClient.post(`/projects/${projectId}/intake/confirm-phase4`, {
+                  confirm: true,
+                });
+              }
               await persistPhase(4, 4);
             } catch (err: unknown) {
-              setActionError(apiErrorMessage(err, "ต้องยืนยันด้วยตนเองก่อนเข้าทบทวน"));
+              setActionError(apiErrorMessage(err, "ไปทบทวนไม่สำเร็จ — ตรวจการยืนยันแล้วลองใหม่"));
+            } finally {
+              setBusy(false);
             }
           }}
         />
       ) : null}
 
-      {phase === 4 ? (
+      {hydrated && phase === 4 ? (
         <>
           <Phase4Review
             projectId={projectId}
+            sections={sections}
             filledCount={filledCount}
             total={TOR_SECTION_ORDER.length}
-            hitlReady={hitlReady}
             score={reviewScore}
             findings={reviewFindings}
             suggestions={reviewSuggestions}
+            assessment={reviewAssessment}
             busy={reviewBusy}
             error={actionError}
-            onBack={() => persistPhase(3)}
+            onBack={() => persistPhase(3, unlocked, { allowDowngrade: true })}
             onReview={runProjectReview}
-            onAcceptHitl={async (sectionKey) => {
-              const section = sections.find((item) => item.key === sectionKey);
-              await saveSection(sectionKey, section?.content || "", true);
+            onAsk={async (question) => {
+              const res = await apiClient.post(`/projects/${projectId}/review/comment`, {
+                content: question,
+              });
+              return unwrapData<{ reply?: string }>(res).reply || "";
             }}
             onSubmit={async () => {
               try {

@@ -22,13 +22,13 @@ def test_on_prem_claude_uses_cloud_timeout():
     assert settings.drafting_agent_timeout_seconds() == 60
 
 
-def test_timeout_is_clamped_to_420():
+def test_timeout_is_clamped_to_1800():
     settings = Settings(
         llm_provider="lm_studio",
         deployment_mode="on_prem",
-        lm_studio_timeout=999.0,
+        lm_studio_timeout=9999.0,
     )
-    assert settings.drafting_agent_timeout_seconds() == 420
+    assert settings.drafting_agent_timeout_seconds() == 1800
 
 
 def test_ollama_on_prem_uses_local_timeout():

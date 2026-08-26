@@ -21,10 +21,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from langgraph.graph import END, StateGraph
 
+from app.config import LOCAL_LLM_TIMEOUT_CAP_SECONDS
 from app.domain.tor_sections import (
     MANDATORY_HUMAN_REVIEW_SECTIONS,
     TOR_SECTION_LABELS_BILINGUAL,
 )
+from app.llm_tokens import DRAFT_MAX_TOKENS
 from app.orchestrator.agents.registry import get_agent_for_section
 from app.orchestrator.state import TORDraftState
 
@@ -41,10 +43,10 @@ GUARDRAIL_THRESHOLD = 70
 DEFAULT_MAX_RETRIES = 3
 
 # LLM timeout per invocation in seconds (Requirement 12.6)
-LLM_TIMEOUT_SECONDS = 60
+LLM_TIMEOUT_SECONDS = LOCAL_LLM_TIMEOUT_CAP_SECONDS
 
-# Maximum allowed timeout (Requirement 12.6)
-MAX_TIMEOUT_SECONDS = 300
+# Maximum allowed timeout (Requirement 12.6); long 32k drafts need this headroom
+MAX_TIMEOUT_SECONDS = LOCAL_LLM_TIMEOUT_CAP_SECONDS
 
 SECTION_NAMES: dict[str, str] = dict(TOR_SECTION_LABELS_BILINGUAL)
 
@@ -344,7 +346,7 @@ async def _draft_section_with_agent(
                 findings,
                 human_feedback,
                 temperature=0.3,
-                max_tokens=4000,
+                max_tokens=DRAFT_MAX_TOKENS,
             ),
             timeout=agent_timeout,
         )
@@ -359,7 +361,11 @@ async def _draft_section_with_agent(
         retry_count=retry_count,
     )
     response = await asyncio.wait_for(
-        llm.invoke(messages=messages, temperature=0.3, max_tokens=4000),
+        llm.invoke(
+            messages=messages,
+            temperature=0.3,
+            max_tokens=DRAFT_MAX_TOKENS,
+        ),
         timeout=agent_timeout,
     )
     return response.content
@@ -540,7 +546,7 @@ async def retrieve_context(state: TORDraftState) -> TORDraftState:
         query = _build_rag_query(target_section, user_input)
         result, citations, degraded = await hybrid_retrieve(
             query,
-            search_scope="both",
+            search_scope="global",
             top_k=5,
             section_relevance=target_section if target_section.startswith("s") else None,
         )

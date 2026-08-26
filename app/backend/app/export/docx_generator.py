@@ -201,7 +201,7 @@ class DOCXGenerator:
         title_para.space_before = Pt(0)
         title_para.space_after = Pt(12)
 
-        run = title_para.add_run("ร่างขอบเขตของงาน (Terms of Reference: TOR)")
+        run = title_para.add_run("ร่างขอบเขตของงาน")
         run.bold = True
         run.font.name = FONT_NAME
         run.font.size = HEADING_FONT_SIZE
@@ -254,10 +254,11 @@ class DOCXGenerator:
             run.font.size = HEADING_FONT_SIZE
             self._set_run_font_cs(run)
 
-            # Section body content
-            if section_content:
+            # Section body — if subsections exist, show only numbered subs (avoid duplicate blob)
+            sub_sections = content.sub_sections.get(section_key, {})
+            if section_content and not sub_sections:
                 self._add_section_content(doc, section_content, content.use_thai_numerals)
-            else:
+            elif not section_content and not sub_sections:
                 # Placeholder for empty sections
                 placeholder_para = doc.add_paragraph()
                 placeholder_run = placeholder_para.add_run("(ยังไม่ได้กรอกข้อมูล)")
@@ -267,8 +268,6 @@ class DOCXGenerator:
                 placeholder_run.font.color.rgb = RGBColor(128, 128, 128)
                 self._set_run_font_cs(placeholder_run)
 
-            # Sub-sections (e.g., s4 → 4.1, 4.2, ... 4.14)
-            sub_sections = content.sub_sections.get(section_key, {})
             if sub_sections:
                 self._add_sub_sections(
                     doc, section_num, sub_sections, content.use_thai_numerals
@@ -279,18 +278,42 @@ class DOCXGenerator:
     def _add_section_content(
         self, doc: Document, text: str, _use_thai_numerals: bool
     ) -> None:
-        """Add section body text, splitting by paragraphs."""
-        paragraphs = text.strip().split("\n")
-        for para_text in paragraphs:
-            para_text = para_text.strip()
-            if not para_text:
+        """Add section body text, including markdown pipe tables as real tables."""
+        from app.services.thai_draft import split_content_blocks
+
+        for kind, payload in split_content_blocks(text):
+            if kind == "table" and isinstance(payload, list):
+                self._add_markdown_table(doc, payload)
                 continue
-            para = doc.add_paragraph()
-            para.paragraph_format.first_line_indent = Cm(1.25)
-            run = para.add_run(para_text)
-            run.font.name = FONT_NAME
-            run.font.size = BODY_FONT_SIZE
-            self._set_run_font_cs(run)
+            paragraphs = str(payload).strip().split("\n")
+            for para_text in paragraphs:
+                para_text = para_text.strip()
+                if not para_text:
+                    continue
+                para = doc.add_paragraph()
+                para.paragraph_format.first_line_indent = Cm(1.25)
+                run = para.add_run(para_text)
+                run.font.name = FONT_NAME
+                run.font.size = BODY_FONT_SIZE
+                self._set_run_font_cs(run)
+
+    def _add_markdown_table(self, doc: Document, rows: list[list[str]]) -> None:
+        if not rows:
+            return
+        cols = max(len(row) for row in rows)
+        table = doc.add_table(rows=len(rows), cols=cols)
+        table.style = "Table Grid"
+        for r_idx, row in enumerate(rows):
+            for c_idx in range(cols):
+                cell_text = row[c_idx] if c_idx < len(row) else ""
+                cell = table.rows[r_idx].cells[c_idx]
+                cell.text = ""
+                para = cell.paragraphs[0]
+                run = para.add_run(cell_text)
+                run.font.name = FONT_NAME
+                run.font.size = BODY_FONT_SIZE
+                run.bold = r_idx == 0
+                self._set_run_font_cs(run)
 
     def _add_sub_sections(
         self,
@@ -300,7 +323,9 @@ class DOCXGenerator:
         use_thai_numerals: bool,
     ) -> None:
         """Add sub-sections (e.g. 4.1, 4.2, ...)."""
-        # Sort sub-sections by their numeric key
+        from app.domain.tor_sections import SCOPE_SUBSECTIONS
+        from app.services.thai_draft import split_content_blocks
+
         sorted_keys = sorted(
             sub_sections.keys(),
             key=lambda k: self._parse_sub_key(k),
@@ -308,25 +333,29 @@ class DOCXGenerator:
 
         for sub_key in sorted_keys:
             sub_content = sub_sections[sub_key]
-
-            # Format sub-section number
-            sub_num_str = format_section_number(sub_key, use_thai_numerals)
+            title = SCOPE_SUBSECTIONS.get(sub_key, "")
+            num_key = sub_key.replace("s4.", "4.") if sub_key.startswith("s4.") else sub_key
+            sub_num_str = format_section_number(num_key, use_thai_numerals)
+            heading = f"{sub_num_str} {title}".strip()
 
             sub_heading_para = doc.add_paragraph()
             sub_heading_para.space_before = Pt(6)
             sub_heading_para.space_after = Pt(3)
             sub_heading_para.paragraph_format.left_indent = Cm(1.0)
 
-            run = sub_heading_para.add_run(f"{sub_num_str}")
+            run = sub_heading_para.add_run(heading)
             run.bold = True
             run.font.name = FONT_NAME
             run.font.size = BODY_FONT_SIZE
             self._set_run_font_cs(run)
 
-            # Sub-section content
-            if sub_content:
-                paragraphs = sub_content.strip().split("\n")
-                for para_text in paragraphs:
+            if not sub_content:
+                continue
+            for kind, payload in split_content_blocks(sub_content):
+                if kind == "table" and isinstance(payload, list):
+                    self._add_markdown_table(doc, payload)
+                    continue
+                for para_text in str(payload).strip().split("\n"):
                     para_text = para_text.strip()
                     if not para_text:
                         continue
@@ -338,8 +367,9 @@ class DOCXGenerator:
                     self._set_run_font_cs(run)
 
     def _parse_sub_key(self, key: str) -> tuple[int, ...]:
-        """Parse a sub-section key like '4.1' into a sortable tuple (4, 1)."""
-        parts = key.replace(".", " ").split()
+        """Parse a sub-section key like 's4.1' / '4.1' into a sortable tuple."""
+        cleaned = key.replace("s", "").replace(".", " ")
+        parts = cleaned.split()
         result = []
         for part in parts:
             try:

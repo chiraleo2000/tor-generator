@@ -13,8 +13,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
-from app import infra as runtime
 from app.api.constants import PROJECT_NOT_FOUND
 from app.deps import get_current_user, get_db
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS
@@ -24,9 +24,9 @@ from app.llm_admission import AdmissionTimeoutError, admit
 from app.models.chat_message import ChatMessage
 from app.models.chat_room import ChatRoom
 from app.models.project import Project
+from app.models.tor_section import TORSection
 from app.models.user import User
 from app.providers.factory import ProviderFactory
-from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.extraction import extract_text
 from app.rag.hybrid import hybrid_retrieve
 from app.rate_limiter import rate_limit_ai
@@ -37,11 +37,13 @@ from app.services.intake_service import (
     analyze_pack,
     append_intake_text,
     append_next_slot_question,
+    apply_chat_answer_to_slots,
     apply_reference_to_slot,
-    apply_slot_map_to_sections,
+    attest_hitl_sections,
     build_phase2_opening,
     build_phase3_opening,
     build_slot_question,
+    coverage_progress,
     coverage_table,
     empty_slot_map,
     fill_current_slot,
@@ -56,14 +58,16 @@ from app.services.intake_service import (
     missing_fact_keys,
     next_asking_slot,
     parse_fill_reference_request,
+    phase2_filled_ack,
+    phase2_template_reply,
     ready_criteria_met,
-    slot_map_for_prompt,
     slot_map_of,
 )
 
 logger = logging.getLogger("tor_app.intake")
 router = APIRouter()
 INTAKE_PASTE_FILENAME = "ข้อความผู้ใช้.txt"
+
 
 
 def _sse(event: str, data: dict) -> str:
@@ -183,7 +187,6 @@ async def intake_upload(
     files: Annotated[list[UploadFile], File()],
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
-    factory = runtime.session_factory or request.app.state.db_session_factory
     saved: list[str] = []
     for upload in files:
         content = await upload.read()
@@ -195,16 +198,7 @@ async def intake_upload(
         tmp_path = await write_temp_bytes(content, suffix=tmp_suffix)
         extracted = extract_text(tmp_path, mime)
         await unlink_path(tmp_path)
-        await ingest_file_bytes(
-            db=db,
-            filename=name,
-            content=content,
-            mime_type=mime,
-            scope="user",
-            owner_id=current_user.id,
-            project_id=str(project.id),
-            session_factory=factory,
-        )
+        # Stay on this project pack only — do not ingest into shared/user RAG.
         file_status = "ocr" if extracted.method in {"ocr", "mixed"} else "ok"
         append_intake_text(project, name, extracted.text, file_status)
         saved.append(name)
@@ -222,17 +216,6 @@ async def intake_text(
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
     text = body.content.strip()
-    factory = runtime.session_factory or request.app.state.db_session_factory
-    await ingest_file_bytes(
-        db=db,
-        filename=INTAKE_PASTE_FILENAME,
-        content=text.encode("utf-8"),
-        mime_type="text/plain",
-        scope="user",
-        owner_id=current_user.id,
-        project_id=str(project.id),
-        session_factory=factory,
-    )
     append_intake_text(project, INTAKE_PASTE_FILENAME, text)
     await db.flush()
     return _ok(request, {"files": [INTAKE_PASTE_FILENAME], "count": 1})
@@ -260,17 +243,33 @@ async def intake_analyze(
     )
     analysis["analyzed"] = True
     project.analysis_json = analysis
+    try:
+        flag_modified(project, "analysis_json")
+    except AttributeError:
+        pass
     project.current_phase = max(project.current_phase or 0, 1)
     await db.flush()
+    # Best-effort: fill legal/standard gaps from knowledge base so Phase 2 is not all-gap.
+    try:
+        filled_refs = await fill_non_fact_reference_slots(
+            project, current_user.id, as_standard=True
+        )
+        analysis = dict(project.analysis_json or {})
+        analysis["standard_fill_keys"] = filled_refs.get("filled_keys") or []
+        project.analysis_json = analysis
+        await db.flush()
+    except Exception as exc:  # noqa: BLE001 — analyze must still return
+        logger.warning("post-analyze standard fill skipped: %s", exc)
     return _ok(
         request,
         {
             "slot_map": analysis["slot_map"],
-            "gap_questions": analysis["gap_questions"],
+            "gap_questions": analysis.get("gap_questions") or [],
             "coverage": coverage_table(analysis["slot_map"]),
             "ready_to_compose": False,
             "analyzed": True,
             "phase": project.current_phase,
+            "standard_fill_keys": analysis.get("standard_fill_keys") or [],
         },
     )
 
@@ -367,7 +366,6 @@ async def intake_confirm_ready(
     analysis["ready_to_compose"] = True
     project.analysis_json = analysis
     project.current_phase = max(project.current_phase or 0, 3)
-    await apply_slot_map_to_sections(db, project.id, slot_map)
     await db.commit()
     return _ok(request, {"ready_to_compose": True, "phase": project.current_phase})
 
@@ -382,7 +380,7 @@ async def intake_open_qa(
     """Seed Phase 2 chat with a spoken summary of Phase 1 analysis (once)."""
     project = await _project(db, project_id, current_user)
     if not has_been_analyzed(project):
-        raise ValidationError(message="ต้องวิเคราะห์ใน Phase 1 ก่อนจึงจะคุยต่อได้", field="analyzed")
+        raise ValidationError(message="ต้องวิเคราะห์ในขั้นที่ ๑ ก่อนจึงจะคุยต่อได้", field="analyzed")
     room = await _ensure_intake_room(db, project, current_user)
     analysis = dict(project.analysis_json or {})
     slot_map = slot_map_of(project)
@@ -497,7 +495,9 @@ async def intake_fill_references(
     project = await _project(db, project_id, current_user)
     if not has_been_analyzed(project):
         raise ValidationError(message="ต้องวิเคราะห์ก่อนจึงจะดึงกฎระเบียบได้", field="analyzed")
-    filled = await fill_non_fact_reference_slots(project, current_user.id)
+    filled = await fill_non_fact_reference_slots(
+        project, current_user.id, as_standard=True
+    )
     await db.flush()
     return _ok(
         request,
@@ -524,9 +524,23 @@ async def intake_confirm_phase4(
         )
     if not body.confirm:
         raise ValidationError(message="ต้องยืนยันด้วยตนเองก่อนเข้าทบทวน", field="confirm")
+    sec_result = await db.execute(
+        select(TORSection).where(
+            TORSection.project_id == project_id,
+            TORSection.sub_key.is_(None),
+        )
+    )
+    fetched = sec_result.scalars().all()
+    rows = list(fetched) if isinstance(fetched, (list, tuple)) else []
+    if rows:
+        attest_hitl_sections(rows)
     analysis = dict(project.analysis_json or {})
     analysis["phase4_confirmed"] = True
     project.analysis_json = analysis
+    try:
+        flag_modified(project, "analysis_json")
+    except AttributeError:
+        pass
     project.current_phase = max(project.current_phase or 0, 4)
     await db.commit()
     return _ok(request, {"phase4_confirmed": True, "phase": project.current_phase})
@@ -554,13 +568,14 @@ async def intake_chat(
     )
     filled_keys: list[str] = []
     ref_key = parse_fill_reference_request(body.content)
-    if asking and not ref_key and fill_current_slot(slot_map, asking, body.content):
-        filled_keys.append(asking)
+    if not ref_key:
+        filled_keys = apply_chat_answer_to_slots(slot_map, body.content)
         asking = next_asking_slot(slot_map)
     analysis["slot_map"] = slot_map
     analysis["current_asking_slot"] = asking
     project.analysis_json = analysis
-    await db.flush()
+    # Commit before SSE so slot fills + user message survive if the stream ends early.
+    await db.commit()
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()
@@ -570,12 +585,12 @@ async def intake_chat(
 
         if ref_key:
             filled = await fill_reference_slot(ref_key, current_user.id)
-            action = apply_reference_to_slot(slot_map, ref_key, filled)
+            action = apply_reference_to_slot(slot_map, ref_key, filled, as_standard=True)
             label = INTAKE_SLOT_LABELS.get(ref_key, ref_key)
             if action == "skipped":
                 reply = f"หมวด {label} มีข้อเท็จจริงอยู่แล้ว จึงไม่ทับข้อมูลนั้นครับ"
             else:
-                reply = f"ดึงอ้างอิงกฎหมายให้หมวด {label} แล้วครับ"
+                reply = f"ใส่มาตรฐานกลางจากคลังให้หมวด {label} แล้วครับ"
             asking_now = analysis.get("current_asking_slot")
             asking_key = asking_now if isinstance(asking_now, str) else None
             reply = append_next_slot_question(reply, asking_key)
@@ -608,9 +623,42 @@ async def intake_chat(
             asking_now = analysis.get("current_asking_slot")
             asking_key = asking_now if isinstance(asking_now, str) else None
             reply = append_next_slot_question(
-                "ระบุหมวดที่ต้องการดึงอ้างอิง เช่น ดึงอ้างอิงกฎหมายให้ s10",
+                "ระบุหมวดที่ต้องการดึงมาตรฐาน เช่น ดึงอ้างอิงกฎหมายให้ s10",
                 asking_key,
             )
+            await _persist_intake_assistant(
+                request.app.state.db_session_factory,
+                project.id,
+                room.id,
+                slot_map,
+                reply,
+                [],
+                asking_slot=asking_key,
+            )
+            yield _sse(
+                "done",
+                {
+                    "content": reply,
+                    "citations": [],
+                    "coverage": coverage_table(slot_map),
+                    "filled_slots": [],
+                    "current_slot": asking_key,
+                    "next_question": build_slot_question(asking_key) if asking_key else None,
+                    "all_fact_filled": not missing_fact_keys(slot_map),
+                },
+            )
+            return
+
+        # Fast deterministic ack when slots were filled — no LLM wait.
+        if filled_keys or not missing_fact_keys(slot_map):
+            asking_key = asking if isinstance(asking, str) else None
+            reply = phase2_filled_ack(filled_keys, asking_key)
+            if body.attach_legal_reference and filled_keys:
+                extra = await _attach_legal_to_filled(
+                    slot_map, filled_keys, current_user.id, True
+                )
+                if extra:
+                    reply = extra + reply
             await _persist_intake_assistant(
                 request.app.state.db_session_factory,
                 project.id,
@@ -630,6 +678,44 @@ async def intake_chat(
                     "current_slot": asking_key,
                     "next_question": build_slot_question(asking_key) if asking_key else None,
                     "all_fact_filled": not missing_fact_keys(slot_map),
+                    "progress": coverage_progress(slot_map),
+                },
+            )
+            return
+
+
+        # Instant Phase-2 replies (no LLM hang / no "กำลังพิมพ์..." forever).
+        if chat_path.startswith("fast"):
+            reply = phase2_filled_ack(filled_keys, asking_key) if filled_keys else phase2_template_reply(
+                filled_keys=filled_keys,
+                next_slot=asking_key,
+                all_filled=all_filled_now,
+            )
+            progress = coverage_progress(slot_map)
+            await _persist_intake_assistant(
+                request.app.state.db_session_factory,
+                project.id,
+                room.id,
+                slot_map,
+                reply,
+                [],
+                asking_slot=asking_key,
+            )
+            step = 12
+            for i in range(0, len(reply), step):
+                yield _sse("token", {"text": reply[i : i + step]})
+            yield _sse(
+                "done",
+                {
+                    "content": reply,
+                    "citations": [],
+                    "coverage": coverage_table(slot_map),
+                    "filled_slots": filled_keys,
+                    "current_slot": asking_key,
+                    "next_question": build_slot_question(asking_key) if asking_key else None,
+                    "all_fact_filled": all_filled_now,
+                    "progress": progress,
+                    "fast_path": True,
                 },
             )
             return
@@ -641,33 +727,36 @@ async def intake_chat(
             body.attach_legal_reference,
         )
 
-        result, citations, degraded = await hybrid_retrieve(
-            body.content,
-            user_id=current_user.id,
-            search_scope=(
-                body.search_scope if body.search_scope in {"global", "mine", "both"} else "both"
-            ),
-            top_k=5,
-        )
-        context = "\n\n".join(
-            f"[{c.source_document or 'คลัง'}] {c.text}" for c in result.chunks[:5]
-        )
+        context = ""
+        citations: list = []
+        degraded = False
+        # Only hit embed/RAG when the officer asked for legal attach (H-D).
+        if body.attach_legal_reference:
+            result, citations, degraded = await hybrid_retrieve(
+                body.content,
+                user_id=current_user.id,
+                search_scope=(
+                    body.search_scope
+                    if body.search_scope in {"global", "mine", "both"}
+                    else "both"
+                ),
+                top_k=3,
+            )
+            context = "\n\n".join(
+                f"[{c.source_document or 'คลัง'}] {c.text}" for c in result.chunks[:3]
+            )
         current_slot = analysis.get("current_asking_slot")
         slot_label = INTAKE_SLOT_LABELS.get(current_slot or "", "")
-        slot_instruction = ""
-        if current_slot:
-            slot_instruction = (
-                f"\nกำลังถามช่องถัดไป: {slot_label} ({current_slot})\n"
-                "ทวนช่องที่เพิ่งบันทึก แล้วถามเฉพาะช่องนี้\n"
-            )
-        elif not missing_fact_keys(slot_map):
-            slot_instruction = "\nข้อเท็จจริงครบแล้ว เชิญยืนยันไปร่าง TOR\n"
+        missing = missing_fact_keys(slot_map)
+        missing_labels = ", ".join(
+            INTAKE_SLOT_LABELS.get(key, key) for key in missing[:6]
+        ) or "(ไม่มี)"
         user = (
-            "ผลวิเคราะห์ Phase 1 (อย่าถามซ้ำช่องที่ได้แล้ว):\n"
-            f"{slot_map_for_prompt(slot_map)}\n"
-            f"{slot_instruction}"
-            f"บริบทกฎหมาย:\n{context}\n\n"
-            f"ข้อความผู้ใช้:\n{body.content}"
+            f"ช่องที่กำลังถาม: {slot_label or '-'} ({current_slot or '-'})\n"
+            f"ช่องข้อเท็จจริงที่ยังขาด: {missing_labels}\n"
+            f"บริบทกฎหมาย:\n{(context or '(ไม่มี)')[:1200]}\n\n"
+            f"ข้อความผู้ใช้:\n{(body.content or '')[:2000]}\n\n"
+            "ตอบสั้นเป็นภาษาพูด ไม่เกิน 4 ประโยค แล้วถามเฉพาะช่องที่ยังขาด (ถ้ามี)"
         )
         redis = getattr(request.app.state, "redis", None)
         event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
@@ -687,16 +776,18 @@ async def intake_chat(
         async def run_llm() -> None:
             parts_local: list[str] = []
             try:
+                await event_q.put(("started", {"request_id": request_id}))
                 async with admit(redis, "llm", request_id, on_wait=on_wait):
-                    await event_q.put(("started", {"request_id": request_id}))
-                    llm = ProviderFactory().get_llm()
+                    llm = ProviderFactory().get_llm("chat")  # NOSONAR python:S930 — ProviderFactory.get_llm(task=...)
+                    # No short asyncio.timeout — LM Studio often queues sequentially;
+                    # provider lm_studio_timeout already bounds the HTTP stream.
                     async for token in llm.stream(
                         [
                             {"role": "system", "content": INTAKE_CHAT_SYSTEM},
                             {"role": "user", "content": user},
                         ],
                         temperature=0.2,
-                        max_tokens=2048,
+                        max_tokens=384,
                     ):
                         parts_local.append(token)
                         await event_q.put(("token", {"text": token}))
@@ -706,6 +797,12 @@ async def intake_chat(
                     if isinstance(analysis.get("current_asking_slot"), str)
                     else None,
                 )
+                if not str(full_text or "").strip():
+                    full_text = phase2_template_reply(
+                        filled_keys=filled_keys,
+                        next_slot=asking_key,
+                        all_filled=all_filled_now,
+                    )
                 await _persist_intake_assistant(
                     request.app.state.db_session_factory,
                     project.id,
@@ -733,6 +830,42 @@ async def intake_chat(
                                 else None
                             ),
                             "all_fact_filled": not missing_fact_keys(slot_map),
+                            "progress": coverage_progress(slot_map),
+                        },
+                    )
+                )
+            except TimeoutError:
+                fallback = phase2_template_reply(
+                    filled_keys=filled_keys,
+                    next_slot=asking_key,
+                    all_filled=all_filled_now,
+                )
+                logger.warning("intake chat LLM timed out; using template fallback")
+                await _persist_intake_assistant(
+                    request.app.state.db_session_factory,
+                    project.id,
+                    room.id,
+                    slot_map,
+                    fallback,
+                    citations,
+                    asking_slot=asking_key,
+                )
+                await event_q.put(("token", {"text": fallback}))
+                await event_q.put(
+                    (
+                        "done",
+                        {
+                            "content": fallback,
+                            "citations": citations,
+                            "coverage": coverage_table(slot_map),
+                            "filled_slots": filled_keys,
+                            "current_slot": asking_key,
+                            "next_question": (
+                                build_slot_question(asking_key) if asking_key else None
+                            ),
+                            "all_fact_filled": all_filled_now,
+                            "progress": coverage_progress(slot_map),
+                            "fast_path": True,
                         },
                     )
                 )

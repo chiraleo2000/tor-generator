@@ -8,7 +8,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 
 export default function DraftIndexPage() {
   const router = useRouter();
-  const { projects, fetchProjects, createProject, isLoading } = useProjectStore();
+  const { projects, fetchProjects, isLoading } = useProjectStore();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,16 +25,6 @@ export default function DraftIndexPage() {
     }
   }, [isLoading, projects, router]);
 
-  async function createAndOpen() {
-    const project = await createProject({
-      name: "โครงการใหม่ #1",
-      ministry: "ยังไม่ระบุ",
-      budget: 1,
-      projectType: "general",
-    });
-    router.push(`/projects/${project.id}/draft`);
-  }
-
   return (
     <div className="py-16 text-center" data-testid="draft-index">
       {error ? (
@@ -42,9 +32,9 @@ export default function DraftIndexPage() {
           {error}
         </p>
       ) : null}
-      <p className="mb-4">ยังไม่มีโครงการ — สร้างโครงการใหม่เพื่อเริ่ม Phase 0</p>
-      <Button data-testid="new-project" onClick={createAndOpen}>
-        + สร้างโครงการ TOR ใหม่
+      <p className="mb-4">ยังไม่มีโครงการ — สร้างจากแดชบอร์ดก่อน (กรอกชื่อ หน่วยงาน วงเงิน ประเภทงาน)</p>
+      <Button data-testid="new-project" onClick={() => router.push("/projects")}>
+        ไปที่แดชบอร์ดเพื่อสร้างโครงการ
       </Button>
     </div>
   );

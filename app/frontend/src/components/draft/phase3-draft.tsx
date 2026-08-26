@@ -7,27 +7,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { MappingBox } from "@/components/brand/mapping-box";
 import {
-  HITL_SECTIONS,
   SCOPE_SUBSECTIONS,
   SECTION_FIELDS,
+  isSectionFilled,
+  parseSectionDraft,
+  previewSectionDraft,
   serializeSectionDraft,
   type SectionField,
 } from "@/lib/tor-sections";
 import { cn } from "@/lib/utils";
 import type { SectionPayload } from "@/components/draft/draft-types";
 import { DraftChat } from "@/components/draft/draft-chat";
+import { RichDraftText } from "@/components/draft/rich-draft-text";
 
-function parseFields(content: string): Record<string, string> {
-  if (!content) return {};
-  try {
-    const parsed = JSON.parse(content) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>;
-    }
-  } catch {
-    return { body: content };
-  }
-  return { body: content };
+function parseFields(sectionKey: string, content: string): Record<string, string> {
+  return parseSectionDraft(sectionKey, content);
 }
 
 function displayExtracted(value: unknown): string {
@@ -43,9 +37,8 @@ function sectionCircleClass(filled: boolean, expanded: boolean): string {
   return "border-gray-300 bg-gray-200 text-gray-700";
 }
 
-function previewText(content: string): string {
-  const fields = parseFields(content);
-  return (fields.body || Object.values(fields).filter(Boolean).join(" ") || content).slice(0, 240);
+function previewText(sectionKey: string, content: string): string {
+  return previewSectionDraft(sectionKey, content);
 }
 
 export function Phase3Draft({
@@ -82,20 +75,23 @@ export function Phase3Draft({
   onRefresh?: () => void;
 }>) {
   const [allDrafted, setAllDrafted] = useState(false);
-  const filledCount = sections.filter((section) => section.filled).length;
-  const canReview = !projectId || allDrafted || filledCount >= 13;
+  const filledCount = sections.filter((section) => isSectionFilled(section)).length;
+  const draftedEnough = allDrafted || filledCount >= 13;
+  const canReview = !projectId || draftedEnough;
 
   return (
     <div className="space-y-4" data-testid="phase3-draft">
       <div className="gov-card">
-        <h3 className="mb-1 text-navy">Phase 3: ร่างเนื้อหา TOR — คุยแล้วให้ระบบร่าง</h3>
+        <h3 className="mb-1 text-navy">ขั้นที่ ๓: ร่างเนื้อหา — คุยแล้วให้ระบบร่าง</h3>
         <p className="mb-4 text-xs text-muted-foreground">
-          ระบบร่างทั้ง 13 หมวดจากข้อมูล Phase 1–2 อัตโนมัติ — ถ้าต้องการแก้ ให้คุยในแชท เช่น แก้ความเป็นมาให้เน้นกฎหมาย
-          หมวดกฎหมายยังต้องกดยืนยันโดยเจ้าหน้าที่
+          ระบบร่างทั้ง ๑๓ หมวดเป็นภาษาไทยจากเอกสารขั้นที่ ๐ ของโครงการนี้และกฎหมายกลาง
+          แล้วใส่ลงหัวข้อย่อยของแต่ละหมวดโดยตรง (หมวด ๔ ใช้ช่อง ๔.๑–๔.๑๔)
+          กดไปทบทวนแล้วระบบตรวจกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐ ของโครงการนี้
+          ตารางในเนื้อหาจะกลายเป็นตารางจริงในไฟล์เวิร์ด/พีดีเอฟ
         </p>
         {busy ? (
           <p className="mb-3 text-sm text-navy">
-            {actionInfo || "กำลังร่างด้วย AI..."}
+            {actionInfo || "กำลังร่างด้วยระบบอัจฉริยะ..."}
           </p>
         ) : null}
         {actionError ? (
@@ -106,7 +102,7 @@ export function Phase3Draft({
         {actionInfo ? <p className="mb-3 text-sm text-brand-green">{actionInfo}</p> : null}
         {allDrafted ? (
           <p className="mb-3 text-sm font-bold text-green-800" data-testid="phase3-all-drafted">
-            ร่างครบ 13 หมวดแล้ว — กดไปทบทวน (Phase 4) เพื่อรัน Rule Engine และส่งออก
+            ร่างครบ ๑๓ หมวดแล้ว — กดไปทบทวน (ขั้นที่ ๔) เพื่อตรวจกฎและส่งออก
           </p>
         ) : null}
       </div>
@@ -145,12 +141,12 @@ export function Phase3Draft({
         </Button>
         <Button
           onClick={() => {
-            onConfirm().catch(() => undefined);
+            void onConfirm();
           }}
           disabled={!canReview}
           data-testid="phase3-confirm"
         >
-          ไปทบทวน (Phase 4)
+          ไปทบทวน (ขั้นที่ ๔)
         </Button>
       </div>
       </div>
@@ -183,25 +179,14 @@ function SectionCard({
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
   onDraft: (key: string) => void;
 }>) {
-  const baseFields = SECTION_FIELDS[section.key] || [
+  const fields = SECTION_FIELDS[section.key] || [
     { key: "body", label: section.title, type: "textarea" as const },
   ];
-  const values = parseFields(section.content);
-  const fields =
-    values.body && !baseFields.some((item) => item.key === "body")
-      ? [
-          {
-            key: "body",
-            label: "เนื้อหาร่าง (จากเอกสาร/AI)",
-            type: "textarea" as const,
-          },
-          ...baseFields,
-        ]
-      : baseFields;
+  const values = parseFields(section.key, section.content);
   const [draft, setDraft] = useState(values);
   useEffect(() => {
-    setDraft(parseFields(section.content));
-  }, [section.content]);
+    setDraft(parseFields(section.key, section.content));
+  }, [section.content, section.key]);
 
   function suggested(mapField?: string) {
     if (!mapField) return "";
@@ -240,13 +225,12 @@ function SectionCard({
             </h3>
             <p className="text-[11.5px] text-muted-foreground">
               {section.filled ? "ร่างแล้ว" : "รอร่าง"}
-              {section.hitl ? " · ต้องให้เจ้าหน้าที่ยืนยัน" : ""}
             </p>
             <p
               data-testid={`section-preview-${section.key}`}
               className="mt-1 line-clamp-2 text-[12px] text-navy"
             >
-              {previewText(section.content) || "รอระบบร่างจากข้อมูลที่คุยมา..."}
+              {previewText(section.key, section.content) || "รอระบบร่างจากข้อมูลที่คุยมา..."}
             </p>
           </div>
           <span className="text-xs text-muted-foreground">{expanded ? "▴ ย่อ" : "▾ ขยาย"}</span>
@@ -279,7 +263,7 @@ function SectionCard({
                 data-testid={`draft-ai-${section.key}`}
                 onClick={() => onDraft(section.key)}
               >
-                ร่างด้วย AI
+                ร่างด้วยระบบอัจฉริยะ
               </Button>
                 <Button
                   size="sm"
@@ -289,15 +273,6 @@ function SectionCard({
                 >
                   บันทึกหมวดนี้
                 </Button>
-              {HITL_SECTIONS.includes(section.key) ? (
-                <Button
-                  size="sm"
-                  data-testid={`hitl-confirm-${section.key}`}
-                  onClick={() => onSave(section.key, serializeSectionDraft(draft), true)}
-                >
-                  เจ้าหน้าที่ยืนยันแล้ว
-                </Button>
-              ) : null}
             </div>
           </div>
         ) : null}
@@ -322,11 +297,22 @@ function ScopeSubsectionEditor({
     content: "",
     filled: false,
   }));
-  const openItem = (subs || []).find((sub) => sub.key === openSub);
+  const contentSig = chips.map((sub) => `${sub.key}:${sub.content || ""}`).join("|");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const sub of chips) {
+      next[sub.key] = sub.content || "";
+    }
+    setDrafts(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- รีเฟรชเมื่อลายเซ็นเนื้อหาจากเอพีไอเปลี่ยน
+  }, [contentSig]);
+  const filledN = chips.filter((sub) => sub.filled).length;
   return (
-    <>
+    <div className="space-y-3" data-testid="scope-subsection-editor">
       <p className="text-xs text-muted-foreground">
-        หมวด 4 แบ่งเป็น {SCOPE_SUBSECTIONS.length} หัวข้อย่อย
+        หมวด ๔ เติมลงหัวข้อย่อยโดยตรง ({filledN}/{SCOPE_SUBSECTIONS.length} หัวข้อมีเนื้อหา) —
+        แก้ไขในช่องด้านล่างได้เลย ขั้นที่ ๔ จะรวมเป็นเอกสารเดียวตอนส่งออก
       </p>
       <div className="flex flex-wrap gap-1.5">
         {chips.map((sub) => (
@@ -337,7 +323,8 @@ function ScopeSubsectionEditor({
               "rounded-md border px-2.5 py-1 text-[11.5px] font-semibold",
               sub.filled
                 ? "border-green-300 bg-green-50 text-green-800"
-                : "border-gray-200 bg-gray-100"
+                : "border-gray-200 bg-gray-100",
+              openSub === sub.key ? "ring-2 ring-navy" : ""
             )}
             onClick={() => onOpenSub(openSub === sub.key ? "" : sub.key)}
           >
@@ -345,17 +332,44 @@ function ScopeSubsectionEditor({
           </button>
         ))}
       </div>
-      {openItem ? (
-        <div className="rounded-lg border-l-[3px] border-navy bg-gray-50 p-3">
-          <Label>{openItem.title}</Label>
-          <Textarea
-            className="mt-1"
-            defaultValue={openItem.content}
-            onBlur={(event) => onSave(openItem.key, event.target.value)}
-          />
-        </div>
+      <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+        {chips.map((sub) => {
+          const expanded = openSub === sub.key || (!openSub && sub.filled);
+          if (!expanded && openSub) return null;
+          if (!openSub && !sub.filled) return null;
+          return (
+            <div
+              key={sub.key}
+              className="rounded-lg border-l-[3px] border-navy bg-gray-50 p-3"
+              data-testid={`scope-sub-${sub.key}`}
+            >
+              <Label>
+                {sub.key.replace("s4.", "4.")} {sub.title}
+              </Label>
+              {sub.content ? (
+                <div className="mt-1 mb-2 rounded border bg-white p-2">
+                  <RichDraftText text={sub.content} />
+                </div>
+              ) : null}
+              <Textarea
+                className="mt-1"
+                value={drafts[sub.key] ?? sub.content}
+                rows={5}
+                onChange={(event) =>
+                  setDrafts((prev) => ({ ...prev, [sub.key]: event.target.value }))
+                }
+                onBlur={(event) => onSave(sub.key, event.target.value)}
+              />
+            </div>
+          );
+        })}
+      </div>
+      {!openSub && filledN === 0 ? (
+        <p className="text-xs text-amber-800">
+          ยังไม่มีหัวข้อย่อย — กด «ร่างด้วยระบบอัจฉริยะ» เพื่อเติม ๔.๑–๔.๑๔ หรือเลือกหัวข้อด้านบนเพื่อพิมพ์เอง
+        </p>
       ) : null}
-    </>
+    </div>
   );
 }
 

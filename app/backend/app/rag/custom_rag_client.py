@@ -98,6 +98,6 @@ def build_custom_rag_client() -> CustomRagClient | None:
     return CustomRagClient(
         base_url=base,
         api_key=str(getattr(settings, "custom_rag_api_key", "") or ""),
-        top_k=int(getattr(settings, "custom_rag_top_k", 5) or 5),
+        top_k=int(getattr(settings, "custom_rag_top_k", 24) or 24),
         timeout=float(getattr(settings, "custom_rag_timeout_seconds", 30.0) or 30.0),
     )

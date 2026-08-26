@@ -20,6 +20,12 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.llm_tokens import (
+    REVIEW_CONTEXT_WINDOW,
+    REVIEW_MAX_TOKENS,
+    clamp_max_tokens,
+    estimate_tokens,
+)
 from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE
 from app.orchestrator.section_state import SECTION_NAMES_TH, SECTION_ORDER
 from app.providers.base import LLMProvider
@@ -110,15 +116,25 @@ CROSS_SECTION_CHECKS: list[dict[str, Any]] = [
     },
 ]
 
+# One user-facing review; split internally when the packed TOR exceeds the window.
+REVIEW_SECTION_BATCHES: tuple[tuple[str, ...], ...] = (
+    ("s1", "s2", "s3", "s4"),
+    ("s5", "s6", "s7", "s8"),
+    ("s9", "s10", "s11", "s12", "s13"),
+)
+MAX_REVIEW_SECTION_CHARS = 100_000
+
 REVIEW_SYSTEM_PROMPT = (
     THAI_FORMAL_REGISTER_PREAMBLE
-    + "คุณเป็น Review Agent ผู้เชี่ยวชาญด้านการทบทวนเอกสาร TOR ภาครัฐไทย\n\n"
+    + "คุณเป็นผู้ตรวจเอกสาร TOR ภาครัฐไทยที่เข้มงวด "
+    "หน้าที่คือวิจารณ์ร่าง ไม่ใช่ชื่นชมหรือรับทุกอย่างว่าผ่าน\n\n"
     "=== บทบาทของคุณ ===\n"
-    "วิเคราะห์เอกสาร TOR ทั้งฉบับเพื่อตรวจสอบ:\n"
-    "1. ความสอดคล้องระหว่างส่วน (consistency) — ข้อมูลไม่ขัดแย้งกัน\n"
-    "2. ความครบถ้วน (completeness) — ไม่มีส่วนสำคัญที่ขาดหาย\n"
-    "3. ความชัดเจน (clarity) — ภาษากระชับ ชัดเจน ไม่กำกวม\n"
-    "4. ความถูกต้องตามกฎหมาย (compliance) — สอดคล้องกับ พ.ร.บ. 2560\n\n"
+    "วิเคราะห์เอกสาร TOR ทั้งฉบับเทียบกับ:\n"
+    "1. พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ และระเบียบที่เกี่ยวข้อง (คลังกลาง)\n"
+    "2. เอกสารที่เจ้าหน้าที่อัปโหลดหรือวางในขั้นที่ ๐ ของโครงการนี้เท่านั้น ห้ามใช้เอกสารโครงการอื่น\n"
+    "3. ความสอดคล้องระหว่างหมวด ความครบถ้วน ความชัดเจน\n\n"
+    "ห้ามสรุปว่าสมบูรณ์ถ้ายังมีช่องว่าง ตัวเลขไม่ตรง หรือไม่สอดคล้องกฎหมาย\n"
+    "ตอบเป็นภาษาไทยราชการเท่านั้น\n\n"
     "=== รูปแบบผลลัพธ์ ===\n"
     "ตอบในรูปแบบ JSON object ที่มีคีย์ suggestions เป็น array ดังนี้:\n"
     "```json\n"
@@ -134,12 +150,10 @@ REVIEW_SYSTEM_PROMPT = (
     "```\n\n"
     "=== กฎการให้คำแนะนำ ===\n"
     "- ให้คำแนะนำ 3-20 ข้อ เรียงจากสำคัญมากไปน้อย\n"
-    "- predicted_score_improvement: 0.5-10.0 (ผลกระทบต่อคะแนนคุณภาพ)\n"
+    "- predicted_score_improvement: 0.5-10.0\n"
     "- current_text: คัดลอกข้อความจริงจากเอกสาร (ไม่เกิน 200 ตัวอักษร)\n"
-    "- suggested_text: ให้ข้อความทดแทนที่สมบูรณ์ พร้อมใช้งาน\n"
-    "- ตรวจสอบ: งบประมาณ ↔ ขอบเขตงาน, ระยะเวลา ↔ ผลงานส่งมอบ, "
-    "คุณสมบัติ ↔ ความซับซ้อน, งวดงาน ↔ ขอบเขตงาน\n"
-    "- เน้นข้อเสนอแนะที่ actionable และปรับปรุงได้จริง\n"
+    "- suggested_text: ให้ข้อความทดแทนที่สมบูรณ์ พร้อมใช้งาน ยาวครบถ้วนตามภาษาราชการ\n"
+    "- เน้นช่องว่างเทียบกฎหมายและความต้องการโครงการ\n"
     "- ตอบเป็น JSON เท่านั้น ไม่มีข้อความอื่นนอก JSON\n"
 )
 
@@ -459,23 +473,86 @@ class ReviewAgent:
         if not sections:
             return []
 
-        # Build the user message with full TOR content
-        user_message = self._build_review_user_message(sections, project_metadata)
-
-        # Append custom requirements if provided
-        if custom_requirements and custom_requirements.strip():
-            user_message += (
-                "\n\n=== ข้อกำหนดเพิ่มเติมของโครงการ ===\n"
-                f"{custom_requirements.strip()[:5000]}\n\n"
-                "ตรวจสอบว่า TOR สอดคล้องกับข้อกำหนดเพิ่มเติมเหล่านี้ด้วย "
-                "โดยให้คำแนะนำหมวด compliance หรือ completeness"
+        extra = (custom_requirements or "").strip()
+        collected: list[ReviewSuggestion] = []
+        for subset in self._iter_review_batches(sections, project_metadata, extra):
+            collected.extend(
+                await self._invoke_review_suggestions(
+                    llm, subset, project_metadata, extra
+                )
             )
+        return collected
 
+    def _iter_review_batches(
+        self,
+        sections: dict[str, str],
+        project_metadata: dict[str, Any],
+        extra: str,
+    ) -> list[dict[str, str]]:
+        """One batch when the full TOR fits; otherwise groups then single sections."""
+        keys = [key for key in SECTION_ORDER if key in sections]
+        if not keys:
+            return []
+        full = {key: sections[key] for key in keys}
+        if self._review_message_fits(full, project_metadata, extra):
+            return [full]
+        batches: list[dict[str, str]] = []
+        for group in REVIEW_SECTION_BATCHES:
+            subset = {key: sections[key] for key in group if key in sections}
+            if not subset:
+                continue
+            if self._review_message_fits(subset, project_metadata, extra) or len(subset) == 1:
+                batches.append(subset)
+                continue
+            for key, text in subset.items():
+                batches.append({key: text})
+        return batches
+
+    def _review_message_fits(
+        self,
+        sections: dict[str, str],
+        project_metadata: dict[str, Any],
+        extra: str,
+    ) -> bool:
+        packed = self._compose_review_user_message(sections, project_metadata, extra)
+        used = estimate_tokens(REVIEW_SYSTEM_PROMPT) + estimate_tokens(packed)
+        return used + 2048 < REVIEW_CONTEXT_WINDOW
+
+    def _compose_review_user_message(
+        self,
+        sections: dict[str, str],
+        project_metadata: dict[str, Any],
+        extra: str,
+    ) -> str:
+        body = self._build_review_user_message(sections, project_metadata)
+        if not extra:
+            return body
+        return (
+            f"{body}\n\n=== ข้อกำหนดเพิ่มเติมของโครงการ ===\n{extra[:16000]}\n\n"
+            "ตรวจสอบว่า TOR สอดคล้องกับข้อกำหนดเพิ่มเติมเหล่านี้ด้วย "
+            "โดยให้คำแนะนำหมวด compliance หรือ completeness"
+        )
+
+    async def _invoke_review_suggestions(
+        self,
+        llm: LLMProvider,
+        sections: dict[str, str],
+        project_metadata: dict[str, Any],
+        extra: str,
+    ) -> list[ReviewSuggestion]:
+        user_message = self._compose_review_user_message(
+            sections, project_metadata, extra
+        )
+        max_out = clamp_max_tokens(
+            user_message,
+            REVIEW_MAX_TOKENS,
+            context_window=REVIEW_CONTEXT_WINDOW,
+            system=REVIEW_SYSTEM_PROMPT,
+        )
         messages = [
             {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ]
-
         try:
             payload = await invoke_with_schema(
                 llm,
@@ -483,18 +560,15 @@ class ReviewAgent:
                 json_schema_for(ReviewSuggestionsResult),
                 "review_suggestions",
                 temperature=0.2,
-                max_tokens=4096,
+                max_tokens=max_out,
             )
             import json
 
-            suggestions = self._parse_llm_suggestions(json.dumps(payload, ensure_ascii=False))
-
-            logger.info(
-                "LLM review produced %d suggestions",
-                len(suggestions),
+            suggestions = self._parse_llm_suggestions(
+                json.dumps(payload, ensure_ascii=False)
             )
+            logger.info("LLM review produced %d suggestions", len(suggestions))
             return suggestions
-
         except Exception:
             logger.exception(
                 "LLM review failed. Falling back to deterministic-only.",
@@ -525,31 +599,77 @@ class ReviewAgent:
             parts.append(f"ประเภทโครงการ: {project_metadata['project_type']}")
         if project_metadata.get("timeline_days"):
             parts.append(f"ระยะเวลา: {project_metadata['timeline_days']} วัน")
-        parts.append("")
+        req = str(project_metadata.get("requirements") or "").strip()
+        if req:
+            parts.append("=== ความต้องการและเอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น ===")
+            parts.append(req[:24000])
+            parts.append("")
+        legal = str(project_metadata.get("legal_context") or "").strip()
+        if legal:
+            parts.append("=== กฎหมายและระเบียบจากคลังกลาง ===")
+            parts.append(legal[:20000])
+            parts.append("")
 
-        # Full TOR sections
+        # Full TOR sections — keep long official drafts; cap only runaway blobs
         parts.append("=== เอกสาร TOR ฉบับเต็ม ===")
         for key in SECTION_ORDER:
-            if key in sections:
-                section_name = SECTION_NAMES_TH.get(key, key)
-                parts.append(f"\n### ส่วนที่ {key}: {section_name}")
-                # Truncate very long sections to fit context window
-                content = sections[key]
-                if len(content) > 2000:
-                    content = content[:2000] + "\n... (ตัดทอน)"
-                parts.append(content)
+            if key not in sections:
+                continue
+            section_name = SECTION_NAMES_TH.get(key, key)
+            parts.append(f"\n### ส่วนที่ {key}: {section_name}")
+            content = sections[key]
+            if len(content) > MAX_REVIEW_SECTION_CHARS:
+                content = content[:MAX_REVIEW_SECTION_CHARS] + "\n... (ตัดทอนส่วนท้าย)"
+            parts.append(content)
         parts.append("")
 
         # Analysis instruction
         parts.append(
             "=== คำสั่ง ===\n"
-            "วิเคราะห์เอกสาร TOR ข้างต้นและให้คำแนะนำการปรับปรุง "
-            "ในรูปแบบ JSON ตามที่กำหนดใน system prompt\n"
-            "เน้น: ความสอดคล้องระหว่างส่วน, ความครบถ้วน, ความชัดเจน, "
-            "และความถูกต้องตามกฎหมาย"
+            "วิจารณ์ร่างอย่างเข้มงวด เทียบกฎหมายและความต้องการโครงการ "
+            "ห้ามรับทุกอย่างว่าผ่าน ให้คำแนะนำเป็น JSON ตาม system prompt\n"
+            "เน้นช่องว่าง ตัวเลขไม่ตรง และหมวดที่ยังไม่ครบ"
         )
 
         return "\n".join(parts)
+
+    async def comment_on_draft(
+        self,
+        llm: LLMProvider,
+        question: str,
+        sections: dict[str, str],
+        project_metadata: dict[str, Any] | None = None,
+        findings: list[str] | None = None,
+    ) -> str:
+        """Thai critical comment on the assembled TOR (high token budget)."""
+        body = self._build_review_user_message(sections, project_metadata or {})
+        if findings:
+            body += "\n=== ประเด็นจากกฎระเบียบ ===\n" + "\n".join(findings[:12])
+        body += (
+            f"\n=== คำถามเจ้าหน้าที่ ===\n{question.strip()}\n"
+            "ตอบเป็นภาษาไทยราชการ ประเมินว่าร่างยังขาดอะไร "
+            "เทียบกฎหมายและความต้องการโครงการ แล้วเสนอวิธีแก้เป็นข้อ ๆ "
+            "ห้ามสรุปว่าผ่านถ้ายังมีช่องว่าง"
+        )
+        system = (
+            THAI_FORMAL_REGISTER_PREAMBLE
+            + "คุณเป็นผู้ตรวจ TOR ที่เข้มงวด ห้ามรับทุกอย่างว่าผ่าน ตอบภาษาไทยเท่านั้น"
+        )
+        max_out = clamp_max_tokens(
+            body,
+            REVIEW_MAX_TOKENS,
+            context_window=REVIEW_CONTEXT_WINDOW,
+            system=system,
+        )
+        response = await llm.invoke(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": body},
+            ],
+            temperature=0.2,
+            max_tokens=max_out,
+        )
+        return str(getattr(response, "content", "") or "").strip()
 
     def _parse_llm_suggestions(self, llm_output: str) -> list[ReviewSuggestion]:
         """Parse LLM JSON output into ReviewSuggestion objects.
@@ -709,10 +829,13 @@ class ReviewAgent:
             parts.append(f"แบ่งตามประเภท: {breakdown}")
 
         if total_suggestions == 0:
-            parts.append("เอกสาร TOR มีความสมบูรณ์ดี ไม่พบประเด็นที่ต้องแก้ไข")
+            parts.append(
+                "ยังต้องเทียบกับกฎหมายและความต้องการโครงการอีกครั้ง "
+                "ไม่ถือว่าผ่านโดยอัตโนมัติ"
+            )
         elif total_suggestions <= 5:
-            parts.append("เอกสารมีคุณภาพดี มีข้อเสนอแนะเล็กน้อย")
+            parts.append("มีประเด็นที่ต้องแก้ก่อนถือว่าครบ")
         else:
-            parts.append("ควรทบทวนและปรับปรุงตามข้อเสนอแนะเพื่อเพิ่มคุณภาพ")
+            parts.append("ควรทบทวนและปรับปรุงตามข้อเสนอแนะเพื่อให้เอกสารครบ")
 
         return " ".join(parts)

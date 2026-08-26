@@ -827,7 +827,7 @@ class TestReviewAgentAssessment:
             sections={"s1": "a", "s2": "b"},
             suggestions=[],
         )
-        assert "สมบูรณ์ดี" in assessment
+        assert "ไม่ถือว่าผ่าน" in assessment
         assert "2 ส่วน" in assessment
 
     def test_assessment_with_few_suggestions(self):
@@ -841,7 +841,7 @@ class TestReviewAgentAssessment:
             suggestions=suggestions,
         )
         assert "2 รายการ" in assessment
-        assert "คุณภาพดี" in assessment
+        assert "ต้องแก้" in assessment
 
     def test_assessment_with_many_suggestions(self):
         """Assessment recommends review for >5 suggestions."""
@@ -854,3 +854,30 @@ class TestReviewAgentAssessment:
             suggestions=suggestions,
         )
         assert "ทบทวน" in assessment
+
+    def test_review_message_uses_this_project_docs_and_global_law(self):
+        body = self.agent._build_review_user_message(
+            {"s1": "ความเป็นมาของโครงการ"},
+            {
+                "budget": 2_500_000,
+                "requirements": "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น\nวงเงินสองล้านห้าแสน",
+                "legal_context": "พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐",
+            },
+        )
+        assert "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น" in body
+        assert "วงเงินสองล้านห้าแสน" in body
+        assert "กฎหมายและระเบียบจากคลังกลาง" in body
+        assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in body
+
+    def test_review_message_keeps_long_section_body(self):
+        long_body = "ก" * 5000
+        body = self.agent._build_review_user_message({"s1": long_body}, {})
+        assert long_body in body
+        assert "ตัดทอน" not in body
+
+    def test_review_batches_when_full_tor_exceeds_window(self):
+        sections = {f"s{i}": "ก" * 20_000 for i in range(1, 14)}
+        batches = self.agent._iter_review_batches(sections, {}, "")
+        assert len(batches) >= 3
+        packed_keys = [key for batch in batches for key in batch]
+        assert packed_keys == [f"s{i}" for i in range(1, 14)]

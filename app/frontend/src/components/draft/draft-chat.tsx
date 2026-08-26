@@ -8,13 +8,14 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { streamSsePost } from "@/lib/chat-sse";
 import { useAuthStore } from "@/stores/auth-store";
-import { TOR_SECTION_LABELS, TOR_SECTION_ORDER } from "@/lib/tor-sections";
+import { TOR_SECTION_LABELS } from "@/lib/tor-sections";
 import { cn } from "@/lib/utils";
 
 interface SectionStatus {
   section_key: string;
   title: string;
   has_content: boolean;
+  ai_drafted?: boolean;
   content_preview: string;
   human_confirmed: boolean;
 }
@@ -27,10 +28,6 @@ interface DraftMessage {
   sectionTitle?: string;
   isDraft?: boolean;
   status?: "drafting" | "done" | "error" | "accepted" | "editing";
-}
-
-function sectionAlreadyDrafted(sections: SectionStatus[] | undefined, key: string): boolean {
-  return Boolean(sections?.some((row) => row.section_key === key && row.has_content));
 }
 
 function sectionTitle(key: string): string {
@@ -48,6 +45,12 @@ function patchDraftMessage(
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
 type DraftPhase = "idle" | "drafting" | "reviewing" | "complete";
+
+const startedProjects = new Set<string>();
+
+export function resetDraftChatStartsForTests(): void {
+  startedProjects.clear();
+}
 
 function phaseStatusCopy(phase: DraftPhase): { text: string; className: string } | null {
   if (phase === "drafting") {
@@ -231,15 +234,28 @@ export function DraftChat({
     }
   }, [projectId, onAllDrafted]);
 
+  useEffect(() => {
+    if (phase !== "drafting") return;
+    const timer = window.setInterval(() => {
+      void refreshStatus();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [phase, refreshStatus]);
+
   // Auto-start drafting on mount unless all 13 sections already exist
   useEffect(() => {
     if (started.current) return;
     started.current = true;
     refreshStatus()
       .then((done) => {
-        if (!done) startDrafting();
+        if (done) return;
+        if (startedProjects.has(projectId)) return;
+        startedProjects.add(projectId);
+        startDrafting();
       })
       .catch(() => {
+        if (startedProjects.has(projectId)) return;
+        startedProjects.add(projectId);
         startDrafting();
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,7 +301,7 @@ export function DraftChat({
             );
             return;
           }
-          if (event === "error") {
+          if (event === "error" || event === "section_error") {
             failed = true;
             const msg = typeof data.message === "string" ? data.message : "ร่างไม่สำเร็จ";
             setMessages((prev) =>
@@ -315,6 +331,98 @@ export function DraftChat({
     }
   }
 
+  async function streamBatchDraft(): Promise<boolean> {
+    const ids: Record<string, string> = {};
+    let failed = false;
+    await streamSsePost(
+      `${API_BASE}/projects/${projectId}/draft-chat/start`,
+      {},
+      token,
+      (event: string, data: Record<string, unknown>) => {
+        const key = typeof data.section_key === "string" ? data.section_key : "";
+        if (event === "section_start" && key) {
+          const messageId = `draft-${key}-${Date.now()}`;
+          ids[key] = messageId;
+          const title = typeof data.title === "string" ? data.title : sectionTitle(key);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: messageId,
+              role: "bot",
+              content: "",
+              sectionKey: key,
+              sectionTitle: title,
+              isDraft: true,
+              status: "drafting",
+            },
+          ]);
+          return;
+        }
+        if (event === "token" && key) {
+          const piece = typeof data.text === "string" ? data.text : "";
+          const messageId = ids[key];
+          if (!messageId) return;
+          setMessages((prev) => {
+            const current = prev.find((row) => row.id === messageId);
+            return patchDraftMessage(prev, messageId, {
+              content: `${current?.content || ""}${piece}`,
+            });
+          });
+          return;
+        }
+        if (event === "section_done" && key) {
+          const content = typeof data.content === "string" ? data.content : "";
+          const existingId = ids[key];
+          if (!existingId) {
+            const messageId = `draft-${key}-done`;
+            ids[key] = messageId;
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: messageId,
+                role: "bot",
+                content,
+                sectionKey: key,
+                sectionTitle: sectionTitle(key),
+                isDraft: true,
+                status: "done",
+              },
+            ]);
+          } else {
+            setMessages((prev) =>
+              patchDraftMessage(prev, existingId, { content, status: "done" })
+            );
+          }
+          onSectionDone?.();
+          void refreshStatus();
+          return;
+        }
+        if (event === "subsection_done") {
+          onSectionDone?.();
+          void refreshStatus();
+          return;
+        }
+        if (event === "progress") {
+          return;
+        }
+        if (event === "section_error") {
+          failed = true;
+          const msg = typeof data.message === "string" ? data.message : "ร่างไม่สำเร็จ";
+          setError(msg);
+          if (key && ids[key]) {
+            setMessages((prev) =>
+              patchDraftMessage(prev, ids[key], {
+                content: `ร่างไม่สำเร็จ: ${msg}`,
+                status: "error",
+              })
+            );
+          }
+        }
+      }
+    );
+    return !failed;
+  }
+
   async function startDrafting() {
     setBusy(true);
     setPhase("drafting");
@@ -323,7 +431,7 @@ export function DraftChat({
       {
         id: "sys-start",
         role: "system",
-        content: "กำลังเริ่มร่าง TOR ทั้ง 13 หมวดอัตโนมัติ — กรุณารอสักครู่...",
+        content: "กำลังเริ่มร่างทั้ง ๑๓ หมวดอัตโนมัติ — หมวดขอบเขตงานจะเติมลงหัวข้อย่อยโดยตรง",
       },
     ]);
 
@@ -331,22 +439,22 @@ export function DraftChat({
       if (await refreshStatus()) {
         return;
       }
-      for (const sectionKey of TOR_SECTION_ORDER) {
-        if (sectionAlreadyDrafted(sectionsRef.current, sectionKey)) {
-          continue;
-        }
-        const ok = await streamOneSection(sectionKey);
-        if (!ok) {
-          await streamOneSection(sectionKey);
-        }
-        if (await refreshStatus()) {
-          return;
+      let ok = false;
+      try {
+        ok = await streamBatchDraft();
+      } catch {
+        ok = false;
+      }
+      if (!ok || !(await refreshStatus())) {
+        try {
+          ok = await streamBatchDraft();
+        } catch {
+          ok = false;
         }
       }
       const done = await refreshStatus();
       if (!done) {
-        setError("ร่างยังไม่ครบทุกหมวด — กดร่างด้วย AI ที่หมวดที่ว่าง");
-        return;
+        setPhase("drafting");
       }
     } catch (err: unknown) {
       setError(apiErrorMessage(err, "เริ่มร่างไม่สำเร็จ"));
@@ -355,12 +463,13 @@ export function DraftChat({
     }
   }
 
-  async function sendMessage(text?: string) {
+  async function sendMessage(text?: string, sectionKeyOverride?: string) {
     const content = (text || draft).trim();
     if (!content || busy) return;
     if (!text) setDraft("");
     setBusy(true);
     setError(null);
+    const sectionKey = sectionKeyOverride || currentEditSection;
 
     // Add user message
     setMessages((prev) => [
@@ -380,7 +489,7 @@ export function DraftChat({
     try {
       await streamSsePost(
         `${API_BASE}/projects/${projectId}/draft-chat/message`,
-        { content, section_key: currentEditSection },
+        { content, section_key: sectionKey },
         token,
         (event: string, data: Record<string, unknown>) => {
           if (event === "section_start") {
@@ -423,8 +532,9 @@ export function DraftChat({
                   : m
               )
             );
+            onSectionDone?.();
           }
-          if (event === "error") {
+          if (event === "error" || event === "section_error") {
             const msg = data.message as string;
             setError(msg);
             setMessages((prev) =>
@@ -449,12 +559,12 @@ export function DraftChat({
 
   function handleAccept(sectionKey: string) {
     setCurrentEditSection(sectionKey);
-    sendMessage("ยอมรับ");
+    sendMessage("ยอมรับ", sectionKey);
   }
 
   function handleRedraft(sectionKey: string) {
     setCurrentEditSection(sectionKey);
-    sendMessage(`ร่างใหม่ ${sectionKey}`);
+    sendMessage(`ร่างใหม่ ${sectionKey}`, sectionKey);
   }
 
   function handleEdit(sectionKey: string) {

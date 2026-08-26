@@ -1,6 +1,6 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **25 สิงหาคม 2026** (v0.2.4 — SGLang structured draft/review + headed ครบขั้น + coverage)  
+วันที่ **25 สิงหาคม 2026** (v0.2.4 — ร่างต่อเนื่อง 0→4 + ไทยล้วน + หัวข้อย่อย s4.1–s4.14 + ตาราง + headed + coverage + Sonar)  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234` (fallback เมื่อ SGLang `:30000` ยังไม่ขึ้น)  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
@@ -18,36 +18,39 @@
 
 ---
 
-## สรุปตัวเลข (รอบ 25 ส.ค. 2026 — v0.2.4)
+## สรุปตัวเลข (รอบ 25 ส.ค. 2026 ดึก — ร่างต่อเนื่อง + หัวข้อย่อย + ตาราง)
 
 | ชุด | ผล | ความหมาย |
 |-----|-----|----------|
-| pytest `-m "not live_llm"` + cov | **1557 ผ่าน** / **3 ข้าม** | ครอบคลุม **86%** (`htmlcov/` · `coverage.xml`) |
-| Vitest `test:coverage` | **192 ผ่าน** / 45 ไฟล์ | statements **81.26%** · lines **83.41%** |
-| Playwright E2E headed | **16 ผ่าน** / **3 ข้าม** / 0 ล้ม (~20.5 นาที) | ข้ามเฉพาะ mock (`intake-ui`, realistic Phase0 mock, mocked webapp review) — live Phase 0–4 + reviewer อนุมัติ + แชท + ตรวจ TOR + KB |
-| Playwright guide headed | **3 ผ่าน** | ภาพคู่มือใน `test-evidence/` และ `app/frontend/public/help/` |
+| pytest `-m "not live_llm and not integration"` + cov | **1596 ผ่าน** / **22 ข้าม** | ครอบคลุมบรรทัด **83%** (`htmlcov/` · `coverage.xml`) |
+| Vitest `test:coverage` | **205 ผ่าน** / 48 ไฟล์ | statements **79.81%** · lines **82.22%** |
+| Playwright E2E headed (ชุดเต็ม) | **15 ผ่าน** / **3 ข้าม** แล้วตามด้วย wizard รอบแก้ locator | ข้ามเฉพาะ mock (`intake-ui`, realistic Phase0 mock, mocked webapp review) |
+| Playwright wizard headed | **1 ผ่าน** (~19.9 นาที) | เส้นเดียว 0→4: ๑๓ หมวด + ๔.๑–๔.๑๔ จาก LM Studio + ตาราง HTML + HITL + Rule Engine + ส่งออก |
+| SonarQube `:9400` | Quality gate **OK** | เงื่อนไข CAYC `new_violations` = **0** |
 
-**หมายเหตุ LLM:** รอบนี้ GPU เต็มจาก LM Studio จึงรันด้วย fallback ที่ `:1234` — อย่าอ้างว่า SGLang structured generation ถูกทดสอบสดบน `:30000`
-
-คำสั่งที่รัน: `npm run test:e2e:headed` → `test:e2e:guide` → pytest coverage → `npm run test:coverage` (ลำดับ headed ก่อน unit)
+คำสั่งที่รัน: `npm run test:e2e:headed` → `npx playwright test e2e/wizard-flow.spec.ts --headed` → pytest coverage → `npm run test:coverage` → `sonar-scanner` (โฮสต์ `:9400`)
 
 ### สิ่งที่ตรวจแบบใช้งานจริงในรอบนี้
 
 - ล็อกอิน/สร้างโครงการ **พิมพ์ทีละตัว** ไม่ใช้ `.fill()` แบบยิงเร็ว
 - ถาม-ตอบ `/chat`: พิมพ์คำถามงวดจ่าย แล้วรอคำตอบจาก Gemma
 - แนบไฟล์เข้าคลังของฉันจริง (ingest + embeddings) แล้วถามโหมดของฉัน
-- ร่าง TOR Phase 0→4 สด: วิเคราะห์ → skip Phase1 → แชทเติมช่อง → ร่าง 13 หมวด + HITL → Rule Engine + ส่งออก DOCX/PDF → `phase4-submit` → reviewer อนุมัติ
+- ร่าง TOR Phase 0→4 สด: วิเคราะห์ → skip Phase1 → แชทเติมช่อง → **ร่าง 13 หมวดแม่ + เติมหัวข้อย่อย ๔.๑–๔.๑๔ ในช่องจริง** → HITL → ขั้นที่ ๔ ประกอบเอกสาร (`4.1` ไม่ใช่ `s4.s4.1`) + ตาราง HTML → Rule Engine + ส่งออก DOCX/PDF → `phase4-submit` → reviewer อนุมัติ
 - ตรวจ TOR สแตนด์อโลน: extract → รัน → คะแนนคงหลังรีเฟรช (Postgres `review_jobs`)
 - `realistic-flow.spec.ts`: ตรวจ TOR + KB หมวดข้อมูลอื่น ๆ อัปโหลด/ดาวน์โหลด/ลบ
+- ป้าย workflow เป็นภาษาไทย (ขั้นที่ ๓ / ๔.๑–๔.๑๔) ไม่มี `Phase 3` / `As-Is` ในหน้าผู้ใช้
 
 ---
 
 ## รายงาน Playwright — แอป (headed · 25 ส.ค. 2026)
 
-รัน: `cd app/frontend && npm run test:e2e:headed` (1 worker, Chromium มองเห็นได้)  
-Chromium, viewport 1440×900, ภาษา th-TH · `HEADED=1` + `screenshot: on` + `slowMo: 400` + พิมพ์ทีละตัว 70ms · **16 ผ่าน / 3 ข้าม / 0 ล้ม (~20.5 นาที)**
+รัน: `cd app/frontend && npm run test:e2e:headed` แล้วตามด้วย `npx playwright test e2e/wizard-flow.spec.ts --headed` (1 worker, Chromium มองเห็นได้)  
+Chromium, viewport 1440×900, ภาษา th-TH · `HEADED=1` + `screenshot: on` + `slowMo: 400` + พิมพ์ทีละตัว 70ms  
 
-![รายงาน Playwright](test-evidence/15-playwright-report.png)
+ชุดเต็มรอบแรก: **15 ผ่าน / 3 ข้าม / 1 ล้ม** (locator ตาราง `s4.8` เจอ `<table>` สองใบ — แก้เป็น `.first()`)  
+เส้นทอง 0→4 หลังแก้: **1 ผ่าน (~19.9 นาที)** ตามภาพรายงานด้านล่าง
+
+![รายงาน Playwright — wizard 0→4 ผ่าน](test-evidence/15-playwright-report.png)
 
 ด้านล่างอธิบายทีละเคสว่าตรวจอะไร และภาพที่บันทึกหลังผ่าน
 
@@ -140,17 +143,25 @@ Chromium, viewport 1440×900, ภาษา th-TH · `HEADED=1` + `screenshot: on
 
 ![เคส UI: Phase 2 ตารางคู่แชท](test-evidence/e2e-phase-2-qa.png)
 
-### Phase 3 ร่าง 13 หมวด
+### Phase 3 ร่าง 13 หมวด + หัวข้อย่อยตรง
 
-หัวข้อ *Phase 3: ร่างเนื้อหา TOR* DraftChat ร่าง 13 หมวด หมวด HITL ต้องให้เจ้าหน้าที่ยืนยัน ปุ่ม **ไปทบทวน (Phase 4)** (`phase3-confirm`)
+หัวข้อ *ขั้นที่ ๓: ร่างเนื้อหา* DraftChat ร่าง ๑๓ หมวดจาก LM Studio ทีละหมวด (งานอยู่เบื้องหลังแม้ SSE หลุด) หมวดขอบเขตงานเติมลงช่อง **๔.๑–๔.๑๔** โดยตรง หมวด HITL ต้องให้เจ้าหน้าที่ยืนยัน ปุ่ม **ไปทบทวน (ขั้นที่ ๔)** (`phase3-confirm`)
 
 ![เคส 5-phase: Phase 3](test-evidence/05-phase-2-draft.png)
 
+![เคส UI: Phase 3 DraftChat กำลังร่าง](test-evidence/08a-phase-3-drafting.png)
+
+![เคส UI: หัวข้อย่อย ๔.๑–๔.๑๔ ถูกเติมในช่อง](test-evidence/08b-phase-3-subsections.png)
+
+![เคส UI: ตารางในหมวดขอบเขตงาน](test-evidence/08c-phase-3-table.png)
+
 ![เคส UI: Phase 3 DraftChat](test-evidence/e2e-phase-3-draft.png)
 
-### Phase 4 ทบทวนและเผยแพร่
+### Phase 4 ทบทวน ประกอบเอกสาร และเผยแพร่
 
-หัวข้อ *Phase 4: ทบทวนและอนุมัติ* แชทรีวิว (`review-chat`) Rule Engine รันอัตโนมัติ คะแนน / findings ปุ่ม **ส่งออก Word** / **ส่งออก PDF** ข้อความว่า e-Bidding เป็นงานนอกแอป
+หัวข้อ *ขั้นที่ ๔: ทบทวนและอนุมัติ* ตัวอย่างเอกสารรวม (`phase4-merged-preview`) เรียงหมวดแม่แล้วตามด้วย **4.1, 4.8, …** จากแถวย่อย (ไม่ซ้ำ ไม่มีคีย์ `s4.s4.1`) ตารางเป็น HTML ก่อนส่งออกเป็นตารางจริงใน Word/PDF · แชทรีวิว (`review-chat`) · Rule Engine · ปุ่ม **ส่งออก Word** / **ส่งออก PDF**
+
+![เคส UI: ขั้นที่ ๔ ประกอบหมวด+ย่อย](test-evidence/07b-phase-4-assemble.png)
 
 ![เคส UI: Phase 4 แชทรีวิว](test-evidence/e2e-phase-4-review-chat.png)
 
@@ -191,15 +202,22 @@ Phase 0 มีปุ่ม **เริ่มวิเคราะห์และ
 
 ## ขั้นที่ 7 — ร่างด้วย AI จริงผ่าน Gemma
 
-**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *Phase 3 AI draft uses LM Studio Gemma* (~7.0 นาที)
+**ไฟล์เทสต์:** `wizard-flow.spec.ts` — *walk live Phase 0-4* (~19.9 นาที, `max_tokens=8192`)
 
 1. พิมพ์ข้อความโครงการยาวใน Phase 0 แล้วกดวิเคราะห์ (LM Studio จัดช่องจริง ไม่ mock)
-2. รอตาราง Phase 1 แล้วกด **ไปเลย** (หรือรอเลื่อนอัตโนมัติ) เข้า Phase 2–3 — ไม่เรียก `fill-references` อัตโนมัติ
-3. รอ DraftChat ร่างหมวด หรือกด `draft-ai-s1` (หมวดความเป็นมา)
-4. รอจนมีเนื้อหาในช่องร่าง (timeout 360 วินาที)
-5. ต้องไม่มีข้อความ *ร่างด้วย AI ไม่สำเร็จ*
+2. รอตาราง Phase 1 แล้วกด **ไปเลย** เข้า Phase 2–3
+3. รอ DraftChat ร่างครบ ๑๓ หมวด (`phase3-all-drafted`, `13/13 หมวด`) — หมวด 4 ต้องมีข้อความในช่อง `scope-sub-s4.1`…`s4.14`
+4. ตรวจว่าหน้าเป็นภาษาไทย (ไม่มี `Phase 3` / `As-Is`) และตาราง markdown แสดงเป็น `<table>`
+5. ยืนยัน HITL ห้าหมวด แล้วไปขั้นที่ ๔ — พรีวิวต้องมี `4.1` / `4.8` และไม่มี `s4.s4.1`
+6. ต้องไม่มีข้อความ *ร่างด้วยระบบอัจฉริยะไม่สำเร็จ*
 
 ![เคส AI: หมวด 1 หลังกดร่างด้วย AI](test-evidence/08-phase-2-ai-draft.png)
+
+![เคส AI: หัวข้อย่อยหมวด 4 ถูกเติมครบ](test-evidence/08b-phase-3-subsections.png)
+
+![เคส AI: ตารางในหมวดขอบเขตงาน](test-evidence/08c-phase-3-table.png)
+
+![เคส AI: ขั้นที่ ๔ ประกอบหมวด+ย่อย](test-evidence/07b-phase-4-assemble.png)
 
 ---
 
@@ -309,13 +327,13 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
 
-Backend `coverage.py`: **85%** (10623 statements, 9034 covered) จากรัน `pytest -m "not live_llm" --cov=app`
+Backend `coverage.py` v7.13.4: **83%** (9826/11800 บรรทัด) จาก `pytest -m "not live_llm and not integration" --cov=app` — **1596 ผ่าน** / 22 ข้าม
 
-![Coverage backend 85%](test-evidence/13-backend-coverage.png)
+![Coverage backend 83%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **80.6%** (1255/1557), lines **82.36%** (1158/1406) — include ชุด `src/lib` + stores + draft Phase0–4 + `/review` + KB page
+Frontend Istanbul/v8: statements **79.81%** (1514/1897) · lines **82.22%** (1397/1699) — **205 ผ่าน** / 48 ไฟล์ · include ชุด `src/lib` + stores + draft Phase0–4 + `/review` + KB + AI settings
 
-![Coverage frontend 82.36%](test-evidence/14-frontend-coverage.png)
+![Coverage frontend 82.22%](test-evidence/14-frontend-coverage.png)
 
 ---
 
@@ -325,12 +343,17 @@ Frontend Istanbul/v8: statements **80.6%** (1255/1557), lines **82.36%** (1158/1
 
 | ตัวชี้วัด | ค่า |
 |-----------|-----|
-| Quality gate | **OK** |
-| Bugs / Vulnerabilities / Code smells | **0 / 0 / 0** |
-| New violations | **0** |
-| Coverage บนโค้ดใหม่ | 86.2% (เกณฑ์ 80%) |
+| Quality gate | **Passed / OK** (CAYC compliant) |
+| New issues / `new_violations` | **0** |
+| Vulnerabilities | **0** |
+| Coverage รวมที่สแกน | 73.4% (เกตใช้เงื่อนไขโค้ดใหม่ ไม่บังคับตัวนี้) |
+| Coverage บนโค้ดใหม่ | ยังไม่พอบรรทัดให้คำนวณในรอบนี้ — เกตยังผ่านเพราะ `new_violations=0` |
 
-`python:S6353` ยัง ignore ใน `sonar-project.properties` เพราะ regex วันที่/เงินต้องเป็น `[0-9]` ไม่ใช่ `\\d`
+สแกนจากโฟลเดอร์ `app/` เท่านั้น (ไม่เดินทั้ง repo เพราะ Python sensor ชน `documents/knowledge-base`)
+
+![SonarQube quality gate Passed](test-evidence/19-sonar-quality-gate.png)
+
+`python:S6353` ยัง ignore ในคุณสมบัติสแกน เพราะ regex วันที่/เงินต้องเป็น `[0-9]` ไม่ใช่ `\\d`
 
 ---
 
@@ -339,23 +362,23 @@ Frontend Istanbul/v8: statements **80.6%** (1255/1557), lines **82.36%** (1158/1
 จาก `app/backend`:
 
 ```bash
-python -m pytest tests -q --tb=short --cov=app --cov-report=term --cov-report=html
+python -m pytest tests -q --tb=line -m "not live_llm and not integration" --cov=app --cov-report=xml:coverage.xml --cov-report=html
 ```
 
-ผลที่ยืนยันแยกชุดบนโฮสต์: `pytest -m "not live_llm"` **1533 ผ่าน** (ครอบคลุม **85%**) และ `pytest -m live_llm` **14 ผ่าน** เมื่อ LM Studio ฟังพอร์ต 1234 (Gemma + EmbeddingGemma) รวม `test_live_realistic_workflow.py`
+ผลรอบนี้: **1596 ผ่าน** / **22 ข้าม** / ครอบคลุมบรรทัด **83%** (`htmlcov/` · `coverage.xml`)
 
 จาก `app/frontend`:
 
 ```bash
-npm run test:unit
-npm run lint
+npm run test:coverage
 npm run test:e2e:headed
-npm run test:e2e:guide
+npx playwright test e2e/wizard-flow.spec.ts --headed
+npm run test:e2e:reports
 ```
 
-Vitest **177 ผ่าน** / 42 ไฟล์ · headed **21 ผ่าน** (~4.7 นาที) · guide **3 ผ่าน** · reports **3 ผ่าน**
+Vitest coverage **205 ผ่าน** / 48 ไฟล์ · lines **82.22%** · ชุดเต็ม headed **15 ผ่าน / 3 ข้าม** แล้ว wizard เส้นเดียว **1 ผ่าน (~19.9 นาที)** · ภาพรายงาน coverage **3 ผ่าน**
 
-หลังแก้ UI ต้อง `docker compose -p tor-app --env-file .env up -d --build frontend backend` ก่อนรัน Playwright เพราะเทสต์ยิงคอนเทนเนอร์ที่พอร์ต 3000
+Playwright ยิง `next dev` ที่พอร์ต 3000 (`reuseExistingServer`) — **อย่ารีบิลด์ backend ระหว่างร่าง** เพราะงานร่างค้างในหน่วยความจำจะหาย
 
 ติดตั้ง: `14-INSTALLATION.md`  
 คู่มือผู้ใช้: `13-USER_GUIDELINE.md`

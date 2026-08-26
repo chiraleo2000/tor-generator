@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.kb_chat_session import KBChatSession
 from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve
+from app.rag.kb_qa import CHAT_MAX_TOKENS, CHAT_RAG_TOP_K, build_kb_qa_messages
 from app.services.session_cache import SessionCacheService
 
 logger = logging.getLogger("tor_app.kb_chat")
@@ -84,7 +85,7 @@ class KnowledgeChatService:
             text,
             user_id=user_id,
             search_scope="both",
-            top_k=5,
+            top_k=CHAT_RAG_TOP_K,
         )
         relevant = [
             chunk
@@ -113,25 +114,10 @@ class KnowledgeChatService:
 
     async def _synthesize(self, message: str, chunks: list, history: list[dict]) -> str:
         llm = self._llm or ProviderFactory().get_llm()
-        context = "\n\n".join(getattr(chunk, "text", "") for chunk in chunks[:5])
-        prior = "\n".join(
-            f"{item.get('role')}: {item.get('content')}"
-            for item in history[-6:]
-            if isinstance(item, dict)
-        )
         response = await llm.invoke(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "ตอบจากเอกสารที่ให้เท่านั้น เป็นภาษาราชการ "
-                        "อ้างชื่อเอกสารถ้ามี ห้ามแต่งข้อมูลที่ไม่มีในบริบท"
-                    ),
-                },
-                {"role": "user", "content": f"{prior}\n\nคำถาม: {message}\n\nบริบท:\n{context}"},
-            ],
+            build_kb_qa_messages(question=message, chunks=chunks, history=history),
             temperature=0.2,
-            max_tokens=2048,
+            max_tokens=CHAT_MAX_TOKENS,
         )
         return getattr(response, "content", "") or ""
 

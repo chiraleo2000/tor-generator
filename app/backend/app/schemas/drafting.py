@@ -128,6 +128,7 @@ class ReviewResponse(BaseModel):
     categories: list[CategoryScoreResponse] = Field(default_factory=list)
     findings: list[FindingResponse] = Field(default_factory=list)
     suggestions_generated: int = 0
+    overall_assessment: str = ""
     message: str = "ตรวจสอบเอกสารเรียบร้อยแล้ว"
 
 

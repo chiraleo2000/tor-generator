@@ -110,7 +110,8 @@ class TestPDFGeneratorHTMLContent:
         """HTML includes the TOR title."""
         content = TORContent(project_name="Test")
         html = self.generator._build_html(content)
-        assert "ร่างขอบเขตของงาน (Terms of Reference: TOR)" in html
+        assert "ร่างขอบเขตของงาน" in html
+        assert "Terms of Reference" not in html
 
     def test_html_contains_project_name(self):
         """HTML includes the project name."""

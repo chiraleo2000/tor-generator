@@ -7,7 +7,7 @@ const nextConfig = {
   },
   // Draft/review/chat LLM calls often exceed the default 30s rewrite proxy timeout.
   experimental: {
-    proxyTimeout: 600000,
+    proxyTimeout: 5_400_000,
   },
   async headers() {
     return [

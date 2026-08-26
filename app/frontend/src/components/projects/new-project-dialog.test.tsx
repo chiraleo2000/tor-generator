@@ -56,7 +56,7 @@ describe("NewProjectDialog", () => {
   it("opens the intake form", async () => {
     render(<NewProjectDialog open onOpenChange={() => undefined} />);
     expect(await screen.findByTestId("new-project-dialog")).toBeInTheDocument();
-    expect(screen.getByText(/กระบวนการร่าง TOR แบบ 5 Phase/)).toBeInTheDocument();
+    expect(screen.getByText(/กระบวนการร่างห้าขั้น/)).toBeInTheDocument();
   });
 
   it("shows a validation error when required fields are missing", async () => {

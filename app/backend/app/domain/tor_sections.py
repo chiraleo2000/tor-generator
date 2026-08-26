@@ -69,7 +69,7 @@ TOR_SECTION_LABELS_BILINGUAL: dict[str, str] = {
 # Scope of Work 14 subsections (Discussion 01 / mockup 06)
 SCOPE_SUBSECTIONS: dict[str, str] = {
     "s4.1": "สรุปขอบเขตงาน",
-    "s4.2": "ระบบงานปัจจุบัน (As-Is)",
+    "s4.2": "ระบบงานปัจจุบัน",
     "s4.3": "งานหลักและกิจกรรม",
     "s4.4": "ข้อกำหนดด้านฮาร์ดแวร์",
     "s4.5": "ข้อกำหนดด้านซอฟต์แวร์และลิขสิทธิ์",

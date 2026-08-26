@@ -10,6 +10,7 @@ from typing import Any
 from app.config import get_settings
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS
 from app.domain.tor_sections import TOR_SECTION_ORDER
+from app.llm_tokens import DRAFT_MAX_TOKENS
 from app.orchestrator.agents.registry import get_agent_for_section
 from app.orchestrator.graph import _create_rule_engine
 from app.orchestrator.state import RAGChunk
@@ -19,10 +20,10 @@ from app.services.session_cache import SessionCacheService
 
 logger = logging.getLogger("tor_app.full_draft")
 
-TOTAL_TIMEOUT = 900
+TOTAL_TIMEOUT = 14400
 MAX_CORRECTIONS_PER_SECTION = 3
 RAG_THRESHOLD = 0.5
-RAG_TOP_K = 5
+RAG_TOP_K = 8
 
 
 @dataclass
@@ -156,7 +157,7 @@ class FullDraftGenerator:
                 validation_findings=findings or [],
                 human_feedback=extra_feedback,
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=DRAFT_MAX_TOKENS,
             )
         except Exception as exc:
             logger.warning("Draft failed for %s: %s", section_key, exc)
@@ -175,7 +176,7 @@ class FullDraftGenerator:
             result, _citations, degraded = await self._retrieve(
                 INTAKE_SLOT_LABELS.get(section_key, section_key),
                 user_id=user_id,
-                search_scope="both",
+                search_scope="global",
                 top_k=RAG_TOP_K,
                 section_relevance=section_key,
             )

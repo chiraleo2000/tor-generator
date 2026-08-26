@@ -18,7 +18,7 @@ import { unwrapData } from "@/lib/api-unwrap";
 import { toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
 import { useRealtimeValidation } from "@/lib/use-realtime-validation";
 import { InlineValidationFeedback } from "@/components/wizard/inline-validation-feedback";
-import { TOR_SECTION_LABELS, TOR_SECTION_ORDER, SCOPE_SUBSECTIONS, HITL_SECTIONS } from "@/lib/tor-sections";
+import { TOR_SECTION_LABELS, TOR_SECTION_ORDER, SCOPE_SUBSECTIONS } from "@/lib/tor-sections";
 import { cn } from "@/lib/utils";
 
 // --- Types ---
@@ -479,11 +479,6 @@ export function Step7Review() {
                 <div key={section.key} className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-medium text-sm">{section.title}</h4>
-                    {HITL_SECTIONS.includes(section.key) && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                        ต้องตรวจโดยเจ้าหน้าที่
-                      </span>
-                    )}
                     {editingSection !== section.key ? (
                       <Button
                         variant="ghost"

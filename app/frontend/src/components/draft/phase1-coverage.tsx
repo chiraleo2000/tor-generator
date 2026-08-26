@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { factTopicsComplete } from "@/lib/intake-complete";
+import { coverageStatusLabel } from "@/lib/phase-handoff";
 
 export interface CoverageRow {
   key: string;
@@ -13,23 +14,19 @@ export interface CoverageRow {
 }
 
 function phase1StatusCopy(ready: boolean, factReady: boolean) {
-  if (ready) {
+  if (ready || factReady) {
     return (
       <p className="mt-2 text-sm text-brand-green" data-testid="phase1-ready-banner">
-        ข้อมูลครบถ้วนแล้ว — กำลังไปสอบถามเพิ่มใน Phase 2
+        ข้อมูลข้อเท็จจริงครบแล้ว — กดไปสอบถามเพิ่มหรือยืนยันในขั้นถัดไปได้
       </p>
     );
   }
   return (
     <p className="mt-2 text-sm text-navy">
-      {factReady
-        ? "ข้อมูลข้อเท็จจริงพร้อม — กำลังไปคุยต่อเพื่อเติมช่องที่เหลือ"
-        : "พร้อมไปขั้นถัดไปเมื่อช่องข้อเท็จจริงบังคับครบ — บอทจะถามช่องที่ยังขาด"}
+      ยังมีช่องข้อเท็จจริงบังคับที่ยังไม่ครบ — กดไปขั้นที่ ๒ เพื่อให้บอทถามทีละช่องจนครบ
     </p>
   );
 }
-
-const AUTO_TRANSITION_SECONDS = 8;
 
 export function Phase1Coverage({
   coverage,
@@ -48,50 +45,18 @@ export function Phase1Coverage({
   isError: boolean;
   onEnterQa: () => void;
 }>) {
-  const required = coverage.filter((row) => row.fact_required);
-  const factReady = required.length > 0 && required.every((row) => row.filled);
-  const [countdown, setCountdown] = useState(AUTO_TRANSITION_SECONDS);
-  const transitioned = useRef(false);
-  const onEnterQaRef = useRef(onEnterQa);
-  onEnterQaRef.current = onEnterQa;
+  const factReady = factTopicsComplete(coverage);
 
-  useEffect(() => {
-    if (transitioned.current) {
-      return undefined;
-    }
-    setCountdown(AUTO_TRANSITION_SECONDS);
-    const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      const left = AUTO_TRANSITION_SECONDS - Math.floor((Date.now() - startedAt) / 1000);
-      if (left > 0) {
-        setCountdown(left);
-        return;
-      }
-      window.clearInterval(interval);
-      setCountdown(0);
-      if (transitioned.current) {
-        return;
-      }
-      transitioned.current = true;
-      onEnterQaRef.current();
-    }, 250);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  function skipToQa() {
-    if (transitioned.current) {
-      return;
-    }
-    transitioned.current = true;
+  function continueToQa() {
     onEnterQa();
   }
 
   return (
     <div className="space-y-4" data-testid="phase1-coverage">
       <div className="gov-card">
-        <h3 className="text-navy">Phase 1: ผลวิเคราะห์ความต้องการ</h3>
+        <h3 className="text-navy">ขั้นที่ ๑: ผลวิเคราะห์ความต้องการ</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          สิ่งที่ระบบอ่านได้จากเอกสาร — จะไปคุยต่อใน Phase 2 อัตโนมัติ บอทจะถามช่องที่ยังขาด
+          สิ่งที่ระบบจัดเข้าช่องจากเอกสารแล้ว — กดปุ่มด้านล่างเพื่อไปขั้นที่ ๒
         </p>
         <FilledFactList coverage={coverage} />
         {phase1StatusCopy(ready, factReady)}
@@ -103,26 +68,18 @@ export function Phase1Coverage({
             {message}
           </p>
         ) : null}
-        {countdown > 0 ? (
-          <div className="mt-3 flex items-center gap-3 rounded-lg border border-navy/20 bg-blue-50 px-4 py-2">
-            <span className="text-sm text-navy" data-testid="phase1-countdown">
-              ไปสอบถามเพิ่มอัตโนมัติใน <strong>{countdown}</strong> วินาที...
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              data-testid="phase1-skip"
-              onClick={skipToQa}
-            >
-              ไปเลย
-            </Button>
-          </div>
-        ) : null}
+        <div className="mt-3 flex items-center gap-3">
+          <Button
+            size="sm"
+            disabled={busy || coverage.length === 0}
+            data-testid="phase1-skip"
+            onClick={continueToQa}
+          >
+            {factReady ? "ไปขั้นที่ ๒" : "ไปสอบถามเพิ่ม (ขั้นที่ ๒) — เติมช่องที่ยังขาด"}
+          </Button>
+        </div>
       </div>
-      {coverage.length ? (
-        <CoverageTable coverage={coverage} gaps={gaps} />
-      ) : null}
+      {coverage.length ? <CoverageTable coverage={coverage} gaps={gaps} /> : null}
     </div>
   );
 }
@@ -171,7 +128,7 @@ export function CoverageTable({
                 {row.key} {row.label}
                 {row.fact_required ? " *" : ""}
               </td>
-              <td>{row.status}</td>
+              <td>{coverageStatusLabel(row.status)}</td>
               <td className="max-w-xs truncate text-xs text-muted-foreground">
                 {row.preview || "—"}
               </td>

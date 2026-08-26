@@ -28,7 +28,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   // Shared demo officer account on the live Docker stack — parallel workers collide.
   workers: 1,
-  timeout: headed ? 2_100_000 : 180_000,
+  timeout: headed ? 4_800_000 : 180_000,
   expect: { timeout: headed ? 30_000 : 15_000 },
   reporter: [
     ["list"],

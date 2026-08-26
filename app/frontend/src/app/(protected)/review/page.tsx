@@ -265,7 +265,7 @@ export default function StandaloneReviewPage() {
   async function confirmRun() {
     if (!extracted) return;
     setBusy(true);
-    setStatus("กำลังรัน Rule Engine...");
+    setStatus("กำลังตรวจด้วยกฎระเบียบ...");
     setError(null);
     try {
       const compareJobs = await extractCompareFiles(compares);
@@ -300,7 +300,7 @@ export default function StandaloneReviewPage() {
         <h3 className="mb-3 text-navy">อัปโหลด TOR ที่ต้องการตรวจสอบ</h3>
         <ReviewStepper step={step} />
         <p className="mb-3 text-sm text-muted-foreground">
-          เลือกไฟล์แล้วสกัดข้อความก่อน — ระบบจะไม่รัน Rule Engine จนกว่าคุณยืนยัน
+          เลือกไฟล์แล้วสกัดข้อความก่อน — ระบบจะไม่ตรวจด้วยกฎจนกว่าคุณยืนยัน
         </p>
         <UploadArea
           label="ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก"

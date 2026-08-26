@@ -30,6 +30,16 @@ from app.models.user import User
 from app.providers.factory import ProviderFactory
 from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.hybrid import hybrid_retrieve
+from app.rag.kb_qa import (
+    CHAT_MAX_TOKENS,
+    CHAT_RAG_TOP_K,
+    DRAFT_INTAKE_CONTEXT_CHUNKS,
+    DRAFT_INTAKE_MAX_TOKENS,
+    DRAFT_INTAKE_SYSTEM,
+    DRAFT_INTAKE_TOP_K,
+    build_kb_qa_messages,
+    trim_history,
+)
 from app.rate_limiter import rate_limit_ai
 from app.schemas.responses import MetaInfo, SuccessResponse
 
@@ -314,8 +324,16 @@ async def send_message(
         room.title = body.content[:60]
     room.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    history = [{"role": item.role, "content": item.content} for item in room.messages[-8:]]
-    history.append({"role": "user", "content": body.content})
+    prior = trim_history(
+        [
+            {"role": item.role, "content": item.content}
+            for item in room.messages
+            if getattr(item, "id", None) != user_msg.id
+        ]
+    )
+    is_kb = room.kind == KIND_KB
+    top_k = CHAT_RAG_TOP_K if is_kb else DRAFT_INTAKE_TOP_K
+    max_tokens = CHAT_MAX_TOKENS if is_kb else DRAFT_INTAKE_MAX_TOKENS
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()
@@ -327,28 +345,33 @@ async def send_message(
             body.content,
             user_id=current_user.id,
             search_scope=scope,
-            top_k=5,
+            top_k=top_k,
         )
-        context_bits = []
-        for chunk in result.chunks:
-            source = chunk.source_document or "คลัง"
-            context_bits.append(f"[{source}] {chunk.text}")
-        system = (
-            "คุณเป็นผู้ช่วยถาม-ตอบกฎหมายจัดซื้อจัดจ้างภาครัฐไทย "
-            "ตอบเป็นภาษาราชการ อ้างแหล่งจากบริบทที่ให้มาเท่านั้น "
-            "อย่าแต่งมาตราที่ไม่มีในบริบท"
-        )
-        if degraded:
-            system += " (กราฟ Neo4j ไม่พร้อม ใช้เฉพาะชิ้นข้อความ)"
-        messages = [
-            {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": "บริบทจากคลังความรู้:\n" + "\n\n".join(context_bits[:6])
-                + "\n\nคำถาม:\n"
-                + body.content,
-            },
-        ]
+        if is_kb:
+            messages = build_kb_qa_messages(
+                question=body.content,
+                chunks=result.chunks,
+                history=prior,
+                degraded=degraded,
+            )
+        else:
+            context_bits = [
+                f"[{chunk.source_document or 'คลัง'}] {chunk.text}"
+                for chunk in result.chunks
+            ]
+            system = DRAFT_INTAKE_SYSTEM
+            if degraded:
+                system += " (กราฟ Neo4j ไม่พร้อม ใช้เฉพาะชิ้นข้อความ)"
+            messages = [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": "บริบทจากคลังความรู้:\n"
+                    + "\n\n".join(context_bits[:DRAFT_INTAKE_CONTEXT_CHUNKS])
+                    + "\n\nคำถาม:\n"
+                    + body.content,
+                },
+            ]
         redis = getattr(request.app.state, "redis", None)
         event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
 
@@ -371,7 +394,9 @@ async def send_message(
                     await event_q.put(("started", {"request_id": request_id}))
                     llm = ProviderFactory().get_llm()
                     async for token in llm.stream(
-                        messages, temperature=0.2, max_tokens=2048
+                        messages,
+                        temperature=0.2,
+                        max_tokens=max_tokens,
                     ):
                         parts_local.append(token)
                         await event_q.put(("token", {"text": token}))

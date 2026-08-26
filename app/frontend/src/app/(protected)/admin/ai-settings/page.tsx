@@ -291,10 +291,10 @@ export default function AdminAiSettingsPage() {
               id="timeout"
               type="number"
               min={1}
-              max={300}
+              max={900}
               value={form.lm_studio_timeout}
               onChange={(event) =>
-                patch("lm_studio_timeout", Number.parseFloat(event.target.value) || 180)
+                patch("lm_studio_timeout", Number.parseFloat(event.target.value) || 600)
               }
             />
           </div>
@@ -522,10 +522,10 @@ export default function AdminAiSettingsPage() {
             id="custom-rag-topk"
             type="number"
             min={1}
-            max={20}
+            max={64}
             value={form.custom_rag_top_k}
             onChange={(event) =>
-              patch("custom_rag_top_k", Number.parseInt(event.target.value, 10) || 5)
+              patch("custom_rag_top_k", Number.parseInt(event.target.value, 10) || 24)
             }
           />
         </div>

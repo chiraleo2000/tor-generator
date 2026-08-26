@@ -64,7 +64,7 @@ from app.schemas.project import (
 )
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.audit_service import AuditService, get_client_ip
-from app.services.intake_service import can_set_phase, clamp_draft_phase, slot_content
+from app.services.intake_service import can_set_phase, clamp_draft_phase
 
 logger = logging.getLogger("tor_app.projects")
 
@@ -87,13 +87,6 @@ def officer_can_submit(
     return current_phase >= 4 or has_review_score
 
 
-def _first_nonempty(*candidates: str) -> str:
-    for item in candidates:
-        if str(item or "").strip():
-            return item
-    return ""
-
-
 def _index_tor_sections(
     rows: list[TORSection],
 ) -> tuple[dict[str, TORSection], dict[str, dict[str, TORSection]]]:
@@ -107,22 +100,50 @@ def _index_tor_sections(
     return by_key, subs
 
 
-def _scope_sub_payload(scope_map: dict[str, TORSection], slot_map: dict) -> list[dict]:
+def _scope_sub_payload(scope_map: dict[str, TORSection], _slot_map: dict) -> list[dict]:
     items: list[dict] = []
     for sub_key, title in SCOPE_SUBSECTIONS.items():
         sub_row = scope_map.get(sub_key) or scope_map.get(sub_key.replace("s4.", "4."))
-        content = _first_nonempty(
-            sub_row.content if sub_row else "",
-            slot_content(slot_map, sub_key),
-        )
+        content = (sub_row.content if sub_row else "") or ""
         items.append(
             {
                 "key": sub_key,
                 "title": title,
                 "content": content,
-                "filled": bool(str(content or "").strip()),
+                "filled": bool(str(content).strip()),
             }
         )
+    return items
+
+
+def _normalize_parent_content(section_key: str, content: str, row: TORSection | None) -> str:
+    from app.domain.section_fields import SECTION_FIELDS, persist_section_fields
+
+    if section_key not in SECTION_FIELDS:
+        return content
+    rewritten = persist_section_fields(section_key, content or "")
+    if row is not None and rewritten and rewritten != (row.content or ""):
+        row.content = rewritten
+    return rewritten or content
+
+
+def _hydrate_scope_subs(
+    parent: TORSection | None,
+    scope_map: dict[str, TORSection],
+    slot_map: dict,
+) -> list[dict]:
+    items = _scope_sub_payload(scope_map, slot_map)
+    if not any(item["filled"] for item in items):
+        blob = (parent.content if parent else "") or ""
+        if blob.strip():
+            from app.export.table_parse import split_scope_subsection_draft
+
+            parts = split_scope_subsection_draft(blob)
+            for item in items:
+                text = str(parts.get(item["key"]) or "").strip()
+                if text:
+                    item["content"] = text
+                    item["filled"] = True
     return items
 
 
@@ -814,7 +835,7 @@ async def patch_project_phase(
     project = await _owned_project(project_id, current_user, db)
     if not can_set_phase(project, body.phase):
         raise ValidationError(
-            message="ต้องวางข้อความหรืออัปโหลดเอกสารใน Phase 0 ก่อน จึงจะร่าง TOR ได้",
+            message="ต้องวางข้อความหรืออัปโหลดเอกสารในขั้นที่ ๐ ก่อน จึงจะร่างได้",
             field="phase",
         )
     project.current_phase = body.phase
@@ -865,10 +886,9 @@ async def list_project_sections(
     sections = []
     for key in TOR_SECTION_ORDER:
         row = by_key.get(key)
-        content = _first_nonempty(
-            row.content if row else "",
-            slot_content(slot_map, key),
-        )
+        content = (row.content if row else "") or ""
+        if key != "s4":
+            content = _normalize_parent_content(key, content, row)
         filled = bool(str(content or "").strip())
         item: dict = {
             "key": key,
@@ -882,7 +902,8 @@ async def list_project_sections(
         }
         if key == "s4":
             item["big"] = True
-            item["subs"] = _scope_sub_payload(subs.get("s4") or {}, slot_map)
+            item["subs"] = _hydrate_scope_subs(row, subs.get("s4") or {}, slot_map)
+            item["filled"] = filled or any(sub["filled"] for sub in item["subs"])
         sections.append(item)
     return _build_success_response(request, {"sections": sections})
 
@@ -913,6 +934,10 @@ async def put_project_section(
     content = body.content
     if body.fields:
         content = body.content or str(body.fields)
+    if not sub_key:
+        from app.domain.section_fields import persist_section_fields
+
+        content = persist_section_fields(main_key, content or "")
 
     existing_stmt = select(TORSection).where(
         TORSection.project_id == project_id,

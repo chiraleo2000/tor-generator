@@ -271,7 +271,7 @@ class TestDOCXContent:
 
         full_text = "\n".join(p.text for p in doc.paragraphs)
         assert "ร่างขอบเขตของงาน" in full_text
-        assert "Terms of Reference" in full_text
+        assert "Terms of Reference" not in full_text
 
     def test_project_name_in_document(self):
         content = TORContent(project_name="โครงการพัฒนาระบบ")

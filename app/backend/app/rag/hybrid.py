@@ -120,11 +120,12 @@ async def hybrid_retrieve(
             logger.warning("rag_sources=custom but custom RAG is not configured")
         elif client is not None:
             try:
+                custom_k = int(getattr(settings, "custom_rag_top_k", top_k) or top_k)
                 custom_chunks = await client.retrieve(
                     query,
                     user_id=user_id,
                     search_scope=search_scope,
-                    top_k=int(getattr(settings, "custom_rag_top_k", top_k) or top_k),
+                    top_k=max(top_k, custom_k),
                 )
                 chunks.extend(custom_chunks)
             except Exception:
@@ -158,9 +159,11 @@ async def hybrid_retrieve(
     if _use_local_rag(rag_sources) and runtime.neo4j_driver is not None:
         try:
             store_graph = GraphRAGStore(runtime.neo4j_driver)
+            graph_limit = max(8, min(32, top_k))
             rows = await store_graph.expand(
                 query_text=query,
                 slot_key=section_relevance,
+                limit=graph_limit,
                 search_scope=search_scope,
                 owner_id=str(user_id) if user_id else None,
             )
@@ -172,7 +175,7 @@ async def hybrid_retrieve(
             ]
             if extra_bits and chunks:
                 chunks[0].text = chunks[0].text + "\n\n[กราฟกฎหมาย]\n" + "\n".join(
-                    extra_bits[:8]
+                    extra_bits[:graph_limit]
                 )
             graph_degraded = False
         except Exception:

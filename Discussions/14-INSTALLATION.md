@@ -43,7 +43,7 @@ LOCAL_EMBEDDING_SERVER=lm_studio
 LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
 LM_STUDIO_MODEL=google/gemma-4-e4b
 LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m
-LM_STUDIO_TIMEOUT=180
+LM_STUDIO_TIMEOUT=1800
 OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
 LLAMA_CPP_BASE_URL=http://host.docker.internal:8080/v1
 MONGO_URI=mongodb://mongo:27017
@@ -237,25 +237,25 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**25 ส.ค. 2026** · v0.2.4) กับสแตก Docker (`tor-app` + Mongo + Neo4j) — headed เดิน live Phase 0–4 + แชท + ตรวจ TOR; mock specs ถูกข้ามเมื่อ `HEADED=1` — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**25 ส.ค. 2026** · v0.2.4) กับสแตก Docker (`tor-app` + Mongo + Neo4j) — headed เดิน live Phase 0–4 (๑๓ หมวด + หัวข้อย่อย ๔.๑–๔.๑๔ + ตาราง) + แชท + ตรวจ TOR; mock specs ถูกข้ามเมื่อ `HEADED=1` — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
-![Playwright 17 passed](test-evidence/15-playwright-report.png)
+![รายงาน Playwright — wizard 0→4 ผ่าน](test-evidence/15-playwright-report.png)
 
 | ชุด | ผล |
 |-----|-----|
-| pytest ไม่รวม `live_llm` | **1557 ผ่าน** / **3 ข้าม** / ครอบคลุม **86%** ของ `app/` (ตัด `seed_*` / `main`) |
-| Vitest coverage | **192 ผ่าน** / 45 ไฟล์ · statements **81.26%** · lines **83.41%** |
-| Playwright headed (แอป) | **16 ผ่าน** / **3 ข้าม** / 0 ล้ม (25 ส.ค. 2026 · ~20.5 นาที · live Phase 0–4) + guide **3** |
+| pytest ไม่รวม `live_llm`/`integration` | **1596 ผ่าน** / **22 ข้าม** / ครอบคลุม **83%** ของ `app/` |
+| Vitest coverage | **205 ผ่าน** / 48 ไฟล์ · statements **79.81%** · lines **82.22%** |
+| Playwright headed (แอป) | ชุดเต็ม **15 ผ่าน / 3 ข้าม** แล้ว wizard เส้นเดียว **1 ผ่าน (~19.9 นาที · 0→4 + หัวข้อย่อย + ตาราง)** |
 | Guide screenshots | **3 ผ่าน** (`test:e2e:guide` headed · รีเฟรช PNG ใน `test-evidence/`) |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 
-![Backend coverage 84%](test-evidence/13-backend-coverage.png)
+![Backend coverage 83%](test-evidence/13-backend-coverage.png)
 
-![Frontend coverage 86.51%](test-evidence/14-frontend-coverage.png)
+![Frontend coverage 82.22%](test-evidence/14-frontend-coverage.png)
 
-รอบนี้แก้ pgvector จริง: คอลัมน์ `metadata` ชนกับ `Table.metadata` ทำให้ upsert ฝังเวกเตอร์ไม่ได้ และ `search()` ล้มตอนสร้าง SQL — ตอนนี้ insert ใช้ `__table__` / `excluded["metadata"]` และ `Vector.cosine_distance` `seed_kb` ข้าม bind-mount ที่อ่านไม่ได้ (Errno 5) และรองรับไฟล์ชื่อสั้น + sidecar `.kbname` เพราะชื่อไทยยาวเกิน NAME_MAX ของ Linux Gemma 4 ใช้ reasoning tokens — `LMStudioLocalProvider` ตั้ง `max_tokens` เริ่มต้น 4096
+รอบนี้แก้ pgvector จริง: คอลัมน์ `metadata` ชนกับ `Table.metadata` ทำให้ upsert ฝังเวกเตอร์ไม่ได้ และ `search()` ล้มตอนสร้าง SQL — ตอนนี้ insert ใช้ `__table__` / `excluded["metadata"]` และ `Vector.cosine_distance` `seed_kb` ข้าม bind-mount ที่อ่านไม่ได้ (Errno 5) และรองรับไฟล์ชื่อสั้น + sidecar `.kbname` เพราะชื่อไทยยาวเกิน NAME_MAX ของ Linux Gemma 4 ใช้ reasoning tokens — `LMStudioLocalProvider` ตั้ง `max_tokens` เริ่มต้น 8192
 
 อย่าส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ `docker compose` — Compose จะทับ `.env` แล้ว backend หา postgres ไม่เจอ `python -m app.seed_kb` ในคอนเทนเนอร์ยังอ่าน `/knowledge-base` ไม่ได้ถ้า bind-mount โฟลเดอร์ไทยพัง: คัดลอกไฟล์ชื่อสั้นไป `/tmp/kb-linux-seed` แล้ว `KNOWLEDGE_BASE_DIR=/tmp/kb-linux-seed python -m app.seed_kb`
 

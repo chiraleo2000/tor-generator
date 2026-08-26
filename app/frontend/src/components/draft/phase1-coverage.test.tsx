@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { Phase1Coverage } from "@/components/draft/phase1-coverage";
 
 const emptyHandlers = {
@@ -39,11 +39,11 @@ describe("Phase1Coverage", () => {
         ready
       />
     );
-    expect(screen.getByTestId("phase1-ready-banner")).toHaveTextContent(
-      "ข้อมูลครบถ้วนแล้ว"
-    );
+    expect(screen.getByTestId("phase1-ready-banner")).toHaveTextContent("ข้อมูลข้อเท็จจริงครบแล้ว");
     expect(screen.getByTestId("coverage-row-s1")).toHaveAttribute("data-status", "filled");
-    expect(screen.getByTestId("phase1-fact-summary")).toHaveTextContent("โครงการจัดซื้อระบบบริหารสัญญา");
+    expect(screen.getByTestId("phase1-fact-summary")).toHaveTextContent(
+      "โครงการจัดซื้อระบบบริหารสัญญา"
+    );
   });
 
   it("does not treat a partial fact set as ready", () => {
@@ -68,11 +68,10 @@ describe("Phase1Coverage", () => {
         ]}
       />
     );
-    expect(screen.getByText(/ช่องข้อเท็จจริงบังคับครบ/)).toBeInTheDocument();
-    expect(screen.queryByText(/ข้อมูลข้อเท็จจริงพร้อม/)).not.toBeInTheDocument();
+    expect(screen.getByText(/ช่องข้อเท็จจริงบังคับที่ยังไม่ครบ/)).toBeInTheDocument();
   });
 
-  it("asks to complete fact slots when they are still empty", () => {
+  it("lets the officer continue to Phase 2 to fill gaps", () => {
     render(
       <Phase1Coverage
         {...emptyHandlers}
@@ -89,19 +88,50 @@ describe("Phase1Coverage", () => {
         isError={false}
       />
     );
-    expect(screen.getByText(/ช่องข้อเท็จจริงบังคับครบ/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("phase1-skip"));
     expect(emptyHandlers.onEnterQa).toHaveBeenCalled();
   });
 
-  it("auto-enters Phase 2 after the countdown", () => {
-    vi.useFakeTimers();
+  it("does not auto-enter Phase 2; officer must click continue", () => {
     const onEnterQa = vi.fn();
-    render(<Phase1Coverage {...emptyHandlers} onEnterQa={onEnterQa} />);
-    expect(screen.getByTestId("phase1-countdown")).toBeInTheDocument();
-    act(() => {
-      vi.advanceTimersByTime(8_500);
-    });
+    render(
+      <Phase1Coverage
+        {...emptyHandlers}
+        onEnterQa={onEnterQa}
+        coverage={[
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "filled",
+            filled: true,
+            fact_required: true,
+          },
+        ]}
+      />
+    );
+    expect(screen.queryByTestId("phase1-countdown")).not.toBeInTheDocument();
+    expect(onEnterQa).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("phase1-skip"));
     expect(onEnterQa).toHaveBeenCalled();
+  });
+
+  it("does not auto-enter Phase 2 while required topics are still gaps", () => {
+    const onEnterQa = vi.fn();
+    render(
+      <Phase1Coverage
+        {...emptyHandlers}
+        onEnterQa={onEnterQa}
+        coverage={[
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "gap",
+            filled: false,
+            fact_required: true,
+          },
+        ]}
+      />
+    );
+    expect(onEnterQa).not.toHaveBeenCalled();
   });
 });

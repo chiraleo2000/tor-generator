@@ -2,19 +2,19 @@ export function pageMeta(pathname: string): { title: string; sub: string } {
   if (pathname.startsWith("/knowledge-base") || pathname.startsWith("/admin/knowledge-base")) {
     return {
       title: "ฐานความรู้",
-      sub: "คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG",
+      sub: "คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับค้นหา",
     };
   }
   if (pathname.includes("/draft") || pathname.includes("/wizard")) {
     return {
       title: "ร่าง TOR",
-      sub: "กระบวนการร่างเอกสาร TOR แบบ Flow 5 Phase",
+      sub: "กระบวนการร่างเอกสารกำหนดขอบเขตงานห้าขั้น",
     };
   }
   if (pathname.startsWith("/chat")) {
     return {
       title: "ถาม-ตอบ",
-      sub: "ห้องแชทรายคน ค้นคลังกลางและเอกสารของคุณด้วย RAG + กราฟกฎหมาย",
+      sub: "ดึงคลังกฎหมายจาก pgvector หลายชิ้น แล้วตอบแบบเจ้าหน้าที่พัสดุอย่างละเอียด",
     };
   }
   if (pathname.startsWith("/review")) {

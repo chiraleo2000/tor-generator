@@ -3,10 +3,14 @@
 POST /projects/{id}/draft-chat/start — auto-draft all 13 sections (SSE stream)
 POST /projects/{id}/draft-chat/message — edit/accept/redraft via chat (SSE stream)
 GET  /projects/{id}/draft-chat/status — drafting progress
+
+หมวดขอบเขตงาน (s4) บันทึกลงหัวข้อย่อย s4.1–s4.14 โดยตรง
+ส่วนหัวข้อหลักเก็บเฉพาะสรุปสั้น ๆ เพื่อไม่ให้ซ้ำตอนส่งออกขั้นที่ ๔
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -19,8 +23,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
-from app.domain.tor_sections import TOR_SECTION_LABELS, TOR_SECTION_ORDER
+from app.domain.tor_sections import (
+    SCOPE_SUBSECTIONS,
+    TOR_SECTION_LABELS,
+    TOR_SECTION_ORDER,
+)
 from app.exceptions import NotFoundError, ValidationError
+from app.export.table_parse import split_scope_subsection_draft
 from app.llm_admission import AdmissionTimeoutError, admit
 from app.models.project import Project
 from app.models.tor_section import TORSection
@@ -29,14 +38,25 @@ from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.draft_chat_service import (
+    build_merged_scope,
+    build_scope_overview,
+    draft_scope_subsection,
     draft_single_section,
     edit_section_draft,
     parse_draft_message_intent,
 )
-from app.services.intake_service import is_ready_to_compose, slot_map_of
+from app.services.intake_service import is_ready_to_compose, slot_map_of, with_project_intake
 
 logger = logging.getLogger("tor_app.draft_chat")
 router = APIRouter()
+_DRAFT_JOBS: dict[str, asyncio.Task[int]] = {}
+
+
+async def _consume_sse(events: AsyncIterator[str]) -> int:
+    count = 0
+    async for _event in events:
+        count += 1
+    return count
 
 
 class DraftChatMessageBody(BaseModel):
@@ -61,14 +81,33 @@ def _section_done_event(section_key: str, label: str, content: str, drafted_coun
     )
 
 
+def _s4_ai_map(rows: list[TORSection]) -> dict[str, str]:
+    return {
+        row.sub_key: (row.ai_draft or row.content or "").strip()
+        for row in rows
+        if row.sub_key and str(row.ai_draft or row.content or "").strip()
+    }
+
+
+def _s4_complete(drafted: dict[str, str]) -> bool:
+    return all(str(drafted.get(key) or "").strip() for key in SCOPE_SUBSECTIONS)
+
+
 async def _existing_section_text(
     session_factory: Any,
     project_id: uuid.UUID,
     section_key: str,
 ) -> str | None:
     async with session_factory() as persist:
+        if section_key == "s4":
+            drafted = _s4_ai_map(await _load_s4_rows(persist, project_id))
+            if _s4_complete(drafted):
+                return build_merged_scope(drafted)
+            return None
         row = await _get_section(persist, project_id, section_key)
-        text = (row.content or "").strip() if row else ""
+        if row is None or not str(row.ai_draft or "").strip():
+            return None
+        text = (row.content or row.ai_draft or "").strip()
     return text or None
 
 
@@ -89,7 +128,7 @@ async def _iter_llm_section_sse(
                 parts.append(token)
                 yield _sse("token", {"section_key": section_key, "text": token})
     except AdmissionTimeoutError:
-        errors.append("หมดเวลารอคิว LLM")
+        errors.append("หมดเวลารอคิวโมเดลภาษา")
         yield _sse(
             "section_error",
             {"section_key": section_key, "message": errors[-1]},
@@ -101,7 +140,6 @@ async def _iter_llm_section_sse(
             "section_error",
             {"section_key": section_key, "message": errors[-1]},
         )
-
 
 
 def _ok(request: Request, data: Any) -> JSONResponse:
@@ -138,7 +176,63 @@ async def _get_section(db: AsyncSession, project_id: uuid.UUID, key: str) -> TOR
     ).scalar_one_or_none()
 
 
+async def _load_s4_rows(db: AsyncSession, project_id: uuid.UUID) -> list[TORSection]:
+    return list(
+        (
+            await db.execute(
+                select(TORSection).where(
+                    TORSection.project_id == project_id,
+                    TORSection.section_key == "s4",
+                    TORSection.sub_key.is_not(None),
+                )
+            )
+        ).scalars().all()
+    )
+
+
+async def _load_s4_subs(db: AsyncSession, project_id: uuid.UUID) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for row in await _load_s4_rows(db, project_id):
+        if row.sub_key:
+            out[row.sub_key] = row.content or ""
+    return out
+
+
+async def _upsert_sub(
+    db: AsyncSession, project_id: uuid.UUID, sub_key: str, content: str
+) -> None:
+    row = (
+        await db.execute(
+            select(TORSection).where(
+                TORSection.project_id == project_id,
+                TORSection.section_key == "s4",
+                TORSection.sub_key == sub_key,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        db.add(
+            TORSection(
+                project_id=project_id,
+                section_key="s4",
+                sub_key=sub_key,
+                content=content,
+                ai_draft=content,
+                version=1,
+            )
+        )
+        return
+    row.content = content
+    row.ai_draft = content
+
+
 async def _save_section(db: AsyncSession, project_id: uuid.UUID, key: str, content: str) -> None:
+    if key == "s4":
+        await _save_s4_bundle(db, project_id, content)
+        return
+    from app.domain.section_fields import persist_section_fields
+
+    content = persist_section_fields(key, content)
     row = await _get_section(db, project_id, key)
     if row is None:
         db.add(
@@ -155,6 +249,253 @@ async def _save_section(db: AsyncSession, project_id: uuid.UUID, key: str, conte
     row.ai_draft = content
 
 
+async def _save_s4_bundle(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    content: str,
+    subs: dict[str, str] | None = None,
+) -> None:
+    """Persist s4.x rows; top-level s4 keeps a short overview only."""
+    parts = dict(subs or {})
+    if not parts:
+        parts = split_scope_subsection_draft(content)
+    for sub_key, body in parts.items():
+        if sub_key not in SCOPE_SUBSECTIONS:
+            continue
+        text = (body or "").strip()
+        if text:
+            await _upsert_sub(db, project_id, sub_key, text)
+    overview = build_scope_overview(parts) if parts else (content or "").strip()
+    if not overview and content.strip():
+        overview = content.strip()
+        if len(overview) > 360:
+            overview = overview[:360].rstrip() + "…"
+        overview = f"{overview}\n\n(รายละเอียดครบในหัวข้อย่อย ๔.๑–๔.๑๔)"
+    row = await _get_section(db, project_id, "s4")
+    if row is None:
+        db.add(
+            TORSection(
+                project_id=project_id,
+                section_key="s4",
+                content=overview,
+                ai_draft=overview,
+                version=1,
+            )
+        )
+        return
+    row.content = overview
+    row.ai_draft = overview
+
+
+async def _persist_s4_sub(
+    session_factory: Any, project_id: uuid.UUID, sub_key: str, text: str
+) -> None:
+    async with session_factory() as persist:
+        await _upsert_sub(persist, project_id, sub_key, text)
+        await persist.commit()
+
+
+async def _emit_s4_sub_done(
+    session_factory: Any | None,
+    project_id: uuid.UUID | None,
+    sub_key: str,
+    title: str,
+    text: str,
+) -> AsyncIterator[str]:
+    if session_factory is not None and project_id is not None:
+        await _persist_s4_sub(session_factory, project_id, sub_key, text)
+    yield _sse(
+        "subsection_done",
+        {
+            "section_key": "s4",
+            "sub_key": sub_key,
+            "title": title,
+            "content": text,
+        },
+    )
+
+
+async def _iter_s4_subsection_sse(
+    redis: Any,
+    request_id: str,
+    slot_map: dict[str, Any],
+    user_id: uuid.UUID,
+    existing: dict[str, str],
+    collected: dict[str, str],
+    errors: list[str],
+    session_factory: Any | None = None,
+    project_id: uuid.UUID | None = None,
+) -> AsyncIterator[str]:
+    for sub_key, title in SCOPE_SUBSECTIONS.items():
+        prior = (existing.get(sub_key) or "").strip()
+        if prior:
+            collected[sub_key] = prior
+            yield _sse(
+                "token",
+                {
+                    "section_key": "s4",
+                    "sub_key": sub_key,
+                    "text": f"\n### {sub_key} {title}\n{prior}\n",
+                },
+            )
+            async for event in _emit_s4_sub_done(
+                session_factory, project_id, sub_key, title, prior
+            ):
+                yield event
+            continue
+        yield _sse(
+            "subsection_start",
+            {"section_key": "s4", "sub_key": sub_key, "title": title},
+        )
+        parts: list[str] = []
+        try:
+            async with admit(redis, "llm", f"{request_id}-{sub_key}"):
+                async for token in draft_scope_subsection(
+                    sub_key, slot_map, user_id=user_id
+                ):
+                    parts.append(token)
+                    yield _sse(
+                        "token",
+                        {"section_key": "s4", "sub_key": sub_key, "text": token},
+                    )
+        except AdmissionTimeoutError:
+            errors.append(f"หมดเวลารอคิวโมเดลภาษา ({sub_key})")
+            yield _sse(
+                "section_error",
+                {"section_key": "s4", "sub_key": sub_key, "message": errors[-1]},
+            )
+            continue
+        except Exception as exc:
+            logger.exception("Draft failed for %s", sub_key)
+            errors.append(str(exc)[:200])
+            yield _sse(
+                "section_error",
+                {"section_key": "s4", "sub_key": sub_key, "message": errors[-1]},
+            )
+            continue
+        text = "".join(parts).strip()
+        if text:
+            collected[sub_key] = text
+            async for event in _emit_s4_sub_done(
+                session_factory, project_id, sub_key, title, text
+            ):
+                yield event
+
+
+async def _run_sequential_draft(
+    session_factory: Any,
+    project_id: uuid.UUID,
+    slot_map: dict[str, Any],
+    user_id: uuid.UUID,
+    request_id: str,
+    redis: Any,
+    remaining_passes: int = 1,
+) -> int:
+    """Draft s1–s13 (and s4.1–s4.14) one LM Studio call at a time. Survives SSE disconnect."""
+    drafted_count = 0
+    for section_key in TOR_SECTION_ORDER:
+        existing = await _existing_section_text(session_factory, project_id, section_key)
+        if existing:
+            drafted_count += 1
+            logger.info("Skip existing %s for %s", section_key, project_id)
+            continue
+        logger.info("Drafting %s for %s", section_key, project_id)
+        try:
+            if section_key == "s4":
+                collected: dict[str, str] = {}
+                errors: list[str] = []
+                async with session_factory() as read_session:
+                    prior_rows = await _load_s4_rows(read_session, project_id)
+                prior_ai = {
+                    row.sub_key: (row.ai_draft or "").strip()
+                    for row in prior_rows
+                    if row.sub_key and str(row.ai_draft or "").strip()
+                }
+                await _consume_sse(
+                    _iter_s4_subsection_sse(
+                        redis,
+                        request_id,
+                        slot_map,
+                        user_id,
+                        prior_ai,
+                        collected,
+                        errors,
+                        session_factory=session_factory,
+                        project_id=project_id,
+                    )
+                )
+                if not _s4_complete(collected):
+                    logger.warning(
+                        "s4 incomplete for %s (%s/%s)",
+                        project_id,
+                        len(collected),
+                        len(SCOPE_SUBSECTIONS),
+                    )
+                    continue
+                preview = build_merged_scope(collected)
+                async with session_factory() as persist:
+                    await _save_s4_bundle(persist, project_id, preview, collected)
+                    await persist.commit()
+                drafted_count += 1
+                logger.info("Drafted s4 subsections for %s", project_id)
+                continue
+            parts: list[str] = []
+            errors: list[str] = []
+            await _consume_sse(
+                _iter_llm_section_sse(
+                    redis, request_id, section_key, slot_map, user_id, parts, errors
+                )
+            )
+            if errors:
+                continue
+            full_text = "".join(parts).strip()
+            if not full_text:
+                continue
+            async with session_factory() as persist:
+                await _save_section(persist, project_id, section_key, full_text)
+                await persist.commit()
+            drafted_count += 1
+        except Exception:
+            logger.exception("Draft failed for %s on %s", section_key, project_id)
+    if drafted_count < len(TOR_SECTION_ORDER) and remaining_passes > 0:
+        logger.info(
+            "Retry incomplete draft for %s (%s/%s)",
+            project_id,
+            drafted_count,
+            len(TOR_SECTION_ORDER),
+        )
+        return await _run_sequential_draft(
+            session_factory,
+            project_id,
+            slot_map,
+            user_id,
+            request_id,
+            redis,
+            remaining_passes - 1,
+        )
+    return drafted_count
+
+
+def _ensure_draft_job(
+    session_factory: Any,
+    project_id: uuid.UUID,
+    slot_map: dict[str, Any],
+    user_id: uuid.UUID,
+    request_id: str,
+    redis: Any,
+) -> asyncio.Task[int]:
+    key = str(project_id)
+    task = _DRAFT_JOBS.get(key)
+    if task is not None and not task.done():
+        return task
+    _DRAFT_JOBS[key] = asyncio.create_task(
+        _run_sequential_draft(
+            session_factory, project_id, slot_map, user_id, request_id, redis
+        )
+    )
+    return _DRAFT_JOBS[key]
+
+
 @router.post("/{project_id}/draft-chat/start", dependencies=[Depends(rate_limit_ai)])
 async def start_draft_chat(
     request: Request,
@@ -162,69 +503,73 @@ async def start_draft_chat(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> StreamingResponse:
-    """Auto-draft all 13 TOR sections. Streams SSE events per section."""
+    """Auto-draft all 13 TOR sections. Streams SSE progress; work continues if the client drops."""
     project = await _project(db, project_id, current_user)
     if not is_ready_to_compose(project):
         raise ValidationError(
             message="ต้องยืนยันพร้อมร่าง (confirm-ready) ก่อนจึงจะเริ่มร่างได้"
         )
-    slot_map = slot_map_of(project)
+    slot_map = with_project_intake(slot_map_of(project), project)
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()
     session_factory = request.app.state.db_session_factory
+    redis = getattr(request.app.state, "redis", None)
+    job = _ensure_draft_job(
+        session_factory, project_id, slot_map, current_user.id, request_id, redis
+    )
+
+    async def _emit_newly_done(seen: set[str]) -> AsyncIterator[str]:
+        for key in TOR_SECTION_ORDER:
+            if key in seen:
+                continue
+            text = await _existing_section_text(session_factory, project_id, key)
+            if not text:
+                continue
+            seen.add(key)
+            yield _section_done_event(
+                key, TOR_SECTION_LABELS.get(key, key), text, len(seen)
+            )
 
     async def generate() -> AsyncIterator[str]:
-        import asyncio
-
-        redis = getattr(request.app.state, "redis", None)
-        drafted_count = 0
-
-        for section_key in TOR_SECTION_ORDER:
-            label = TOR_SECTION_LABELS.get(section_key, section_key)
-            existing = await _existing_section_text(session_factory, project_id, section_key)
-            if existing:
-                drafted_count += 1
-                yield _section_done_event(section_key, label, existing, drafted_count)
-                continue
-
-            yield _sse(
-                "section_start",
-                {
-                    "section_key": section_key,
-                    "title": label,
-                    "index": TOR_SECTION_ORDER.index(section_key),
-                    "total": len(TOR_SECTION_ORDER),
-                },
-            )
-            parts: list[str] = []
-            errors: list[str] = []
-            async for event in _iter_llm_section_sse(
-                redis, request_id, section_key, slot_map, current_user.id, parts, errors
-            ):
+        yield _sse(
+            "progress",
+            {"message": "เริ่มร่างทีละหมวดจากโมเดลภาษา", "total": len(TOR_SECTION_ORDER)},
+        )
+        seen: set[str] = set()
+        async for event in _emit_newly_done(seen):
+            yield event
+        while not job.done():
+            yield ": ping\n\n"
+            _done, _pending = await asyncio.wait({job}, timeout=2)
+            async for event in _emit_newly_done(seen):
                 yield event
-            if errors:
-                continue
-            full_text = "".join(parts).strip()
-            if not full_text:
-                yield _sse(
-                    "section_error",
-                    {"section_key": section_key, "message": "โมเดลคืนร่างว่าง"},
-                )
-                continue
-            async with session_factory() as persist:
-                await _save_section(persist, project_id, section_key, full_text)
-                await persist.commit()
-            drafted_count += 1
-            yield _section_done_event(section_key, label, full_text, drafted_count)
-            await asyncio.sleep(0.5)
-
+            if _done:
+                break
+        drafted_count = 0
+        try:
+            drafted_count = job.result()
+        except Exception:
+            logger.exception("Sequential draft job failed for %s", project_id)
+        async for event in _emit_newly_done(seen):
+            yield event
         yield _sse(
             "all_done",
-            {"drafted_count": drafted_count, "total": len(TOR_SECTION_ORDER)},
+            {
+                "drafted_count": drafted_count or len(seen),
+                "total": len(TOR_SECTION_ORDER),
+            },
         )
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/{project_id}/draft-chat/message", dependencies=[Depends(rate_limit_ai)])
@@ -237,9 +582,8 @@ async def draft_chat_message(
 ) -> StreamingResponse:
     """Handle user message: accept, edit, redraft, or freeform feedback."""
     project = await _project(db, project_id, current_user)
-    slot_map = slot_map_of(project)
+    slot_map = with_project_intake(slot_map_of(project), project)
     intent, target_key, detail = parse_draft_message_intent(body.content)
-    # Use explicit section_key from body if provided
     section_key = body.section_key or target_key
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
@@ -263,7 +607,6 @@ async def draft_chat_message(
             yield _sse("accepted", {"section_key": section_key, "message": "ยอมรับแล้ว"})
             return
 
-        # For edit/redraft/freeform — need to re-draft the section
         if not section_key:
             yield _sse(
                 "error",
@@ -277,12 +620,47 @@ async def draft_chat_message(
             {"section_key": section_key, "title": label, "intent": intent},
         )
 
-        # Load current draft for edit context
+        if section_key == "s4" and intent in ("redraft",):
+            collected: dict[str, str] = {}
+            errors: list[str] = []
+            async for event in _iter_s4_subsection_sse(
+                redis,
+                request_id,
+                slot_map,
+                current_user.id,
+                {},
+                collected,
+                errors,
+                session_factory=session_factory,
+                project_id=project_id,
+            ):
+                yield event
+            if collected:
+                preview = build_merged_scope(collected)
+                async with session_factory() as persist:
+                    await _save_s4_bundle(persist, project_id, preview, collected)
+                    await persist.commit()
+                yield _sse(
+                    "section_done",
+                    {
+                        "section_key": section_key,
+                        "title": label,
+                        "content": preview,
+                        "intent": intent,
+                    },
+                )
+            return
+
         current_draft = ""
         async with session_factory() as read_session:
-            row = await _get_section(read_session, project_id, section_key)
-            if row:
-                current_draft = row.content or ""
+            if section_key == "s4":
+                current_draft = build_merged_scope(
+                    await _load_s4_subs(read_session, project_id)
+                )
+            else:
+                row = await _get_section(read_session, project_id, section_key)
+                if row:
+                    current_draft = row.content or ""
 
         parts: list[str] = []
         try:
@@ -299,7 +677,7 @@ async def draft_chat_message(
                     parts.append(token)
                     yield _sse("token", {"section_key": section_key, "text": token})
         except AdmissionTimeoutError:
-            yield _sse("error", {"message": "หมดเวลารอคิว LLM"})
+            yield _sse("error", {"message": "หมดเวลารอคิวโมเดลภาษา"})
             return
         except Exception as exc:
             logger.exception("Draft chat message failed for %s", section_key)
@@ -307,7 +685,6 @@ async def draft_chat_message(
             return
 
         full_text = "".join(parts)
-        # Save updated draft
         async with session_factory() as persist:
             await _save_section(persist, project_id, section_key, full_text)
             await persist.commit()
@@ -343,19 +720,31 @@ async def draft_chat_status(
         )
     ).scalars().all()
     section_map = {s.section_key: s for s in sections}
+    s4_rows = await _load_s4_rows(db, project_id)
+    s4_subs = {row.sub_key: row.content or "" for row in s4_rows if row.sub_key}
+    s4_ai_map = _s4_ai_map(s4_rows)
+    s4_ready = _s4_complete(s4_ai_map)
     status_list = []
     drafted_count = 0
     for key in TOR_SECTION_ORDER:
         row = section_map.get(key)
-        has_content = bool(row and (row.content or "").strip())
-        if has_content:
+        if key == "s4":
+            has_content = s4_ready or any((value or "").strip() for value in s4_subs.values())
+            preview = build_merged_scope(s4_subs)[:200] if has_content else ""
+            ai_drafted = s4_ready
+        else:
+            has_content = bool(row and (row.content or "").strip())
+            preview = (row.content or "")[:200] if row else ""
+            ai_drafted = bool(row and str(row.ai_draft or "").strip())
+        if ai_drafted:
             drafted_count += 1
         status_list.append(
             {
                 "section_key": key,
                 "title": TOR_SECTION_LABELS.get(key, key),
-                "has_content": has_content,
-                "content_preview": (row.content or "")[:200] if row else "",
+                "has_content": has_content or ai_drafted,
+                "ai_drafted": ai_drafted,
+                "content_preview": preview,
                 "human_confirmed": bool(row.is_approved) if row else False,
             }
         )

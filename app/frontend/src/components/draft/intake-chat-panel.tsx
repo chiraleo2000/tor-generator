@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Phase0Upload } from "@/components/draft/phase0-upload";
 import { Phase1Coverage, type CoverageRow } from "@/components/draft/phase1-coverage";
 import { Phase2Qa } from "@/components/draft/phase2-qa";
@@ -11,10 +11,24 @@ import {
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
+import { analysisMappingReady } from "@/lib/intake-complete";
 
 function isIntakeErrorMessage(text: string): boolean {
   return /ไม่สำเร็จ|ยังไม่ครบ|อย่างน้อย|ต้อง/.test(text);
 }
+
+type CoveragePayload = {
+  coverage?: CoverageRow[];
+  gap_questions?: string[];
+  ready_to_compose?: boolean;
+  has_material?: boolean;
+  analyzed?: boolean;
+};
+
+const ANALYZE_HTTP_TIMEOUT_MS = 360_000;
+const ANALYZE_POLL_MS = 2_500;
+const ANALYZE_RECOVERY_MS = 180_000;
+
 
 export function IntakeChatPanel({
   projectId,
@@ -40,18 +54,13 @@ export function IntakeChatPanel({
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "analyzing" | "done">(
     "idle"
   );
+  const advancedRef = useRef(false);
   const { ask, dialog } = useConfirmPhase();
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
   const refreshCoverage = useCallback(async () => {
     const response = await apiClient.get(`/projects/${projectId}/intake/coverage`);
-    const payload = unwrapData<{
-      coverage?: CoverageRow[];
-      gap_questions?: string[];
-      ready_to_compose?: boolean;
-      has_material?: boolean;
-      analyzed?: boolean;
-    }>(response);
+    const payload = unwrapData<CoveragePayload>(response);
     setCoverage(payload.coverage || []);
     setGaps(payload.gap_questions || []);
     setReady(Boolean(payload.ready_to_compose));
@@ -59,11 +68,50 @@ export function IntakeChatPanel({
     return payload;
   }, [projectId]);
 
+  const advanceAfterAnalyze = useCallback(async () => {
+    if (advancedRef.current) return;
+    advancedRef.current = true;
+    setUploadStatus("done");
+    await Promise.resolve(onAnalyzed());
+  }, [onAnalyzed]);
+
+  const pollUntilMapped = useCallback(
+    async (maxMs: number) => {
+      const deadline = Date.now() + maxMs;
+      while (Date.now() < deadline) {
+        if (advancedRef.current) return true;
+        try {
+          const payload = await refreshCoverage();
+          const readyMapped = analysisMappingReady(payload);
+          if (readyMapped) {
+            await advanceAfterAnalyze();
+            return true;
+          }
+        } catch {
+          /* keep polling while backend may still be writing */
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, ANALYZE_POLL_MS));
+      }
+      return false;
+    },
+    [advanceAfterAnalyze, refreshCoverage]
+  );
+
   useEffect(() => {
-    refreshCoverage().catch(() => {
-      /* coverage loads after upload/paste */
-    });
-  }, [refreshCoverage]);
+    let live = true;
+    refreshCoverage()
+      .then(() => {
+        if (!live) return;
+        // Do NOT auto persistPhase(1) on mount — that raced and downgraded Phase 2→1.
+        // Fresh analyze / pollUntilMapped call advanceAfterAnalyze explicitly.
+      })
+      .catch(() => {
+        /* coverage loads after upload/paste */
+      });
+    return () => {
+      live = false;
+    };
+  }, [refreshCoverage, phase, uploadStatus]);
 
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -103,20 +151,42 @@ export function IntakeChatPanel({
   async function startAnalyze() {
     const confirmed = await ask(PHASE_FORWARD_CONFIRM[1]);
     if (!confirmed) return;
+    advancedRef.current = false;
     setBusy(true);
     setUploadStatus("analyzing");
     setMessage(null);
+
+    // Parallel poll: if HTTP dies but backend finishes, still leave Phase 0.
+    const pollPromise = pollUntilMapped(ANALYZE_HTTP_TIMEOUT_MS + ANALYZE_RECOVERY_MS);
+
     try {
       if (draftText.trim().length >= 20) {
         await saveText();
       }
-      await apiClient.post(`/projects/${projectId}/intake/analyze`, {}, { timeout: 90_000 });
-      await refreshCoverage();
-      onAnalyzed();
+      await apiClient.post(
+        `/projects/${projectId}/intake/analyze`,
+        {},
+        { timeout: ANALYZE_HTTP_TIMEOUT_MS }
+      );
+      const payload = await refreshCoverage();
+      if (analysisMappingReady(payload)) {
+        await advanceAfterAnalyze();
+        return;
+      }
+      // Backend said OK but coverage not visible yet — brief poll then fail clearly.
+      const recovered = await pollUntilMapped(30_000);
+      if (recovered) return;
+      setUploadStatus("idle");
+      setMessage(
+        "วิเคราะห์ยังไม่ครบ — ยังไม่มีตารางช่องจากเอกสาร กรุณาลองอีกครั้งหรือเพิ่มข้อความโครงการ"
+      );
     } catch (err: unknown) {
+      const recovered = await pollUntilMapped(ANALYZE_RECOVERY_MS);
+      if (recovered) return;
       setUploadStatus("idle");
       setMessage(apiErrorMessage(err, "วิเคราะห์ไม่สำเร็จ — อัปโหลดหรือวางข้อความก่อน"));
     } finally {
+      await pollPromise.catch(() => undefined);
       setBusy(false);
     }
   }
@@ -189,6 +259,9 @@ export function IntakeChatPanel({
           apiBase={apiBase}
           onConfirmReady={() => {
             confirmReady().catch(() => undefined);
+          }}
+          onCoverage={(rows) => {
+            setCoverage(rows);
           }}
           onChatReady={() => {
             refreshCoverage().catch(() => {

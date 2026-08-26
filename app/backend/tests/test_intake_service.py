@@ -30,8 +30,10 @@ from app.services.intake_service import (
     merge_analysis,
     next_asking_slot,
     parse_fill_reference_request,
+    project_intake_pack,
     ready_criteria_met,
     resolve_draft_section_key,
+    with_project_intake,
 )
 
 
@@ -90,6 +92,18 @@ def test_append_intake_text_and_material():
     assert "จัดซื้อ" in pack[0]["text"]
 
 
+def test_project_intake_pack_stays_on_this_project():
+    project = _project()
+    other = _project()
+    append_intake_text(project, "งบ.pdf", "วงเงินสองล้านห้าแสนของโครงการนี้")
+    append_intake_text(other, "อื่น.pdf", "เอกสารโครงการอื่นห้ามปน")
+    pack = project_intake_pack(project)
+    assert "วงเงินสองล้านห้าแสนของโครงการนี้" in pack
+    assert "เอกสารโครงการอื่นห้ามปน" not in pack
+    slots = with_project_intake({}, project)
+    assert "วงเงินสองล้านห้าแสนของโครงการนี้" in slots["_project_intake"]["content"]
+
+
 def test_merge_analysis_keeps_previous_keys():
     merged = merge_analysis({"intake_files": ["a.pdf"]}, {"analyzed": True})
     assert merged["intake_files"] == ["a.pdf"]
@@ -110,7 +124,10 @@ async def test_analyze_pack_parses_llm_json():
     llm.invoke = AsyncMock(
         return_value=MagicMock(content=json.dumps(payload, ensure_ascii=False))
     )
-    with patch("app.services.intake_service.ProviderFactory") as factory:
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
         factory.return_value.get_llm.return_value = llm
         result = await analyze_pack(_project(), "เนื้อหา", ["a.txt"])
     assert result["analyzed"] is True
@@ -126,7 +143,10 @@ async def test_analyze_pack_parses_llm_json():
 async def test_analyze_pack_falls_back_when_json_invalid():
     llm = MagicMock()
     llm.invoke = AsyncMock(return_value=MagicMock(content="not-json"))
-    with patch("app.services.intake_service.ProviderFactory") as factory:
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
         factory.return_value.get_llm.return_value = llm
         result = await analyze_pack(_project(), "เนื้อหา", ["a.txt"])
     assert result["analyzed"] is True
@@ -144,13 +164,27 @@ async def test_fill_non_fact_reference_slots_skips_facts():
         new_callable=AsyncMock,
         return_value={"content": "อ้างระเบียบ", "sources": ["พ.ร.บ."]},
     ) as fill:
-        result = await fill_non_fact_reference_slots(project, uuid4())
+        result = await fill_non_fact_reference_slots(project, uuid4(), as_standard=True)
     assert "s3" in result["filled_keys"] or result["filled_keys"]
     assert all(key not in FACT_REQUIRED_SLOTS for key in result["filled_keys"])
-    assert result["slot_map"]["s3"]["status"] == "reference_only"
+    assert result["slot_map"]["s3"]["status"] == "filled"
+    assert "มาตรฐานกลางจากคลัง" in result["slot_map"]["s3"]["sources"]
     assert fill.await_count >= 1
-    assert len(result["filled_keys"]) <= 8
+    assert len(result["filled_keys"]) <= 12
 
+
+@pytest.mark.asyncio
+async def test_fill_non_fact_reference_slots_can_stay_reference_only():
+    slots = empty_slot_map()
+    slots["s3"]["status"] = "gap"
+    project = _project(analysis={"slot_map": slots})
+    with patch(
+        "app.services.intake_service.fill_reference_slot",
+        new_callable=AsyncMock,
+        return_value={"content": "อ้างระเบียบ", "sources": ["พ.ร.บ."]},
+    ):
+        result = await fill_non_fact_reference_slots(project, uuid4(), as_standard=False)
+    assert result["slot_map"]["s3"]["status"] == "reference_only"
 
 @pytest.mark.asyncio
 async def test_fill_non_fact_reference_slots_skips_slow_slot(monkeypatch):
@@ -203,15 +237,28 @@ async def test_apply_slot_map_writes_sections():
     assert "โครงการจัดซื้อ" in slot_content(slots, "s1")
 
 
-def test_apply_chat_answer_fills_next_fact_not_legal_gap():
+def test_apply_chat_answer_routes_budget_to_s6():
     slots = empty_slot_map()
     slots["s1"] = {"content": "โครงการจัดซื้อ", "status": "filled", "sources": []}
     slots["s4.2"] = {"content": "", "status": "gap", "sources": []}
     updated = apply_chat_answer_to_slots(slots, "วงเงินงบประมาณสองล้านห้าแสนบาทถ้วน")
-    assert updated == ["s2"]
-    assert slots["s2"]["status"] == "filled"
+    assert updated == ["s6"]
+    assert slots["s6"]["status"] == "filled"
     assert slots["s1"]["content"] == "โครงการจัดซื้อ"
     assert slots["s4.2"]["status"] == "gap"
+
+
+def test_apply_chat_answer_bulk_labelled_paste():
+    slots = empty_slot_map()
+    text = (
+        "ความเป็นมา (s1): โครงการพัฒนาระบบ\n"
+        "วัตถุประสงค์ (s2): เพื่อบริการประชาชน\n"
+        "วงเงินงบประมาณ (s6): 15000000 บาท"
+    )
+    updated = apply_chat_answer_to_slots(slots, text)
+    assert set(updated) >= {"s1", "s2", "s6"}
+    assert "พัฒนาระบบ" in slots["s1"]["content"]
+    assert "15000000" in slots["s6"]["content"]
 
 
 def test_apply_chat_answer_fills_s1_first():
@@ -375,6 +422,19 @@ async def test_analyze_pack_fills_coded_paste_without_llm():
 
 
 @pytest.mark.asyncio
+async def test_analyze_pack_can_skip_llm_when_flag_off():
+    """ANALYZE_USE_LLM=False must stay heuristics-only (no ProviderFactory call)."""
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", False),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
+        result = await analyze_pack(_project(), "เนื้อหาโครงการยังไม่ติดรหัสช่อง", ["a.txt"])
+    factory.assert_not_called()
+    assert result["analyzed"] is True
+    assert result["gap_questions"]
+
+
+@pytest.mark.asyncio
 async def test_analyze_pack_keeps_paste_when_llm_times_out():
     llm = MagicMock()
 
@@ -384,6 +444,7 @@ async def test_analyze_pack_keeps_paste_when_llm_times_out():
 
     llm.invoke = hang
     with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
         patch("app.services.intake_service.ProviderFactory") as factory,
         patch("app.services.intake_service.ANALYZE_LLM_TIMEOUT_SEC", 0.01),
     ):
@@ -392,4 +453,18 @@ async def test_analyze_pack_keeps_paste_when_llm_times_out():
     assert result["analyzed"] is True
     assert result["slot_map"]["s1"]["status"] == "gap"
     assert result["gap_questions"]
+
+
+def test_attest_hitl_sections_marks_mandatory_rows():
+    from app.services.intake_service import attest_hitl_sections
+
+    rows = []
+    for key in ("s3", "s6", "s8", "s10", "s13"):
+        row = MagicMock()
+        row.section_key = key
+        row.sub_key = None
+        row.is_approved = False
+        rows.append(row)
+    attest_hitl_sections(rows)
+    assert all(row.is_approved for row in rows)
 

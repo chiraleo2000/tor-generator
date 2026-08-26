@@ -4,12 +4,14 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { canSelectPhase } from "@/lib/phase-gate";
 
+const THAI_PHASE = ["๐", "๑", "๒", "๓", "๔"] as const;
+
 export const PHASES = [
-  { id: 0, title: "เตรียมข้อมูล", sub: "Pre-Drafting" },
-  { id: 1, title: "ผลวิเคราะห์", sub: "Analysis" },
-  { id: 2, title: "สอบถามเพิ่ม", sub: "Q&A + กฎระเบียบ" },
-  { id: 3, title: "ร่างเนื้อหา TOR", sub: "Drafting 13 หมวด" },
-  { id: 4, title: "ทบทวน/เผยแพร่", sub: "Review & Publish" },
+  { id: 0, title: "เตรียมข้อมูล", sub: "อัปโหลดและวิเคราะห์" },
+  { id: 1, title: "ผลวิเคราะห์", sub: "ตารางช่องจากเอกสาร" },
+  { id: 2, title: "สอบถามเพิ่ม", sub: "เติมช่องและกฎระเบียบ" },
+  { id: 3, title: "ร่างเนื้อหา", sub: "สิบสามหมวดรวมหัวข้อย่อย" },
+  { id: 4, title: "ทบทวนและส่งออก", sub: "ตรวจกฎและเผยแพร่" },
 ] as const;
 
 export function PhaseFlow({
@@ -31,7 +33,7 @@ export function PhaseFlow({
           <div key={phase.id} className="flex min-w-[150px] flex-1 items-start">
             <button
               type="button"
-              aria-label={`Phase ${phase.id}`}
+              aria-label={`ขั้นที่ ${THAI_PHASE[phase.id]} ${phase.title}`}
               aria-disabled={locked}
               aria-current={active ? "step" : undefined}
               data-testid={`phase-${phase.id}`}
@@ -56,13 +58,16 @@ export function PhaseFlow({
                     "border-gray-200 bg-gray-200 text-gray-600"
                 )}
               >
-                {done ? <Check className="h-5 w-5" /> : phase.id}
+                {done ? <Check className="h-5 w-5" /> : THAI_PHASE[phase.id]}
               </span>
               <span className="block text-[13px] font-bold text-gray-700">
-                Phase {phase.id}
+                ขั้นที่ {THAI_PHASE[phase.id]}
               </span>
               <span className="block text-[11px] text-muted-foreground">
                 {phase.title}
+              </span>
+              <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                {phase.sub}
               </span>
             </button>
             {index < PHASES.length - 1 ? (

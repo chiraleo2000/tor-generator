@@ -10,5 +10,5 @@ export default function WizardRedirectPage() {
   useEffect(() => {
     if (id) router.replace(`/projects/${id}/draft`);
   }, [id, router]);
-  return <p>กำลังเปิดกระบวนการ 5 Phase...</p>;
+  return <p>กำลังเปิดกระบวนการร่างห้าขั้น...</p>;
 }

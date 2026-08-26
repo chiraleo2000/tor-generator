@@ -141,7 +141,7 @@ export default function ProjectsPage() {
       </div>
       <div className="mt-4 text-right">
         <Button data-testid="new-project" onClick={() => setCreatingOpen(true)}>
-          + สร้างโครงการ TOR ใหม่
+          + สร้างโครงการใหม่
         </Button>
       </div>
       <NewProjectDialog open={creatingOpen} onOpenChange={setCreatingOpen} />

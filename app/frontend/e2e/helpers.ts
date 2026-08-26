@@ -25,8 +25,6 @@ const PAUSE_MS = Number(
   process.env.E2E_PAUSE_MS || (process.env.HEADED === "1" ? "900" : "600")
 );
 
-const HITL_KEYS = ["s3", "s6", "s8", "s10", "s13"] as const;
-
 export const LIVE_INTAKE_TEXT = [
   "ความเป็นมา (s1): กรมบัญชีกลางมีความจำเป็นต้องจัดซื้อระบบสารสนเทศบริหารสัญญาจัดซื้อจัดจ้าง",
   "เพื่อติดตามงวดจ่ายและการส่งมอบให้เป็นไปตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560",
@@ -128,12 +126,12 @@ export async function createProjectAndOpenDraft(
 export async function walkFivePhases(page: Page) {
   await expect(page.getByTestId("draft-page")).toBeVisible();
   await expect(page.getByTestId("intake-chat-panel")).toBeVisible();
-  await expect(page.getByText("Phase 0: เตรียมข้อมูล")).toBeVisible();
+  await expect(page.getByText("ขั้นที่ ๐: เตรียมข้อมูล")).toBeVisible();
   await expect(page.getByTestId("intake-paste")).toBeVisible();
   await expect(page.getByTestId("intake-start-analyze")).toBeVisible();
   await expect(page.getByText("โหลดห้องแชทไม่สำเร็จ")).toHaveCount(0);
   await page.getByTestId("phase-2").click({ force: true });
-  await expect(page.getByText("Phase 0: เตรียมข้อมูล")).toBeVisible();
+  await expect(page.getByText("ขั้นที่ ๐: เตรียมข้อมูล")).toBeVisible();
   await expect(page.getByText("Phase 3: ร่างเนื้อหา TOR")).toHaveCount(0);
   await walkLiveFivePhases(page);
 }
@@ -184,10 +182,6 @@ export async function walkLiveAnalyzeToPhase1(page: Page) {
   await typeLikeUser(page.getByTestId("intake-paste"), LIVE_INTAKE_TEXT);
   await pauseLikeUser(page, 600);
   await uploadPhase0Sample(page);
-  const uploading = page.getByTestId("phase0-uploading");
-  if (await uploading.count()) {
-    await expect(uploading).toContainText("กำลังอัปโหลด...");
-  }
   await saveEvidence(page, "03-phase-0-upload");
   await pauseLikeUser(page, 800);
   await page.getByTestId("intake-start-analyze").click();
@@ -204,15 +198,9 @@ export async function walkLiveAnalyzeToPhase1(page: Page) {
   await expect(page.getByText("รายละเอียดที่จัดเข้าช่อง")).toBeVisible();
   await expect(page.getByTestId("coverage-row-s1")).toBeVisible();
   await saveEvidence(page, "04b-phase-1-coverage");
-  const countdown = page.getByTestId("phase1-countdown");
-  if (await countdown.count()) {
-    await expect(countdown).toBeVisible();
-    await saveEvidence(page, "e2e-phase-1-coverage");
-  }
   const skip = page.getByTestId("phase1-skip");
-  if (await skip.count()) {
-    await skip.click();
-  }
+  await expect(skip).toBeVisible();
+  await skip.click();
 }
 
 /** Real backend + LM Studio: paste, upload, analyze, Phase 2 chat if needed, compose. */
@@ -240,37 +228,72 @@ export async function walkLiveDraftToCompose(page: Page) {
   await expect(page.getByTestId("draft-chat")).toBeVisible();
 }
 
-async function confirmHitlSections(page: Page) {
-  for (const key of HITL_KEYS) {
-    await page.getByTestId(`section-preview-${key}`).click();
-    await expect(page.getByTestId(`hitl-confirm-${key}`)).toBeVisible();
-    await page.getByTestId(`hitl-confirm-${key}`).click();
-    await pauseLikeUser(page, 600);
-    await page.getByTestId(`section-preview-${key}`).click();
+const SCOPE_SUB_KEYS = Array.from({ length: 14 }, (_, i) => `s4.${i + 1}`);
+
+const SAMPLE_SCOPE_TABLE = [
+  "| รายการ | รายละเอียด |",
+  "| --- | --- |",
+  "| งวดที่ ๑ | ส่งมอบรายงานวิเคราะห์ |",
+].join("\n");
+
+async function assertPhase3SubsectionsThaiAndTable(page: Page) {
+  await expect(page.getByTestId("phase3-draft")).toContainText("ขั้นที่ ๓");
+  await expect(page.getByTestId("phase3-draft")).toContainText("๔.๑–๔.๑๔");
+  await expect(page.getByText("Phase 3")).toHaveCount(0);
+  await expect(page.getByText("As-Is")).toHaveCount(0);
+  await expect(page.getByText("เนื้อหาร่าง (จากเอกสารหรือระบบ)")).toHaveCount(0);
+  await expect(page.getByText("เนื้อหาร่าง (จากเอกสาร/AI)")).toHaveCount(0);
+  const s1Header = page.getByRole("button", { name: /หมวด 1:/ });
+  await expect(s1Header).toBeVisible();
+  const historyField = page.getByText("ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม");
+  if ((await historyField.count()) === 0) {
+    await s1Header.click();
   }
+  await expect(historyField).toBeVisible();
+  await s1Header.click();
+  const scopeHeader = page.getByRole("button", { name: /หมวด 4:/ });
+  await expect(scopeHeader).toBeVisible();
+  if ((await page.getByTestId("scope-subsection-editor").count()) === 0) {
+    await scopeHeader.click();
+  }
+  await expect(page.getByTestId("scope-subsection-editor")).toBeVisible();
+  await expect(page.getByTestId("scope-subsection-editor")).toContainText("๔.๑");
+  for (const key of SCOPE_SUB_KEYS) {
+    const panel = page.getByTestId(`scope-sub-${key}`);
+    await expect(panel).toBeVisible();
+    await expect(panel.locator("textarea")).toHaveValue(/\S.{15,}/);
+  }
+  const deliverable = page.getByTestId("scope-sub-s4.8");
+  const textarea = deliverable.locator("textarea");
+  const current = await textarea.inputValue();
+  await textarea.fill(`${current.trim()}\n\n${SAMPLE_SCOPE_TABLE}`);
+  await textarea.blur();
+  await expect(deliverable.locator("table").first()).toBeVisible({ timeout: 20_000 });
+  await saveEvidence(page, "08b-phase-3-subsections");
+  await saveEvidence(page, "08c-phase-3-table");
 }
 
-/** Completes live Phase 0–4: 13 AI drafts, HITL, Rule Engine, review chat, export. */
-export async function walkLiveFivePhases(page: Page) {
-  await walkLiveDraftToCompose(page);
-  await expect(page.getByTestId("draft-chat")).toContainText("กำลังเริ่มร่าง TOR ทั้ง 13 หมวด", {
-    timeout: 90_000,
-  });
-  await pauseLikeUser(page, 2500);
-  await expect(page.getByText("ร่างด้วย AI ไม่สำเร็จ")).toHaveCount(0);
-  await expect(page.getByTestId("draft-section-badge-s1")).toBeVisible({ timeout: 180_000 });
-  await saveEvidence(page, "08a-phase-3-drafting");
-  await expect(page.getByTestId("phase3-all-drafted")).toBeVisible({ timeout: 1_200_000 });
-  await expect(page.getByTestId("draft-chat-count")).toHaveText("13/13 หมวด");
-  await expect(page.getByTestId("section-preview-s1")).toContainText(/\S.{20,}/);
+async function assertPhase4Assemble(page: Page) {
+  await expect(page.getByTestId("phase4-merged-preview")).toBeVisible();
+  await expect(page.getByTestId("phase4-merged-preview")).toContainText("4.1");
+  await expect(page.getByTestId("phase4-merged-preview")).toContainText("4.8");
+  await expect(page.getByTestId("phase4-merged-preview").locator("table").first()).toBeVisible();
+  await expect(page.getByText("s4.s4.1")).toHaveCount(0);
+  await saveEvidence(page, "07b-phase-4-assemble");
+}
+
+/** From a completed Phase 3 (13/13): HITL-free confirm, Rule Engine, export, submit. */
+export async function finishLivePhase3ToSubmit(page: Page) {
+  await assertPhase3SubsectionsThaiAndTable(page);
   await saveEvidence(page, "08-phase-2-ai-draft");
   await saveEvidence(page, "e2e-phase-3-draft");
-  await confirmHitlSections(page);
-  await saveEvidence(page, "05b-hitl-confirm");
+  await expect(page.getByTestId("hitl-confirm-s3")).toHaveCount(0);
+  await expect(page.getByText("ต้องให้เจ้าหน้าที่ยืนยัน")).toHaveCount(0);
   await expect(page.getByTestId("phase3-confirm")).toBeEnabled();
   await page.getByTestId("phase3-confirm").click();
   await confirmPhase(page);
   await expect(page.getByTestId("phase4-review")).toBeVisible({ timeout: 30_000 });
+  await assertPhase4Assemble(page);
   await expect(page.getByTestId("review-chat")).toBeVisible();
   await expect(page.getByTestId("review-chat-input")).toBeVisible();
   await expect(page.getByTestId("run-review")).toBeVisible();
@@ -281,15 +304,15 @@ export async function walkLiveFivePhases(page: Page) {
   await expect(page.getByTestId("phase4-rule-score")).toContainText(/[0-9]{1,3}\/100/); // NOSONAR typescript:S6353 — [0-9] required; S8786 bounded quantifier
   await typeLikeUser(
     page.getByTestId("review-chat-input"),
-    "สรุปผลการตรวจจาก Rule Engine"
+    "สรุปผลการตรวจจากกฎระเบียบ"
   );
   await pauseLikeUser(page, 400);
   await page.getByTestId("review-chat-send").click();
   await expect(page.getByTestId("review-chat-messages")).toContainText(
-    "สรุปผลการตรวจจาก Rule Engine"
+    "สรุปผลการตรวจจากกฎระเบียบ"
   );
   await expect(page.getByTestId("review-chat-messages")).toContainText(
-    /ตรวจอีกครั้ง|ยืนยันหมวด/,
+    /ตรวจอีกครั้ง|คะแนนคุณภาพ/,
     { timeout: 15_000 }
   );
   await saveEvidence(page, "e2e-phase-4-review-chat");
@@ -323,6 +346,23 @@ export async function walkLiveFivePhases(page: Page) {
   await expect(page).toHaveURL(/\/projects\/?(?:\?.*)?$/, { timeout: 20_000 });
   await expect(page.getByTestId("projects-page")).toBeVisible();
   await saveEvidence(page, "07-phase-4-publish");
+}
+
+/** Completes live Phase 0–4: 13 AI drafts, Rule Engine, review chat, export. */
+export async function walkLiveFivePhases(page: Page) {
+  await walkLiveDraftToCompose(page);
+  await expect(page.getByTestId("draft-chat")).toContainText("กำลังเริ่มร่างทั้ง ๑๓ หมวด", {
+    timeout: 90_000,
+  });
+  await pauseLikeUser(page, 2500);
+  await expect(page.getByText("ร่างด้วยระบบอัจฉริยะไม่สำเร็จ")).toHaveCount(0);
+  await expect(page.getByText("ร่างด้วย AI ไม่สำเร็จ")).toHaveCount(0);
+  await expect(page.getByTestId("draft-section-badge-s1")).toBeVisible({ timeout: 300_000 });
+  await saveEvidence(page, "08a-phase-3-drafting");
+  await expect(page.getByTestId("phase3-all-drafted")).toBeVisible({ timeout: 3_600_000 });
+  await expect(page.getByTestId("draft-chat-count")).toHaveText("13/13 หมวด");
+  await expect(page.getByTestId("section-preview-s1")).toContainText(/\S.{20,}/);
+  await finishLivePhase3ToSubmit(page);
 }
 
 export async function unlockPhase2ViaMockedIntake(page: Page) {
@@ -423,7 +463,7 @@ export async function unlockPhase2ViaMockedIntake(page: Page) {
     await route.fulfill({
       json: envelope({
         room_id: "room-e2e",
-        brief: "สวัสดีครับ ผมอ่านเอกสารจาก Phase 1 แล้ว ขอข้อมูลวงเงินงบประมาณ",
+        brief: "สวัสดีครับ ผมอ่านเอกสารจากขั้นที่ ๑ แล้ว ขอข้อมูลวงเงินงบประมาณ",
         coverage,
         current_slot: null,
         next_question: "ขอข้อมูลวงเงินงบประมาณ",
@@ -437,7 +477,7 @@ export async function unlockPhase2ViaMockedIntake(page: Page) {
           {
             id: "m1",
             role: "assistant",
-            content: "สวัสดีครับ ผมอ่านเอกสารจาก Phase 1 แล้ว ข้อเท็จจริงหลักครบแล้วครับ",
+            content: "สวัสดีครับ ผมอ่านเอกสารจากขั้นที่ ๑ แล้ว ข้อเท็จจริงหลักครบแล้วครับ",
             citations: [],
           },
         ],
@@ -561,8 +601,10 @@ export async function walkMockedIntakeToPhase4(page: Page) {
   await unlockPhase2ViaMockedIntake(page);
   await expect(page.getByTestId("draft-chat")).toBeVisible();
   await expect(page.getByTestId("draft-chat-input")).toBeVisible();
+  await expect(page.getByTestId("hitl-confirm-s3")).toHaveCount(0);
+  await expect(page.getByText("ต้องให้เจ้าหน้าที่ยืนยัน")).toHaveCount(0);
   await expect(page.getByTestId("phase3-confirm")).toBeEnabled();
-  await expect(page.getByTestId("phase3-confirm")).toHaveText("ไปทบทวน (Phase 4)");
+  await expect(page.getByTestId("phase3-confirm")).toHaveText("ไปทบทวน (ขั้นที่ ๔)");
   await saveEvidence(page, "e2e-phase-3-draft");
   await page.getByTestId("phase3-confirm").click();
   await confirmPhase(page);
@@ -571,6 +613,6 @@ export async function walkMockedIntakeToPhase4(page: Page) {
   await expect(page.getByTestId("review-chat-input")).toBeVisible();
   await expect(page.getByTestId("phase4-export")).toBeVisible();
   await expect(
-    page.getByTestId("phase4-review").getByText("คะแนนคุณภาพจาก Rule Engine 82/100")
+    page.getByTestId("phase4-review").getByText("คะแนนคุณภาพจากการตรวจกฎ 82/100")
   ).toBeVisible({ timeout: 20_000 });
 }

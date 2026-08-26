@@ -142,8 +142,7 @@ def test_confirm_ready_rejects_reference_only_facts(client, mock_officer_user):
     assert response.status_code == 400
 
 
-@patch("app.api.v1.endpoints.intake.apply_slot_map_to_sections", new_callable=AsyncMock)
-def test_confirm_ready_sets_phase_three(apply_sections, client, mock_officer_user):
+def test_confirm_ready_sets_phase_three(client, mock_officer_user):
     slots = empty_slot_map()
     for key in FACT_REQUIRED_SLOTS:
         slots[key] = {
@@ -167,12 +166,10 @@ def test_confirm_ready_sets_phase_three(apply_sections, client, mock_officer_use
     assert response.json()["data"]["ready_to_compose"] is True
     assert project.current_phase >= 3
     assert project.analysis_json["ready_to_compose"] is True
-    apply_sections.assert_awaited()
     mock_db.commit.assert_awaited()
 
 
-@patch("app.api.v1.endpoints.intake.ingest_file_bytes", new_callable=AsyncMock)
-def test_intake_text_appends_pack(ingest_mock, client, mock_officer_user):
+def test_intake_text_appends_pack(client, mock_officer_user):
     project = _make_project()
     mock_db = AsyncMock()
     mock_result = MagicMock()
@@ -187,7 +184,6 @@ def test_intake_text_appends_pack(ingest_mock, client, mock_officer_user):
     )
     assert response.status_code == 200
     assert response.json()["data"]["count"] == 1
-    ingest_mock.assert_awaited()
     texts = project.extracted_fields["intake_texts"]
     assert texts[0]["text"].startswith("โครงการทดสอบ")
 
@@ -319,8 +315,8 @@ def test_intake_chat_streams_and_fills_gap(
         body = b"".join(response.iter_bytes()).decode("utf-8")
 
     assert response.status_code == 200
-    assert "event: token" in body
     assert "event: done" in body
+    assert "บันทึก" in body or "event: token" in body
 
 
 @patch("app.api.v1.endpoints.intake.analyze_pack", new_callable=AsyncMock)
@@ -353,11 +349,10 @@ def test_analyze_with_pack_advances_phase(analyze_mock, client, mock_officer_use
 
 
 @patch("app.api.v1.endpoints.intake.extract_text")
-@patch("app.api.v1.endpoints.intake.ingest_file_bytes", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.intake.unlink_path", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.intake.write_temp_bytes", new_callable=AsyncMock)
 def test_intake_upload_does_not_analyze(
-    write_tmp, unlink_mock, ingest_mock, extract_mock, client, mock_officer_user
+    write_tmp, unlink_mock, extract_mock, client, mock_officer_user
 ):
     extracted = MagicMock()
     extracted.text = "เนื้อหาไฟล์โครงการจัดซื้อ"
@@ -378,7 +373,8 @@ def test_intake_upload_does_not_analyze(
     )
     assert response.status_code == 200
     assert response.json()["data"]["count"] == 1
-    ingest_mock.assert_awaited()
+    texts = project.extracted_fields["intake_texts"]
+    assert texts[0]["text"] == "เนื้อหาไฟล์โครงการจัดซื้อ"
     analyze_mock_calls = getattr(project, "analysis_json", {}) or {}
     assert analyze_mock_calls.get("analyzed") is not True
 
@@ -601,6 +597,6 @@ def test_open_draft_seeds_phase3_brief(client, mock_officer_user):
 
     response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-draft")
     assert response.status_code == 200
-    assert "13 หมวด" in response.json()["data"]["brief"]
+    assert "๑๓ หมวด" in response.json()["data"]["brief"]
     mock_db.commit.assert_awaited()
     assert project.analysis_json["phase3_opened"] is True

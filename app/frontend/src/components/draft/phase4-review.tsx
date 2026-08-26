@@ -7,42 +7,51 @@ import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { findingCheckTone, type ReviewFinding } from "@/lib/review-findings";
-import type { ReviewSuggestion } from "@/components/draft/draft-types";
+import type { ReviewSuggestion, SectionPayload } from "@/components/draft/draft-types";
 import { ReviewChat } from "@/components/draft/review-chat";
+import { RichDraftText } from "@/components/draft/rich-draft-text";
+import { TOR_SECTION_LABELS, labeledSectionBlocks, type TorSectionKey } from "@/lib/tor-sections";
 
 export function Phase4Review({
   projectId,
+  sections,
   filledCount,
   total,
-  hitlReady,
   score,
   findings,
   suggestions,
+  assessment,
   busy,
   error,
   onBack,
   onReview,
   onSubmit,
-  onAcceptHitl,
+  onAsk,
 }: Readonly<{
   projectId: string;
+  sections?: SectionPayload[];
   filledCount: number;
   total: number;
-  hitlReady: boolean;
   score: number | null;
   findings: ReviewFinding[];
   suggestions: ReviewSuggestion[];
+  assessment?: string;
   busy: boolean;
   error: string | null;
   onBack: () => void;
   onReview: (force?: boolean) => Promise<void>;
   onSubmit: () => Promise<void>;
-  onAcceptHitl?: (sectionKey: string) => Promise<void>;
+  onAsk?: (question: string) => Promise<string>;
 }>) {
   const pct = Math.round((filledCount / total) * 100);
   return (
     <div className="gov-card" data-testid="phase4-review">
-      <h3 className="mb-2 text-navy">Phase 4: ทบทวนและอนุมัติ</h3>
+      <h3 className="mb-2 text-navy">ขั้นที่ ๔: ทบทวนและอนุมัติ</h3>
+      <p className="mb-2 text-xs text-muted-foreground">
+        ด้านล่างคือตัวอย่างเอกสารที่จะถูกส่งออก — หมวดขอบเขตงานแสดงเป็นหัวข้อย่อย ๔.๑–๔.๑๔ ที่รวมจากขั้นที่ ๓
+        ขั้นนี้ตรวจร่างกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐ ของโครงการนี้
+        ตารางในเนื้อหาจะถูกแปลงเป็นตารางจริงในไฟล์เวิร์ด/พีดีเอฟ
+      </p>
       <p className="text-sm">ความครบถ้วน: {filledCount}/{total} หมวด</p>
       <div className="my-2 h-2 overflow-hidden rounded bg-gray-200">
         <div
@@ -51,24 +60,26 @@ export function Phase4Review({
         />
       </div>
       {pct < 100 ? (
-        <CheckItem tone="warn" title="ยังกรอกไม่ครบทุกหมวด" detail="กลับไป Phase 3 เพื่อกรอกให้ครบ" />
+        <CheckItem tone="warn" title="ยังกรอกไม่ครบทุกหมวด" detail="กลับไปขั้นที่ ๓ เพื่อกรอกให้ครบ" />
       ) : (
         <CheckItem tone="pass" title="ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน" />
       )}
-      {hitlReady ? (
-        <CheckItem tone="pass" title="หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน" />
-      ) : (
-        <CheckItem tone="warn" title="ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ" />
-      )}
+      {sections?.length ? <MergedTorPreview sections={sections} /> : null}
+      {assessment ? (
+        <div className="my-3 rounded-lg border border-navy/20 bg-slate-50 p-3" data-testid="phase4-assessment">
+          <p className="text-xs font-bold text-navy">ความเห็นจากการตรวจ (เข้มงวด)</p>
+          <p className="mt-1 text-sm text-navy">{assessment}</p>
+        </div>
+      ) : null}
       {score != null ? (
         <div data-testid="phase4-rule-score">
           <CheckItem
             tone={score >= 70 ? "pass" : "warn"}
-            title={`คะแนนคุณภาพจาก Rule Engine ${score}/100`}
+            title={`คะแนนคุณภาพจากการตรวจกฎ ${score}/100`}
           />
         </div>
       ) : (
-        <CheckItem tone="warn" title="ยังไม่ได้รันตรวจสอบ" detail="กดรัน Rule Engine เพื่อตรวจกฎหมาย ความครบถ้วน และความสอดคล้อง" />
+        <CheckItem tone="warn" title="ยังไม่ได้รันตรวจสอบ" detail="กดตรวจกฎเพื่อตรวจกฎหมาย ความครบถ้วน และความสอดคล้อง" />
       )}
       {findings.map((finding, index) => (
         <CheckItem
@@ -80,7 +91,7 @@ export function Phase4Review({
       ))}
       {suggestions.length ? (
         <h4 className="mb-1 mt-3 text-sm font-bold text-navy">
-          ข้อเสนอแนะจาก ReviewAgent ({suggestions.length})
+          ข้อเสนอแนะจากการทบทวน ({suggestions.length})
         </h4>
       ) : null}
       {suggestions.map((item) => (
@@ -102,7 +113,7 @@ export function Phase4Review({
         findings={findings}
         busy={busy}
         onReview={onReview}
-        onAcceptHitl={onAcceptHitl || (async () => undefined)}
+        onAsk={onAsk}
       />
       <div className="mt-4 flex justify-between">
         <Button variant="secondary" onClick={onBack} data-testid="phase3-back">
@@ -117,24 +128,68 @@ export function Phase4Review({
             disabled={busy}
             data-testid="run-review"
           >
-            {busy ? "กำลังตรวจสอบ..." : "รัน Rule Engine"}
+            {busy ? "กำลังตรวจสอบ..." : "ตรวจด้วยกฎระเบียบ"}
           </Button>
           <Button
             onClick={onSubmit}
-            disabled={pct < 100 || !hitlReady || busy}
+            disabled={pct < 100 || busy}
             data-testid="phase4-submit"
           >
-            ส่งขออนุมัติ / สร้าง TOR
+            ส่งขออนุมัติ
           </Button>
         </div>
       </div>
-      {pct < 100 || !hitlReady ? (
+      {pct < 100 ? (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="phase4-submit-hint">
-          {pct < 100
-            ? "กรอกให้ครบ 13 หมวดก่อนส่งขออนุมัติ"
-            : "ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจครบ 5 หมวดก่อนส่ง"}
+          กรอกให้ครบ ๑๓ หมวดก่อนส่งขออนุมัติ
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function MergedTorPreview({ sections }: Readonly<{ sections: SectionPayload[] }>) {
+  return (
+    <div
+      className="my-4 max-h-[22rem] space-y-3 overflow-y-auto rounded-lg border bg-white p-3"
+      data-testid="phase4-merged-preview"
+    >
+      <h4 className="text-sm font-bold text-navy">ตัวอย่างเอกสารรวม (ก่อนส่งออก)</h4>
+      {sections.map((section, index) => {
+        const title =
+          TOR_SECTION_LABELS[section.key as TorSectionKey] || section.title || section.key;
+        const subs = (section.subs || []).filter((sub) => (sub.content || "").trim());
+        return (
+          <article key={section.key} className="border-b border-gray-100 pb-2 last:border-0">
+            <h5 className="text-sm font-semibold text-navy">
+              {index + 1}. {title}
+            </h5>
+            {subs.length ? (
+              <div className="mt-1 space-y-2 pl-2">
+                {subs.map((sub) => (
+                  <div key={sub.key}>
+                    <p className="text-xs font-semibold text-foreground">
+                      {sub.key.replace("s4.", "4.")} {sub.title}
+                    </p>
+                    <RichDraftText text={sub.content || ""} className="text-muted-foreground" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-1 space-y-2">
+                {labeledSectionBlocks(section.key, section.content || "").map((block) => (
+                  <div key={`${section.key}-${block.label || "body"}`}>
+                    {block.label ? (
+                      <p className="text-xs font-semibold text-foreground">{block.label}</p>
+                    ) : null}
+                    <RichDraftText text={block.text} className="text-muted-foreground" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }

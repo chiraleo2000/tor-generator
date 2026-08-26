@@ -28,6 +28,7 @@ from app.deps import get_current_user, get_db
 from app.domain.section_text import section_plain_text
 from app.domain.tor_sections import SCOPE_SUBSECTIONS
 from app.exceptions import NotFoundError, ValidationError
+from app.export.table_parse import split_scope_subsection_draft
 from app.llm_admission import AdmissionTimeoutError, admit
 from app.models.project import Project
 from app.models.tor_section import TORSection
@@ -36,7 +37,7 @@ from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
 from app.schemas.drafting import DraftSectionRequest, DraftSectionResponse
 from app.schemas.responses import MetaInfo, SuccessResponse
-from app.services.intake_service import slot_content
+from app.services.thai_draft import scope_overview_from_subs
 
 logger = logging.getLogger("tor_app.drafting")
 
@@ -67,7 +68,8 @@ def _user_input_for_draft(
     analysis: dict,
 ) -> dict:
     existing_sections = {
-        section.section_key: section_plain_text(section.content) for section in all_sections
+        section.section_key: section_plain_text(section.content, section.section_key)
+        for section in all_sections
     }
     user_input: dict = {
         "project_name": project.name,
@@ -136,6 +138,9 @@ async def _save_draft_section(
         section_stmt = section_stmt.where(TORSection.sub_key == persist_sub)
     else:
         section_stmt = section_stmt.where(TORSection.sub_key.is_(None))
+        from app.domain.section_fields import persist_section_fields
+
+        draft_content = persist_section_fields(persist_key, draft_content)
     section = (await db.execute(section_stmt)).scalar_one_or_none()
     if section:
         section.ai_draft = draft_content
@@ -157,32 +162,52 @@ async def _save_draft_section(
     )
 
 
-async def _fill_empty_s4_subs(
-    db: AsyncSession, project_id: uuid.UUID, slot_map: dict
-) -> None:
-    for sub_key in SCOPE_SUBSECTIONS:
-        sub_text = slot_content(slot_map, sub_key)
-        if not sub_text.strip():
-            continue
-        sub_stmt = select(TORSection).where(
-            TORSection.project_id == project_id,
-            TORSection.section_key == "s4",
-            TORSection.sub_key == sub_key,
+async def _persist_s4_from_draft(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    draft_content: str,
+    quality_score,
+    validation_findings,
+    _slot_map: dict,
+) -> str:
+    """Split AI s4 blob into subsections; keep short overview at top level."""
+    parts = split_scope_subsection_draft(draft_content)
+    if not parts:
+        await _save_draft_section(
+            db,
+            project_id,
+            "s4",
+            None,
+            draft_content,
+            quality_score,
+            validation_findings,
         )
-        sub_row = (await db.execute(sub_stmt)).scalar_one_or_none()
-        if not sub_row:
-            db.add(
-                TORSection(
-                    project_id=project_id,
-                    section_key="s4",
-                    sub_key=sub_key,
-                    content=sub_text,
-                    version=1,
-                )
-            )
+        return draft_content
+    for sub_key, body in parts.items():
+        if sub_key not in SCOPE_SUBSECTIONS:
             continue
-        if not (sub_row.content or "").strip():
-            sub_row.content = sub_text
+        text = (body or "").strip()
+        if text:
+            await _save_draft_section(
+                db,
+                project_id,
+                "s4",
+                sub_key,
+                text,
+                quality_score,
+                validation_findings,
+            )
+    overview = scope_overview_from_subs(parts)
+    await _save_draft_section(
+        db,
+        project_id,
+        "s4",
+        None,
+        overview,
+        quality_score,
+        validation_findings,
+    )
+    return overview
 
 
 # =============================================================================
@@ -232,7 +257,9 @@ async def draft_section(
         await db.execute(select(TORSection).where(TORSection.project_id == project_id))
     ).scalars().all()
     analysis = project.analysis_json if isinstance(project.analysis_json, dict) else {}
-    slot_map = _as_slot_map(analysis)
+    from app.services.intake_service import with_project_intake
+
+    slot_map = with_project_intake(_as_slot_map(analysis), project)
     user_input = _user_input_for_draft(project, list(all_sections), body, slot_map, analysis)
     template_data = _template_payload(project)
 
@@ -264,17 +291,65 @@ async def draft_section(
                 field="draft",
             )
         persist_key, persist_sub = _persist_keys_for_section(target_section)
-        await _save_draft_section(
-            db,
-            project_id,
-            persist_key,
-            persist_sub,
-            draft_content,
-            quality_score,
-            validation_findings,
-        )
         if persist_key == "s4" and persist_sub is None:
-            await _fill_empty_s4_subs(db, project_id, slot_map)
+            draft_content = await _persist_s4_from_draft(
+                db,
+                project_id,
+                draft_content,
+                quality_score,
+                validation_findings,
+                slot_map,
+            )
+            # Fill remaining empty s4.1–s4.14 from LM Studio, one subsection at a time
+            from app.services.draft_chat_service import collect_scope_subsection_drafts
+
+            existing_subs: dict[str, str] = {}
+            for sub_key in SCOPE_SUBSECTIONS:
+                sub_stmt = select(TORSection).where(
+                    TORSection.project_id == project_id,
+                    TORSection.section_key == "s4",
+                    TORSection.sub_key == sub_key,
+                )
+                sub_row = (await db.execute(sub_stmt)).scalar_one_or_none()
+                if sub_row and (sub_row.content or "").strip():
+                    existing_subs[sub_key] = sub_row.content or ""
+            missing = [k for k in SCOPE_SUBSECTIONS if not existing_subs.get(k, "").strip()]
+            if missing:
+                filled = await collect_scope_subsection_drafts(
+                    slot_map,
+                    user_id=current_user.id,
+                    only_missing=True,
+                    existing=existing_subs,
+                )
+                for sub_key, text in filled.items():
+                    if not (text or "").strip():
+                        continue
+                    await _save_draft_section(
+                        db, project_id, "s4", sub_key, text, quality_score, None
+                    )
+                    existing_subs[sub_key] = text
+                overview = scope_overview_from_subs(existing_subs)
+                if overview.strip():
+                    draft_content = overview
+                    await _save_draft_section(
+                        db,
+                        project_id,
+                        "s4",
+                        None,
+                        overview,
+                        quality_score,
+                        validation_findings,
+                    )
+        else:
+            await _save_draft_section(
+                db,
+                project_id,
+                persist_key,
+                persist_sub,
+                draft_content,
+                quality_score,
+                validation_findings,
+            )
         await db.flush()
         logger.info(
             "Draft generated for project %s, section %s, score=%s",

@@ -6,6 +6,7 @@ import {
   SCOPE_SUBSECTIONS,
   TOR_SECTION_LABELS,
   TOR_SECTION_ORDER,
+  parseSectionDraft,
   serializeSectionDraft,
 } from "./tor-sections";
 
@@ -22,12 +23,36 @@ describe("canonical TOR sections", () => {
     expect(PHASE0_CHECKLIST).toContain("รายงานการประชุม");
   });
 
-  it("saves a single body field as plain TOR prose", () => {
-    expect(serializeSectionDraft({ body: " วงเงินหนึ่งแสนบาท " })).toBe("วงเงินหนึ่งแสนบาท");
+  it("maps a combined body blob into the first subsection field", () => {
+    const fields = parseSectionDraft("s1", JSON.stringify({ body: "โครงการจัดซื้อระบบ" }));
+    expect(fields.history).toBe("โครงการจัดซื้อระบบ");
+    expect(fields.body).toBeUndefined();
   });
 
   it("keeps structured fields as JSON", () => {
     const raw = serializeSectionDraft({ history: "ระบบเดิม", problems: "ซ่อมบ่อย" });
     expect(JSON.parse(raw)).toEqual({ history: "ระบบเดิม", problems: "ซ่อมบ่อย" });
+  });
+
+  it("splits Thai subsection labels without markdown hashes", () => {
+    const fields = parseSectionDraft(
+      "s1",
+      [
+        "ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม",
+        "ระบบงานเดิมใช้เอกสารกระดาษ",
+        "ปัญหาที่พบ (ระบุตัวเลข/สถิติ)",
+        "ซ่อมบ่อยปีละ 12 ครั้ง",
+      ].join("\n")
+    );
+    expect(fields.history).toBe("ระบบงานเดิมใช้เอกสารกระดาษ");
+    expect(fields.problems).toBe("ซ่อมบ่อยปีละ 12 ครั้ง");
+  });
+
+  it("parses markdown subsection headings including trailing spaces", () => {
+    const raw = "### history  \nระบบเดิม\n### problems\nซ่อมบ่อย";
+    expect(parseSectionDraft("s1", raw)).toEqual({
+      history: "ระบบเดิม",
+      problems: "ซ่อมบ่อย",
+    });
   });
 });

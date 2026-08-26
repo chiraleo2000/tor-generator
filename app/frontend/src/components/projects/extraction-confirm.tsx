@@ -74,7 +74,7 @@ export function ExtractionConfirm({
 
   return (
     <div className="rounded-lg border p-4 space-y-3">
-      <h3 className="font-medium">นำเข้า TOR อ้างอิง (Phase 0)</h3>
+      <h3 className="font-medium">นำเข้าเอกสารอ้างอิง (ขั้นที่ ๐)</h3>
       <p className="text-sm text-muted-foreground">
         อัปโหลดไฟล์ DOCX/PDF แล้วระบบจะเสนอการจับคู่ไปยัง s1–s4 / สถานที่ /
         ระยะเวลา — ต้องยืนยันก่อนเขียนทับ

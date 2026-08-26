@@ -232,12 +232,12 @@ class TestTimeoutConfiguration:
 
     @pytest.mark.asyncio
     async def test_validate_input_clamps_timeout_to_max(self):
-        """Timeout is clamped to MAX_TIMEOUT_SECONDS (300)."""
+        """Timeout is clamped to MAX_TIMEOUT_SECONDS."""
         state: TORDraftState = {
             "project_id": "proj-123",
             "user_input": {"project_name": "Test"},
             "target_section": "s1",
-            "agent_timeout_seconds": 999,
+            "agent_timeout_seconds": 99_999,
         }
 
         result = await validate_input(state)

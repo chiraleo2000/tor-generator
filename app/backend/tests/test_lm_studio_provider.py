@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.llm_tokens import DEFAULT_MAX_TOKENS
 from app.providers.base import LLMProvider, LLMResponse
 from app.providers.llm.lm_studio_provider import LMStudioLocalProvider
 
@@ -180,7 +181,7 @@ class TestInvoke:
 
         call_kwargs = mock_create.call_args[1]
         assert "tools" not in call_kwargs
-        assert call_kwargs["max_tokens"] == 4096
+        assert call_kwargs["max_tokens"] == DEFAULT_MAX_TOKENS
 
     @pytest.mark.asyncio
     async def test_handles_none_content(self):
@@ -330,7 +331,11 @@ class TestStream:
         ):
             collected.append(token)
 
-        assert collected == ["Hello", " ", "world"]
+        assert "".join(collected) == "Hello world"
+        assert (
+            self.provider._client.chat.completions.create.call_args[1]["max_tokens"]
+            == DEFAULT_MAX_TOKENS
+        )
 
     @pytest.mark.asyncio
     async def test_stream_skips_empty_deltas(self):
@@ -366,7 +371,7 @@ class TestStream:
         ):
             collected.append(token)
 
-        assert collected == ["A", "B"]
+        assert "".join(collected) == "AB"
 
     @pytest.mark.asyncio
     async def test_stream_skips_empty_choices(self):
@@ -403,7 +408,7 @@ class TestStream:
         ):
             collected.append(token)
 
-        assert collected == ["First", "Second"]
+        assert "".join(collected) == "FirstSecond"
 
     @pytest.mark.asyncio
     async def test_stream_timeout_raises_timeout_error(self):
@@ -435,10 +440,10 @@ class TestStream:
                 pass
 
     @pytest.mark.asyncio
-    async def test_stream_yields_reasoning_content_when_delta_empty(self):
+    async def test_stream_does_not_yield_reasoning_content(self):
         delta = MagicMock()
         delta.content = ""
-        delta.reasoning_content = "ร่าง"
+        delta.reasoning_content = "Here's a thinking process"
         choice = MagicMock()
         choice.delta = delta
         chunk = MagicMock()
@@ -456,7 +461,43 @@ class TestStream:
                 messages=[{"role": "user", "content": "test"}]
             )
         ]
-        assert collected == ["ร่าง"]
+        assert collected == []
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_thai_final_not_thinking(self):
+        def make_chunk(content):
+            delta = MagicMock()
+            delta.content = content
+            choice = MagicMock()
+            choice.delta = delta
+            chunk = MagicMock()
+            chunk.choices = [choice]
+            return chunk
+
+        chunks = [
+            make_chunk("Here's a thinking process to construct the answer:\n\n"),
+            make_chunk("1. Analyze the Request.\n\n"),
+            make_chunk("**Final Output Generation.**\n\n"),
+            make_chunk("ตามระเบียบกระทรวงการคลัง งวดงานและการจ่ายเงินแบ่งเป็นสี่งวด"),
+        ]
+
+        async def mock_stream():
+            for chunk in chunks:
+                yield chunk
+
+        self.provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_stream()
+        )
+        collected = [
+            token
+            async for token in self.provider.stream(
+                messages=[{"role": "user", "content": "งวดจ่าย"}]
+            )
+        ]
+        text = "".join(collected)
+        assert "thinking process" not in text.lower()
+        assert "Analyze the Request" not in text
+        assert "ตามระเบียบกระทรวงการคลัง" in text
 
     @pytest.mark.asyncio
     async def test_stream_connection_error_raises_connection_error(self):
@@ -495,6 +536,40 @@ class TestStream:
         assert call_kwargs["temperature"] == 0.5
         assert call_kwargs["max_tokens"] == 500
         assert call_kwargs["stream"] is True
+
+    @pytest.mark.asyncio
+    async def test_stream_retries_after_model_unload(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.providers.llm.lm_studio_provider.asyncio.sleep",
+            AsyncMock(),
+        )
+
+        def make_chunk(content):
+            delta = MagicMock()
+            delta.content = content
+            choice = MagicMock()
+            choice.delta = delta
+            chunk = MagicMock()
+            chunk.choices = [choice]
+            return chunk
+
+        async def mock_stream():
+            yield make_chunk("กรมบัญชีกลาง")
+
+        mock_create = AsyncMock(
+            side_effect=[
+                RuntimeError("Model unloaded by user or API request."),
+                mock_stream(),
+            ]
+        )
+        self.provider._client.chat.completions.create = mock_create
+        collected: list[str] = []
+        async for token in self.provider.stream(
+            messages=[{"role": "user", "content": "test"}]
+        ):
+            collected.append(token)
+        assert "".join(collected) == "กรมบัญชีกลาง"
+        assert mock_create.await_count == 2
 
 
     @pytest.mark.asyncio
@@ -581,3 +656,84 @@ class TestStream:
             messages=[{"role": "user", "content": "json"}]
         )
         assert result.content == '{"slot_map": {}}'
+
+    @pytest.mark.asyncio
+    async def test_invoke_strips_thinking_keeps_thai(self):
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 10
+        mock_usage.completion_tokens = 20
+        mock_usage.total_tokens = 30
+        mock_message = MagicMock()
+        mock_message.content = (
+            "Here's a thinking process to construct the answer:\n"
+            "1. **Analyze the Request:** extract งวดจ่าย.\n"
+            "**Final Output Generation.**\n"
+            "ตามระเบียบที่เกี่ยวข้อง งวดงานและการจ่ายเงินแบ่งเป็นสี่งวด"
+        )
+        mock_message.reasoning_content = None
+        mock_message.reasoning = None
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        self.provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+        result = await self.provider.invoke(
+            messages=[{"role": "user", "content": "งวดจ่าย"}]
+        )
+        assert "thinking process" not in result.content.lower()
+        assert "ตามระเบียบที่เกี่ยวข้อง" in result.content
+
+    @pytest.mark.asyncio
+    async def test_invoke_drops_english_reasoning_not_json(self):
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 1
+        mock_usage.completion_tokens = 4
+        mock_usage.total_tokens = 5
+        mock_message = MagicMock()
+        mock_message.content = ""
+        mock_message.reasoning_content = (
+            "Here's a thinking process to construct the answer"
+        )
+        mock_message.reasoning = None
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        self.provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+        result = await self.provider.invoke(
+            messages=[{"role": "user", "content": "json"}]
+        )
+        assert result.content == ""
+
+    @pytest.mark.asyncio
+    async def test_invoke_injects_output_contract_and_allows_thinking(self):
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 1
+        mock_usage.completion_tokens = 1
+        mock_usage.total_tokens = 2
+        mock_message = MagicMock()
+        mock_message.content = "ตามระเบียบ"
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        mock_create = AsyncMock(return_value=mock_response)
+        self.provider._client.chat.completions.create = mock_create
+        await self.provider.invoke(messages=[{"role": "user", "content": "ถาม"}])
+        sent = mock_create.call_args.kwargs
+        assert sent["extra_body"]["enable_thinking"] is True
+        assert sent["messages"][0]["role"] == "system"
+        assert "ห้ามแสดงกระบวนการคิด" in sent["messages"][0]["content"]

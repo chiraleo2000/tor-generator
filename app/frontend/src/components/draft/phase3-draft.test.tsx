@@ -60,14 +60,15 @@ describe("Phase3Draft", () => {
         onConfirm={onConfirm}
       />
     );
-    expect(screen.getByTestId("phase3-draft")).toHaveTextContent("Phase 3");
+    expect(screen.getByTestId("phase3-draft")).toHaveTextContent("ร่างเนื้อหา");
+    expect(screen.queryByText("เนื้อหาร่าง (จากเอกสารหรือระบบ)")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /หมวด 1: ความเป็นมา/ }));
     expect(onExpand).toHaveBeenCalledWith("s1");
     fireEvent.click(screen.getByTestId("phase3-confirm"));
     expect(onConfirm).toHaveBeenCalled();
   });
 
-  it("expands a section to show AI draft and HITL confirm", () => {
+  it("expands a section to show AI draft and save", () => {
     const onDraft = vi.fn();
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
@@ -89,10 +90,9 @@ describe("Phase3Draft", () => {
     );
     fireEvent.click(screen.getByTestId("draft-ai-s3"));
     expect(onDraft).toHaveBeenCalledWith("s3");
-    fireEvent.click(screen.getByTestId("hitl-confirm-s3"));
-    expect(onSave).toHaveBeenCalled();
+    expect(screen.queryByTestId("hitl-confirm-s3")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("save-section-s3"));
-    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it("opens a scope subsection and reports errors while busy", () => {
@@ -208,9 +208,9 @@ describe("Phase3Draft", () => {
     );
     expect(screen.getByRole("combobox")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "เกณฑ์ราคา (Price)" },
+      target: { value: "เกณฑ์ราคา" },
     });
-    expect(screen.getByRole("combobox")).toHaveValue("เกณฑ์ราคา (Price)");
+    expect(screen.getByRole("combobox")).toHaveValue("เกณฑ์ราคา");
   });
 
   it("treats JSON arrays as raw body text", () => {
@@ -232,5 +232,55 @@ describe("Phase3Draft", () => {
       />
     );
     expect(screen.getByTestId("phase3-draft")).toBeInTheDocument();
+  });
+
+  it("puts AI prose into subsection fields instead of a combined body box", () => {
+    render(
+      <Phase3Draft
+        sections={[s1]}
+        expanded="s1"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+        projectId="p1"
+      />
+    );
+    expect(screen.queryByText("เนื้อหาร่าง (จากเอกสารหรือระบบ)")).not.toBeInTheDocument();
+    expect(screen.getByText(/ประวัติ\/สถานการณ์ปัจจุบัน/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("โครงการจัดซื้อระบบคอมพิวเตอร์")).toBeInTheDocument();
+  });
+
+  it("uses Thai-only workflow copy for subsections", () => {
+    render(
+      <Phase3Draft
+        sections={[s4]}
+        expanded="s4"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    const root = screen.getByTestId("phase3-draft");
+    expect(root).toHaveTextContent("ขั้นที่ ๓");
+    expect(root).toHaveTextContent("๔.๑–๔.๑๔");
+    expect(screen.queryByText("Phase 3")).not.toBeInTheDocument();
+    expect(screen.queryByText("As-Is")).not.toBeInTheDocument();
+    expect(screen.getByTestId("scope-sub-s4.1")).toBeInTheDocument();
   });
 });

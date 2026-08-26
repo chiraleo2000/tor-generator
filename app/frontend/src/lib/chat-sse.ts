@@ -49,10 +49,10 @@ export function attachIngestFeedback(
     return `ไม่สามารถประมวลผล «${name}» ได้`;
   }
   if (status === "completed" || chunks > 0) {
-    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — ใช้ RAG ได้ทันที (${chunks} chunks)`;
+    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — ใช้ค้นหาได้ทันที (${chunks} ส่วนข้อความ)`;
   }
   if (payload.document_id) {
-    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — กำลังจัดทำดัชนี RAG`;
+    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — กำลังจัดทำดัชนีค้นหา`;
   }
   return `กำลังประมวลผล «${name}» เข้าคลัง...`;
 }

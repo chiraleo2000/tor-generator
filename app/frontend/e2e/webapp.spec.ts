@@ -25,7 +25,7 @@ test.describe("Help and standalone review", () => {
     const tabs: Array<{ id: string; heading: string }> = [
       { id: "login", heading: "เข้าสู่ระบบ" },
       { id: "dashboard", heading: "แดชบอร์ด" },
-      { id: "draft", heading: "กระบวนการร่าง 5 Phase" },
+      { id: "draft", heading: "กระบวนการร่างห้าขั้น" },
       { id: "chat", heading: "ถาม-ตอบ" },
       { id: "kb", heading: "ฐานความรู้" },
       { id: "review", heading: "ตรวจสอบ TOR" },
@@ -49,7 +49,7 @@ test.describe("Help and standalone review", () => {
       await saveEvidence(page, tabShots[tab.id]);
     }
     await page.getByTestId("help-tab-draft").click();
-    await expect(page.getByText("ไปเลย").first()).toBeVisible();
+    await expect(page.getByText("ไปขั้นที่ ๒").first()).toBeVisible();
     await expect(page.getByText("ไม่มีปุ่มต่อแถว")).toBeVisible();
     await expect(page.getByText("แชทรีวิวสรุปคะแนน")).toBeVisible();
     await page.getByTestId("help-tab-faq").click();

@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
+from app.domain.section_text import section_plain_text
 from app.export.docx_generator import DOCXGenerator, TORContent
 from app.models.project import Project
 from app.models.tor_section import TORSection
@@ -384,10 +385,13 @@ class ExportService:
                 # This is a sub-section
                 if section.section_key not in sub_section_contents:
                     sub_section_contents[section.section_key] = {}
-                sub_section_contents[section.section_key][section.sub_key] = section.content
+                sub_section_contents[section.section_key][section.sub_key] = (
+                    section.content or ""
+                )
             else:
-                # Main section
-                section_contents[section.section_key] = section.content
+                section_contents[section.section_key] = section_plain_text(
+                    section.content, section.section_key
+                )
 
         return TORContent(
             project_name=project.name,

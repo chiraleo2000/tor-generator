@@ -18,12 +18,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Path, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.constants import PROJECT_NOT_FOUND, PROJECT_UUID_DESC
-from app.domain.section_text import section_plain_text
+from app.services.tor_assemble import assemble_review_document
 from app.deps import get_current_user, get_db
 from app.exceptions import NotFoundError, ValidationError
 from app.llm_admission import admit
@@ -51,6 +52,47 @@ from app.schemas.responses import MetaInfo, SuccessResponse
 logger = logging.getLogger("tor_app.review")
 
 router = APIRouter()
+
+def _project_requirements_text(project: Project) -> str:
+    parts: list[str] = []
+    from app.services.intake_service import project_intake_pack
+
+    intake = project_intake_pack(project)
+    if intake:
+        parts.append("=== เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น ===")
+        parts.append(intake)
+    analysis = dict(project.analysis_json or {})
+    slot_map = analysis.get("slot_map") or {}
+    if isinstance(slot_map, dict):
+        for key, row in slot_map.items():
+            if not isinstance(row, dict) or str(key).startswith("_"):
+                continue
+            content = str(row.get("content") or "").strip()
+            if content:
+                parts.append(f"{key}: {content[:2000]}")
+    extra = str(getattr(project, "custom_requirements_text", None) or "").strip()
+    if extra:
+        parts.append(extra[:16000])
+    return "\n".join(parts)[:24000]
+
+
+async def _law_review_context() -> str:
+    """Global พ.ร.บ./ระเบียบ only — never another project's Phase 0 files."""
+    try:
+        from app.rag.hybrid import hybrid_retrieve
+
+        result, _, _ = await hybrid_retrieve(
+            "พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 ระเบียบกระทรวงการคลัง",
+            search_scope="global",
+            top_k=8,
+        )
+        return "\n".join(chunk.text[:1500] for chunk in result.chunks[:8])
+    except Exception:
+        return ""
+
+
+class ReviewCommentBody(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4000)
 
 
 def persist_analysis_json(project: Project, analysis: dict) -> None:
@@ -136,18 +178,7 @@ async def run_review(
     sections_result = await db.execute(sections_stmt)
     all_sections = sections_result.scalars().all()
 
-    # Build tor_document dict for the Rule Engine
-    tor_document: dict = {}
-    sections_map: dict[str, str] = {}
-
-    for section in all_sections:
-        content = section_plain_text(section.content or "")
-        if section.sub_key:
-            key = f"{section.section_key}.{section.sub_key}"
-        else:
-            key = section.section_key
-        tor_document[key] = content
-        sections_map[section.section_key] = content
+    tor_document, sections_map = assemble_review_document(list(all_sections))
 
     # Add project metadata needed for validation rules
     tor_document["budget"] = project.budget
@@ -209,26 +240,36 @@ async def run_review(
     ]
     persist_analysis_json(project, analysis)
     await db.flush()
+    await db.commit()
 
     # Invoke ReviewAgent to generate suggestions (async, best-effort)
     suggestions_generated = 0
+    overall_assessment = ""
     try:
         request_id = (
             request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
         ).strip()
         redis = getattr(request.app.state, "redis", None)
-        suggestions_generated = await _generate_suggestions(
+        requirements = _project_requirements_text(project)
+        legal_context = await _law_review_context()
+        suggestions_generated, overall_assessment = await _generate_suggestions(
             project_id=project_id,
             sections_map=sections_map,
             project_metadata={
                 "budget": project.budget,
                 "project_type": project.project_type,
+                "requirements": requirements,
+                "legal_context": legal_context,
             },
             db=db,
-            custom_requirements=project.custom_requirements_text,
+            custom_requirements=requirements or project.custom_requirements_text,
             redis=redis,
             request_id=request_id,
         )
+        if overall_assessment:
+            analysis["review_assessment"] = overall_assessment
+            persist_analysis_json(project, analysis)
+            await db.flush()
     except Exception as exc:
         logger.warning(
             "ReviewAgent suggestion generation failed for project %s: %s. "
@@ -247,6 +288,7 @@ async def run_review(
         categories=categories_response,
         findings=findings_response,
         suggestions_generated=suggestions_generated,
+        overall_assessment=overall_assessment,
     )
 
     logger.info(
@@ -261,6 +303,55 @@ async def run_review(
     return _build_response(request, response_data.model_dump(mode="json"))
 
 
+@router.post(
+    "/{project_id}/review/comment",
+    response_model=SuccessResponse,
+    summary="Critical TOR review comment",
+    dependencies=[Depends(rate_limit_ai)],
+)
+async def review_comment(
+    request: Request,
+    project_id: Annotated[uuid.UUID, Path(..., description=PROJECT_UUID_DESC)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: ReviewCommentBody,
+) -> JSONResponse:
+    project = await _get_project_with_access(project_id, current_user, db)
+    sections_stmt = select(TORSection).where(TORSection.project_id == project_id)
+    all_sections = (await db.execute(sections_stmt)).scalars().all()
+    _doc, sections_map = assemble_review_document(list(all_sections))
+    findings = []
+    stored = dict(project.analysis_json or {}).get("review_findings") or []
+    if isinstance(stored, list):
+        findings = [
+            str(item.get("message") or "")
+            for item in stored
+            if isinstance(item, dict) and item.get("message")
+        ]
+    from app.orchestrator.agents.review_agent import ReviewAgent
+    from app.providers.factory import ProviderFactory
+
+    factory = ProviderFactory()
+    llm = factory.get_llm("chat")
+    agent = ReviewAgent()
+    request_id = (request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())).strip()
+    redis = getattr(request.app.state, "redis", None)
+    async with admit(redis, "llm", request_id):
+        reply = await agent.comment_on_draft(
+            llm=llm,
+            question=body.content,
+            sections=sections_map,
+            project_metadata={
+                "budget": project.budget,
+                "project_type": project.project_type,
+                "requirements": _project_requirements_text(project),
+                "legal_context": await _law_review_context(),
+            },
+            findings=findings,
+        )
+    return _build_response(request, {"reply": reply or "ยังให้ความเห็นไม่ได้ กรุณาลองใหม่"})
+
+
 async def _generate_suggestions(
     project_id: uuid.UUID,
     sections_map: dict[str, str],
@@ -269,7 +360,7 @@ async def _generate_suggestions(
     custom_requirements: str | None = None,
     redis=None,
     request_id: str | None = None,
-) -> int:
+) -> tuple[int, str]:
     """Generate AI suggestions via the ReviewAgent and persist them.
 
     Removes existing pending suggestions before generating new ones.
@@ -278,22 +369,8 @@ async def _generate_suggestions(
     from app.orchestrator.agents.review_agent import ReviewAgent
     from app.providers.factory import ProviderFactory
 
-    # Delete existing pending suggestions for this project (regenerate fresh)
-    delete_stmt = select(Suggestion).where(
-        Suggestion.project_id == project_id,
-        Suggestion.status == "pending",
-    )
-    existing_result = await db.execute(delete_stmt)
-    existing_pending = existing_result.scalars().all()
-    for s in existing_pending:
-        await db.delete(s)
-    await db.flush()
-
-    # Get LLM provider
     factory = ProviderFactory()
     llm = factory.get_llm("structured")
-
-    # Run the ReviewAgent under admission control
     agent = ReviewAgent()
     rid = (request_id or str(uuid.uuid4())).strip()
     async with admit(redis, "llm", rid):
@@ -304,7 +381,15 @@ async def _generate_suggestions(
             custom_requirements=custom_requirements,
         )
 
-    # Persist suggestions
+    delete_stmt = select(Suggestion).where(
+        Suggestion.project_id == project_id,
+        Suggestion.status == "pending",
+    )
+    existing_result = await db.execute(delete_stmt)
+    existing_pending = existing_result.scalars().all()
+    for pending in existing_pending:
+        await db.delete(pending)
+
     for suggestion in review_result.suggestions:
         db_suggestion = Suggestion(
             project_id=project_id,
@@ -318,8 +403,7 @@ async def _generate_suggestions(
         db.add(db_suggestion)
 
     await db.flush()
-
-    return len(review_result.suggestions)
+    return len(review_result.suggestions), review_result.overall_assessment
 
 
 # =============================================================================
@@ -537,35 +621,15 @@ async def validate_tor(
     """
     project = await _get_project_with_access(project_id, current_user, db)
 
-    # Build tor_document for validation
-    tor_document: dict = {}
-
     if body and body.content and body.section_key:
-        # Validate specific content (real-time, not yet persisted)
-        # Still load other sections for cross-section validation
-        sections_stmt = select(TORSection).where(
-            TORSection.project_id == project_id
-        )
+        sections_stmt = select(TORSection).where(TORSection.project_id == project_id)
         sections_result = await db.execute(sections_stmt)
-        all_sections = sections_result.scalars().all()
-
-        for section in all_sections:
-            if not section.sub_key:
-                tor_document[section.section_key] = section.content or ""
-
-        # Override with the provided content for the target section
+        tor_document, _parents = assemble_review_document(list(sections_result.scalars().all()))
         tor_document[body.section_key] = body.content
     else:
-        # Validate persisted content
-        sections_stmt = select(TORSection).where(
-            TORSection.project_id == project_id
-        )
+        sections_stmt = select(TORSection).where(TORSection.project_id == project_id)
         sections_result = await db.execute(sections_stmt)
-        all_sections = sections_result.scalars().all()
-
-        for section in all_sections:
-            if not section.sub_key:
-                tor_document[section.section_key] = section.content or ""
+        tor_document, _parents = assemble_review_document(list(sections_result.scalars().all()))
 
     # Add project metadata
     tor_document["budget"] = project.budget

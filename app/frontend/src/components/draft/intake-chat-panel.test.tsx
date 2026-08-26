@@ -88,6 +88,22 @@ describe("IntakeChatPanel", () => {
   });
 
   it("posts analyze after the user confirms", async () => {
+    const mapped = coveragePayload({
+      analyzed: true,
+      has_material: true,
+      coverage: [
+        {
+          key: "s1",
+          label: "ชื่อโครงการ",
+          status: "filled",
+          filled: true,
+          fact_required: true,
+        },
+      ],
+    });
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce(coveragePayload({ has_material: true }) as never)
+      .mockResolvedValue(mapped as never);
     render(
       <IntakeChatPanel
         projectId="p1"
@@ -110,7 +126,7 @@ describe("IntakeChatPanel", () => {
         vi.mocked(apiClient.post).mock.calls.some(
           (call) =>
             call[0] === "/projects/p1/intake/analyze" &&
-            call[2]?.timeout === 90_000
+            call[2]?.timeout === 360_000
         )
       ).toBe(true)
     );
@@ -155,21 +171,50 @@ describe("IntakeChatPanel", () => {
     expect(onReady).toHaveBeenCalled();
   });
 
-  it("does not post fill-references on Phase 1 or Phase 2", async () => {
+  it("can post fill-references from Phase 2 standards button", async () => {
     vi.mocked(apiClient.get).mockResolvedValue(
-      coveragePayload({ has_material: true, ready_to_compose: false }) as never
+      coveragePayload({
+        has_material: true,
+        analyzed: true,
+        ready_to_compose: false,
+        coverage: [
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "filled",
+            filled: true,
+            fact_required: true,
+            preview: "โครงการทดสอบ",
+          },
+          {
+            key: "s3",
+            label: "คุณสมบัติ",
+            status: "gap",
+            filled: false,
+            fact_required: false,
+          },
+        ],
+      }) as never
     );
-    const { rerender } = render(
-      <IntakeChatPanel
-        projectId="p1"
-        phase={1}
-        onAnalyzed={onAnalyzed}
-        onEnterQa={onEnterQa}
-        onReady={onReady}
-      />
-    );
-    await screen.findByTestId("phase1-coverage");
-    rerender(
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          filled_keys: ["s3"],
+          coverage: [
+            {
+              key: "s3",
+              label: "คุณสมบัติ",
+              status: "filled",
+              filled: true,
+              fact_required: false,
+              preview: "มาตรฐานกลาง",
+            },
+          ],
+        },
+      },
+    } as never);
+    render(
       <IntakeChatPanel
         projectId="p1"
         phase={2}
@@ -179,16 +224,32 @@ describe("IntakeChatPanel", () => {
       />
     );
     await screen.findByTestId("phase2-qa");
-    expect(
-      vi.mocked(apiClient.post).mock.calls.filter((call) =>
-        String(call[0]).includes("/intake/fill-references")
-      )
-    ).toHaveLength(0);
+    fireEvent.click(await screen.findByTestId("phase2-apply-standards"));
+    await waitFor(() =>
+      expect(
+        vi.mocked(apiClient.post).mock.calls.some((call) =>
+          String(call[0]).includes("/intake/fill-references")
+        )
+      ).toBe(true)
+    );
   });
 
   it("enters QA from Phase 1 via skip", async () => {
     vi.mocked(apiClient.get).mockResolvedValue(
-      coveragePayload({ has_material: true, ready_to_compose: false }) as never
+      coveragePayload({
+        has_material: true,
+        analyzed: true,
+        ready_to_compose: false,
+        coverage: [
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "gap",
+            filled: false,
+            fact_required: true,
+          },
+        ],
+      }) as never
     );
     render(
       <IntakeChatPanel
@@ -200,6 +261,7 @@ describe("IntakeChatPanel", () => {
       />
     );
     const skipBtn = await screen.findByTestId("phase1-skip");
+    expect(skipBtn).toBeEnabled();
     fireEvent.click(skipBtn);
     await waitFor(() => expect(onEnterQa).toHaveBeenCalled());
   });

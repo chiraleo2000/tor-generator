@@ -19,13 +19,12 @@ describe("Phase4Review", () => {
     } as never);
   });
 
-  it("warns when sections and HITL are incomplete", async () => {
+  it("warns when sections are incomplete", async () => {
     render(
       <Phase4Review
         projectId="p1"
         filledCount={10}
         total={13}
-        hitlReady={false}
         score={null}
         findings={[]}
         suggestions={[]}
@@ -39,10 +38,10 @@ describe("Phase4Review", () => {
     expect(await screen.findByTestId("phase4-review")).toHaveTextContent(
       "ยังกรอกไม่ครบทุกหมวด"
     );
-    expect(screen.getByText("ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ")).toBeInTheDocument();
-    expect(screen.getByText("ส่งขออนุมัติ / สร้าง TOR")).toBeDisabled();
+    expect(screen.queryByText("ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ")).not.toBeInTheDocument();
+    expect(screen.getByText("ส่งขออนุมัติ")).toBeDisabled();
     expect(screen.getByTestId("phase4-submit-hint")).toHaveTextContent(
-      "กรอกให้ครบ 13 หมวดก่อนส่งขออนุมัติ"
+      "กรอกให้ครบ ๑๓ หมวดก่อนส่งขออนุมัติ"
     );
   });
 
@@ -55,7 +54,6 @@ describe("Phase4Review", () => {
         projectId="p1"
         filledCount={13}
         total={13}
-        hitlReady
         score={82}
         findings={[
           {
@@ -82,7 +80,7 @@ describe("Phase4Review", () => {
       />
     );
     expect(await screen.findByText("ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน")).toBeInTheDocument();
-    expect(screen.getByText("คะแนนคุณภาพจาก Rule Engine 82/100")).toBeInTheDocument();
+    expect(screen.getByText("คะแนนคุณภาพจากการตรวจกฎ 82/100")).toBeInTheDocument();
     expect(screen.getByText("วงเงินไม่สอดคล้อง")).toBeInTheDocument();
     expect(screen.getByText("ความชัดเจน: ระบุหน่วยงานให้ชัด")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("run-review"));
@@ -100,7 +98,6 @@ describe("Phase4Review", () => {
         projectId="p1"
         filledCount={13}
         total={13}
-        hitlReady
         score={40}
         findings={[]}
         suggestions={[]}
@@ -132,7 +129,6 @@ describe("Phase4Review", () => {
         projectId="p1"
         filledCount={13}
         total={13}
-        hitlReady
         score={70}
         findings={[]}
         suggestions={[]}
@@ -163,7 +159,6 @@ describe("Phase4Review", () => {
         projectId="p1"
         filledCount={13}
         total={13}
-        hitlReady
         score={null}
         findings={[]}
         suggestions={[]}
@@ -175,5 +170,57 @@ describe("Phase4Review", () => {
       />
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("โหลดข้อกำหนดไม่สำเร็จ");
+  });
+
+  it("assembles parent sections and 4.n subsections with tables", async () => {
+    const table = [
+      "| รายการ | รายละเอียด |",
+      "| --- | --- |",
+      "| งวดที่ ๑ | ส่งมอบรายงานวิเคราะห์ |",
+    ].join("\n");
+    render(
+      <Phase4Review
+        projectId="p1"
+        sections={[
+          {
+            key: "s1",
+            title: "ความเป็นมา",
+            content: "กรมบัญชีกลางจัดซื้อระบบบริหารสัญญา",
+            filled: true,
+            human_confirmed: false,
+            hitl: false,
+            matchStatus: "matched",
+          },
+          {
+            key: "s4",
+            title: "ขอบเขตของงาน",
+            content: "สรุปสั้น",
+            filled: true,
+            human_confirmed: false,
+            hitl: false,
+            matchStatus: "matched",
+            subs: [
+              { key: "s4.1", title: "สรุปขอบเขตงาน", content: "วิเคราะห์ความต้องการและพัฒนาโมดูล", filled: true },
+              { key: "s4.8", title: "ผลงานส่งมอบ", content: table, filled: true },
+            ],
+          },
+        ]}
+        filledCount={13}
+        total={13}
+        score={null}
+        findings={[]}
+        suggestions={[]}
+        busy={false}
+        error={null}
+        onBack={vi.fn()}
+        onReview={vi.fn().mockResolvedValue(undefined)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    const preview = await screen.findByTestId("phase4-merged-preview");
+    expect(preview).toHaveTextContent("4.1");
+    expect(preview).toHaveTextContent("4.8");
+    expect(preview.querySelector("table")).toBeTruthy();
+    expect(screen.queryByText("s4.s4.1")).not.toBeInTheDocument();
   });
 });

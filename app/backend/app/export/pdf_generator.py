@@ -168,7 +168,7 @@ class PDFGenerator:
         parts.append('<html lang="th">')
         parts.append("<head>")
         parts.append('<meta charset="UTF-8">')
-        parts.append("<title>ร่างขอบเขตของงาน (TOR)</title>")
+        parts.append("<title>ร่างขอบเขตของงาน</title>")
         parts.append("</head>")
         parts.append("<body>")
 
@@ -176,7 +176,7 @@ class PDFGenerator:
         parts.append(f'<div class="header">{_escape_html(content.ministry or "")}</div>')
 
         # Title
-        parts.append('<div class="title">ร่างขอบเขตของงาน (Terms of Reference: TOR)</div>')
+        parts.append('<div class="title">ร่างขอบเขตของงาน</div>')
 
         # Project name subtitle
         if content.project_name:
@@ -226,20 +226,20 @@ class PDFGenerator:
                 f'<div class="section-heading">{_escape_html(heading_text)}</div>'
             )
 
-            # Section body
-            if section_content:
+            # Section body — skip duplicate when subsections exist
+            sub_sections = content.sub_sections.get(section_key, {})
+            filled_subs = {k: v for k, v in sub_sections.items() if (v or "").strip()}
+            if section_content and not filled_subs:
                 parts.append(self._format_body_html(section_content, "section-body"))
-            else:
+            elif not section_content and not filled_subs:
                 parts.append(
                     '<div class="section-placeholder">(ยังไม่ได้กรอกข้อมูล)</div>'
                 )
 
-            # Sub-sections
-            sub_sections = content.sub_sections.get(section_key, {})
-            if sub_sections:
+            if filled_subs:
                 parts.append(
                     self._build_sub_sections_html(
-                        section_num, sub_sections, content.use_thai_numerals
+                        section_num, filled_subs, content.use_thai_numerals
                     )
                 )
 
@@ -253,19 +253,11 @@ class PDFGenerator:
         sub_sections: dict[str, str],
         use_thai_numerals: bool,
     ) -> str:
-        """Build HTML for sub-sections.
+        """Build HTML for sub-sections."""
+        from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
-        Args:
-            parent_num: Parent section number (unused here, kept for consistency).
-            sub_sections: Dict of sub-section key → content.
-            use_thai_numerals: Whether to use Thai numerals.
-
-        Returns:
-            HTML string for the sub-sections.
-        """
         parts: list[str] = []
 
-        # Sort sub-sections by numeric key
         sorted_keys = sorted(
             sub_sections.keys(),
             key=lambda k: self._parse_sub_key(k),
@@ -273,10 +265,13 @@ class PDFGenerator:
 
         for sub_key in sorted_keys:
             sub_content = sub_sections[sub_key]
-            sub_num_str = format_section_number(sub_key, use_thai_numerals)
+            title = SCOPE_SUBSECTIONS.get(sub_key, "")
+            num_key = sub_key.replace("s4.", "4.") if sub_key.startswith("s4.") else sub_key
+            sub_num_str = format_section_number(num_key, use_thai_numerals)
+            heading = f"{sub_num_str} {title}".strip()
 
             parts.append(
-                f'<div class="sub-section-heading">{_escape_html(sub_num_str)}</div>'
+                f'<div class="sub-section-heading">{_escape_html(heading)}</div>'
             )
 
             if sub_content:
@@ -285,31 +280,37 @@ class PDFGenerator:
         return "\n".join(parts)
 
     def _format_body_html(self, text: str, css_class: str) -> str:
-        """Format body text as HTML paragraphs.
+        """Format body text as HTML paragraphs and tables."""
+        from app.services.thai_draft import split_content_blocks
 
-        Args:
-            text: Raw text content (paragraphs separated by newlines).
-            css_class: CSS class for the wrapper div.
-
-        Returns:
-            HTML div with paragraph elements.
-        """
-        paragraphs = text.strip().split("\n")
-        para_html = []
-        for para_text in paragraphs:
-            para_text = para_text.strip()
-            if not para_text:
+        chunks: list[str] = []
+        for kind, payload in split_content_blocks(text):
+            if kind == "table" and isinstance(payload, list):
+                rows_html = []
+                for r_idx, row in enumerate(payload):
+                    cells = "".join(
+                        f"<{'th' if r_idx == 0 else 'td'}>{_escape_html(cell)}</{'th' if r_idx == 0 else 'td'}>"
+                        for cell in row
+                    )
+                    rows_html.append(f"<tr>{cells}</tr>")
+                chunks.append(
+                    f'<table class="tor-table">{"".join(rows_html)}</table>'
+                )
                 continue
-            para_html.append(f"<p>{_escape_html(para_text)}</p>")
+            for para_text in str(payload).strip().split("\n"):
+                para_text = para_text.strip()
+                if para_text:
+                    chunks.append(f"<p>{_escape_html(para_text)}</p>")
 
-        if not para_html:
+        if not chunks:
             return ""
 
-        return f'<div class="{css_class}">{"".join(para_html)}</div>'
+        return f'<div class="{css_class}">{"".join(chunks)}</div>'
 
     def _parse_sub_key(self, key: str) -> tuple[int, ...]:
-        """Parse a sub-section key like '4.1' into a sortable tuple (4, 1)."""
-        parts = key.replace(".", " ").split()
+        """Parse a sub-section key like 's4.1' / '4.1' into a sortable tuple."""
+        cleaned = key.replace("s", "").replace(".", " ")
+        parts = cleaned.split()
         result = []
         for part in parts:
             try:

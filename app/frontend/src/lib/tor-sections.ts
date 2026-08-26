@@ -36,7 +36,7 @@ export const TOR_SECTION_LABELS: Record<TorSectionKey, string> = {
 
 export const SCOPE_SUBSECTIONS: { key: string; title: string }[] = [
   { key: "s4.1", title: "สรุปขอบเขตงาน" },
-  { key: "s4.2", title: "ระบบงานปัจจุบัน (As-Is)" },
+  { key: "s4.2", title: "ระบบงานปัจจุบัน" },
   { key: "s4.3", title: "งานหลักและกิจกรรม" },
   { key: "s4.4", title: "ข้อกำหนดด้านฮาร์ดแวร์" },
   { key: "s4.5", title: "ข้อกำหนดด้านซอฟต์แวร์และลิขสิทธิ์" },
@@ -70,18 +70,18 @@ export const DOC_CLASSES = [
   { id: "announced_price", label: "ประกาศราคากลาง", required: true },
   { id: "budget_approval", label: "หนังสืออนุมัติงบประมาณ", required: true },
   { id: "fiscal_year", label: "เอกสารปีงบประมาณ", required: false },
-  { id: "charter", label: "เอกสารโครงการ (Charter / Brief)", required: false },
-  { id: "as_is", label: "เอกสารระบบเดิม (As-Is)", required: false },
+  { id: "charter", label: "เอกสารโครงการ", required: false },
+  { id: "as_is", label: "เอกสารระบบเดิม", required: false },
   { id: "stakeholders", label: "รายชื่อผู้เกี่ยวข้อง", required: false },
   { id: "policy", label: "นโยบายที่เกี่ยวข้อง", required: false },
   { id: "tender_draft", label: "ร่างเอกสารประกวดราคา", required: false },
-  { id: "kickoff", label: "รายงานประชุม Kickoff", required: false },
+  { id: "kickoff", label: "รายงานประชุมเริ่มโครงการ", required: false },
 ] as const;
 
 export const PHASE0_CHECKLIST = [
   "เอกสารอนุมัติงบประมาณ",
   "ประกาศราคากลางฉบับทางการ",
-  "เอกสารโครงการ (Charter / Brief)",
+  "เอกสารโครงการ",
   "รายงานการประชุม",
   "รายชื่อผู้เกี่ยวข้อง",
 ] as const;
@@ -102,9 +102,9 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
     { key: "policy", label: "นโยบาย/กฎหมายที่เกี่ยวข้อง", type: "text" },
   ],
   s2: [
-    { key: "mainObj", label: "วัตถุประสงค์หลัก (SMART)", type: "textarea" },
+    { key: "mainObj", label: "วัตถุประสงค์หลัก (ชัดเจน วัดผลได้)", type: "textarea" },
     { key: "users", label: "กลุ่มผู้ใช้งานเป้าหมาย", type: "text" },
-    { key: "kpi", label: "ตัวชี้วัดความสำเร็จ (KPI)", type: "textarea" },
+    { key: "kpi", label: "ตัวชี้วัดความสำเร็จ", type: "textarea" },
   ],
   s3: [
     { key: "general", label: "คุณสมบัติทั่วไป", type: "textarea" },
@@ -113,7 +113,7 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
   ],
   s5: [
     { key: "timelineRange", label: "วันเริ่มต้น - วันสิ้นสุด", type: "text", mapField: "timeline" },
-    { key: "milestones", label: "งวดงาน/Milestone หลัก", type: "textarea" },
+    { key: "milestones", label: "งวดงานหลัก", type: "textarea" },
   ],
   s6: [
     { key: "budgetAmount", label: "วงเงินงบประมาณ (บาท)", type: "number", mapField: "budget" },
@@ -132,7 +132,7 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
       label: "วิธีการประเมิน",
       type: "select",
       mapField: "evaluationMethod",
-      options: ["เกณฑ์ราคา (Price)", "เกณฑ์ราคาประกอบเกณฑ์คุณภาพ", "เกณฑ์คุณภาพเท่านั้น"],
+      options: ["เกณฑ์ราคา", "เกณฑ์ราคาประกอบเกณฑ์คุณภาพ", "เกณฑ์คุณภาพเท่านั้น"],
     },
     { key: "evalWeight", label: "สัดส่วนคะแนน (ถ้ามีเกณฑ์คุณภาพ)", type: "text" },
   ],
@@ -140,12 +140,156 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
   s13: [{ key: "other", label: "เงื่อนไขอื่น ๆ", type: "textarea" }],
 };
 
+export function parseSectionDraft(sectionKey: string, content: string): Record<string, string> {
+  const fields = SECTION_FIELDS[sectionKey];
+  const firstKey = fields?.[0]?.key || "body";
+  const raw = (content || "").trim();
+  if (!raw) return {};
+
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const rec = parsed as Record<string, string>;
+        const out: Record<string, string> = {};
+        for (const field of fields || []) {
+          const value = String(rec[field.key] || "").trim();
+          if (value) out[field.key] = value;
+        }
+        const blob = String(rec.body || "").trim();
+        if (blob) {
+          const labeledBlob = splitByHeadings(blob, fields || [], "label");
+          if (Object.keys(labeledBlob).length) {
+            for (const [key, value] of Object.entries(labeledBlob)) {
+              if (!out[key]) out[key] = value;
+            }
+          } else if (!out[firstKey]) {
+            out[firstKey] = blob;
+          }
+        }
+        if (Object.keys(out).length) return out;
+      }
+    } catch {
+      // prose
+    }
+  }
+
+  const headed = splitByHeadings(raw, fields || [], "hash");
+  if (Object.keys(headed).length) return headed;
+
+  const labeled = splitByHeadings(raw, fields || [], "label");
+  if (Object.keys(labeled).length) return labeled;
+
+  const paras = raw.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean);
+  if (fields && paras.length >= 2) {
+    const out: Record<string, string> = {};
+    fields.forEach((field, index) => {
+      if (index < paras.length) {
+        out[field.key] = index === fields.length - 1 ? paras.slice(index).join("\n\n") : paras[index];
+      }
+    });
+    return out;
+  }
+  return { [firstKey]: raw };
+}
+
+const DRAFT_HEADING_RE = /^#{1,3}[ \t]+([^\r\n]+)/;
+const LINE_PREFIX_RE = /^(?:[#*_]+[\t ]*)?(?:[0-9๐-๙]+[.)][\t ]*)?/;
+
+function matchFieldHeading(title: string, fields: SectionField[]): string | null {
+  const trimmed = title
+    .replace(LINE_PREFIX_RE, "")
+    .replace(/[#*_]/g, "")
+    .replace(/[:：]\s*$/, "")
+    .trim();
+  if (!trimmed || trimmed.length > 80) return null;
+  for (const field of fields) {
+    const short = field.label.split("(", 1)[0].trim();
+    if (trimmed === field.key || trimmed === field.label || trimmed === short) {
+      return field.key;
+    }
+    if (trimmed.startsWith(field.key) || trimmed.startsWith(field.label)) {
+      return field.key;
+    }
+    if (trimmed.length >= 4 && (field.label.startsWith(trimmed) || short.startsWith(trimmed))) {
+      return field.key;
+    }
+  }
+  return null;
+}
+
+function splitByHeadings(
+  raw: string,
+  fields: SectionField[],
+  mode: "hash" | "label"
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  let current: string | null = null;
+  const buf: string[] = [];
+  let sawHeading = false;
+  const flush = () => {
+    if (current) {
+      const value = buf.join("\n").trim();
+      if (value) out[current] = value;
+    }
+  };
+  for (const line of raw.split("\n")) {
+    let found: string | null = null;
+    if (mode === "hash") {
+      const match = DRAFT_HEADING_RE.exec(line.trim());
+      found = match ? matchFieldHeading(match[1].trim(), fields) : null;
+    } else if (line.trim()) {
+      found = matchFieldHeading(line.trim(), fields);
+    }
+    if (found) {
+      sawHeading = true;
+      flush();
+      current = found;
+      buf.length = 0;
+      continue;
+    }
+    buf.push(line);
+  }
+  flush();
+  if (mode === "label" && !sawHeading) return {};
+  return out;
+}
+
+export function isSectionFilled(section: {
+  filled?: boolean;
+  subs?: { filled: boolean }[];
+}): boolean {
+  if (section.filled) return true;
+  return Boolean(section.subs?.some((sub) => sub.filled));
+}
+
 export function serializeSectionDraft(draft: Record<string, string>): string {
-  const entries = Object.entries(draft).filter(([, value]) => (value || "").trim());
-  if (!entries.length) return "";
-  if (entries.length === 1 && entries[0][0] === "body") {
-    return entries[0][1].trim();
+  const entries = Object.entries(draft)
+    .filter(([key, value]) => key !== "body" && (value || "").trim())
+    .map(([key, value]) => [key, value.trim()] as const);
+  if (!entries.length) {
+    const body = (draft.body || "").trim();
+    return body;
   }
   return JSON.stringify(Object.fromEntries(entries));
+}
+
+export function previewSectionDraft(sectionKey: string, content: string): string {
+  const values = parseSectionDraft(sectionKey, content);
+  return Object.values(values).filter(Boolean).join(" ").slice(0, 240);
+}
+
+export function labeledSectionBlocks(
+  sectionKey: string,
+  content: string
+): { label: string; text: string }[] {
+  const fields = SECTION_FIELDS[sectionKey] || [];
+  const values = parseSectionDraft(sectionKey, content);
+  const blocks = fields
+    .map((field) => ({ label: field.label, text: values[field.key] || "" }))
+    .filter((item) => item.text.trim());
+  if (blocks.length) return blocks;
+  const fallback = (content || "").trim();
+  return fallback ? [{ label: "", text: fallback }] : [];
 }
 

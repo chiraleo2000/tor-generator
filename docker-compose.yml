@@ -71,7 +71,7 @@ services:
       - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       - LM_STUDIO_MODEL=${LM_STUDIO_MODEL:-google/gemma-4-e4b}
       - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-300m}
-      - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-300}
+      - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-1800}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       - LLAMA_CPP_BASE_URL=${LLAMA_CPP_BASE_URL:-http://host.docker.internal:8080/v1}
       - OPENAI_CHAT_MODEL=${OPENAI_CHAT_MODEL:-gpt-4o-mini}
@@ -142,6 +142,7 @@ services:
       start_period: 40s
     volumes:
       - ./documents/knowledge-base:/knowledge-base:ro
+      - ./debug-6fb0cb.log:/tmp/debug-6fb0cb.log
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

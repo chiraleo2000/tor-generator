@@ -15,7 +15,7 @@ test.describe("Chat Q&A and draft intake", () => {
   test.skip(skipUnlessLive, skipReason);
 
   test("ถาม-ตอบ opens Open WebUI-like rooms", async ({ page }) => {
-    test.setTimeout(300_000);
+    test.setTimeout(720_000);
     await login(page);
     await page.getByTestId("nav-chat").click();
     await expect(page).toHaveURL(/\/chat/);
@@ -32,12 +32,17 @@ test.describe("Chat Q&A and draft intake", () => {
     );
     await pauseLikeUser(page, 500);
     await page.getByTestId("chat-send").click();
-    await waitForLiveAssistant(page, 180_000);
+    await waitForLiveAssistant(page, 600_000);
+    await expect.poll(
+      async () =>
+        (await page.getByTestId("chat-msg-assistant").last().innerText()).length,
+      { timeout: 480_000 }
+    ).toBeGreaterThan(1500);
     await saveEvidence(page, "13-kb-chat");
   });
 
   test("chat attach ingests into private KB list", async ({ page }) => {
-    test.setTimeout(360_000);
+    test.setTimeout(720_000);
     await login(page);
     await page.getByTestId("nav-chat").click();
     await expect(page.getByTestId("chat-shell")).toBeVisible();
@@ -87,7 +92,7 @@ test.describe("Chat Q&A and draft intake", () => {
     await typeLikeUser(page.getByTestId("chat-input"), "สรุปเอกสารของฉันเรื่องวงเงินจัดซื้อจัดจ้าง");
     await pauseLikeUser(page, 500);
     await page.getByTestId("chat-send").click();
-    await waitForLiveAssistant(page, 180_000);
+    await waitForLiveAssistant(page, 600_000);
     await saveEvidence(page, "13c-chat-attach-ask");
     const citation = page.getByTestId("chat-citation");
     if (await citation.count()) {

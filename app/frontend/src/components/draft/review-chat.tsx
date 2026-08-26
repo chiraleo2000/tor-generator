@@ -3,12 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { HITL_SECTIONS, TOR_SECTION_LABELS, type TorSectionKey } from "@/lib/tor-sections";
 import type { ReviewFinding } from "@/lib/review-findings";
 
 function reviewOpening(score: number | null, findings: ReviewFinding[]): string {
   if (score == null) {
-    return "กำลังรัน Rule Engine เพื่อทบทวนร่าง TOR...";
+    return "กำลังตรวจด้วยกฎระเบียบ พ.ร.บ. และเอกสารขั้นที่ ๐ ของโครงการนี้...";
   }
   const lines = [
     `ตรวจร่างแล้ว ได้คะแนนคุณภาพ ${score}/100`,
@@ -19,34 +18,10 @@ function reviewOpening(score: number | null, findings: ReviewFinding[]): string 
       lines.push(`- ${item.message}`);
     });
   } else {
-    lines.push("ไม่พบประเด็นสำคัญจาก Rule Engine");
+    lines.push("ไม่พบประเด็นสำคัญจากการตรวจกฎ");
   }
-  lines.push(
-    "พิมพ์ได้เลย เช่น ยืนยันหมวด 6, ยอมรับหมวดกฎหมาย, หรือ ตรวจอีกครั้ง"
-  );
+  lines.push("พิมพ์ได้เลย เช่น ตรวจอีกครั้ง หรือถามว่าร่างยังขาดอะไร");
   return lines.join("\n");
-}
-
-function parseHitlKey(text: string): string | null {
-  const raw = text.trim();
-  if (raw.includes("รันใหม่") || raw.includes("ตรวจอีกครั้ง")) {
-    return null;
-  }
-  if (!/ยอมรับ|ยืนยัน/.test(raw)) {
-    return null;
-  }
-  for (let number = 13; number >= 1; number -= 1) {
-    if (raw.includes(`หมวด ${number}`) || raw.includes(`s${number}`)) {
-      return `s${number}`;
-    }
-  }
-  for (const key of HITL_SECTIONS) {
-    const label = TOR_SECTION_LABELS[key as TorSectionKey];
-    if (label && raw.includes(label)) {
-      return key;
-    }
-  }
-  return null;
 }
 
 export function ReviewChat({
@@ -54,13 +29,13 @@ export function ReviewChat({
   findings,
   busy,
   onReview,
-  onAcceptHitl,
+  onAsk,
 }: Readonly<{
   score: number | null;
   findings: ReviewFinding[];
   busy: boolean;
   onReview: (force?: boolean) => Promise<void>;
-  onAcceptHitl: (sectionKey: string) => Promise<void>;
+  onAsk?: (question: string) => Promise<string>;
 }>) {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<string[]>(() => [reviewOpening(score, findings)]);
@@ -74,8 +49,11 @@ export function ReviewChat({
       return;
     }
     started.current = true;
+    if (score != null) {
+      return;
+    }
     onReview().catch(() => undefined);
-  }, [onReview]);
+  }, [onReview, score]);
 
   useEffect(() => {
     if (score == null && !findingKey) {
@@ -102,17 +80,16 @@ export function ReviewChat({
       await onReview(true);
       return;
     }
-    const key = parseHitlKey(content);
-    if (key) {
-      await onAcceptHitl(key);
-      const label = TOR_SECTION_LABELS[key as TorSectionKey] || key;
-      setMessages((prev) => [...prev, `ยืนยันหมวด ${label} แล้วครับ`]);
+    if (onAsk) {
+      try {
+        const reply = await onAsk(content);
+        setMessages((prev) => [...prev, reply || "ยังให้ความเห็นไม่ได้ กรุณาลองใหม่"]);
+      } catch {
+        setMessages((prev) => [...prev, "ถามความเห็นไม่สำเร็จ กรุณาลองใหม่"]);
+      }
       return;
     }
-    setMessages((prev) => [
-      ...prev,
-      "พิมพ์ ยืนยันหมวด 6 หรือ ตรวจอีกครั้ง ได้ครับ",
-    ]);
+    setMessages((prev) => [...prev, "พิมพ์ ตรวจอีกครั้ง หรือถามความเห็นได้ครับ"]);
   }
 
   return (
@@ -128,7 +105,7 @@ export function ReviewChat({
         <input
           className="flex-1 rounded-md border px-3 py-2 text-sm"
           data-testid="review-chat-input"
-          placeholder="ยืนยันหมวด 6 หรือ ตรวจอีกครั้ง"
+          placeholder="ถามความเห็น หรือพิมพ์ ตรวจอีกครั้ง"
           value={draft}
           disabled={busy}
           onChange={(event) => setDraft(event.target.value)}

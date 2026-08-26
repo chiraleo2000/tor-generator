@@ -105,7 +105,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   lm_studio_base_url: "http://host.docker.internal:1234/v1",
   lm_studio_model: "google/gemma-4-e4b",
   lm_studio_embedding_model: "text-embedding-embeddinggemma-300m",
-  lm_studio_timeout: 180,
+  lm_studio_timeout: 600,
   ollama_base_url: "http://host.docker.internal:11434/v1",
   llama_cpp_base_url: "http://host.docker.internal:8080/v1",
   // Docker Compose internal cleartext endpoints (private network only)
@@ -138,7 +138,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   custom_rag_enabled: false,
   custom_rag_base_url: "",
   custom_rag_api_key: "",
-  custom_rag_top_k: 5,
+  custom_rag_top_k: 24,
   custom_rag_timeout_seconds: 30,
   rag_sources: "both",
 };

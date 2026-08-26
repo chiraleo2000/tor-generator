@@ -50,7 +50,7 @@ function Phase0ProgressPanel({
           <CheckCircle2 className="h-6 w-6 text-green-600" />
           <div>
             <p className="text-sm font-bold text-green-800">วิเคราะห์สำเร็จ</p>
-            <p className="text-xs text-green-700">กำลังไปตารางความครบใน Phase 1...</p>
+            <p className="text-xs text-green-700">กำลังไปตารางความครบในขั้นที่ ๑...</p>
           </div>
         </div>
       </div>
@@ -66,7 +66,7 @@ function Phase0ProgressPanel({
         <Loader2 className="mt-0.5 h-6 w-6 shrink-0 animate-spin text-navy" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-navy">กำลังวิเคราะห์เอกสาร...</p>
-          <p className="text-xs text-muted-foreground">อย่าปิดหน้านี้ จนกว่าจะเข้า Phase 1</p>
+          <p className="text-xs text-muted-foreground">อย่าปิดหน้านี้ จนกว่าจะเข้าขั้นที่ ๑</p>
           <progress className="mt-3 h-2 w-full" />
           <FileNameList names={uploadedNames} />
           {hasPaste ? (
@@ -103,9 +103,9 @@ export function Phase0Upload({
 
   return (
     <div className="gov-card" data-testid="phase0-upload">
-      <h3 className="text-navy">Phase 0: เตรียมข้อมูล — อัปโหลดหรือวางข้อความ</h3>
+      <h3 className="text-navy">ขั้นที่ ๐: เตรียมข้อมูล — อัปโหลดหรือวางข้อความ</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        อัปโหลดหรือวางข้อความได้หลายครั้ง แล้วกดเริ่มวิเคราะห์ — ระบบจัดเข้าช่องแล้วพาไปตารางความครบใน Phase 1
+        อัปโหลดหรือวางข้อความได้หลายครั้ง แล้วกดเริ่มวิเคราะห์ — ระบบจัดเข้าช่องแล้วพาไปตารางความครบในขั้นที่ ๑
       </p>
       <textarea
         className="mt-3 min-h-[120px] w-full rounded-md border p-3 text-sm"
@@ -154,7 +154,7 @@ export function Phase0Upload({
         disabled={busy || !canStart}
         onClick={onAnalyze}
       >
-        เริ่มวิเคราะห์และเข้า Phase 1
+        เริ่มวิเคราะห์และเข้าขั้นที่ ๑
       </Button>
 
       {message ? (

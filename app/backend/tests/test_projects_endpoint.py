@@ -1017,7 +1017,8 @@ class TestWorkflowAndWorkspaceWrites:
             json={"content": "ใหม่", "human_confirmed": True},
         )
         assert response.status_code == 200
-        assert existing.content == "ใหม่"
+        assert '"history"' in existing.content
+        assert "ใหม่" in existing.content
         assert existing.version == 2
         assert existing.is_approved is True
 
