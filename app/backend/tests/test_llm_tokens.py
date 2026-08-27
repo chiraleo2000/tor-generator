@@ -7,6 +7,7 @@ from app.llm_tokens import (
     DRAFT_MIN_TOKENS,
     REVIEW_CONTEXT_WINDOW,
     REVIEW_MAX_TOKENS,
+    REVIEW_SUGGESTION_MAX_TOKENS,
     chars_for_tokens,
     clamp_max_tokens,
     estimate_tokens,
@@ -19,6 +20,7 @@ def test_draft_and_chat_budgets():
     assert CHAT_MAX_TOKENS == 32_768
     assert CHAT_MIN_TOKENS == 6_144
     assert REVIEW_MAX_TOKENS == 128_000
+    assert REVIEW_SUGGESTION_MAX_TOKENS == 4_096
     assert REVIEW_CONTEXT_WINDOW == 128_000
     assert chars_for_tokens(DRAFT_MIN_TOKENS) == 12_288
 

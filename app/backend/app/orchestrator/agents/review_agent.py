@@ -17,12 +17,14 @@ Requirements: 10.2, 12.4
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.llm_tokens import (
     REVIEW_CONTEXT_WINDOW,
     REVIEW_MAX_TOKENS,
+    REVIEW_SUGGESTION_MAX_TOKENS,
     clamp_max_tokens,
     estimate_tokens,
 )
@@ -123,6 +125,33 @@ REVIEW_SECTION_BATCHES: tuple[tuple[str, ...], ...] = (
     ("s9", "s10", "s11", "s12", "s13"),
 )
 MAX_REVIEW_SECTION_CHARS = 100_000
+
+_INTAKE_WRAPPER_RE = re.compile(
+    r"^(===|---)|^\[[^\]]{1,80}\]$|เอกสารขั้นที่\s*๐"
+)
+
+
+def _compact_thai(text: str) -> str:
+    return re.sub(r"\s+", "", text or "").lower()
+
+
+def _is_intake_wrapper_line(paragraph: str) -> bool:
+    stripped = paragraph.strip()
+    if not stripped or _INTAKE_WRAPPER_RE.search(stripped):
+        return True
+    return len(_compact_thai(stripped)) < 24
+
+
+def _requirement_is_covered(paragraph: str, tor_text: str, tor_compact: str) -> bool:
+    compact = _compact_thai(paragraph)
+    if len(compact) >= 24 and compact[:32] in tor_compact:
+        return True
+    words = [word for word in paragraph.split() if len(word) > 4]
+    if len(words) < 3:
+        return bool(compact) and compact[:24] in tor_compact
+    matched = sum(1 for word in words if word.lower() in tor_text)
+    return (matched / len(words)) >= 0.3
+
 
 REVIEW_SYSTEM_PROMPT = (
     THAI_FORMAL_REGISTER_PREAMBLE
@@ -416,34 +445,27 @@ class ReviewAgent:
         """
         suggestions: list[ReviewSuggestion] = []
         all_tor_text = " ".join(sections.values()).lower()
+        tor_compact = _compact_thai(all_tor_text)
 
-        # Split requirements into paragraphs and check each
         paragraphs = [
             p.strip() for p in requirements.split("\n") if len(p.strip()) > 20
         ]
 
-        for paragraph in paragraphs[:20]:  # Limit to 20 paragraphs
-            # Extract key terms (words > 4 chars) from this paragraph
-            words = [w for w in paragraph.split() if len(w) > 4]
-            if not words:
+        for paragraph in paragraphs[:20]:
+            if _is_intake_wrapper_line(paragraph):
                 continue
-
-            # Check if at least 30% of key terms appear in TOR
-            matched = sum(1 for w in words if w.lower() in all_tor_text)
-            coverage = matched / len(words) if words else 0
-
-            if coverage < 0.3:
-                suggestions.append(ReviewSuggestion(
-                    category="completeness",
-                    section_key="s4",
-                    current_text=paragraph[:150],
-                    suggested_text=(
-                        "ข้อกำหนดเพิ่มเติมนี้ยังไม่ถูกระบุใน TOR: "
-                        f"'{paragraph[:100]}' — ควรเพิ่มเนื้อหาที่ตอบสนองข้อกำหนดนี้"
-                    ),
-                    predicted_score_improvement=2.0,
-                ))
-
+            if _requirement_is_covered(paragraph, all_tor_text, tor_compact):
+                continue
+            suggestions.append(ReviewSuggestion(
+                category="completeness",
+                section_key="s4",
+                current_text=paragraph[:150],
+                suggested_text=(
+                    "ข้อกำหนดเพิ่มเติมนี้ยังไม่ถูกระบุใน TOR: "
+                    f"'{paragraph[:100]}' — ควรเพิ่มเนื้อหาที่ตอบสนองข้อกำหนดนี้"
+                ),
+                predicted_score_improvement=2.0,
+            ))
             if len(suggestions) >= 5:
                 break
 
@@ -545,7 +567,7 @@ class ReviewAgent:
         )
         max_out = clamp_max_tokens(
             user_message,
-            REVIEW_MAX_TOKENS,
+            REVIEW_SUGGESTION_MAX_TOKENS,
             context_window=REVIEW_CONTEXT_WINDOW,
             system=REVIEW_SYSTEM_PROMPT,
         )

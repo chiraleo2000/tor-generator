@@ -1,6 +1,6 @@
 # รายงานการทำงานของแอป TOR Generator
 
-**เวอร์ชัน 0.2.3** · วันที่จัดทำ **24 สิงหาคม 2026**  
+**เวอร์ชัน 0.2.3** · วันที่จัดทำ **24 สิงหาคม 2026** · อัปเดตรอบ ECT live **27 สิงหาคม 2026**  
 แหล่งความจริง: โค้ดใน `app/frontend` + `app/backend` และผล unit tests ที่รันจริงในวันเดียวกัน
 
 แอปนี้ช่วยเจ้าหน้าที่พัสดุ**ร่างและตรวจ TOR** (ขอบเขตของงาน) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 โดยบังคับโครง 13 ส่วน (`s1`–`s13`) รับชุดเอกสาร จัดเข้าช่อง ตรวจด้วย Rule Engine แล้วยืนยันหมวดเสี่ยงด้วยคน ก่อนส่งออก Word/PDF รูปแบบราชการ
@@ -9,7 +9,25 @@
 ภาพผล unit tests: [Vitest](test-evidence/19-vitest-output.png) · [pytest](test-evidence/19-pytest-output.png) · [แผนที่เทสต์→การใช้งาน](test-evidence/19-unit-test-usage-map.png)  
 ไดอะแกรม: [สถาปัตยกรรม](test-evidence/19-diagram-architecture.png) · [5 Phase](test-evidence/19-diagram-phases.png)
 
-ฉบับส่งออก: [PDF](19-APPLICATION_OPERATING_REPORT.pdf) · [Word](19-APPLICATION_OPERATING_REPORT.docx) · [PowerPoint](19-APPLICATION_OPERATING_REPORT.pptx)
+ฉบับส่งออก: [PDF](19-APPLICATION_OPERATING_REPORT.pdf) · [Word](19-APPLICATION_OPERATING_REPORT.docx) · [PowerPoint](19-APPLICATION_OPERATING_REPORT.pptx) — ไฟล์ส่งออกยังเป็นรอบ 24 ส.ค. อ่านผล ECT ล่าสุดที่ `18-TEST_EVIDENCE.md`
+
+---
+
+## 0. รอบ ECT AI Chatbot (26–27 ส.ค. 2026)
+
+เอกสาร กกต. จริงถูกเดินครบวงจรบนสแตก Docker + LM Studio
+
+| จุด | ผล |
+|-----|-----|
+| วิเคราะห์ขั้น ๐→๑ | 27/27 ช่อง |
+| ร่างขั้น ๓ | s1–s13 + s4.1–s4.14 ครบ (~239k ตัวอักษร) |
+| ตรวจในโครงการขั้น ๔ | 95/100 |
+| ตรวจไฟล์ต้นทาง `/review` | 74/100 (หลังแก้: ดึงงบจากข้อความ) |
+| ตรวจร่างที่ประกอบเป็นไฟล์ | 76/100 (รวมหัวข้อย่อยหมวด ๔ ไม่ใช่ JSON แม่) |
+| เกตขั้น ๔ | ต้อง `POST .../intake/confirm-phase4` — ร่างครบอย่างเดียวไม่เลื่อน `current_phase` |
+| ข้อเสนอแนะ | ไม่ใช้แพ็กขั้นที่ ๐ เป็นข้อกำหนดเพิ่มเติมแบบบรรทัดต่อบรรทัด · JSON ข้อเสนอแนะจำกัด 4,096 โทเคน |
+
+รายละเอียดและภาพ: `18-TEST_EVIDENCE.md` ส่วน *รอบ ECT AI Chatbot* · ภาพ `test-evidence/ect-*.png`
 
 ---
 

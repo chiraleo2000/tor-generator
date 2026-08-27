@@ -354,6 +354,30 @@ class TestReviewAgentDeterministicChecks:
         suggestions = self.agent._run_deterministic_checks({}, {})
         assert suggestions == []
 
+    def test_custom_requirements_skip_phase0_wrappers(self):
+        sections = {"s4": "ขอบเขตงานพัฒนาระบบตอบกลับอัตโนมัติคลังความรู้"}
+        requirements = (
+            "=== เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น ===\n"
+            "[ect-ai-chatbot-tor.txt]\n"
+            "แผนการส่งมอบงานและการจ่ายเงิน (4 งวดงาน)\n"
+            "ผู้รับจ้างต้องติดตั้งระบบที่ศูนย์ข้อมูลภายในประเทศและสำรองข้อมูลทุกวัน"
+        )
+        suggestions = self.agent._check_custom_requirements(sections, requirements)
+        texts = " ".join(item.current_text for item in suggestions)
+        assert "เอกสารขั้นที่ ๐" not in texts
+        assert "[ect-ai-chatbot-tor.txt]" not in texts
+        assert any("ศูนย์ข้อมูล" in item.current_text for item in suggestions)
+
+    def test_custom_requirements_thai_heading_covered_by_substring(self):
+        sections = {
+            "s8": "แผนการส่งมอบงานและการจ่ายเงิน แบ่งเป็นสี่งวดตามผลงานส่งมอบ",
+        }
+        suggestions = self.agent._check_custom_requirements(
+            sections,
+            "แผนการส่งมอบงานและการจ่ายเงิน (4 งวดงาน)",
+        )
+        assert suggestions == []
+
 
 # =============================================================================
 # ReviewAgent LLM parsing tests

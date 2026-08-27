@@ -14,6 +14,8 @@ CHAT_MIN_TOKENS = 6_144
 # Review packs a large TOR + พ.ร.บ. + Phase 0 in one user-facing run.
 REVIEW_MAX_TOKENS = 128_000
 REVIEW_CONTEXT_WINDOW = 128_000
+# Suggestion JSON must stay short; a 128k completion cap makes Gemma leave the schema.
+REVIEW_SUGGESTION_MAX_TOKENS = 4_096
 
 DEFAULT_MAX_TOKENS = DRAFT_MAX_TOKENS
 

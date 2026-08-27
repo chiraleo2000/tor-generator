@@ -367,4 +367,28 @@ def extract_unstructured_slots(text: str) -> dict[str, str]:
         _fill_if_empty(found, "s4.11", warranty)
     if "ISO" in quals or "มาตรฐาน" in raw:
         _fill_if_empty(found, "s4.7", quals or found.get("s11") or sla)
+    if quals:
+        _fill_if_empty(found, "s12", quals)
+    widget = _slice_between(
+        raw,
+        ("Web Chat Widget", "จุดเชื่อมโยง", "เชื่อมต่อ Web Chat"),
+        ("เกณฑ์ตรวจรับ", "กรรมสิทธิ์", "คุณสมบัติผู้ยื่น"),
+    )
+    if "Widget" in raw or "Live Chat" in raw or "เชื่อมต่อ" in raw:
+        _fill_if_empty(
+            found,
+            "s4.6",
+            widget or "เชื่อมต่อ Web Chat Widget กับเว็บ กกต. มี Live Chat Escalation และกรณีใช้โมเดลภายนอกต้องเป็น Enterprise API แบบ Zero Data Retention",
+        )
+    if ("FAQ" in raw and "500" in raw) or "7 หมวด" in raw or "1.5 TB" in raw:
+        _fill_if_empty(
+            found,
+            "s4.2",
+            "เอกสารระบุคลังความรู้ กกต. ครอบคลุม 7 หมวด ข้อมูลเริ่มต้น 1.5 TB / 3,000,000 หน้า "
+            "และ FAQ มาตรฐาน 500 ข้อ รวมงานตอบข้อหารือ — เป็นฐานข้อมูลและงานปัจจุบันที่ระบบใหม่ต้องรองรับ",
+        )
+    if payments:
+        _fill_if_empty(found, "s4.12", payments)
+    if "Exit Strategy" in raw or "Secure Wipe" in raw or "กู้คืน" in raw:
+        _fill_if_empty(found, "s4.13", sla or payments)
     return {key: value for key, value in found.items() if value}

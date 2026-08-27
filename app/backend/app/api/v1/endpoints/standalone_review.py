@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
-from app.domain.extraction_map import map_extracted_text
+from app.domain.extraction_map import infer_review_budget, map_extracted_text
 from app.exceptions import NotFoundError, ValidationError
 from app.io_temp import unlink_path, write_temp_bytes
 from app.models.project import Project
@@ -165,7 +165,12 @@ def _run_engine(text: str, job_id: str) -> dict[str, Any]:
     mapped = map_extracted_text(text)
     if not mapped:
         mapped = {"s1": text}
-    document = {**mapped, "sections": mapped, "metadata": {}}
+    metadata: dict[str, object] = {}
+    document: dict[str, Any] = {**mapped, "sections": mapped, "metadata": metadata}
+    budget = infer_review_budget(text, mapped)
+    if budget is not None:
+        document["budget"] = budget
+        metadata["budget"] = budget
     result = engine.validate(document)
     return {
         "id": job_id,

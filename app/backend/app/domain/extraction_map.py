@@ -23,11 +23,7 @@ _HEADING_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
-def map_extracted_text(text: str) -> dict[str, str]:
-    """Split extracted TOR text into canonical section keys using headings."""
-    if not text or not text.strip():
-        return {}
-
+def _map_by_headings(text: str) -> dict[str, str]:
     lines = text.replace("\r\n", "\n").split("\n")
     buckets: dict[str, list[str]] = {key: [] for key in TOR_SECTION_ORDER}
     current = "s1"
@@ -53,14 +49,42 @@ def map_extracted_text(text: str) -> dict[str, str]:
         buckets[current].append(raw)
 
     mapped = {
-        key: "\n".join(lines).strip()
-        for key, lines in buckets.items()
-        if "\n".join(lines).strip()
+        key: "\n".join(chunk).strip()
+        for key, chunk in buckets.items()
+        if "\n".join(chunk).strip()
     }
     if not saw_heading and mapped.get("s1") and len(mapped) == 1:
-        # No headings: keep full text in s1 only so the officer can confirm.
         return {"s1": text.strip()}
     return mapped
+
+
+def _slots_for_review(text: str) -> dict[str, str]:
+    from app.services.intake_heuristic import extract_slot_contents
+
+    heur = extract_slot_contents(text)
+    parent = {key: heur[key] for key in TOR_SECTION_ORDER if heur.get(key)}
+    if heur.get("s4.1") and "s4" not in parent:
+        parent["s4"] = heur["s4.1"]
+    return parent
+
+
+def map_extracted_text(text: str) -> dict[str, str]:
+    """Split extracted TOR text into canonical section keys using headings."""
+    if not text or not text.strip():
+        return {}
+    mapped = _map_by_headings(text)
+    parent = _slots_for_review(text)
+    collapsed = not mapped or (set(mapped) == {"s1"})
+    if collapsed and len(parent) > 1:
+        return _flatten_mapped_sections(parent)
+    if not mapped:
+        return _flatten_mapped_sections(parent or {"s1": text.strip()})
+    merged = dict(mapped)
+    for key, body in parent.items():
+        current = merged.get(key) or ""
+        if not current or len(body) > len(current):
+            merged[key] = body
+    return _flatten_mapped_sections(merged)
 
 
 _MINISTRY_KEYWORDS = (
@@ -92,7 +116,33 @@ def infer_wizard_fields(mapped: dict[str, str]) -> dict[str, str | int]:
     duration = re.search(r"([0-9]{1,4})\s*วัน", mapped.get("s5", ""))  # NOSONAR python:S6353
     if duration:
         fields["duration_days"] = int(duration.group(1))
+    budget = infer_review_budget("", mapped)
+    if budget is not None:
+        fields["budget"] = budget
     return fields
+
+
+def infer_review_budget(text: str, mapped: dict[str, str] | None = None) -> int | None:
+    """First positive baht amount from prose or mapped s6/s1 (standalone review)."""
+    blobs = [text or ""]
+    if mapped:
+        blobs.append(mapped.get("s6") or "")
+        blobs.append(mapped.get("s1") or "")
+    for blob in blobs:
+        value = extract_nlp_fields(blob).get("budget")
+        if isinstance(value, int) and value > 0:
+            return value
+    return None
+
+
+def _flatten_mapped_sections(mapped: dict[str, str]) -> dict[str, str]:
+    from app.domain.section_text import section_plain_text
+
+    flattened: dict[str, str] = {}
+    for key, body in mapped.items():
+        plain = section_plain_text(body, key)
+        flattened[key] = plain or body
+    return flattened
 
 
 def extract_nlp_fields(text: str) -> dict[str, object]:

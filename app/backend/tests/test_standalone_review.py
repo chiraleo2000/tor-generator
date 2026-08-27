@@ -39,6 +39,20 @@ def test_standalone_review_run_with_text():
     assert "quality_score" in body["data"]
 
 
+def test_run_engine_attaches_budget_from_ect_prose():
+    from pathlib import Path
+
+    from app.api.v1.endpoints.standalone_review import _run_engine
+
+    text = Path(__file__).with_name("fixtures").joinpath("ect_ai_chatbot_pack.txt").read_text(
+        encoding="utf-8"
+    )
+    payload = _run_engine(text, "ect-job")
+    assert payload["quality_score"] > 0
+    rules = [item.get("rule") for item in payload.get("findings") or []]
+    assert "LEGAL_CAPITAL_NO_BUDGET" not in rules
+
+
 def test_standalone_review_run_requires_text():
     user = _user("officer")
     app.dependency_overrides[get_current_user] = lambda: user

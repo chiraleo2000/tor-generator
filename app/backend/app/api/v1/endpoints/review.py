@@ -59,7 +59,6 @@ def _project_requirements_text(project: Project) -> str:
 
     intake = project_intake_pack(project)
     if intake:
-        parts.append("=== เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น ===")
         parts.append(intake)
     analysis = dict(project.analysis_json or {})
     slot_map = analysis.get("slot_map") or {}
@@ -262,7 +261,7 @@ async def run_review(
                 "legal_context": legal_context,
             },
             db=db,
-            custom_requirements=requirements or project.custom_requirements_text,
+            custom_requirements=project.custom_requirements_text,
             redis=redis,
             request_id=request_id,
         )

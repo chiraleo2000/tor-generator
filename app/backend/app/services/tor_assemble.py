@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain.section_text import section_plain_text
+from app.domain.tor_sections import TOR_SECTION_LABELS
 
 
 def document_section_key(section_key: str, sub_key: str | None) -> str:
@@ -49,3 +50,32 @@ def assemble_review_document(sections: list[Any]) -> tuple[dict[str, str], dict[
         if not sub:
             sections_map[parent] = content
     return tor_document, sections_map
+
+
+def plain_tor_from_section_items(items: list[dict[str, Any]]) -> str:
+    """Join GET /sections payloads into heading + prose, including s4.1–s4.14.
+
+    Parent s4 is often a short JSON field blob; real scope lives in ``subs``.
+    """
+    parts: list[str] = []
+    for item in items:
+        key = str(item.get("key") or "")
+        title = str(item.get("title") or TOR_SECTION_LABELS.get(key) or key)
+        if key == "s4":
+            chunks: list[str] = []
+            for sub in item.get("subs") or []:
+                sub_key = str(sub.get("key") or "")
+                text = section_plain_text(sub.get("content") or "", sub_key)
+                if not text:
+                    continue
+                sub_title = str(sub.get("title") or "")
+                chunks.append(f"{sub_key} {sub_title}\n{text}".strip())
+            body = "\n\n".join(chunks)
+        else:
+            body = section_plain_text(
+                item.get("content") or item.get("content_preview") or "",
+                key,
+            )
+        if body:
+            parts.append(f"{key}. {title}\n{body}")
+    return "\n\n".join(parts)

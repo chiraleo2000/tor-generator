@@ -61,6 +61,9 @@ def test_extract_full_ect_ai_chatbot_fixture():
     found = extract_slot_contents(text)
     for key in ("s1", "s2", "s5", "s6", "s7", "s4.1", "s8", "s3", "s11", "s4.14", "s13", "s10"):
         assert found.get(key), f"expected {key} filled from ECT pack"
+    assert found.get("s12")
+    assert found.get("s4.6")
+    assert found.get("s4.13")
 
 
 def test_short_mention_of_project_does_not_fake_background():

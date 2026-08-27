@@ -1,20 +1,50 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-วันที่ **25 สิงหาคม 2026** (v0.2.4 — ร่างต่อเนื่อง 0→4 + ไทยล้วน + หัวข้อย่อย s4.1–s4.14 + ตาราง + headed + coverage + Sonar)  
+วันที่ **27 สิงหาคม 2026** (อัปเดตรอบ ECT AI Chatbot full coverage 26–27 ส.ค.) · ฐานเดิม v0.2.4 **25 สิงหาคม 2026**  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234` (fallback เมื่อ SGLang `:30000` ยังไม่ขึ้น)  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
-เอกสารชุดปัจจุบันเรียง **13–20** (เพิ่ม `20-AWS_BEDROCK_SETUP.md`). หลักฐานภาพอยู่ใน `discussions/test-evidence/`
+เอกสารชุดปัจจุบันเรียง **13–23**. หลักฐานภาพอยู่ใน `discussions/test-evidence/`
 
 | โมเดล | ค่า |
 |--------|-----|
 | Chat / draft (dev) | SGLang `:30000` เมื่อ healthy ไม่เช่นนั้น `google/gemma-4-e4b` ผ่าน LM Studio |
-| Structured JSON (intake / ReviewAgent / graph) | SGLang `guided_json` เมื่อ healthy; LM Studio + `parse_json_lenient` เป็น fallback |
+| Structured JSON (intake / ReviewAgent / graph) | SGLang `guided_json` เมื่อ healthy; LM Studio + `parse_json_lenient` เป็น fallback · ข้อเสนอแนะ ReviewAgent จำกัด completion **4,096** โทเคน |
 | Embeddings (dev) | `text-embedding-embeddinggemma-300m` (768 มิติ) |
 | Production แนะนำ | Amazon Bedrock (ดู `20-AWS_BEDROCK_SETUP.md`) |
 
 ภาพถ่ายจาก Playwright แบบ **headed** (`slowMo` 400ms, พิมพ์ทีละตัวอักษร delay 70ms, เบราว์เซอร์โชว์บนจอ) หลังเคสผ่านแล้วเท่านั้น  
 คู่มือผู้ใช้: `13-USER_GUIDELINE.md` · รายงานการทำงาน: `19-APPLICATION_OPERATING_REPORT.md`
+
+---
+
+## รอบ ECT AI Chatbot — full coverage ใช้งานจริง (26 ส.ค. 2026 ดึก)
+
+เอกสารต้นทาง: `app/backend/tests/fixtures/ect_ai_chatbot_pack.txt` (สำนักงาน กกต. · ECT AI Chatbot · งบ 15,000,000 บาท · 360 วัน)  
+ฮาร์เนส: `tests/test_live_ect_tor_full.py` + Playwright `e2e/ect-full.spec.ts`  
+โครงการ API: `afb571e5-c698-4e35-b908-81780e450854` (ECT AI Chatbot live 222750) · pytest **3 ผ่าน ใน 40:36** · Playwright headed **1 ผ่าน ใน 36 วินาที**
+
+วงจรที่พิสูจน์แล้ว: **ขั้น ๐ วาง+อัปโหลด → วิเคราะห์ 27/27 ช่อง → confirm-ready → ร่าง s1–s13 และ s4.1–s4.14 → ตรวจในโครงการ → ตรวจไฟล์ต้นทาง/ร่างประกอบบน `/review`**  
+รอบแก้ 27 ส.ค. ปิดปลายวงจรในฮาร์เนสด้วย `confirm-phase4` + ส่งออก และแก้คะแนนไฟล์ล้วนที่เคยได้ 0 เพราะประกอบหมวด ๔ จาก JSON แม่โดยไม่รวมหัวข้อย่อย
+
+| เส้นทาง | ผล | หมายเหตุ |
+|---------|-----|----------|
+| Phase 0→1 coverage | **27/27** ช่อง `filled` | ฮิวริสติกจัดเอกสารอิสระได้แม้ไม่มีรหัส `(s1):` |
+| ตรวจไฟล์ต้นทาง (`/review`) | **74/100** · 9 findings (26 ส.ค.) | รอบนั้นขึ้น «ไม่พบข้อมูลงบประมาณ» ทั้งที่มี 15,000,000 ในข้อความ — แก้ 27 ส.ค. ให้สกัดงบก่อนรันกฎ |
+| ร่าง 13 หมวด + 14 หัวข้อย่อย | ครบ · รวม ~239,000 ตัวอักษร | s4 ใช้เวลาส่วนใหญ่ (~19 นาที บน Gemma) |
+| ตรวจในโครงการ (Rule Engine + เมทาดาทาวงเงิน) | **95/100** · `valid=true` · warning 2 | อ้างอิง พ.ร.บ. 2560 · ชื่อเอกสาร |
+| ตรวจไฟล์ TOR ที่ประกอบจากร่าง | **76/100** | ต้องรวม s4.1–s4.14 + คลาย JSON หัวข้อย่อยเป็นภาษาราชการ |
+| ข้อเสนอแนะ ReviewAgent | JSON ล้ม 2 ครั้ง แล้ว fallback | รอบนั้นได้ข้อเสนอขยะจากหัวข้อแพ็กขั้นที่ ๐ — แก้แล้วไม่ส่งแพ็กเป็น `custom_requirements` |
+
+![ECT Phase 0 แพ็กเอกสาร](test-evidence/ect-phase-0-pack.png)
+
+![ECT Phase 1 ครบ 27 ช่อง](test-evidence/ect-phase-1-coverage.png)
+
+![ECT สกัดไฟล์ล้วน](test-evidence/ect-standalone-extract.png)
+
+![ECT คะแนนไฟล์ต้นทาง 74](test-evidence/ect-standalone-score.png)
+
+อย่ารีบิลด์คอนเทนเนอร์ backend ระหว่างงานร่าง — คิวร่างอยู่ในหน่วยความจำ
 
 ---
 

@@ -26,6 +26,8 @@ async def test_invoke_with_schema_retries_then_succeeds():
     )
     assert payload["ok"] is True
     assert llm.invoke.await_count == 2
+    retry_messages = llm.invoke.await_args_list[1].args[0]
+    assert retry_messages[-1]["content"].startswith("ตอบเป็น JSON")
 
 
 @pytest.mark.asyncio

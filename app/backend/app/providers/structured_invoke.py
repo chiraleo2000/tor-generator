@@ -47,8 +47,16 @@ async def invoke_with_schema(
 ) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(1, max(1, attempts) + 1):
+        call_messages = list(messages)
+        if attempt > 1:
+            call_messages.append(
+                {
+                    "role": "user",
+                    "content": "ตอบเป็น JSON object ตาม schema เท่านั้น ห้ามข้อความนำหรือท้าย",
+                }
+            )
         response = await llm.invoke(
-            messages,
+            call_messages,
             json_schema=schema,
             json_schema_name=schema_name,
             disable_thinking=True,
