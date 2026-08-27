@@ -150,9 +150,19 @@ tr:hover td{background:#f9fafb}
 .chat-msgs{flex:1;overflow:auto;padding:16px}
 .cite{display:inline-block;background:#fff;border-radius:999px;padding:2px 8px;font-size:11px;color:var(--navy);margin:4px 4px 0 0}
 .prompt-chip{border:1px solid var(--border);background:#fff;border-radius:999px;padding:3px 10px;font-size:11px;margin:0 4px 4px 0}
-.cov-table td,.cov-table th{padding:8px 10px;font-size:13px}
+.cov-ok{color:var(--green);font-weight:700}
+.sug{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#f8fafc;font-size:13px}
 .flow{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 .flow span{background:#eef2ff;color:var(--navy);padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700}
+.rev-step{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.rev-step span{border-radius:999px;border:1px solid var(--border);padding:4px 12px;font-size:12px;font-weight:700;background:#f9fafb;color:var(--muted)}
+.rev-step span.on{border-color:var(--crimson);background:var(--orange);color:var(--navy)}
+.phase-sub{display:block;font-size:10px;color:var(--muted);margin-top:2px}
+.help-table{width:100%;border-collapse:collapse;margin:10px 0 14px;font-size:13px}
+.help-table th,.help-table td{border-top:1px solid #e5e7eb;padding:8px 10px;text-align:left;vertical-align:top}
+.help-table th{color:var(--navy);font-weight:700}
+.help-rich ul{margin:8px 0 8px 18px}
+.help-rich code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px}
 .two{display:grid;gap:16px;grid-template-columns:1fr 1fr}
 .bar{height:8px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin:8px 0 14px}
 .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--navy),var(--orange-dark))}
@@ -212,11 +222,11 @@ tr:hover td{background:#f9fafb}
       <div><h1>TOR Generator</h1><p>ระบบจัดซื้อจัดจ้างภาครัฐ</p></div>
     </div>
     <nav id="nav"></nav>
-    <p class="sidebar-foot">v0.2.3 — Gemma ในเครื่อง หรือคลาวด์เมื่อใส่ API key (Anthropic / OpenAI / Gemini / Bedrock / Azure)</p>
+    <p class="sidebar-foot">จำลอง v0.2.4 — หน้าตาตามแอป Docker ห้าขั้น · ไม่เรียก API / LLM</p>
     <button class="logout" type="button" id="logoutBtn">ออกจากระบบ</button>
   </aside>
   <div class="main">
-    <div class="sim-banner">จำลองบน GitHub Pages v0.2.3 — หน้าตาตามแอป Docker (5 Phase, ถาม-ตอบ, Agent API เอกสาร) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM จริง</div>
+    <div class="sim-banner">จำลองบน GitHub Pages — หน้าตาตามแอปจริง (ห้าขั้น ร่าง TOR · ตรวจสอบ · ถาม-ตอบ) ไม่เชื่อมต่อเซิร์ฟเวอร์และไม่เรียก LLM</div>
     <header class="topbar">
       <div><h1 id="pageTitle">แดชบอร์ด</h1><p class="sub" id="pageSub">ภาพรวมโครงการ TOR ทั้งหมด</p></div>
       <div class="user-chip"><span id="userEmail"></span><div class="avatar" id="userAv">?</div></div>
@@ -263,22 +273,27 @@ const DOC_CLASSES = [
 ];
 const CHECKLIST = ["เอกสารอนุมัติงบประมาณ","ประกาศราคากลางฉบับทางการ","เอกสารโครงการ (Charter / Brief)","รายงานการประชุม","รายชื่อผู้เกี่ยวข้อง"];
 const PHASES = [
-  [0,"เตรียมข้อมูล","Pre-Drafting"],[1,"วิเคราะห์ความต้องการ","Analysis"],
-  [2,"ร่างเนื้อหา TOR","Drafting 13 หมวด"],[3,"ทบทวน/อนุมัติ","Review & Approval"],
-  [4,"เผยแพร่","Publishing"]
+  [0,"เตรียมข้อมูล","อัปโหลดและวิเคราะห์"],[1,"ผลวิเคราะห์","ตารางช่องจากเอกสาร"],
+  [2,"สอบถามเพิ่ม","เติมช่องและกฎระเบียบ"],[3,"ร่างเนื้อหา","สิบสามหมวดรวมหัวข้อย่อย"],
+  [4,"ทบทวนและส่งออก","ตรวจกฎและเผยแพร่"]
 ];
+const THAI_PHASE = ["๐","๑","๒","๓","๔"];
+const CONFIRM = {
+  1:"ยืนยันเริ่มวิเคราะห์เอกสาร?",
+  3:"ข้อมูลครบถ้วนแล้ว ยืนยันเริ่มร่างเนื้อหา?",
+  4:"ยืนยันเข้าทบทวน — ระบบจะตรวจร่างกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐ ของโครงการนี้"
+};
 const META = {
   projects:["แดชบอร์ด","ภาพรวมโครงการ TOR ทั้งหมด"],
-  kb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG"],
-  draft:["ร่าง TOR","กระบวนการร่างเอกสาร TOR แบบ Flow 5 Phase"],
-  chat:["ถาม-ตอบ","ห้องแชทรายคน ค้นคลังกลางและเอกสารของคุณด้วย RAG + กราฟกฎหมาย"],
+  kb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับค้นหา"],
+  draft:["ร่าง TOR","กระบวนการร่างเอกสารกำหนดขอบเขตงานห้าขั้น"],
+  chat:["ถาม-ตอบ","ดึงคลังกฎหมายจาก pgvector หลายชิ้น แล้วตอบแบบเจ้าหน้าที่พัสดุอย่างละเอียด"],
   review:["ตรวจสอบ TOR","ตรวจสอบความถูกต้องตามกฎหมายและเทียบเคียงโครงการ"],
   help:["คู่มือการใช้งาน","คำอธิบายและภาพประกอบแต่ละส่วนของระบบ"],
   templates:["แม่แบบ","โครงร่าง TOR ตามประเภทงาน"],
   adminkb:["ฐานความรู้","คลังกฎหมาย ระเบียบ และเอกสารอ้างอิงสำหรับ RAG"],
   users:["ผู้ใช้","บัญชีเจ้าหน้าที่และสิทธิ์"],
-  ai:["การตั้งค่า AI","เลือกแชทและฝังเวกเตอร์อิสระ (ในเครื่อง / คลาวด์)"],
-  agent:["Agent API","เส้นทาง /api/v1/agent และ /kb-chat — ยังไม่มีหน้า Next.js"]
+  ai:["การตั้งค่า AI","เลือกแชทและฝังเวกเตอร์อิสระ (ในเครื่อง / คลาวด์)"]
 };
 const ACCOUNTS = {
   "officer@example.go.th":{name:"เจ้าหน้าที่พัสดุ",role:"officer",org:"กรมบัญชีกลาง"},
@@ -301,6 +316,23 @@ const AI_DRAFT = {
   s12:"สำเนาหนังสือรับรองบริษัท ภ.พ.20 ผลงานอ้างอิง เอกสารบุคลากรหลัก และข้อเสนอด้านเทคนิค",
   s13:"ผู้รับจ้างต้องไม่ส่งข้อมูลออกนอกเครื่องเมื่อหน่วยงานใช้โหมด on-prem และต้องปฏิบัติตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล"
 };
+const MOCK_TOR_EXTRACT = `เอกสารกำหนดขอบเขตของงาน (Terms of Reference)
+โครงการพัฒนาระบบร่างและตรวจสอบ TOR ภาครัฐ
+1. ความเป็นมา หน่วยงานมีระบบจัดซื้อจัดจ้างเดิมที่ใช้เอกสารกระดาษเป็นหลัก ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
+2. วัตถุประสงค์ เพื่อให้เจ้าหน้าที่พัสดุจัดทำ TOR ครบสิบสามหมวด
+5. ระยะเวลาดำเนินการ 270 วัน นับจากวันลงนามในสัญญา
+6. วงเงินงบประมาณ 12,500,000 บาท รวมภาษีมูลค่าเพิ่ม
+7. สถานที่ดำเนินการ ศูนย์ข้อมูลหลักของหน่วยงาน
+8. งวดงานและการจ่ายเงิน จ่ายเป็น 4 งวด ตามผลงานส่งมอบ
+10. อัตราค่าปรับ ร้อยละ 0.10 ต่อวัน ของวงเงินตามสัญญา`;
+
+const SAMPLE_PACK = `โครงการพัฒนาระบบตอบกลับอัตโนมัติคลังความรู้ปัญญาประดิษฐ์ (ECT AI Chatbot) ของสำนักงาน กกต. วงเงินงบประมาณ 15,000,000 บาท (ราคากลาง 15,075,250 บาท) ด้วยวิธี e-bidding กำหนดระยะเวลาดำเนินงาน 360 วัน
+วัตถุประสงค์: พัฒนาแชทบอทคลังความรู้ภายในด้วย RAG แบบ Strict Grounding ติดตั้งบนคลาวด์ในประเทศ
+ขอบเขตงาน: Containerized บน Kubernetes, คลังความรู้ 1.5 TB, OCR, PDPA/SLA
+สถานที่ดำเนินการ: สำนักงานคณะกรรมการการเลือกตั้ง
+งวดงาน 4 งวด: 15% / 35% / 30% / 20%
+คุณสมบัติ: นิติบุคคลไทย ทุนจดทะเบียนชำระแล้วไม่น้อยกว่า 3,750,000 บาท
+ค่าปรับส่งมอบล่าช้า 0.10% ต่อวัน ตามระเบียบพัสดุ`;
 
 function emptySections(){
   return TOR.map(([key,title])=>({
@@ -329,11 +361,14 @@ const state = {
   sections: emptySections(),
   files:[],
   coverage:[],
+  intakePack:"",
   intakeMsg:"",
+  suggestions:[],
+  reviewBlob:null,
   chatScope:"both",
   intakeMsgs:[],
-  chatRooms:[{id:"c1",title:"งวดจ่าย",last:"อ้างระเบียบข้อ 85"}],
-  kbMsgs:[{role:"assistant",text:"เลือกห้องหรือพิมพ์คำถามจากคลังกฎหมายกลาง"}],
+  chatRooms:[{id:"c1",title:"ถาม-ตอบคลังความรู้",last:"ยังไม่มีข้อความ"}],
+  kbMsgs:[{role:"assistant",text:"ถามจากคลังกฎหมายได้เลย — คำตอบจำลองเป็นบันทึกเจ้าหน้าที่พัสดุหกหัวข้อ ไม่เรียกโมเดลจริง"}],
   mapping:[],
   proposed:{},
   checklist:{},
@@ -344,6 +379,12 @@ const state = {
   performance:"ตอบสนองหน้าจอร่าง TOR ภายใน 2 วินาที หลังประมวลผลในเครื่อง",
   qa:[],
   reviewFile:null,
+  reviewStep:1,
+  reviewPreview:"",
+  reviewChat:[],
+  phase4Findings:[],
+  standardMsg:"",
+  intakeBusy:false,
   compares:[],
   reviewResult:null,
   templates:[{id:"t1",name:"แม่แบบงาน IT ภาครัฐ",industry:"it",status:"published"},{id:"t2",name:"แม่แบบจัดซื้อทั่วไป",industry:"general",status:"draft"}],
@@ -353,8 +394,16 @@ const state = {
     {name:"ผู้ดูแลระบบ",email:"admin@example.go.th",role:"admin",org:"กรมบัญชีกลาง",disabled:false}
   ],
   ai:{mode:"on_prem",llm:"lm_studio",embed:"local",embedServer:"lm_studio",vector:"pgvector",
-    lm:"http://host.docker.internal:1234/v1",ollama:"http://host.docker.internal:11434/v1",
-    llama:"http://host.docker.internal:8080/v1",chat:"google/gemma-4-e4b",emb:"text-embedding-embeddinggemma-300m",timeout:180},
+    lm:"http://host.docker.internal:1234/v1", // NOSONAR javascript:S5332
+    ollama:"http://host.docker.internal:11434/v1", // NOSONAR javascript:S5332
+    llama:"http://host.docker.internal:8080/v1", // NOSONAR javascript:S5332
+    sglang:"http://127.0.0.1:30000/v1",
+    sglangEmb:"http://127.0.0.1:30001/v1",
+    sglangChat:"google/gemma-4-e4b",sglangEmbModel:"google/embeddinggemma-300m",
+    chat:"google/gemma-4-e4b",emb:"text-embedding-embeddinggemma-300m",timeout:180,
+    customRag:false,customRagUrl:"",ragSources:"both"},
+  analyzed:false,
+  phase4Confirmed:false,
   aiMsg:"",
   busy:false,
   score:null,
@@ -363,6 +412,17 @@ const state = {
 
 function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]))}
 function baht(n){return Number(n).toLocaleString("th-TH")}
+const PASTE_MAX=500000;
+function askConfirm(title, onYes){
+  const m=document.getElementById("modal");
+  m.classList.remove("hidden");
+  m.innerHTML=`<div class="modal"><h2>${esc(title)}</h2>
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cfCancel">ยกเลิก</button><button type="button" class="btn btn-primary" id="cfOk">ยืนยัน</button></div></div>`;
+  const close=()=>m.classList.add("hidden");
+  m.querySelector("#cfCancel").onclick=close;
+  m.onclick=e=>{if(e.target===m) close();};
+  m.querySelector("#cfOk").onclick=()=>{close(); onYes();};
+}
 function pill(st){
   const m={draft:["ร่าง","pill-draft"],in_review:["กำลังดำเนินการ","pill-review"],approved:["เสร็จแล้ว","pill-ok"],rejected:["ส่งกลับ","pill-rej"]};
   const x=m[st]||m.draft; return `<span class="pill ${x[1]}">${x[0]}</span>`;
@@ -370,21 +430,30 @@ function pill(st){
 function emptyCoverage(){
   const fact=new Set(["s1","s2","s5","s6","s7","s4.1"]);
   return [
-    ...TOR.map(([key,label])=>({key,label,status:"gap",fact:fact.has(key)})),
-    ...SCOPE.map(([key,label])=>({key,label,status:"gap",fact:fact.has(key)}))
+    ...TOR.map(([key,label])=>({key,label,status:"gap",fact:fact.has(key),preview:""})),
+    ...SCOPE.map(([key,label])=>({key,label,status:"gap",fact:fact.has(key),preview:""}))
   ];
+}
+function coverageStatusLabel(status){
+  if(status==="filled") return "ครบ";
+  if(status==="reference_only") return "อ้างอิง";
+  if(status==="gap") return "ยังขาด";
+  return status;
+}
+function factReady(){
+  const facts=(state.coverage||[]).filter(r=>r.fact);
+  return facts.length>0 && facts.every(r=>r.status==="filled");
 }
 function coverageHtml(){
   if(!state.coverage.length) return "";
   const rows=state.coverage.map(r=>`<tr>
     <td>${esc(r.key)} ${esc(r.label)}${r.fact?" *":""}</td>
-    <td>${esc(r.status)}</td>
-    <td>${r.status==="gap"?`<button type="button" class="btn btn-outline btn-sm" data-fill="${r.key}">ดึงอ้างอิงกฎหมาย</button>`:""}</td>
+    <td class="${r.status==="filled"?"cov-ok":""}">${esc(coverageStatusLabel(r.status))}</td>
+    <td class="muted">${esc(r.preview||"—")}</td>
   </tr>`).join("");
   return `<div class="gov-card" style="margin-top:12px;overflow-x:auto">
-    <h4 style="color:var(--navy);margin-bottom:8px">ตารางความครบถ้วน</h4>
-    <table class="cov-table"><thead><tr><th>ช่อง</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-    <button class="btn btn-primary" style="margin-top:12px" id="readyDraft">พร้อมร่าง TOR แล้ว</button>
+    <h4 style="color:var(--navy);margin-bottom:8px">รายละเอียดที่จัดเข้าช่อง</h4>
+    <table class="cov-table"><thead><tr><th>ช่อง</th><th>สถานะ</th><th>ข้อความที่ได้</th></tr></thead><tbody>${rows}</tbody></table>
   </div>`;
 }
 function chatShellHtml(kind){
@@ -408,7 +477,7 @@ function chatShellHtml(kind){
   return `<div class="chat-shell">
     <aside class="chat-rooms">
       <div class="chat-rooms-head">
-        <button type="button" class="icon-btn" id="${kind==="kb"?"newKbRoom":"newIntakeRoom"}" title="ห้องใหม่">+</button>
+        <button type="button" class="icon-btn" id="${kind==="kb"?"newKbRoom":"newIntakeRoom"}" title="สร้างห้อง">+</button>
         <div style="position:relative;flex:1"><input placeholder="ค้นหาห้อง"></div>
       </div>
       <div style="padding:8px 0">${roomHtml}</div>
@@ -423,6 +492,7 @@ function chatShellHtml(kind){
       <div class="chat-msgs">${msgHtml}</div>
       <div style="border-top:1px solid var(--border);padding:12px">
         <div style="margin-bottom:8px">${prompts.map(([t,b])=>`<button type="button" class="prompt-chip" data-prompt="${esc(b)}" data-qid="${qId}">${esc(t)}</button>`).join("")}</div>
+        ${kind==="intake"?`<label class="muted" style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><input type="checkbox" id="intakeCiteLaw"> แนบอ้างอิงกฎหมายประกอบคำตอบนี้</label>`:""}
         <div style="display:flex;gap:8px;align-items:end">
           <textarea id="${qId}" placeholder="พิมพ์คำถาม..." style="min-height:48px;flex:1"></textarea>
           <button class="btn btn-primary" id="${sendId}">ส่ง</button>
@@ -434,7 +504,6 @@ function chatShellHtml(kind){
 function canDecide(){return state.user && (state.user.role==="reviewer"||state.user.role==="admin")}
 function active(){return state.projects.find(p=>p.id===state.activeId) || state.projects[0]}
 function filledCount(){return state.sections.filter(s=>s.filled).length}
-function hitlReady(){return state.sections.filter(s=>s.hitl).every(s=>s.confirmed && s.filled)}
 
 // Lightweight RAG simulation for the GitHub Pages mock:
 // load existing `*_tor_extract.json` files from `documents/knowledge-base/`
@@ -506,18 +575,35 @@ function scoreChunk(query, text) {
 
 async function ragSimAnswer(query) {
   await loadRagTorExtracts();
-  if (ragChunks.length === 0) {
-    return "(จำลอง) กำลังโหลดคลังกฎหมาย… ลองใหม่อีกครั้ง";
-  }
-
+  const q=query.trim();
   const scored = ragChunks
-    .map((c) => ({ ...c, score: scoreChunk(query, c.text) }))
+    .map((c) => ({ ...c, score: scoreChunk(q, c.text) }))
     .sort((a, b) => b.score - a.score);
-
-  const best = scored[0];
-  const excerpt = best.text.slice(0, 360) + (best.text.length > 360 ? "…" : "");
-  const src = best.source ? `\n\nอ้างอิง: ${best.source}` : "";
-  return `(จำลอง RAG) ตอบจากเนื้อหาที่เกี่ยวข้อง\n\n${excerpt}${src}`;
+  const top = scored.filter(c=>c.score>0).slice(0,4);
+  const used = top.length ? top : scored.slice(0,2);
+  const excerpts = used.map((c,i)=>`${i+1}. ${(c.text||"").slice(0,280)}${(c.text||"").length>280?"…":""}`).join("\n");
+  const sources = [...new Set(used.map(c=>c.source).filter(Boolean))];
+  const lawBlock = excerpts || "(ยังโหลดคลังจำลองไม่สำเร็จ — ใช้โครงคำตอบเจ้าหน้าที่จากหน้านี้ได้)";
+  const srcLine = sources.length ? sources.join(" · ") : "คลังกลาง (จำลองในเบราว์เซอร์)";
+  return [
+    "ประเด็นคำถาม",
+    q,
+    "",
+    "หลักกฎหมายและระเบียบที่เกี่ยวข้อง (ระบุชื่อเอกสาร มาตรา/ข้อ ให้ครบจากบริบท)",
+    lawBlock,
+    "",
+    "คำอธิบายและการตีความเชิงปฏิบัติ",
+    "เจ้าหน้าที่พัสดุใช้ข้อความจากคลังด้านบนประกอบการจัดทำ TOR — ห้ามแต่งมาตราที่ไม่มีในบริบท หน้านี้เป็นตัวเล่นจำลอง ไม่เรียกโมเดลจริง",
+    "",
+    "ขั้นตอน เงื่อนไข ข้อยกเว้น และข้อพึงระวัง",
+    "ตรวจชื่อเอกสารและมาตราในคลังก่อนนำไปใส่หมวดที่เกี่ยวข้อง อย่าใช้ข้อความอ้างอิงแทนข้อเท็จจริงโครงการ เช่น วงเงินหรือชื่อหน่วยงาน",
+    "",
+    "สรุปแนวทางปฏิบัติ",
+    "ดึงหลายชิ้นจากคลังแล้วตอบเป็นบันทึกเจ้าหน้าที่พัสดุ หกหัวข้อ — ตรวจต้นฉบับก่อนใช้ในสัญญา",
+    "",
+    "แหล่งอ้างอิง",
+    srcLine
+  ].join("\n");
 }
 
 void loadRagTorExtracts();
@@ -526,7 +612,7 @@ function navHtml(){
   const p=state.page;
   const item=(id,href,icon,label)=>`<a class="menu-item ${p===id?"active":""}" href="#/${href}">${ICONS[icon]}${label}</a>`;
   let h=`<div class="menu-section"><p class="menu-title">หลัก</p>${item("projects","projects","dash","แดชบอร์ด")}${item("kb","knowledge-base","book","ฐานความรู้")}</div>`;
-  h+=`<div class="menu-section"><p class="menu-title">การทำงาน</p>${item("draft","draft","pen","ร่าง TOR")}${item("agent","agent","cpu","Agent API")}${item("review","review","scan","ตรวจสอบ TOR")}${item("chat","chat","chat","ถาม-ตอบ")}</div>`;
+  h+=`<div class="menu-section"><p class="menu-title">การทำงาน</p>${item("draft","draft","pen","ร่าง TOR")}${item("review","review","scan","ตรวจสอบ TOR")}${item("chat","chat","chat","ถาม-ตอบ")}</div>`;
   h+=`<div class="menu-section"><p class="menu-title">อื่นๆ</p>${item("help","help","help","คู่มือ")}</div>`;
   if(state.user?.role==="admin"){
     h+=`<div class="menu-section"><p class="menu-title">ผู้ดูแลระบบ</p>${item("templates","admin/templates","file","แม่แบบ")}${item("adminkb","admin/knowledge-base","book","ฐานความรู้ (จัดการ)")}${item("users","admin/users","users","ผู้ใช้")}${item("ai","admin/ai-settings","cpu","การตั้งค่า AI")}</div>`;
@@ -550,7 +636,6 @@ function viewHtml(){
     case "kb": return kbHtml();
     case "draft": return draftHtml();
     case "chat": return chatHtml();
-    case "agent": return agentHtml();
     case "review": return reviewHtml();
     case "help": return helpHtml();
     case "templates": return templatesHtml();
@@ -591,7 +676,7 @@ function dashHtml(){
 }
 
 function kbHtml(){
-  const types=[["law","กฎหมาย/ระเบียบกลาง"],["guideline","ประกาศราคากลาง / ระเบียบ"],["example_tor","ร่างเอกสารประกวดราคา"],["manual","ความต้องการ/คู่มือ"],["regulation","กฎกระทรวง"]];
+  const types=[["law","พ.ร.บ. / กฎหมาย"],["regulation","กฎกระทรวง"],["guideline","ระเบียบกระทรวงการคลัง"],["circular","หนังสือเวียนกรมบัญชีกลาง"],["price_announcement","ประกาศราคากลาง"],["manual","คู่มือปฏิบัติงาน"],["example_tor","ตัวอย่าง TOR"],["template","แม่แบบ"],["other","อื่น ๆ"]];
   const cats=[
     ["พระราชบัญญัติและระเบียบ",[{n:"พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:48},{n:"ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560",c:62}]],
     ["คู่มือแนวปฏิบัติ (บังคับ)",[{n:"คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf",c:86}]],
@@ -608,7 +693,7 @@ function kbHtml(){
   return `<div class="gov-card" style="margin-bottom:20px">
     <h2 style="color:var(--navy);font-size:16.5px;margin-bottom:12px">${uploadTitle}</h2>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${kbTypeChipsHtml(types)}</div>
-    <label class="upload"><input type="file" hidden multiple accept=".pdf,.docx" id="kbMineUp"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์</p><span>${uploadHint}</span></label>
+    <label class="upload"><input type="file" hidden multiple accept=".pdf,.docx,.txt" id="kbMineUp"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์</p><span>${uploadHint} · PDF / Word / ข้อความ ไม่เกิน 20 MB</span></label>
     <p class="muted" id="kbMsg">${notice}</p>
   </div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 style="color:var(--navy);font-size:16.5px">เอกสารต้นฉบับ กฎหมาย/ระเบียบ</h2><span class="pill pill-draft">บังคับ</span></div>
@@ -644,32 +729,87 @@ function kbChunkedHtml(chunked){
 }
 function kbMineListHtml(mine){
   if(!mine.length) return '<p class="muted">ยังไม่มีไฟล์ส่วนตัว</p>';
-  return mine.map(function(file){
-    return '<div class="kb-row" style="padding:12px 16px;font-size:13px">'+esc(file.name)+'</div>';
+  return mine.map(function(file, i){
+    return '<div class="kb-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px"><span>'+esc(file.name)+' <span class="pill pill-draft">ส่วนตัว</span></span><span><button type="button" class="btn btn-outline btn-sm" data-mine-dl="'+i+'">ดาวน์โหลด</button> <button type="button" class="btn btn-danger btn-sm" data-mine-del="'+i+'">ลบ</button></span></div>';
   }).join("");
 }
 
 function unlockedPhase(){
-  if (state.readyCompose) return 2;
-  if ((state.files||[]).length) return 1;
-  if ((state.coverage||[]).some(r=>r.status==="filled")) return 1;
+  if (state.phase4Confirmed) return 4;
+  if (state.readyCompose) return 3;
+  if (state.analyzed) return 2;
   return 0;
 }
 function canSelectMockPhase(target){
   const current=state.phase, u=unlockedPhase();
   if (target<0||target>4) return false;
   if (target<=current) return true;
-  if (target<=u) return true;
-  return u>=2 && target===current+1;
+  return target<=u;
+}
+function mockFactsFromPack(blob){
+  const money=blob.match(/([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{5,12})\s*บาท/);
+  const days=blob.match(/([0-9]{1,4})\s*วัน/);
+  const agency=blob.match(/สำนักงาน[^\s]{0,40}|กรม[^\s]{0,20}|กกต/);
+  return {
+    budget: money?money[1]:"12,500,000",
+    days: days?days[1]:"270",
+    agency: agency?agency[0]:(active()?.ministry||"หน่วยงาน")
+  };
 }
 function applyIntakeMaterial(){
-  const fact=new Set(["s1","s2","s5","s6","s7","s4.1"]);
-  state.coverage=emptyCoverage().map(r=>({...r,status:fact.has(r.key)?"filled":"gap"}));
-  state.phase=1;
+  const blob=[state.intakePack||"", (active()?.name||""), (active()?.ministry||"")].join("\n");
+  const facts=mockFactsFromPack(blob);
+  const previews={
+    s1: blob.includes("กกต") || blob.includes("ECT")
+      ? "โครงการ ECT AI Chatbot ของสำนักงาน กกต. วงเงิน "+facts.budget+" บาท"
+      : "หน่วยงานใช้เอกสารกระดาษเป็นหลัก ทำให้จัดทำ TOR ล่าช้า",
+    s2: blob.includes("RAG") ? "พัฒนาแชทบอทคลังความรู้ภายในด้วย RAG แบบ Strict Grounding" : "เพื่อให้เจ้าหน้าที่พัสดุจัดทำ TOR ครบสิบสามหมวด",
+    s3: "นิติบุคคลไทย ทุนจดทะเบียนชำระแล้วไม่น้อยกว่า 25% ของงบประมาณ",
+    s4: "พัฒนาระบบตามขอบเขตงานจากเอกสารขั้นที่ ๐ รวมฮาร์ดแวร์ ซอฟต์แวร์ และความมั่นคงปลอดภัย",
+    s5: facts.days+" วัน นับจากวันลงนามในสัญญา",
+    s6: facts.budget+" บาท",
+    s7: facts.agency,
+    s8: blob.includes("งวด") ? "จ่ายเป็น 4 งวด ตามผลงานส่งมอบ" : "จ่ายเป็น 4 งวด ตามผลงานส่งมอบ",
+    s9: "รับประกันไม่น้อยกว่า 1 ปี หลังส่งมอบ",
+    s10: "ค่าปรับส่งมอบล่าช้า 0.10% ต่อวัน",
+    s11: "เกณฑ์ราคาประกอบเกณฑ์คุณภาพ",
+    s12: "สำเนาหนังสือรับรองบริษัท ผลงานอ้างอิง และข้อเสนอด้านเทคนิค",
+    s13: "ปฏิบัติตาม PDPA และไม่ส่งข้อมูลออกนอกเครื่องเมื่อใช้โหมด on-prem",
+    "s4.1": "สรุปขอบเขตจากเอกสารที่อัปโหลด — พัฒนาตามข้อกำหนดโครงการ",
+    "s4.2": "ระบบงานปัจจุบันใช้เอกสารกระดาษและคลังความรู้กระจัดกระจาย",
+    "s4.3": "งานหลัก: วิเคราะห์ พัฒนา ทดสอบ ส่งมอบ อบรม",
+    "s4.4": "ข้อกำหนดฮาร์ดแวร์ตามสถาปัตยกรรมที่ระบุในเอกสาร",
+    "s4.5": "ซอฟต์แวร์และลิขสิทธิ์ที่ต้องจัดหาตามขอบเขต",
+    "s4.6": "จุดเชื่อมโยงระบบภายในหน่วยงาน",
+    "s4.7": "มาตรฐานอ้างอิงและระเบียบพัสดุ",
+    "s4.8": "ผลงานส่งมอบตามงวดงานในเอกสารขั้นที่ ๐",
+    "s4.9": "สนับสนุนและบำรุงรักษาหลังส่งมอบ",
+    "s4.10": "บุคลากรหลักตามคุณสมบัติผู้เสนอราคา",
+    "s4.11": "รูปแบบการบำรุงรักษาตาม SLA",
+    "s4.12": "การบริหารโครงการและการรายงาน",
+    "s4.13": "แผนสำรองและกู้คืนระบบ",
+    "s4.14": "ความมั่นคงปลอดภัย PDPA / SLA"
+  };
+  state.coverage=emptyCoverage().map(r=>({
+    ...r,
+    status:"filled",
+    preview:previews[r.key]||(r.label+" จากเอกสารที่อัปโหลด")
+  }));
+}
+function fillNonFactRefs(){
+  let n=0;
+  state.coverage=(state.coverage||[]).map(r=>{
+    if(!r.fact && r.status==="gap"){
+      n+=1;
+      return {...r,status:"reference_only",preview:"อ้างอิงมาตรฐานกลางจากคลัง (จำลอง)"};
+    }
+    return r;
+  });
+  return n;
 }
 
 function phaseFlow(){
-  return `<div class="phase-flow">${PHASES.map(([id,title],i)=>{
+  return `<div class="phase-flow">${PHASES.map(([id,title,sub],i)=>{
     const done = id < state.phase;
     const active = id === state.phase;
     const locked = !canSelectMockPhase(id);
@@ -686,18 +826,24 @@ function phaseFlow(){
     else if (active) dotClass = "active";
     if (locked) dotClass = (dotClass+" locked").trim();
 
-    const dotText = done ? "✓" : String(id);
+    const dotText = done ? "✓" : THAI_PHASE[id];
 
     return `${lineHtml}
       <div class="phase-col"><button type="button" class="phase-dot ${dotClass}" data-phase="${id}" ${locked?"aria-disabled=\"true\"":""}>${dotText}</button>
-      <strong style="display:block;font-size:13px">Phase ${id}</strong><span class="muted">${title}</span></div>`;
+      <strong style="display:block;font-size:13px">ขั้นที่ ${THAI_PHASE[id]}</strong><span class="muted">${esc(title)}</span><span class="phase-sub">${esc(sub)}</span></div>`;
   }).join("")}</div>`;
 }
 
 function draftHtml(){
-  const p=active();
-  if(!p) return `<p class="muted">ยังไม่มีโครงการ — สร้างจากแดชบอร์ด</p>`;
-  if (!state.readyCompose && state.phase >= 2) {
+  const p=state.projects.find(x=>x.id===state.activeId) || state.projects.find(x=>x.status==="draft") || null;
+  if(!p){
+    return `<div class="gov-card" style="text-align:center;padding:48px 16px">
+      <p style="margin-bottom:12px">ยังไม่มีโครงการ — สร้างจากแดชบอร์ดก่อน (กรอกชื่อ หน่วยงาน วงเงิน ประเภทงาน)</p>
+      <a class="btn btn-primary" href="#/projects">ไปที่แดชบอร์ดเพื่อสร้างโครงการ</a>
+    </div>`;
+  }
+  state.activeId=p.id;
+  if (state.phase > unlockedPhase()) {
     state.phase = unlockedPhase();
   }
   let phaseBody = "";
@@ -708,7 +854,7 @@ function draftHtml(){
   else phaseBody = phase4();
 
   return `${phaseFlow()}
-    <p class="muted" style="margin-bottom:12px">${esc(p.name)} · ${esc(p.ministry)} · ${baht(p.budget)} บาท · ${pill(p.status)} — เริ่มที่ Phase 0 วางข้อความหรืออัปโหลดเอกสารก่อน</p>
+    <p class="muted" style="margin-bottom:12px">${esc(p.name)} · ${esc(p.ministry)} · ${baht(p.budget)} บาท · ${pill(p.status)} — อัปโหลดหรือวางข้อความในขั้นที่ ๐ แล้วกดเริ่มวิเคราะห์ (ต้องยืนยัน)</p>
     ${phaseBody}`;
 }
 
@@ -719,21 +865,65 @@ function phase1(){
   return intakeChatHtml(1);
 }
 function intakeChatHtml(phase){
-  const title=phase===0?"Phase 0: อัปโหลดชุดเอกสาร":"Phase 1: ถามส่วนขาดและยืนยันพร้อมร่าง";
-  return `<div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">${title}</h3>
-    <p class="muted" style="margin-bottom:12px">วางข้อความร่างหรืออัปโหลดเอกสารก่อน จึงจะไป Phase 2 ได้ — ไม่ต้องเลือกประเภทไฟล์</p>
-    <textarea id="intakePaste" rows="5" placeholder="วางข้อความร่าง TOR หรือรายละเอียดโครงการที่นี่"></textarea>
-    <p style="margin-top:8px"><button type="button" class="btn btn-primary" id="intakePasteGo">วิเคราะห์ข้อความ</button></p>
-    <label class="upload"><input type="file" hidden multiple id="intakeUp"><p>หรือคลิกอัปโหลดไฟล์ PDF / Word / สแกน</p><span>ต้นฉบับเก็บใน Mongo แล้วฝังด้วย EmbeddingGemma</span></label>
+  if(phase===0){
+    if(state.intakeBusy){
+      return `<div class="gov-card">
+        <h3 style="color:var(--navy);margin-bottom:8px">กำลังวิเคราะห์เอกสาร</h3>
+        <p class="muted">อย่าปิดหน้านี้ จนกว่าจะเข้าขั้นที่ ๑</p>
+        <p style="margin-top:10px">${(state.files||[]).map(f=>esc(f.name)).join(" · ")}</p>
+      </div>`;
+    }
+    return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">ขั้นที่ ๐: เตรียมข้อมูล — อัปโหลดหรือวางข้อความ</h3>
+    <p class="muted" style="margin-bottom:12px">อัปโหลดหรือวางข้อความได้หลายครั้ง แล้วกดเริ่มวิเคราะห์ — ระบบจัดเข้าช่องแล้วพาไปตารางความครบในขั้นที่ ๑ (ยังไม่วิเคราะห์ตอนอัปโหลด)</p>
+    <textarea id="intakePaste" rows="5" placeholder="วางข้อความร่าง TOR หรือรายละเอียดโครงการที่นี่ (ไม่เกิน 500,000 ตัวอักษร)">${esc(state.intakePack||"")}</textarea>
+    <p style="margin:8px 0"><button type="button" class="btn btn-outline btn-sm" id="intakeSample">ใส่ตัวอย่างเอกสาร กกต. (ECT AI Chatbot)</button></p>
+    <label class="upload"><input type="file" hidden multiple id="intakeUp"><p>คลิกอัปโหลดไฟล์ PDF / Word / สแกน</p><span>เก็บไฟล์ไว้ก่อน ยังไม่วิเคราะห์ · ไม่เกิน 50 MB ต่อไฟล์</span></label>
+    <p style="margin-top:8px"><button type="button" class="btn btn-primary" id="intakeStart">เริ่มวิเคราะห์และเข้าขั้นที่ ๑</button></p>
     ${state.intakeMsg?`<p style="margin-top:8px">${esc(state.intakeMsg)}</p>`:""}
     ${state.files.map(f=>`<p class="muted" style="margin-top:6px">${esc(f.name)} · ${f.chars} ตัวอักษร</p>`).join("")}
+  </div>`;
+  }
+  if(phase===1){
+    const filledN=(state.coverage||[]).filter(r=>r.status==="filled").length;
+    const totalN=(state.coverage||[]).length||27;
+    const filledFacts=(state.coverage||[]).filter(r=>r.fact && r.status==="filled" && r.preview);
+    const factList=filledFacts.map(r=>`<li><strong>${esc(r.label)}:</strong> ${esc(r.preview)}</li>`).join("");
+    const qaLabel=factReady()?"ไปขั้นที่ ๒":"ไปสอบถามเพิ่ม (ขั้นที่ ๒) — เติมช่องที่ยังขาด";
+    const banner=factReady()
+      ?"ข้อมูลข้อเท็จจริงครบแล้ว — กดไปสอบถามเพิ่มหรือยืนยันในขั้นถัดไปได้"
+      :"ยังมีช่องข้อเท็จจริงบังคับที่ยังไม่ครบ — กดไปขั้นที่ ๒ เพื่อให้บอทถามทีละช่องจนครบ";
+    return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">ขั้นที่ ๑: ผลวิเคราะห์ความต้องการ</h3>
+    <p class="muted" style="margin-bottom:12px">สิ่งที่ระบบจัดเข้าช่องจากเอกสารแล้ว — กดปุ่มด้านล่างเพื่อไปขั้นที่ ๒ (ไม่ดึงมาตรฐานกลางอัตโนมัติ)</p>
+    <p class="okmsg">จัดเข้าช่องแล้ว ${filledN}/${totalN}</p>
+    ${factList?`<ul style="margin:8px 0 8px 18px;font-size:13px">${factList}</ul>`:""}
+    <p>${esc(banner)}</p>
+    ${state.intakeMsg?`<p>${esc(state.intakeMsg)}</p>`:""}
+    <p style="margin-top:12px"><button class="btn btn-primary" id="intakeEnterQa">${esc(qaLabel)}</button></p>
+  </div>
+  ${coverageHtml()}`;
+  }
+  const gapNonFacts=(state.coverage||[]).filter(r=>!r.fact && r.status==="gap");
+  const stdBtn=gapNonFacts.length
+    ?`<p style="margin-top:10px"><button type="button" class="btn btn-secondary" id="applyStandards">ใช้มาตรฐานกลางเติมช่องว่าง (${gapNonFacts.length})</button></p>`
+    :"";
+  const factLine=factReady()
+    ?"ข้อเท็จจริงหลักครบแล้ว — ยืนยันเมื่อพร้อมไปร่างเนื้อหา"
+    :`ยังขาดข้อเท็จจริง ${(state.coverage||[]).filter(r=>r.fact && r.status!=="filled").length} ช่อง — ตอบในแชทหรือวางข้อความยาวได้`;
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">ขั้นที่ ๒: คุยต่อ — เติมช่องที่ยังขาด</h3>
+    <p class="muted" style="margin-bottom:12px">วางข้อความชุดใหญ่ได้เลย ระบบจัดเข้าหลายช่องเอง แล้วถามเฉพาะที่ยังขาด ช่องกฎหมาย/มาตรฐานกดปุ่มด้านล่างเพื่อใช้ตาม พ.ร.บ. และระเบียบกลางจากคลัง</p>
+    <p>${esc(factLine)}</p>
+    ${stdBtn}
+    ${state.standardMsg?`<p class="okmsg">${esc(state.standardMsg)}</p>`:""}
+    <p style="margin-top:12px"><button class="btn btn-primary" id="readyDraft" ${factReady()?"":"disabled"}>ครบแล้ว — ไปร่าง (ขั้นที่ ๓)</button></p>
   </div>
   ${coverageHtml()}
   <div style="margin-top:16px">${chatShellHtml("intake")}</div>`;
 }
 function chatHtml(){
-  return `<p class="muted" style="margin-bottom:12px">ถาม-ตอบจากคลังกลาง (ข้อมูลดิบที่ฝังด้วย EmbeddingGemma) และเอกสารที่คุณอัปโหลดเอง คำตอบอ้างไฟล์ต้นฉบับและมาตราในกราฟกฎหมาย — หน้านี้จำลองในเบราว์เซอร์</p>${chatShellHtml("kb")}`;
+  return `<p class="muted" style="margin-bottom:12px">ดึงคลังกฎหมายจากคลังจำลองหลายชิ้น แล้วตอบแบบเจ้าหน้าที่พัสดุอย่างละเอียด (หกหัวข้อ) — คนละประวัติกับแชทร่างขั้นที่ ๒ หน้านี้ไม่เรียก API / LLM</p>${chatShellHtml("kb")}`;
 }
 function phase2NumCls(s, open) {
   if (s.filled) return "ok";
@@ -756,13 +946,6 @@ function phase2FillText(s) {
   return s.filled ? "กรอกแล้ว" : "ยังไม่กรอก";
 }
 
-function phase2HitlText(s) {
-  if (!s.hitl) return "";
-  let text = " · ต้องให้เจ้าหน้าที่ยืนยัน";
-  if (s.confirmed) text = text + " · ยืนยันแล้ว";
-  return text;
-}
-
 function phase2ToggleText(open) {
   return open ? "▴ ย่อ" : "▾ ขยาย";
 }
@@ -772,16 +955,10 @@ function phase2BodyHtml(s) {
     ? scopeHtml(s)
     : `<label class="lbl">${s.title}</label><textarea data-body="${s.key}">${esc(s.content)}</textarea>`;
 
-  let hitlBtnHtml = "";
-  if (s.hitl) {
-    hitlBtnHtml = `<button class="btn btn-primary btn-sm" data-hitl="${s.key}">เจ้าหน้าที่ยืนยันแล้ว</button>`;
-  }
-
   return `<div class="sec-body">${editorHtml}
       <div class="right" style="display:flex;justify-content:flex-end;gap:8px">
         <button class="btn btn-outline btn-sm" data-ai="${s.key}" ${state.busy ? "disabled" : ""}>ร่างด้วย AI</button>
         <button class="btn btn-outline btn-sm" data-save="${s.key}">บันทึกหมวดนี้</button>
-        ${hitlBtnHtml}
       </div></div>`;
 }
 
@@ -793,7 +970,6 @@ function renderPhase2Section(s, i) {
   const lineHtml = phase2LineHtml(s, i);
   const secCardCls = open ? "open" : "";
   const fillText = phase2FillText(s);
-  const hitlText = phase2HitlText(s);
   const toggleText = phase2ToggleText(open);
   const bodyHtml = open ? phase2BodyHtml(s) : "";
 
@@ -806,7 +982,7 @@ function renderPhase2Section(s, i) {
       <button type="button" class="sec-head" data-exp="${s.key}">
         <div>
           <h3>หมวด ${s.key.slice(1)}: ${s.title}</h3>
-          <p class="muted">${fillText}${hitlText}</p>
+          <p class="muted">${fillText}</p>
         </div>
         <span class="muted">${toggleText}</span>
       </button>
@@ -816,13 +992,71 @@ function renderPhase2Section(s, i) {
 }
 
 function phase2(){
-  const sectionsHtml = state.sections.map(renderPhase2Section).join("");
+  return intakeChatHtml(2);
+}
 
+function phase3(){
+  const sectionsHtml = state.sections.map(renderPhase2Section).join("");
+  const n=filledCount();
+  const drafted=n>=13;
   return `<div class="gov-card">
-    <h3 style="color:var(--navy)">Phase 2: ร่างเนื้อหา TOR — 13 หมวดหลัก</h3>
-    <p class="muted" style="margin:4px 0 16px">คลิกแต่ละหมวดเพื่อกรอก ระบบแสดงแท็กจับคู่จาก Phase 0 — หมวดกฎหมายต้องกดยืนยันโดยเจ้าหน้าที่</p>
+    <h3 style="color:var(--navy)">ขั้นที่ ๓: ร่างเนื้อหา — คุยแล้วให้ระบบร่าง</h3>
+    <p class="muted" style="margin:4px 0 16px">ระบบร่างทั้ง ๑๓ หมวดเป็นภาษาไทยจากเอกสารขั้นที่ ๐ ของโครงการนี้และกฎหมายกลาง แล้วใส่ลงหัวข้อย่อย (หมวด ๔ ใช้ช่อง ๔.๑–๔.๑๔) กดไปทบทวนแล้วระบบตรวจกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐</p>
+    ${state.busy?`<p>กำลังร่างด้วยระบบอัจฉริยะ...</p>`:""}
+    ${drafted?`<p class="okmsg">ร่างครบ ๑๓ หมวดแล้ว — กดไปทบทวน (ขั้นที่ ๔) เพื่อตรวจกฎและส่งออก</p>`:""}
     ${sectionsHtml}
-    <div class="flex-end"><button class="btn btn-secondary" id="p2back">ย้อนกลับ</button><button class="btn btn-primary" id="p2next">ถัดไป: ทบทวน/อนุมัติ</button></div>
+    <div class="flex-end"><button class="btn btn-secondary" id="p3back">ย้อนกลับ</button><button class="btn btn-primary" id="p3confirm" ${drafted?"":"disabled"}>ไปทบทวน (ขั้นที่ ๔)</button></div>
+  </div>`;
+}
+
+function sectionPreviewHtml(){
+  return state.sections.map((s,i)=>{
+    let body="";
+    if(s.subs){
+      body=s.subs.map(sub=>{
+        const label=String(sub.key||"").replace(/^s4\./,"4.");
+        const text=(sub.content||"").slice(0,180);
+        const more=(sub.content||"").length>180?"…":"";
+        return `<p class="muted" style="white-space:pre-wrap"><strong>${esc(label)} ${esc(sub.title)}</strong> — ${esc(text)}${more}</p>`;
+      }).join("");
+    } else {
+      const text=(s.content||"").slice(0,240);
+      const more=(s.content||"").length>240?"…":"";
+      body=`<p class="muted" style="white-space:pre-wrap">${esc(text)}${more}</p>`;
+    }
+    return `<article style="border-bottom:1px solid var(--border);padding:8px 0"><h5 style="font-size:13px;color:var(--navy)">${i+1}. ${esc(s.title)}</h5>${body}</article>`;
+  }).join("");
+}
+function phase4(){
+  const n=filledCount(), pct=Math.round(n/13*100), ready=n===13;
+  const findingsHtml=(state.phase4Findings||[]).map(f=>`<div class="check ${f.tone}"><strong>${esc(f.title)}</strong><p class="muted">${esc(f.detail||"")}</p></div>`).join("");
+  const chatHtml=(state.reviewChat||[]).map(t=>`<p style="white-space:pre-wrap;font-size:13px;background:#f3f4f6;border-radius:10px;padding:8px 12px;margin-bottom:8px">${esc(t)}</p>`).join("");
+  const preview=sectionPreviewHtml();
+  const sugHtml=(state.suggestions||[]).map(s=>`<div class="sug"><strong>${esc(s.slot)}</strong> — ${esc(s.text)}</div>`).join("");
+  return `<div class="gov-card">
+    <h3 style="color:var(--navy);margin-bottom:8px">ขั้นที่ ๔: ทบทวนและอนุมัติ</h3>
+    <p class="muted">ด้านล่างคือตัวอย่างเอกสารที่จะถูกส่งออก — ขั้นนี้ตรวจร่างกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐ ของโครงการนี้</p>
+    <p>ความครบถ้วน: ${n}/13 หมวด</p>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="check ${pct===100?"pass":"warn"}"><strong>${pct===100?"ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน":"ยังกรอกไม่ครบทุกหมวด"}</strong></div>
+    ${state.score!=null?`<div class="check ${state.score>=70?"pass":"warn"}"><strong>คะแนนคุณภาพจากการตรวจกฎ ${state.score}/100</strong></div>`:`<div class="check warn"><strong>ยังไม่ได้รันตรวจสอบ</strong></div>`}
+    ${findingsHtml}
+    ${sugHtml?`<h4 style="color:var(--navy);margin:12px 0 8px">ข้อเสนอแนะ (จำลอง — ไม่ดึงชื่อไฟล์ขั้นที่ ๐)</h4>${sugHtml}`:""}
+    <div style="max-height:14rem;overflow:auto;margin:12px 0;border:1px solid var(--border);border-radius:8px;padding:10px">${preview}</div>
+    <div style="margin:12px 0">${chatHtml}<div style="display:flex;gap:8px"><textarea id="revChatQ" rows="2" placeholder="พิมพ์ได้เลย เช่น ตรวจอีกครั้ง" style="flex:1"></textarea><button class="btn btn-primary" id="revChatSend">ส่ง</button></div></div>
+    <div class="flex-end"><button class="btn btn-secondary" id="p4back">ย้อนกลับไปแก้ไข</button>
+      <div style="display:flex;gap:8px"><button class="btn btn-outline" id="runRules">ตรวจด้วยกฎระเบียบ</button>
+      <button class="btn btn-primary" id="submitRev" ${ready?"":"disabled"}>ส่งขออนุมัติ</button></div></div>
+    ${ready?"":`<p class="muted" style="margin-top:8px">กรอกให้ครบ ๑๓ หมวดก่อนส่งขออนุมัติ — คะแนนเป็นโทนบนจอ ไม่ล็อกการส่ง</p>`}
+  </div>
+  <div class="gov-card" style="margin-top:12px">
+    <h3 style="color:var(--navy);margin-bottom:8px">ส่งออก</h3>
+    <p class="muted" style="margin-bottom:14px">ส่งออก Word หรือ PDF ตามมาตรฐานราชการ (TH Sarabun, พ.ศ.) การอัปโหลดเข้าระบบ e-Bidding เป็นขั้นตอนของเจ้าหน้าที่นอกแอปนี้</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" id="expDocx">ส่งออก Word</button>
+      <button class="btn btn-primary" id="expPdf">ส่งออก PDF</button>
+    </div>
+    <p class="okmsg" id="expMsg"></p>
   </div>`;
 }
 
@@ -850,34 +1084,6 @@ function scopeHtml(s){
     ${detailHtml}`;
 }
 
-function phase3(){
-  const n=filledCount(), pct=Math.round(n/13*100), ready=pct===100 && hitlReady();
-  return `<div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">Phase 3: ทบทวนและอนุมัติ</h3>
-    <p>ความครบถ้วน: ${n}/13 หมวด</p>
-    <div class="bar"><i style="width:${pct}%"></i></div>
-    <div class="check ${pct===100?"pass":"warn"}"><strong>${pct===100?"ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน":"ยังกรอกไม่ครบทุกหมวด"}</strong></div>
-    <div class="check ${hitlReady()?"pass":"warn"}"><strong>${hitlReady()?"หมวดกฎหมาย งบ งวดจ่าย ค่าปรับ เงื่อนไขอื่น ได้รับการยืนยัน":"ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ"}</strong></div>
-    ${state.score!=null?`<div class="check pass"><strong>คะแนนคุณภาพ ${state.score}/100</strong></div>`:""}
-    <div class="flex-end"><button class="btn btn-secondary" id="p3back">ย้อนกลับไปแก้ไข</button>
-      <div style="display:flex;gap:8px"><button class="btn btn-outline" id="runRules">รัน Rule Engine</button>
-      <button class="btn btn-primary" id="submitRev" ${ready?"":"disabled"}>ส่งขออนุมัติ / สร้าง TOR</button></div></div>
-  </div>`;
-}
-
-function phase4(){
-  return `<div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">Phase 4: เผยแพร่</h3>
-    <p class="muted" style="margin-bottom:14px">ส่งออก Word หรือ PDF ตามมาตรฐานราชการ (TH Sarabun, พ.ศ.) การอัปโหลดเข้าระบบ e-Bidding เป็นขั้นตอนของเจ้าหน้าที่นอกแอปนี้</p>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-secondary" id="p4back">ย้อนกลับ</button>
-      <button class="btn btn-primary" id="expDocx">ส่งออก Word</button>
-      <button class="btn btn-primary" id="expPdf">ส่งออก PDF</button>
-    </div>
-    <p class="okmsg" id="expMsg"></p>
-  </div>`;
-}
-
 function reviewHtml(){
   const laws = [
     "พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560",
@@ -886,12 +1092,16 @@ function reviewHtml(){
     "มาตรฐาน e-Bidding กรมบัญชีกลาง",
     "ประกาศราคากลาง (จากคลังความรู้)",
   ];
-
+  const step=state.reviewStep||1;
+  const stepHtml=["เลือกไฟล์","สกัดข้อความ","ผลการตรวจสอบ"].map((label,i)=>{
+    const id=i+1;
+    return `<span class="${step===id?"on":""}">${id}. ${label}</span>`;
+  }).join("");
   const reviewFileHtml = state.reviewFile
     ? `<p class="muted">${esc(state.reviewFile)}</p>`
     : "";
 
-  let reviewResultHtml = `<p class="muted" style="text-align:center;padding:40px 0">อัปโหลดไฟล์ TOR แล้วกดเริ่มตรวจสอบเพื่อดูผล</p>`;
+  let reviewResultHtml = `<p class="muted" style="text-align:center;padding:40px 0">สกัดข้อความแล้วกดยืนยันเริ่มตรวจสอบเพื่อดูผล</p>`;
   if (state.reviewResult) {
     const findingsHtml = state.reviewResult.findings
       .map((f) => {
@@ -901,10 +1111,9 @@ function reviewHtml(){
         )}</p></div></div>`;
       })
       .join("");
-
-    reviewResultHtml = `<div class="check pass"><strong>คะแนนความพร้อม ${
-      state.reviewResult.score
-    }/100</strong></div>${findingsHtml}`;
+    const score=state.reviewResult.score;
+    const pass=score>=70;
+    reviewResultHtml = `<div class="check ${pass?"pass":"warn"}"><strong>คะแนนความพร้อม ${score}/100</strong><p class="muted">${pass?"ผ่านเกณฑ์เบื้องต้น":"ยังไม่ผ่านเกณฑ์ 70 — ดูรายการด้านล่าง"}</p></div>${findingsHtml}`;
   }
 
   const comparesHtml = state.compares
@@ -925,19 +1134,32 @@ function reviewHtml(){
     )
     .join("");
 
-  const runDisabled = state.reviewFile ? "" : "disabled";
+  let extractBlock="";
+  if(step===1){
+    extractBlock=`<button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px" id="revExtract" ${state.reviewFile?"":"disabled"}>อัปโหลดและสกัดข้อความ</button>`;
+  } else if(step>=2){
+    const prev=esc((state.reviewPreview||"").slice(0,20000));
+    extractBlock=`<div style="margin-top:16px">
+      <h4 style="color:var(--navy);margin-bottom:8px">ตัวอย่างข้อความที่สกัดได้</h4>
+      <pre style="max-height:14rem;overflow:auto;white-space:pre-wrap;background:#f9fafb;padding:12px;border-radius:8px;font-size:12px">${prev||"(ไม่มีข้อความ)"}</pre>
+      <button class="btn btn-outline" style="width:100%;justify-content:center;margin-top:10px" id="revBack">ย้อนกลับ</button>
+      ${step===2?`<button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" id="runRev">ยืนยันเริ่มตรวจสอบ</button>`:""}
+    </div>`;
+  }
 
   return `<div class="two">
     <div class="gov-card">
       <h3 style="color:var(--navy);margin-bottom:12px">อัปโหลด TOR ที่ต้องการตรวจสอบ</h3>
-      <label class="upload"><input type="file" hidden id="revFile" accept=".pdf,.docx,.png,.jpg"><p>ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก</p><span>PDF, Word (.docx) หรือรูปภาพสแกน</span></label>
+      <div class="rev-step">${stepHtml}</div>
+      <p class="muted" style="margin-bottom:12px">เลือกไฟล์แล้วสกัดข้อความก่อน — ระบบจะไม่ตรวจด้วยกฎจนกว่าคุณยืนยัน (จำลองในเบราว์เซอร์)</p>
+      <label class="upload"><input type="file" hidden id="revFile" accept=".pdf,.docx,.txt,.png,.jpg"><p>ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก</p><span>PDF, Word (.docx), ข้อความ (.txt) หรือรูปภาพสแกน</span></label>
       ${reviewFileHtml}
       <h3 style="color:var(--navy);margin:20px 0 8px">เอกสารอ้างอิงบังคับ</h3>
       <div style="background:#f9fafb;border-radius:8px;padding:12px">${lawsHtml}</div>
       <h3 style="color:var(--navy);margin:20px 0 8px">โครงการเปรียบเทียบ (Optional)</h3>
       ${comparesHtml}
       <button class="btn btn-outline btn-sm" id="addCmp">+ เพิ่มโครงการเปรียบเทียบ</button>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px" id="runRev" ${runDisabled}>เริ่มตรวจสอบ TOR</button>
+      ${extractBlock}
     </div>
     <div class="gov-card">
       <h3 style="color:var(--navy);margin-bottom:12px">ผลการตรวจสอบ</h3>
@@ -946,36 +1168,100 @@ function reviewHtml(){
   </div>`;
 }
 
-function agentHtml(){
-  return `<div class="gov-card" style="margin-bottom:16px">
-    <h2 style="color:var(--navy);margin-bottom:8px">เส้นทาง Agent TOR (API อย่างเดียว)</h2>
-    <p>แอป Docker ยังร่างด้วยพื้นที่ทำงาน 5 Phase ที่ /projects/{id}/draft หน้านี้เป็นเอกสารเส้นทางขนาน <code>/api/v1/agent</code> สำหรับไคลเอนต์ในอนาคต ไม่มีหน้า Next.js ใน v0.2.0</p>
-  </div>
-  <div class="gov-card" style="margin-bottom:16px">
-    <h3 style="color:var(--navy);margin-bottom:8px">ลำดับงาน</h3>
-    <div class="flow"><span>รับเอกสาร</span><span>แผนที่ 27 ช่อง</span><span>ถามส่วนขาด</span><span>ร่าง s1–s13</span><span>เจ้าหน้าที่ตรวจ</span><span>ส่งออก</span></div>
-    <p class="muted" style="margin-top:10px">สูงสุด 20 ไฟล์ / 50 MB, รองรับ PPTX, ถามครั้งละไม่เกิน 5 ข้อ, ยืนยัน s3 s6 s8 s10 s13 ก่อนส่งออก</p>
-  </div>
-  <div class="gov-card">
-    <h3 style="color:var(--navy);margin-bottom:8px">โมเดลท้องถิ่นและคลาวด์</h3>
-    <p>ค่าเริ่มต้น: LM Studio google/gemma-4-e4b + EmbeddingGemma-300M (ข้อมูลไม่ออกเครื่อง)</p>
-    <p>สลับคลาวด์จากหน้าผู้ดูแลเมื่อมี API key โดยไม่บังคับสลับฝังเวกเตอร์: Anthropic, OpenAI, Gemini, Bedrock, Azure Foundry, OpenAI-compatible</p>
-    <p class="muted">ถาม-ตอบคลังแยก <code>/api/v1/kb-chat</code> ไม่แทนเมนูถาม-ตอบ <code>/chat</code></p>
-  </div>`;
+function helpFig(src, cap){
+  return `<figure style="margin:14px 0;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff"><img src="help/${src}" alt="" style="width:100%;display:block;height:auto"><figcaption style="padding:8px 12px;font-size:12px;color:#5b6775;background:#f8fafc;border-top:1px solid #e5e7eb;text-align:center">${cap}</figcaption></figure>`;
 }
-
 function helpHtml(){
   const tabs=[["overview","ภาพรวม","dash"],["login","เข้าสู่ระบบ","users"],["dashboard","แดชบอร์ด","dash"],["draft","ร่าง TOR","pen"],["chat","ถาม-ตอบ","chat"],["kb","ฐานความรู้","book"],["review","ตรวจสอบ","scan"],["admin","ผู้ดูแล","cpu"],["faq","คำถามที่พบบ่อย","help"]];
   const body={
-    overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3><p>ระบบช่วยเจ้าหน้าที่พัสดุร่างและตรวจสอบ TOR ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มี 13 หมวด แชทร่างใน Phase 0–1 และถาม-ตอบคลังความรู้แยกต่างหาก v0.2 เพิ่มเส้นทาง API agent ขนาน (ยังไม่มีหน้าจอแอป)</p><div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>แชทร่าง 5 Phase</span><span>ถาม-ตอบ</span><span>ตรวจสอบ</span></div>`,
-    login:`<h3 style="color:var(--navy);margin-bottom:8px">เข้าสู่ระบบ</h3><p>บัญชีทดลอง officer@example.go.th / Passw0rd! — ผู้ดูแล admin@ และผู้ตรวจ reviewer@ ใช้รหัสเดียวกัน</p><p class="muted">สมัครสมาชิกได้ที่หน้าสมัคร บัญชีใหม่ได้บทบาทเจ้าหน้าที่</p>`,
-    dashboard:`<h3 style="color:var(--navy);margin-bottom:8px">แดชบอร์ด</h3><p>การ์ดสถานะสามใบ: ร่าง / กำลังดำเนินการ / เสร็จแล้ว และตารางโครงการ</p><p>กดสร้างโครงการใหม่แล้วกรอกฟอร์มสร้างโครงการ แล้วเข้า Phase 0 (แชทอัปโหลดชุดใหญ่)</p>`,
-    kb:`<h3 style="color:var(--navy);margin-bottom:8px">ฐานความรู้</h3><p>คลังบังคับมาจากคู่มือแนวปฏิบัติและโฟลเดอร์ข้อมูลดิบ เจ้าหน้าที่อัปโหลดเอกสารของตนเองได้ที่หน้านี้ (เฉพาะบัญชีนี้) ผู้ดูแลอัปโหลดคลังกลาง</p>`,
-    draft:`<h3 style="color:var(--navy);margin-bottom:8px">กระบวนการร่าง 5 Phase</h3><div class="flow"><span>Phase 0 อัปโหลดชุดใหญ่</span><span>Phase 1 แชทถามส่วนขาด</span><span>Phase 2 13 หมวด</span><span>Phase 3 ทบทวนโดยเจ้าหน้าที่</span><span>Phase 4 ส่งออก</span></div><p>Phase 0–1 เป็นแชทโครงการ — อัปโหลดหลายไฟล์ได้โดยไม่ต้องเลือก 9 ประเภท บอทจัดเข้า s1–s13 และ s4.1–s4.14 เมื่อครบเกณฑ์กดพร้อมร่าง แล้วเข้า Phase 2</p>`,
-    chat:`<h3 style="color:var(--navy);margin-bottom:8px">ถาม-ตอบ</h3><p>เมนูการทำงาน → ถาม-ตอบ เปิดห้องแชทรายคน ค้นคลังกลางและเอกสารของฉันด้วย RAG + กราฟกฎหมาย ประวัติไม่ปนกับแชทร่างโครงการ</p>`,
-    review:`<h3 style="color:var(--navy);margin-bottom:8px">ตรวจสอบ TOR</h3><p>อัปโหลดไฟล์ที่มีอยู่แล้ว ระบบอ้างอิงกฎหมายบังคับเสมอ เทียบเคียงไฟล์อื่นด้วย Jaccard และแสดงผลเป็นรายการผ่าน/เตือน/ไม่ผ่าน</p>`,
-    admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3><p>หน้าแม่แบบ ผู้ใช้ และการตั้งค่า AI — เลือกแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude + EmbeddingGemma ในเครื่อง คีย์ใส่ในหน้านี้ บันทึกแล้วมีผลทันที</p>`,
-    faq:`<h3 style="color:var(--navy);margin-bottom:8px">คำถามที่พบบ่อย</h3><p>หน้า GitHub Pages นี้จำลองการคลิกเท่านั้น แอปจริงรันด้วย Docker + LM Studio ตาม discussions/14-INSTALLATION.md</p><p>โมเดลไม่ตอบ: เปิด LM Studio ที่ http://127.0.0.1:1234 โหลด google/gemma-4-e4b และ text-embedding-embeddinggemma-300m หรือใส่คีย์คลาวด์ที่การตั้งค่า AI โดยคงฝังเวกเตอร์ในเครื่องได้</p><p>เส้นทาง API ตัวแทน: POST /api/v1/agent/sessions (multipart) และ /api/v1/kb-chat — ใช้โมเดลในเครื่องหรือคีย์คลาวด์จากหน้าการตั้งค่า AI</p>`
+    overview:`<h3 style="color:var(--navy);margin-bottom:8px">ภาพรวมระบบ</h3>
+      <p>ระบบช่วยเจ้าหน้าที่พัสดุ<strong>ร่างและตรวจสอบ TOR</strong> ตาม พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 บังคับโครง 13 ส่วน (s1–s13) + ขอบเขตงานย่อย s4.1–s4.14 รวม 27 ช่อง</p>
+      <p>เส้นทางหลักคือ<strong>พื้นที่ทำงานห้าขั้น</strong> แยกจากเมนูถาม-ตอบและตรวจสอบ TOR — หน้านี้เป็นตัวเล่นจำลอง ไม่เรียก API / LLM</p>
+      <div class="flow"><span>เข้าสู่ระบบ</span><span>แดชบอร์ด</span><span>ร่างห้าขั้น</span><span>ถาม-ตอบ</span><span>ตรวจสอบ</span></div>
+      ${helpFig("19-diagram-architecture.png","สถาปัตยกรรม: ผู้ใช้ → Next.js :3000 → FastAPI :4000 → คลัง / LLM / Rule Engine")}
+      ${helpFig("19-diagram-phases.png","พื้นที่ทำงานห้าขั้น")}
+      <h4 style="color:var(--navy);margin:12px 0 6px">สามเครื่องมือของเจ้าหน้าที่</h4>
+      <table class="help-table"><thead><tr><th>เครื่องมือ</th><th>หน้า</th><th>ผล</th></tr></thead>
+      <tbody><tr><td>ร่าง TOR</td><td>/projects/{id}/draft</td><td>เนื้อหา s1–s13</td></tr>
+      <tr><td>ตรวจสอบ TOR</td><td>ขั้นที่ ๔ + /review</td><td>คะแนนความพร้อม (โทน ≥70 บนจอ) / findings</td></tr>
+      <tr><td>ถาม-ตอบ</td><td>/chat</td><td>หกหัวข้อเจ้าหน้าที่พัสดุ + citations</td></tr></tbody></table>
+      <p class="muted">อ่านเพิ่ม: Discussions/21–23 (ร่าง · ตรวจสอบ · ถาม-ตอบ)</p>`,
+    login:`<h3 style="color:var(--navy);margin-bottom:8px">เข้าสู่ระบบ</h3>
+      <p>เปิดแอปจริงที่ http://localhost:3000 (หน้านี้เป็นจำลอง GitHub Pages) · seed ด้วย <code>python -m app.seed_db</code></p>
+      <table class="help-table"><thead><tr><th>บทบาท</th><th>อีเมล</th><th>รหัส</th><th>ใช้ทำอะไร</th></tr></thead>
+      <tbody><tr><td>เจ้าหน้าที่</td><td>officer@example.go.th</td><td>Passw0rd!</td><td>ร่างห้าขั้น, ถาม-ตอบ, ส่งออก</td></tr>
+      <tr><td>ผู้ตรวจสอบ</td><td>reviewer@example.go.th</td><td>Passw0rd!</td><td>อนุมัติ / ส่งกลับ</td></tr>
+      <tr><td>ผู้ดูแล</td><td>admin@example.go.th</td><td>Passw0rd!</td><td>แม่แบบ คลังกลาง ตั้งค่า AI</td></tr></tbody></table>
+      <p class="muted">คุกกี้ HttpOnly tor_access_token — ไม่เก็บ JWT ใน localStorage · สมัครที่ /register ได้บทบาทเจ้าหน้าที่</p>
+      ${helpFig("00-login.png","หน้าเข้าสู่ระบบ")}
+      ${helpFig("00c-login-error.png","รหัสผิด — แถบข้อผิดพลาด")}
+      ${helpFig("00b-register.png","ฟอร์มสมัครสมาชิก")}`,
+    dashboard:`<h3 style="color:var(--navy);margin-bottom:8px">แดชบอร์ด</h3>
+      <p>การ์ดสถานะ: ร่าง / กำลังดำเนินการ / เสร็จแล้ว · เมนูซ้าย: แดชบอร์ด · ฐานความรู้ · ร่าง · ตรวจสอบ · ถาม-ตอบ · คู่มือ (+ ผู้ดูแลถ้าเป็น admin)</p>
+      <table class="help-table"><thead><tr><th>ป้าย</th><th>ความหมาย</th></tr></thead>
+      <tbody><tr><td>ร่าง</td><td>แก้ห้าขั้นได้</td></tr><tr><td>กำลังดำเนินการ</td><td>ส่งขออนุมัติแล้ว</td></tr>
+      <tr><td>เสร็จแล้ว</td><td>อนุมัติแล้ว</td></tr><tr><td>ส่งกลับ</td><td>ส่งขออนุมัติใหม่ได้</td></tr></tbody></table>
+      <p>กดสร้างโครงการ กรอกชื่อ หน่วยงาน งบ (เลข ASCII) แล้วเข้าขั้นที่ ๐ — อย่าเริ่มจากเมนูร่าง TOR ถ้ายังไม่มีโครงการ</p>
+      ${helpFig("02-dashboard.png","แดชบอร์ดเจ้าหน้าที่")}
+      ${helpFig("02b-create-dialog.png","สร้างโครงการใหม่")}
+      ${helpFig("02c-reviewer-dashboard.png","แดชบอร์ดผู้ตรวจสอบ")}`,
+    draft:`<h3 style="color:var(--navy);margin-bottom:8px">กระบวนการร่างห้าขั้น</h3>
+      <div class="flow"><span>๐ เตรียมข้อมูล</span><span>๑ ผลวิเคราะห์</span><span>๒ สอบถามเพิ่ม</span><span>๓ ร่าง 13 หมวด</span><span>๔ ทบทวน-ส่งออก</span></div>
+      <table class="help-table"><thead><tr><th>ขั้น</th><th>ทำอะไร</th><th>เกต</th></tr></thead>
+      <tbody>
+      <tr><td>๐</td><td>อัปโหลด/วางข้อความได้หลายครั้ง แล้วกดเริ่มวิเคราะห์ (ต้องยืนยัน) — ยังไม่เติมช่องกฎหมายอัตโนมัติ</td><td>ยืนยันวิเคราะห์ → ขั้นที่ ๑</td></tr>
+      <tr><td>๑</td><td>ตารางสถานะ ครบ / อ้างอิง / ยังขาด แล้วกดไปขั้นที่ ๒ (ไม่มีไดอะล็อก)</td><td>กดไปขั้นที่ ๒</td></tr>
+      <tr><td>๒</td><td>แชทถามช่องข้อเท็จจริงที่ขาด · กดใช้มาตรฐานกลางเติมช่องว่าง · ครบแล้วไปร่าง</td><td>ยืนยันพร้อมร่าง → ขั้นที่ ๓</td></tr>
+      <tr><td>๓</td><td>ระบบร่างสิบสามหมวดอัตโนมัติ · แก้ในแชท/หมวดได้ · ไม่มีปุ่มให้เจ้าหน้าที่ยืนยันหมวดบนจอ</td><td>ครบ ๑๓ หมวด → ไปทบทวน</td></tr>
+      <tr><td>๔</td><td>แชทรีวิว + ตรวจด้วยกฎอัตโนมัติเมื่อเข้าขั้น · ส่งขออนุมัติถ้าครบ ๑๓ หมวด · ส่งออก</td><td>ผู้ตรวจ/ผู้ดูแลอนุมัติหรือส่งกลับ</td></tr></tbody></table>
+      <p class="muted">คะแนน ≥70 เป็นโทนผ่านบนจอ ไม่ล็อกส่งตรวจ</p>
+      ${helpFig("03-phase-0-upload.png","ขั้นที่ ๐ — อัปโหลดหรือวางข้อความ แล้วกดเริ่มวิเคราะห์")}
+      ${helpFig("e2e-phase-1-coverage.png","ขั้นที่ ๑ — ตารางผลวิเคราะห์ แล้วกดไปขั้นที่ ๒")}
+      ${helpFig("e2e-phase-2-qa.png","ขั้นที่ ๒ — ตารางสถานะ คู่แชท และใช้มาตรฐานกลาง")}
+      ${helpFig("e2e-phase-3-draft.png","ขั้นที่ ๓ — ร่างสิบสามหมวด แล้วกดไปทบทวน")}
+      ${helpFig("e2e-phase-4-review-chat.png","ขั้นที่ ๔ — แชทรีวิว คะแนนจากกฎ และส่งออก")}`,
+    chat:`<h3 style="color:var(--navy);margin-bottom:8px">ถาม-ตอบ</h3>
+      <p>เมนูถาม-ตอบเปิดห้อง <strong>ถาม-ตอบคลังความรู้</strong> คนละประวัติกับแชทร่างขั้นที่ ๒ ในแอปจริงดึงหลายสิบชิ้นภายในหน้าต่าง 128K แล้วตอบแบบบันทึกเจ้าหน้าที่พัสดุหกหัวข้อ — หน้านี้จำลองโครงคำตอบจากไฟล์คลังในรีโป</p>
+      <ul><li>สร้างห้องใหม่ได้ (ชื่อเริ่มต้น «ถาม-ตอบคลังความรู้»)</li><li>แนบไฟล์เข้าคลังส่วนตัวแล้วถาม</li><li>สลับแหล่ง: คลังกลาง / ของฉัน / ทั้งคู่</li></ul>
+      ${helpFig("13-kb-chat.png","หน้าถาม-ตอบพร้อม citations")}`,
+    kb:`<h3 style="color:var(--navy);margin-bottom:8px">ฐานความรู้</h3>
+      <p>คลังกลางจาก PDF ผ่าน <code>python -m app.seed_raw_docs</code> — ไม่ใช้ JSON extracts เก่าเป็นคลังใช้งาน</p>
+      <ul><li>เจ้าหน้าที่: อัปโหลดเอกสารของฉัน</li><li>ผู้ดูแล: อัปโหลดคลังกลาง</li></ul>
+      ${helpFig("11-knowledge-base.png","ฐานความรู้เจ้าหน้าที่")}
+      ${helpFig("17-admin-kb.png","คลังกลางผู้ดูแล")}`,
+    review:`<h3 style="color:var(--navy);margin-bottom:8px">ตรวจสอบ TOR</h3>
+      <ol><li>ในโครงการขั้นที่ ๔ — ตรวจด้วยกฎอัตโนมัติเมื่อเข้าขั้น (คะแนน ≥70 เป็นโทนบนจอ ไม่ล็อกส่งตรวจ)</li>
+      <li>หน้า /review — เลือกไฟล์ → สกัดข้อความ (ตัวอย่างไม่เกิน 20,000 ตัวอักษร) → ยืนยันเริ่มตรวจสอบ · Jaccard ≥0.5 เป็นโทนผ่านบนจอ</li></ol>
+      <p>น้ำหนัก: กฎหมาย 40% · ความครบ 30% · ความสอดคล้อง 20% · รูปแบบ 10%</p>
+      ${helpFig("12-standalone-review.png","ตรวจสอบ TOR ภายนอก")}`,
+    admin:`<h3 style="color:var(--navy);margin-bottom:8px">ผู้ดูแลระบบ</h3>
+      <p>แม่แบบ · คลังกลาง · ผู้ใช้ · การตั้งค่า AI — โหมดเป็นป้ายเท่านั้น แชทกับฝังเวกเตอร์เลือกอิสระ · บันทึกมีผลทันที</p>
+      <table class="help-table"><thead><tr><th>เป้าหมาย</th><th>แชท</th><th>ฝังเวกเตอร์</th><th>seed ใหม่?</th></tr></thead>
+      <tbody>
+      <tr><td>Amazon Bedrock (production)</td><td>Bedrock</td><td>Bedrock Titan / ในเครื่อง</td><td>ตามมิติ</td></tr>
+      <tr><td>Gemma ในเครื่อง (dev)</td><td>LM Studio</td><td>EmbeddingGemma</td><td>ไม่</td></tr>
+      <tr><td>SGLang multi-user</td><td>SGLang</td><td>SGLang embed</td><td>ไม่</td></tr>
+      <tr><td>Claude + ฝังในเครื่อง</td><td>Claude</td><td>ในเครื่อง</td><td>ไม่</td></tr>
+      <tr><td>Claude + OpenAI</td><td>Claude</td><td>OpenAI</td><td>ใช่ (seed_raw_docs)</td></tr>
+      </tbody></table>
+      ${helpFig("16-admin-templates.png","แม่แบบ")}
+      ${helpFig("18-admin-users.png","ผู้ใช้")}
+      ${helpFig("09-admin-ai-lm-studio.png","ตั้งค่า AI + ทดสอบ LM Studio")}
+      ${helpFig("09b-admin-ai-cloud.png","Amazon Bedrock / คีย์คลาวด์")}`,
+    faq:`<h3 style="color:var(--navy);margin-bottom:8px">คำถามที่พบบ่อย</h3>
+      <p><strong>ติดตั้ง:</strong> discussions/14-INSTALLATION.md · Docker โปรเจกต์ tor-app · Dev: LM Studio <code>127.0.0.1:1234</code> · แชท <code>google/gemma-4-e4b</code> · ฝัง <code>text-embedding-embeddinggemma-300m</code> · health ที่ :4000</p>
+      <p><strong>Production:</strong> Amazon Bedrock — discussions/20-AWS_BEDROCK_SETUP.md · on-prem หลายผู้ใช้: SGLang (compose profile <code>sglang</code>) + คิว Redis</p>
+      <table class="help-table"><thead><tr><th>อาการ</th><th>ตรวจ</th></tr></thead>
+      <tbody>
+      <tr><td>เข้าแล้วเด้งกลับ</td><td>Passw0rd! · backend :4000 · คุกกี้</td></tr>
+      <tr><td>ถาม-ตอบว่าง</td><td>seed_raw_docs · Mongo/Neo4j</td></tr>
+      <tr><td>AI ไม่ตอบ</td><td>LM Studio โหลด Gemma+EmbeddingGemma หรือ Bedrock/คีย์คลาวด์ · ดูสถานะคิว AI</td></tr>
+      <tr><td>พร้อมร่างกดไม่ได้</td><td>ช่องข้อเท็จจริงบังคับต้องเป็น «ครบ» ไม่ใช่แค่ «อ้างอิง»</td></tr>
+      <tr><td>ส่งขออนุมัติกดไม่ได้</td><td>ครบ 13 หมวด (คะแนนไม่ล็อกการส่ง)</td></tr>
+      <tr><td>สร้างโครงการไม่ได้</td><td>งบเป็นเลข ASCII</td></tr>
+      </tbody></table>
+      <p><strong>เทสต์รอบ ECT 26–27 ส.ค. 2026:</strong> แพ็กสำนักงาน กกต. / ECT AI Chatbot — ขั้นที่ ๐–๑ จัดเข้าช่อง 27/27 · Playwright headed <code>ect-full.spec.ts</code> ผ่าน · pytest live ครบ loop (confirm-phase4 + ส่งออก) · standalone ตรวจงบได้ (smoke 82/100 ไม่ติด «ไม่พบงบประมาณ») · Rule Engine ในโครงการ ~95/100 — ดู Discussions/18-TEST_EVIDENCE และ 19-APPLICATION_OPERATING_REPORT</p>
+      <p class="muted">การตั้งค่าโมเดล/คลังเป็นหน้าที่ผู้ดูแล — เจ้าหน้าที่ใช้ร่าง TOR / ตรวจสอบ / ถาม-ตอบ บนเมนูหลักเท่านั้น</p>`
   };
   const tabsHtml = tabs
     .map(([id, l, icon]) => {
@@ -988,7 +1274,7 @@ function helpHtml(){
   const bodyHtml = body[state.helpTab] || body.overview;
 
   return `<div class="tabs">${tabsHtml}</div>
-    <div class="gov-card">${bodyHtml}</div>`;
+    <div class="gov-card help-rich">${bodyHtml}</div>`;
 }
 
 function templatesHtml(){
@@ -1010,7 +1296,7 @@ function templatesHtml(){
 function adminKbHtml(){
   return `<h1 style="color:var(--navy);font-size:24px;font-weight:800;margin-bottom:16px">ฐานความรู้</h1>
     <div class="gov-card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
-      <select id="akbCat"><option value="law">กฎหมาย</option><option value="regulation">กฎกระทรวง</option><option value="guideline">ระเบียบ/หนังสือ</option><option value="manual">คู่มือ</option><option value="example_tor">ตัวอย่าง TOR</option></select>
+      <select id="akbCat"><option value="law">พ.ร.บ. / กฎหมาย</option><option value="regulation">กฎกระทรวง</option><option value="guideline">ระเบียบกระทรวงการคลัง</option><option value="circular">หนังสือเวียนกรมบัญชีกลาง</option><option value="price_announcement">ประกาศราคากลาง</option><option value="manual">คู่มือปฏิบัติงาน</option><option value="example_tor">ตัวอย่าง TOR</option><option value="template">แม่แบบ</option><option value="other">อื่น ๆ</option></select>
       <button class="btn btn-outline" id="reingest">ประมวลผลใหม่ทั้งชุด</button></div>
       <label class="upload"><input type="file" hidden multiple id="akbUp"><p>ลากไฟล์วาง หรือคลิกเพื่อเลือก</p><span>ผู้ดูแลอัปโหลดเข้าคลังแล้วแบ่ง chunk</span></label>
       <p class="okmsg" id="akbMsg"></p></div>`;
@@ -1068,35 +1354,57 @@ function htmlOption(value, label, current){
 }
 function aiLocalCardHtml(){
   const server=state.ai.embedServer||"lm_studio";
+  const isSglang=state.ai.llm==="sglang"||server==="sglang";
+  let sglangHtml="";
+  if(isSglang){
+    sglangHtml='<label class="lbl">SGLang แชท URL</label><input id="sgUrl" value="'+esc(state.ai.sglang)+'">'+
+      '<label class="lbl">SGLang embedding URL</label><input id="sgEmbUrl" value="'+esc(state.ai.sglangEmb)+'">'+
+      '<label class="lbl">โมเดลแชท SGLang</label><input id="sgChat" value="'+esc(state.ai.sglangChat)+'">'+
+      '<label class="lbl">โมเดลฝังเวกเตอร์ SGLang</label><input id="sgEmbM" value="'+esc(state.ai.sglangEmbModel)+'">';
+  }
   return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">เซิร์ฟเวอร์ในเครื่อง</h2>'+
     '<label class="lbl">เซิร์ฟเวอร์ฝังเวกเตอร์ในเครื่อง</label>'+
     '<select id="embSrv">'+
       htmlOption("lm_studio","LM Studio",server)+
       htmlOption("ollama","Ollama",server)+
       htmlOption("llama_cpp","llama.cpp",server)+
+      htmlOption("sglang","SGLang",server)+
     '</select>'+
     '<label class="lbl">LM Studio URL</label><input id="lmUrl" value="'+esc(state.ai.lm)+'">'+
     '<label class="lbl">Ollama URL</label><input id="olUrl" value="'+esc(state.ai.ollama)+'">'+
     '<label class="lbl">llama.cpp / custom URL</label><input id="llUrl" value="'+esc(state.ai.llama)+'">'+
-    '<label class="lbl">ชื่อโมเดลแชท</label><input id="chatM" value="'+esc(state.ai.chat)+'">'+
+    sglangHtml+
+    '<label class="lbl">ชื่อโมเดลแชท (LM Studio / Ollama / llama.cpp)</label><input id="chatM" value="'+esc(state.ai.chat)+'">'+
     '<label class="lbl">ชื่อโมเดลฝังเวกเตอร์</label><input id="embM" value="'+esc(state.ai.emb)+'">'+
     '<label class="lbl">Timeout (วินาที)</label><input id="tmo" type="number" value="'+state.ai.timeout+'"></div>';
 }
 function aiCloudCardHtml(){
-  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์</h2>'+
+  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">คีย์คลาวด์ / Amazon Bedrock</h2>'+
+    '<p class="muted" style="margin-bottom:8px">Production แนะนำ: Amazon Bedrock — เว้นว่าง AWS keys ได้ถ้าใช้ IAM role (ดู discussions/20-AWS_BEDROCK_SETUP.md)</p>'+
+    '<label class="lbl">AWS access key / secret (Bedrock)</label><input type="password" placeholder="เว้นว่างใช้ default chain / IAM role ได้">'+
     '<label class="lbl">Anthropic API key</label><input type="password" placeholder="จำลอง — ไม่ส่งออก">'+
     '<label class="lbl">OpenAI API key</label><input type="password">'+
     '<label class="lbl">Gemini API key</label><input type="password">'+
-    '<label class="lbl">AWS access key / secret (Bedrock)</label><input type="password" placeholder="เว้นว่างใช้ default chain ได้">'+
     '<label class="lbl">Azure Foundry endpoint + API key</label><input type="password">'+
     '<label class="lbl">OpenAI-compatible base URL</label><input placeholder="https://api.groq.com/openai/v1"></div>';
 }
+function aiCustomRagHtml(){
+  const on=state.ai.customRag?" checked":"";
+  return '<div class="gov-card" style="margin-bottom:16px"><h2 style="margin-bottom:10px">Custom RAG (ทางเลือก)</h2>'+
+    '<label class="lbl"><input type="checkbox" id="crOn"'+on+'> <span>เปิด Custom RAG HTTP retrieve</span></label>'+
+    '<label class="lbl">Base URL</label><input id="crUrl" value="'+esc(state.ai.customRagUrl)+'" placeholder="https://rag.example/v1">'+
+    '<label class="lbl">แหล่งค้น</label><select id="crSrc">'+
+      htmlOption("both","คลังในเครื่อง + Custom RAG",state.ai.ragSources)+
+      htmlOption("local","เฉพาะคลังในเครื่อง",state.ai.ragSources)+
+      htmlOption("custom","เฉพาะ Custom RAG",state.ai.ragSources)+
+    '</select></div>';
+}
 function aiHtml(){
-  const localLlms=[["lm_studio","LM Studio"],["ollama","Ollama"],["llama_cpp","llama.cpp / เซิร์ฟเวอร์กำหนดเอง"]];
-  const cloudLlms=[["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"],["bedrock","Amazon Bedrock"],["azure_foundry","Azure AI Foundry"],["openai_compatible","อื่น ๆ (OpenAI-compatible)"]];
+  const localLlms=[["lm_studio","LM Studio"],["ollama","Ollama"],["llama_cpp","llama.cpp / เซิร์ฟเวอร์กำหนดเอง"],["sglang","SGLang (on-prem multi-user)"]];
+  const cloudLlms=[["bedrock","Amazon Bedrock (แนะนำ production)"],["claude","Claude (Anthropic)"],["openai","OpenAI"],["gemini","Gemini (Google)"],["azure_foundry","Azure AI Foundry"],["openai_compatible","อื่น ๆ (OpenAI-compatible)"]];
   let llm=localLlms.concat(cloudLlms);
   if(state.ai.mode==="cloud") llm=cloudLlms.concat(localLlms);
-  const localChat=["lm_studio","ollama","llama_cpp"].includes(state.ai.llm);
+  const localChat=["lm_studio","ollama","llama_cpp","sglang"].includes(state.ai.llm);
   const localEmb=state.ai.embed==="local"||state.ai.embed==="qwen3";
   let aiMsgHtml="";
   if(state.aiMsg){
@@ -1108,7 +1416,7 @@ function aiHtml(){
   if(!localChat||!localEmb) cloudHtml=aiCloudCardHtml();
   const llmOptionsHtml=llm.map(function(pair){return htmlOption(pair[0],pair[1],state.ai.llm);}).join("");
   return '<div class="gov-card" style="margin-bottom:16px"><h1 style="color:var(--navy);font-size:24px;font-weight:800">การตั้งค่า AI</h1>'+
-    '<p class="muted" style="margin-top:6px">เลือกโมเดลแชทและฝังเวกเตอร์คนละตัวได้ เช่น Claude API + EmbeddingGemma ในเครื่อง โหมดเป็นป้ายกำกับเท่านั้น ไม่สลับคู่อัตโนมัติ การบันทึกมีผลทันที หากเปลี่ยนฝังเวกเตอร์ ต้องประมวลผลฐานความรู้ใหม่</p></div>'+
+    '<p class="muted" style="margin-top:6px">Production แนะนำ Amazon Bedrock · on-prem หลายผู้ใช้ใช้ SGLang (Docker profile sglang) · Dev ใช้ LM Studio ได้ โหมดเป็นป้ายกำกับเท่านั้น — แชทและฝังเวกเตอร์เลือกคนละแหล่งได้ การบันทึกมีผลทันที หากเปลี่ยนฝังเวกเตอร์ต้องประมวลผลฐานความรู้ใหม่</p></div>'+
     aiMsgHtml+
     '<div class="gov-card" style="margin-bottom:16px">'+
       '<label class="lbl">โหมด</label><select id="aiMode">'+
@@ -1119,9 +1427,9 @@ function aiHtml(){
       '<label class="lbl" style="margin-top:10px">โมเดลแชท</label><select id="aiLlm">'+llmOptionsHtml+'</select>'+
       '<label class="lbl" style="margin-top:10px">ฝังเวกเตอร์</label><select id="aiEmb">'+
         htmlOption("local","ในเครื่อง (OpenAI-compatible)",state.ai.embed)+
+        htmlOption("bedrock","ฝังเวกเตอร์ Bedrock (Titan)",state.ai.embed)+
         htmlOption("openai","ฝังเวกเตอร์ OpenAI",state.ai.embed)+
         htmlOption("gemini","ฝังเวกเตอร์ Gemini",state.ai.embed)+
-        htmlOption("bedrock","ฝังเวกเตอร์ Bedrock (Titan)",state.ai.embed)+
         htmlOption("azure_foundry","ฝังเวกเตอร์ Azure Foundry",state.ai.embed)+
         htmlOption("openai_compatible","ฝังเวกเตอร์แบบ OpenAI-compatible",state.ai.embed)+
       '</select>'+
@@ -1132,6 +1440,7 @@ function aiHtml(){
     '</div>'+
     localHtml+
     cloudHtml+
+    aiCustomRagHtml()+
     '<div style="display:flex;gap:8px"><button class="btn btn-outline" id="aiTest">ทดสอบการเชื่อมต่อ</button><button class="btn btn-primary" id="aiSave">บันทึก</button></div>';
 }
 
@@ -1162,44 +1471,53 @@ function bindView(){
     renderShell();
   });
   v.querySelector("#p0next")?.addEventListener("click",()=>{state.phase=1;renderShell();});
-  v.querySelector("#intakePasteGo")?.addEventListener("click",()=>{
-    const text=(document.getElementById("intakePaste")||{}).value||"";
-    if(text.trim().length<20){state.intakeMsg="วางข้อความร่างหรือรายละเอียดโครงการอย่างน้อย 20 ตัวอักษร";renderShell();return;}
-    state.files.push({name:"ข้อความผู้ใช้.txt",docClass:"pack",chars:text.trim().length,status:"success"});
-    applyIntakeMaterial();
-    state.intakeMsg="แกะข้อความแล้ว — บอทจะถามส่วนที่ยังขาด";
-    state.intakeMsgs=state.intakeMsgs||[];
-    state.intakeMsgs.push({role:"assistant",text:"อ่านข้อความที่วางแล้ว — จัดเข้า s1–s13 แล้วจะถามส่วนขาด",cites:["document: ข้อความผู้ใช้"]});
+  v.querySelector("#intakeStart")?.addEventListener("click",()=>{
+    const paste=(document.getElementById("intakePaste")||{}).value||"";
+    state.intakePack=paste;
+    askConfirm(CONFIRM[1], startAnalyze);
+  });
+  v.querySelector("#intakeSample")?.addEventListener("click",()=>{
+    state.intakePack=SAMPLE_PACK;
+    state.intakeMsg="ใส่ตัวอย่างเอกสาร กกต. (ECT AI Chatbot) แล้ว — กดเริ่มวิเคราะห์เมื่อพร้อม";
     renderShell();
   });
   v.querySelector("#intakeUp")?.addEventListener("change",()=>{
+    const paste=(document.getElementById("intakePaste")||{}).value||"";
+    state.intakePack=paste;
     const inp=document.getElementById("intakeUp");
     const files=[...(inp?.files||[])];
     files.forEach(f=>state.files.push({name:f.name,docClass:"pack",chars:Math.max(1200,Math.round(f.size/4)),status:"success"}));
-    applyIntakeMaterial();
-    state.intakeMsg="แกะเอกสารแล้ว — บอทจะถามส่วนที่ยังขาด";
-    state.intakeMsgs=state.intakeMsgs||[];
-    state.intakeMsgs.push({role:"assistant",text:"อ่านไฟล์แล้ว "+files.map(f=>f.name).join(", ")+" — จัดเข้า s1–s13 และ s4.1–s4.14 แล้วจะถามส่วนขาด",cites:["document: ไฟล์ที่อัปโหลด"]});
+    state.intakeMsg="อัปโหลดแล้ว — กดเริ่มวิเคราะห์เมื่อครบชุดเอกสาร (ยังไม่ประมวลผล)";
     renderShell();
   });
   v.querySelector("#intakeSend")?.addEventListener("click",()=>{
     const q=(document.getElementById("intakeQ")||{}).value||"";
     if(!q.trim()) return;
+    const cite=document.getElementById("intakeCiteLaw")?.checked;
     state.intakeMsgs=state.intakeMsgs||[];
     state.intakeMsgs.push(
       {role:"user",text:q},
-      {role:"assistant",text:"บันทึกคำตอบแล้ว — อ้างอิงกฎหมายใส่เป็น Reference ไม่สวมเป็นข้อเท็จจริงโครงการ",cites:["article: ระเบียบพัสดุ"]}
+      {role:"assistant",text:"บันทึกคำตอบแล้ว — อ้างอิงกฎหมายใส่เป็น Reference ไม่สวมเป็นข้อเท็จจริงโครงการ",cites:cite?["document: คลังกลาง","article: ระเบียบพัสดุ"]:[]}
     );
     const gap=state.coverage.find(r=>r.status==="gap"&&r.fact);
-    if(gap) gap.status="filled";
+    if(gap){ gap.status="filled"; gap.preview=q.trim().slice(0,180); }
     renderShell();
   });
-  v.querySelectorAll("[data-fill]").forEach(b=>b.addEventListener("click",()=>{
-    const row=state.coverage.find(r=>r.key===b.dataset.fill);
-    if(row) row.status="reference_only";
+  v.querySelector("#applyStandards")?.addEventListener("click",()=>{
+    const n=fillNonFactRefs();
+    state.standardMsg=n>0
+      ?`เติมมาตรฐานกลางจากคลังแล้ว ${n} ช่อง — แก้ในแชทได้ถ้าหน่วยงานมีเงื่อนไขพิเศษ`
+      :"คลังยังไม่มีข้อความสำหรับช่องที่ว่าง — ตอบในแชทหรือวางข้อความชุดใหญ่ได้";
     renderShell();
-  }));
-  v.querySelector("#readyDraft")?.addEventListener("click",()=>{state.readyCompose=true;state.phase=2;renderShell();});
+  });
+  v.querySelector("#intakeEnterQa")?.addEventListener("click",()=>{
+    state.phase=2;
+    renderShell();
+  });
+  v.querySelector("#readyDraft")?.addEventListener("click",()=>{
+    if(!factReady()) return;
+    askConfirm(CONFIRM[3], goPhase3);
+  });
   v.querySelectorAll("[data-scope]").forEach(b=>b.addEventListener("click",()=>{state.chatScope=b.dataset.scope;renderShell();}));
   v.querySelectorAll("[data-prompt]").forEach(b=>b.addEventListener("click",()=>{
     const box=document.getElementById(b.dataset.qid);
@@ -1218,8 +1536,8 @@ function bindView(){
   });
   v.querySelector("#newKbRoom")?.addEventListener("click",()=>{
     state.chatRooms=state.chatRooms||[];
-    state.chatRooms.unshift({id:"c"+Date.now(),title:"ห้องใหม่",last:"ยังไม่มีข้อความ"});
-    state.kbMsgs=[{role:"assistant",text:"ห้องใหม่พร้อมถามจากคลังกลาง"}];
+    state.chatRooms.unshift({id:"c"+Date.now(),title:"ถาม-ตอบคลังความรู้",last:"ยังไม่มีข้อความ"});
+    state.kbMsgs=[{role:"assistant",text:"ถามจากคลังกฎหมายได้เลย — คำตอบจำลองเป็นบันทึกเจ้าหน้าที่พัสดุหกหัวข้อ"}];
     renderShell();
   });
   v.querySelector("#addReq")?.addEventListener("click",()=>{
@@ -1233,24 +1551,36 @@ function bindView(){
   v.querySelector("#p1back")?.addEventListener("click",()=>{state.phase=0;renderShell();});
   v.querySelector("#p1next")?.addEventListener("click",()=>{
     if(!canSelectMockPhase(2)) return;
-    state.availability=document.getElementById("av").value; state.security=document.getElementById("sec").value; state.performance=document.getElementById("perf").value;
-    state.readyCompose=true;
     state.phase=2; renderShell();
   });
   v.querySelectorAll("[data-exp]").forEach(b=>b.addEventListener("click",()=>{state.expanded=state.expanded===b.dataset.exp?"":b.dataset.exp;renderShell();}));
   v.querySelectorAll("[data-sub]").forEach(b=>b.addEventListener("click",()=>{state.openSub=state.openSub===b.dataset.sub?"":b.dataset.sub;renderShell();}));
   v.querySelectorAll("[data-ai]").forEach(b=>b.addEventListener("click",()=>draftAi(b.dataset.ai)));
   v.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>saveSec(b.dataset.save,false)));
-  v.querySelectorAll("[data-hitl]").forEach(b=>b.addEventListener("click",()=>saveSec(b.dataset.hitl,true)));
-  v.querySelector("#p2back")?.addEventListener("click",()=>{state.phase=1;renderShell();});
-  v.querySelector("#p2next")?.addEventListener("click",()=>{state.phase=3;renderShell();});
   v.querySelector("#p3back")?.addEventListener("click",()=>{state.phase=2;renderShell();});
-  v.querySelector("#runRules")?.addEventListener("click",()=>{state.score=filledCount()===13?88:64;renderShell();});
-  v.querySelector("#submitRev")?.addEventListener("click",()=>{
-    const p=active(); if(p){p.status="in_review"; p.phase=3; p.updated=today();}
-    state.phase=4; renderShell();
+  v.querySelector("#p3confirm")?.addEventListener("click",()=>{
+    if(filledCount()<13) return;
+    askConfirm(CONFIRM[4], goPhase4);
   });
   v.querySelector("#p4back")?.addEventListener("click",()=>{state.phase=3;renderShell();});
+  v.querySelector("#runRules")?.addEventListener("click",()=>{runMockRules();renderShell();});
+  v.querySelector("#revChatSend")?.addEventListener("click",()=>{
+    const q=(document.getElementById("revChatQ")||{}).value||"";
+    if(!q.trim()) return;
+    state.reviewChat=state.reviewChat||[];
+    state.reviewChat.push("คุณ: "+q.trim());
+    if(q.includes("รันใหม่")||q.includes("ตรวจอีกครั้ง")){
+      state.reviewChat.push("กำลังตรวจอีกครั้ง...");
+      runMockRules();
+    } else {
+      state.reviewChat.push("(จำลอง) กรอกครบสิบสามหมวดก่อนส่งขออนุมัติ — คะแนนเป็นโทนบนจอ ไม่ล็อกการส่ง");
+    }
+    renderShell();
+  });
+  v.querySelector("#submitRev")?.addEventListener("click",()=>{
+    const p=active(); if(p){p.status="in_review"; p.phase=4; p.updated=today();}
+    renderShell();
+  });
   v.querySelector("#expDocx")?.addEventListener("click",()=>fakeExport("Word (.docx)"));
   v.querySelector("#expPdf")?.addEventListener("click",()=>fakeExport("PDF"));
   v.querySelectorAll("[data-phase]").forEach(b=>b.addEventListener("click",()=>{
@@ -1259,17 +1589,47 @@ function bindView(){
     state.phase=next;
     renderShell();
   }));
-  v.querySelector("#revFile")?.addEventListener("change",e=>{state.reviewFile=e.target.files[0]?.name||null;renderShell();});
+  v.querySelector("#revFile")?.addEventListener("change",e=>{
+    const f=e.target.files[0];
+    state.reviewFile=f?.name||null;
+    state.reviewBlob=f||null;
+    state.reviewStep=1;
+    state.reviewPreview="";
+    state.reviewResult=null;
+    renderShell();
+  });
   v.querySelector("#addCmp")?.addEventListener("click",()=>{state.compares.push({name:"",file:null});renderShell();});
   v.querySelectorAll("[data-cdel]").forEach(b=>b.addEventListener("click",()=>{state.compares.splice(+b.dataset.cdel,1);renderShell();}));
   v.querySelectorAll("[data-cn]").forEach(i=>i.addEventListener("input",()=>{state.compares[+i.dataset.cn].name=i.value;}));
   v.querySelectorAll("[data-cf]").forEach(i=>i.addEventListener("change",()=>{state.compares[+i.dataset.cf].file=i.files[0]?.name||null;renderShell();}));
+  v.querySelector("#revExtract")?.addEventListener("click",()=>{
+    if(!state.reviewFile) return;
+    const f=state.reviewBlob;
+    const name=String(state.reviewFile||"").toLowerCase();
+    const applyPreview=function(text){
+      state.reviewPreview=String(text||"").slice(0,20000);
+      state.reviewStep=2;
+      renderShell();
+    };
+    if(f && (name.endsWith(".txt") || String(f.type||"").startsWith("text/"))){
+      const reader=new FileReader();
+      reader.onload=function(){ applyPreview(reader.result); };
+      reader.onerror=function(){ applyPreview(MOCK_TOR_EXTRACT); };
+      reader.readAsText(f);
+      return;
+    }
+    applyPreview(MOCK_TOR_EXTRACT);
+  });
+  v.querySelector("#revBack")?.addEventListener("click",()=>{
+    state.reviewStep=1;
+    state.reviewPreview="";
+    state.reviewResult=null;
+    renderShell();
+  });
   v.querySelector("#runRev")?.addEventListener("click",()=>{
-    state.reviewResult={score:82,findings:[
-      {tone:"pass",title:"อ้างอิง พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 ครบ",detail:"s1"},
-      {tone:"warn",title:"งวดจ่ายรวมไม่เท่ากับ 100% หากไม่ระบุร้อยละ",detail:"แนะนำระบุร้อยละแต่ละงวดในหมวด 8"},
-      {tone:"pass",title:"เทียบเคียงโครงการตัวอย่าง Jaccard 0.61",detail:"สูงกว่าเกณฑ์ 0.50"}
-    ]}; renderShell();
+    state.reviewResult=mockStandaloneReview(state.reviewPreview||"");
+    state.reviewStep=3;
+    renderShell();
   });
   v.querySelectorAll("[data-ht]").forEach(b=>b.addEventListener("click",()=>{state.helpTab=b.dataset.ht;renderShell();}));
   v.querySelector("#saveTpl")?.addEventListener("click",()=>{
@@ -1298,7 +1658,7 @@ function bindView(){
   v.querySelector("#aiLlm")?.addEventListener("change",e=>{state.ai.llm=e.target.value;renderShell();});
   v.querySelector("#aiEmb")?.addEventListener("change",e=>{state.ai.embed=e.target.value;renderShell();});
   v.querySelector("#aiVec")?.addEventListener("change",e=>{state.ai.vector=e.target.value;});
-  v.querySelector("#embSrv")?.addEventListener("change",e=>{state.ai.embedServer=e.target.value;});
+  v.querySelector("#embSrv")?.addEventListener("change",e=>{state.ai.embedServer=e.target.value;renderShell();});
   v.querySelector("#aiTest")?.addEventListener("click",()=>{
     const chat=state.ai.llm;
     const emb=state.ai.embed;
@@ -1309,11 +1669,18 @@ function bindView(){
     if(document.getElementById("lmUrl")) state.ai.lm=document.getElementById("lmUrl").value;
     if(document.getElementById("olUrl")) state.ai.ollama=document.getElementById("olUrl").value;
     if(document.getElementById("llUrl")) state.ai.llama=document.getElementById("llUrl").value;
+    if(document.getElementById("sgUrl")) state.ai.sglang=document.getElementById("sgUrl").value;
+    if(document.getElementById("sgEmbUrl")) state.ai.sglangEmb=document.getElementById("sgEmbUrl").value;
+    if(document.getElementById("sgChat")) state.ai.sglangChat=document.getElementById("sgChat").value;
+    if(document.getElementById("sgEmbM")) state.ai.sglangEmbModel=document.getElementById("sgEmbM").value;
     if(document.getElementById("chatM")) state.ai.chat=document.getElementById("chatM").value;
     if(document.getElementById("embM")) state.ai.emb=document.getElementById("embM").value;
     if(document.getElementById("tmo")) state.ai.timeout=Number(document.getElementById("tmo").value)||180;
     if(document.getElementById("aiLlm")) state.ai.llm=document.getElementById("aiLlm").value;
     if(document.getElementById("aiEmb")) state.ai.embed=document.getElementById("aiEmb").value;
+    if(document.getElementById("crOn")) state.ai.customRag=document.getElementById("crOn").checked;
+    if(document.getElementById("crUrl")) state.ai.customRagUrl=document.getElementById("crUrl").value;
+    if(document.getElementById("crSrc")) state.ai.ragSources=document.getElementById("crSrc").value;
     state.aiMsg="บันทึกแล้ว (จำลองในเบราว์เซอร์) — แชท "+state.ai.llm+" · ฝังเวกเตอร์ "+state.ai.embed;
     renderShell();
   });
@@ -1323,6 +1690,31 @@ function bindView(){
     const m=document.getElementById("kbMsg");
     if(m) m.textContent=state.user?.role==="admin"?"อัปโหลดเข้าคลังกลางแล้ว (จำลอง)":"อัปโหลดเอกสารของฉันแล้ว — เฉพาะบัญชีนี้ (จำลอง)";
     renderShell();
+  });
+  v.querySelectorAll("[data-mine-del]").forEach(b=>b.addEventListener("click",()=>{
+    const idx=+b.dataset.mineDel;
+    const mine=(state.files||[]).filter(f=>f.user);
+    const target=mine[idx];
+    if(!target) return;
+    if(!window.confirm("ลบเอกสาร «"+target.name+"» ออกจากคลังของฉัน?")) return;
+    state.files=state.files.filter(f=>f!==target);
+    renderShell();
+  }));
+  v.querySelectorAll("[data-mine-dl]").forEach(b=>b.addEventListener("click",()=>{
+    const mine=(state.files||[]).filter(f=>f.user);
+    const target=mine[+b.dataset.mineDl];
+    if(target) window.alert("ดาวน์โหลด «"+target.name+"» (จำลอง)");
+  }));
+  ["kbAttach","intakeAttach"].forEach(function(id){
+    v.querySelector("#"+id)?.addEventListener("change",()=>{
+      const files=[...(document.getElementById(id)?.files||[])];
+      files.forEach(f=>state.files.push({name:f.name,user:true,docClass:"user",chars:Math.max(200,Math.round(f.size/4)),status:"success"}));
+      if(id==="kbAttach") state.kbMsgs=state.kbMsgs||[];
+      else state.intakeMsgs=state.intakeMsgs||[];
+      const msgs=id==="kbAttach"?state.kbMsgs:state.intakeMsgs;
+      msgs.push({role:"assistant",text:"แนบแล้ว "+files.map(f=>f.name).join(", ")+" — เข้าคลังส่วนตัวสำหรับ RAG ครั้งหน้า"});
+      renderShell();
+    });
   });
   v.querySelectorAll("label.upload input").forEach(inp=>{
     if(inp.id==="revFile"||inp.dataset.doc||inp.dataset.cf||inp.id==="akbUp"||inp.id==="kbMineUp"||inp.id==="intakeUp") return;
@@ -1358,8 +1750,17 @@ function draftAi(key){
   const s=state.sections.find(x=>x.key===key); if(!s) return;
   state.busy=true; renderShell();
   setTimeout(()=>{
-    if(s.subs){s.subs.forEach(sub=>{if(!sub.content){sub.content="(ร่างจำลอง) "+sub.title+" ของโครงการ "+(active()?.name||""); sub.filled=true;}});}
-    s.content=AI_DRAFT[key]||""; s.filled=true; state.busy=false; state.expanded=key; renderShell();
+    if(s.subs){
+      const p=active()||{};
+      s.subs.forEach(sub=>{
+        if(!sub.content){
+          const cov=(state.coverage||[]).find(r=>r.key===sub.key);
+          sub.content=(cov&&cov.preview)||("(ร่างจำลอง) "+sub.title+" ของโครงการ "+(p.name||""));
+          sub.filled=true;
+        }
+      });
+    }
+    s.content=draftForKey(key); s.filled=true; state.busy=false; state.expanded=key; renderShell();
   },600);
 }
 function fakeExport(kind){
@@ -1368,7 +1769,7 @@ function fakeExport(kind){
 function openNewProject(){
   const m=document.getElementById("modal");
   m.classList.remove("hidden");
-  m.innerHTML=`<div class="modal"><h2>สร้างโครงการใหม่</h2><p class="desc">กรอกข้อมูลพื้นฐานแล้วเข้าสู่กระบวนการร่าง TOR แบบ 5 Phase</p>
+  m.innerHTML=`<div class="modal"><h2>สร้างโครงการใหม่</h2><p class="desc">กรอกข้อมูลพื้นฐานแล้วเข้าสู่กระบวนการร่าง TOR ห้าขั้น</p>
     <p class="err hidden" id="npErr"></p>
     <label class="lbl">ชื่อโครงการ</label><input id="npName" lang="th">
     <label class="lbl">หน่วยงาน</label><input id="npMin" lang="th">
@@ -1385,16 +1786,155 @@ function openNewProject(){
     if(!name||!ministry||!/^\d+$/.test(raw)||+raw<1){document.getElementById("npErr").textContent="กรุณากรอกชื่อโครงการ หน่วยงาน และงบประมาณ"; document.getElementById("npErr").classList.remove("hidden"); return;}
     const id="p"+Date.now();
     state.projects.unshift({id,name,ministry,budget:+raw,status:"draft",updated:today(),phase:0});
-    state.activeId=id; state.phase=0; state.readyCompose=false; state.sections=emptySections(); state.files=[]; state.coverage=[]; state.intakeMsg=""; state.intakeMsgs=[]; state.mapping=[]; state.proposed={}; state.score=null;
+    state.activeId=id; state.phase=0; state.readyCompose=false; state.analyzed=false; state.phase4Confirmed=false; state.sections=emptySections(); state.files=[]; state.coverage=[]; state.intakePack=""; state.intakeMsg=""; state.intakeMsgs=[]; state.suggestions=[]; state.mapping=[]; state.proposed={}; state.score=null; state.standardMsg=""; state.intakeBusy=false; state.reviewChat=[]; state.phase4Findings=[];
     m.classList.add("hidden"); location.hash="#/draft";
   };
 }
 
+function startAnalyze(){
+  const text=(document.getElementById("intakePaste")||{}).value||state.intakePack||"";
+  state.intakePack=text;
+  if(text.length>PASTE_MAX){
+    state.intakeMsg="ข้อความที่วางยาวเกิน 500,000 ตัวอักษร — ตัดให้สั้นลง";
+    renderShell();
+    return;
+  }
+  if(text.trim().length>=20){
+    state.files.push({name:"ข้อความผู้ใช้.txt",docClass:"pack",chars:text.trim().length,status:"success"});
+  }
+  if(!(state.files||[]).length){
+    state.intakeMsg="อัปโหลดหรือวางข้อความอย่างน้อย 20 ตัวอักษรก่อนกดเริ่มวิเคราะห์";
+    renderShell();
+    return;
+  }
+  state.intakeBusy=true;
+  state.intakeMsg="";
+  renderShell();
+  setTimeout(()=>{
+    applyIntakeMaterial();
+    state.analyzed=true;
+    state.phase=1;
+    state.intakeBusy=false;
+    state.intakeMsg="วิเคราะห์แล้ว — ดูตารางช่องจากเอกสาร แล้วกดไปขั้นที่ ๒";
+    renderShell();
+  },700);
+}
+function draftForKey(key){
+  const p=active()||{};
+  const facts=mockFactsFromPack(state.intakePack||"");
+  const cov=(state.coverage||[]).find(r=>r.key===key);
+  const preview=(cov&&cov.preview)||"";
+  if(key==="s1"){
+    return (preview||("โครงการ "+(p.name||"")))+" ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 วงเงิน "+facts.budget+" บาท";
+  }
+  if(key==="s5") return "ระยะเวลาดำเนินการ "+facts.days+" วัน นับจากวันลงนามในสัญญา ของโครงการ "+(p.name||"");
+  if(key==="s6") return "วงเงินงบประมาณ "+facts.budget+" บาท รวมภาษีมูลค่าเพิ่ม ของโครงการ "+(p.name||"");
+  if(key==="s7") return "สถานที่ดำเนินการ: "+facts.agency;
+  if(preview) return preview;
+  let t=AI_DRAFT[key]||("(ร่างจำลอง) "+(p.name||""));
+  t=t.replace("12,500,000", String(facts.budget)).replace("270 วัน", facts.days+" วัน");
+  return t;
+}
+function autoDraftAll(){
+  const p=active()||{};
+  state.sections.forEach(s=>{
+    if(s.subs){
+      s.subs.forEach(sub=>{
+        if(!sub.content){
+          const cov=(state.coverage||[]).find(r=>r.key===sub.key);
+          sub.content=(cov&&cov.preview)||("(ร่างจำลอง) "+sub.title+" ของโครงการ "+(p.name||""));
+          sub.filled=true;
+        }
+      });
+      s.content=s.subs.filter(x=>x.filled).map(x=>x.title+": "+x.content).join("\n");
+      s.filled=s.subs.some(x=>x.filled);
+    } else if(!(s.content||"").trim()){
+      s.content=draftForKey(s.key);
+      s.filled=!!s.content.trim();
+    }
+  });
+}
+function goPhase3(){
+  state.readyCompose=true;
+  state.phase=3;
+  state.busy=true;
+  renderShell();
+  setTimeout(()=>{
+    autoDraftAll();
+    state.busy=false;
+    renderShell();
+  },700);
+}
+function mockSuggestions(){
+  const facts=mockFactsFromPack(state.intakePack||"");
+  const budgetNum=Number(String(facts.budget).replaceAll(",",""));
+  const capital=Number.isFinite(budgetNum)?Math.round(budgetNum*0.25):0;
+  return [
+    {slot:"s3",text:"ทุนจดทะเบียนชำระแล้วไม่น้อยกว่า 25% ของวงเงิน "+facts.budget+" บาท"+(capital?(" (ประมาณ "+capital.toLocaleString("th-TH")+" บาท)"):"")},
+    {slot:"s8",text:"ระบุร้อยละแต่ละงวดให้รวม 100% (เช่น 15 / 35 / 30 / 20)"},
+    {slot:"s10",text:"ค่าปรับส่งมอบล่าช้า 0.10% ต่อวัน ตามระเบียบพัสดุ"}
+  ];
+}
+function runMockRules(){
+  const n=filledCount();
+  const blob=[state.intakePack||"", state.sections.map(s=>s.content||"").join("\n")].join("\n");
+  const hasLaw=/พ\.ร\.บ|พ.ร.บ|2560/.test(blob);
+  const hasBudget=/[0-9].*บาท/.test(blob);
+  let score=64;
+  if(n===13) score=hasLaw?92:78;
+  if(n===13 && hasBudget) score=Math.min(95, score+3);
+  state.score=score;
+  state.suggestions=n===13?mockSuggestions():[];
+  const findings=[];
+  if(n<13) findings.push({tone:"warn",title:"ยังกรอกไม่ครบสิบสามหมวด",detail:"กลับไปขั้นที่ ๓"});
+  else {
+    if(hasLaw) findings.push({tone:"pass",title:"อ้างอิง พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 ครบ",detail:"s1"});
+    else findings.push({tone:"warn",title:"ยังไม่พบการอ้างอิง พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560",detail:"เพิ่มในหมวด 1"});
+    if(hasBudget) findings.push({tone:"pass",title:"พบวงเงินงบประมาณในร่าง",detail:"s6"});
+    findings.push({tone:"warn",title:"งวดจ่ายควรระบุร้อยละแต่ละงวดให้รวม 100%",detail:"s8"});
+  }
+  state.phase4Findings=findings;
+  state.reviewChat=state.reviewChat||[];
+  state.reviewChat.push("ตรวจร่างแล้ว ได้คะแนนคุณภาพ "+state.score+"/100\nพิมพ์ได้เลย เช่น ตรวจอีกครั้ง หรือถามว่าร่างยังขาดอะไร");
+}
+function mockStandaloneReview(text){
+  const facts=mockFactsFromPack(text);
+  const hasBudget=/[0-9].*บาท/.test(text);
+  const hasLaw=/พ\.ร\.บ|พ.ร.บ|2560/.test(text);
+  let score=70;
+  const findings=[];
+  if(hasLaw){
+    score+=4;
+    findings.push({tone:"pass",title:"อ้างอิง พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560",detail:"พบในเอกสารที่สกัด"});
+  } else {
+    findings.push({tone:"warn",title:"ยังไม่พบการอ้างอิง พ.ร.บ. 2560",detail:"เพิ่มในหมวด 1"});
+  }
+  if(hasBudget){
+    score+=8;
+    findings.push({tone:"pass",title:"พบวงเงินงบประมาณ "+facts.budget+" บาท",detail:"ไม่ติดข้อไม่พบงบประมาณ"});
+  } else {
+    findings.push({tone:"warn",title:"ไม่พบงบประมาณในเอกสาร",detail:"ระบุวงเงินเป็นตัวเลข ASCII ตามด้วยคำว่าบาท"});
+  }
+  if((state.compares||[]).some(c=>c.file||(c.name||"").trim())){
+    score=Math.min(95, score+4);
+    findings.push({tone:"pass",title:"เทียบเคียงโครงการตัวอย่าง Jaccard 0.61",detail:"สูงกว่าเกณฑ์แสดงผล 0.50"});
+  }
+  findings.push({tone:"warn",title:"งวดจ่ายควรระบุร้อยละแต่ละงวดให้รวม 100%",detail:"หมวด 8"});
+  return {score:Math.min(95,score),findings};
+}
+function goPhase4(){
+  state.sections.forEach(s=>{ s.confirmed=true; });
+  state.phase4Confirmed=true;
+  state.phase=4;
+  if(state.score==null) runMockRules();
+  renderShell();
+}
+
 function ensureDraftProject(){
-  if(state.projects.length) return;
-  const id="p"+Date.now();
-  state.projects.push({id,name:"โครงการใหม่ #1",ministry:state.user?.org||"หน่วยงาน",budget:1,status:"draft",updated:today(),phase:0});
-  state.activeId=id;
+  const current=state.projects.find(p=>p.id===state.activeId);
+  if(current) return;
+  const draft=state.projects.find(p=>p.status==="draft") || state.projects[0];
+  if(draft) state.activeId=draft.id;
 }
 
 function route(){
@@ -1403,7 +1943,7 @@ function route(){
   if(!state.user){ showAuth(h==="register"?"register":"login"); return; }
   document.getElementById("auth").style.display="none";
   document.getElementById("app").style.display="block";
-  const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","agent":"agent","chat":"chat","review":"review","help":"help",
+  const map={"":"projects","projects":"projects","knowledge-base":"kb","draft":"draft","chat":"chat","review":"review","help":"help",
     "admin/templates":"templates","admin/knowledge-base":"adminkb","admin/users":"users","admin/ai-settings":"ai"};
   state.page=map[h]||"projects";
   if(state.page==="draft") ensureDraftProject();
