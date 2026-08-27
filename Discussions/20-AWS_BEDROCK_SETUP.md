@@ -1,9 +1,21 @@
-# Setup บน Amazon (AWS) — Bedrock เป็นเส้นทาง production หลัก
+# Setup บน Amazon (AWS) — Bedrock บน EC2 + Docker Compose
 
-คู่มือนี้เป็น **เป้าหมายหลักของ production**: ใช้บัญชี Amazon/AWS + Amazon Bedrock สำหรับ LLM (และ optionally embeddings)  
-ตัวเลือกอื่น (LM Studio, Ollama, llama.cpp, SGLang, Claude/OpenAI/Gemini/Azure) **ยังสลับได้จาก Admin** — ไม่ถูกถอด
+คู่มือนี้เป็น **ทางลัด**: รันแอปด้วย Compose บน EC2 (หรือเครื่องใน VPC) แล้วชี้ LLM/embeddings ไป **Amazon Bedrock**  
+**ไม่ใช่** เส้นทาง production ล้วนบนบริการจัดการของ AWS (ECS/RDS/S3/ElastiCache)
 
-ดูการติดตั้งทั่วไปที่ [`14-INSTALLATION.md`](14-INSTALLATION.md)
+สำหรับ **AWS-only ไม่มี hybrid** (เป้าหมายหน่วยงานที่ deploy บนคลาวด์อย่างเดียว) ใช้ชุด:
+
+| เอกสาร | เนื้อหา |
+|--------|---------|
+| [24-AWS_CLOUD_OVERVIEW.md](24-AWS_CLOUD_OVERVIEW.md) | เป้าหมายและเฟส A–G |
+| [25-AWS_SERVICE_CATALOG.md](25-AWS_SERVICE_CATALOG.md) | จับคู่ Docker → บริการ AWS |
+| [26-AWS_INSTALL_AND_WIRING.md](26-AWS_INSTALL_AND_WIRING.md) | ติดตั้ง ตั้งค่า เชื่อมโยงทีละขั้น |
+| [27-AWS_CODE_AND_CUTOVER.md](27-AWS_CODE_AND_CUTOVER.md) | โค้ดที่ปรับแล้วและงานที่เหลือ |
+| โครงไฟล์ | `app/infra/aws/` (Terraform, IAM, ECS, `.env` คลาวด์) |
+
+ตัวเลือกอื่น (LM Studio, Ollama, llama.cpp, SGLang, Claude/OpenAI/Gemini/Azure) **ยังสลับได้จาก Admin** บนเส้นทางนี้ — บนเส้น 24–27 ห้ามชี้ GPU ในสำนักงาน
+
+ดูการติดตั้ง Compose ทั่วไปที่ [`14-INSTALLATION.md`](14-INSTALLATION.md)
 
 ---
 

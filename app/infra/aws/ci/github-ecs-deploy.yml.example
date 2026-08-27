@@ -1,0 +1,50 @@
+# Copy to .github/workflows/ecs-deploy.yml when the AWS-only path is live.
+# Requires GitHub OIDC role (see iam/github-oidc-deploy.json) — no long-lived access keys.
+
+name: Deploy TOR images to ECS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/frontend/**"
+      - "app/backend/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push
+        env:
+          ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          REG="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+          docker build -t "$REG/tor-backend:${GITHUB_SHA}" ./app/backend
+          docker build -t "$REG/tor-frontend:${GITHUB_SHA}" ./app/frontend \
+            --build-arg NEXT_PUBLIC_API_URL=/api/v1 \
+            --build-arg BACKEND_INTERNAL_URL=http://backend.tor.local:4000/api/v1
+          docker tag "$REG/tor-backend:${GITHUB_SHA}" "$REG/tor-backend:prod"
+          docker tag "$REG/tor-frontend:${GITHUB_SHA}" "$REG/tor-frontend:prod"
+          docker push "$REG/tor-backend:${GITHUB_SHA}"
+          docker push "$REG/tor-backend:prod"
+          docker push "$REG/tor-frontend:${GITHUB_SHA}"
+          docker push "$REG/tor-frontend:prod"
+      - name: Roll ECS services
+        run: |
+          aws ecs update-service --cluster tor-prod --service backend --force-new-deployment
+          aws ecs update-service --cluster tor-prod --service frontend --force-new-deployment

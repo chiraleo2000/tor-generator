@@ -1,0 +1,16 @@
+project       = "tor"
+environment   = "prod"
+aws_region    = "ap-southeast-1"
+vpc_cidr      = "10.40.0.0/16"
+bucket_prefix = "CHANGE-ME-accountid-tor"
+# github_org_repo = "chiraleo2000/tor-generator"
+
+# Second apply: set true after reviewing cost (RDS Multi-AZ + NAT + ElastiCache).
+enable_managed_data = false
+enable_ecs          = false
+# certificate_arn     = "arn:aws:acm:ap-southeast-1:ACCOUNT:certificate/..."
+app_domain            = "tor.example.go.th"
+backend_desired_count = 1
+frontend_desired_count = 2
+db_instance_class     = "db.t3.medium"
+redis_node_type       = "cache.t3.small"

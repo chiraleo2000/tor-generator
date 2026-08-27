@@ -56,6 +56,9 @@ def repo_root() -> Path | None:
 def sources_root(explicit: Path | None = None) -> Path | None:
     if explicit is not None:
         return explicit
+    env_root = os.environ.get("KB_SOURCES_ROOT", "").strip()
+    if env_root:
+        return Path(env_root)
     root = repo_root()
     if root is None:
         return None

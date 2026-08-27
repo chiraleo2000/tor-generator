@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:Converse",
+        "bedrock:ConverseStream"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:ap-southeast-1::foundation-model/*",
+        "arn:aws:bedrock:ap-southeast-1:*:inference-profile/*"
+      ]
+    },
+    {
+      "Sid": "S3AppBuckets",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::tor-prod-exports",
+        "arn:aws:s3:::tor-prod-exports/*",
+        "arn:aws:s3:::tor-prod-originals",
+        "arn:aws:s3:::tor-prod-originals/*",
+        "arn:aws:s3:::tor-prod-kb-source",
+        "arn:aws:s3:::tor-prod-kb-source/*"
+      ]
+    },
+    {
+      "Sid": "KmsForS3",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"],
+      "Resource": "arn:aws:kms:ap-southeast-1:*:key/*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "s3.ap-southeast-1.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

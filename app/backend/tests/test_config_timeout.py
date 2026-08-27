@@ -58,3 +58,15 @@ def test_clear_runtime_overlay_restores_env_default():
     assert get_settings().lm_studio_timeout == 12.0
     clear_runtime_overlay()
     assert get_settings().lm_studio_timeout != 12.0
+
+
+def test_redis_url_uses_tls_scheme_for_elasticache():
+    settings = Settings(redis_tls=True, redis_host="cache.example", redis_password="s3cret")
+    assert settings.redis_url.startswith("rediss://")
+    assert "cache.example" in settings.redis_url
+
+
+def test_redis_url_defaults_to_cleartext_for_compose():
+    settings = Settings(redis_host="redis", redis_password="s3cret")
+    assert settings.redis_url.startswith("redis://")
+    assert not settings.redis_url.startswith("rediss://")

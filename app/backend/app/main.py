@@ -90,25 +90,17 @@ async def lifespan(app: FastAPI):
 
         _clear_redis(None)
 
-    # --- MinIO ---
+    # --- MinIO / S3 ---
     try:
-        from minio import Minio
+        from app.export.minio_storage import build_minio_client, ensure_minio_bucket
 
-        minio_client = Minio(
-            settings.minio_endpoint,
-            access_key=settings.minio_access_key,
-            secret_key=settings.minio_secret_key,
-            secure=False,  # Use HTTP for local dev; configure HTTPS in production
-        )
-        # Ensure the default bucket exists
-        if not minio_client.bucket_exists(settings.minio_bucket):
-            minio_client.make_bucket(settings.minio_bucket)
-            logger.info("MinIO bucket created: %s", settings.minio_bucket)
+        minio_client = build_minio_client(settings)
+        ensure_minio_bucket(minio_client, settings)
         app.state.minio = minio_client
         from app.infra import set_minio_client
 
         set_minio_client(minio_client)
-        logger.info("MinIO connected: %s", settings.minio_endpoint)
+        logger.info("Object storage connected: %s", settings.minio_endpoint)
     except Exception as exc:
         logger.warning("MinIO not reachable (app will start without file storage): %s", exc)
         app.state.minio = None

@@ -25,6 +25,7 @@ def test_group_for_filename_tags_handbook_and_user():
 
 def test_list_mandatory_sources_groups_tmp_tree(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("RAW_DOCS_DIR", raising=False)
+    monkeypatch.delenv("KB_SOURCES_ROOT", raising=False)
     handbook = tmp_path / HANDBOOK_FILENAME
     handbook.write_bytes(b"%PDF-1.4 handbook")
     raw = tmp_path.joinpath("การจัดซื้อจัดจ้าง", "ข้อมูลดิบ")
@@ -42,8 +43,23 @@ def test_list_mandatory_sources_groups_tmp_tree(tmp_path: Path, monkeypatch):
     assert "notes.txt" not in names
 
 
+def test_kb_sources_root_env_overrides_repo_walk(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("RAW_DOCS_DIR", raising=False)
+    handbook = tmp_path / HANDBOOK_FILENAME
+    handbook.write_bytes(b"%PDF-1.4 handbook")
+    raw = tmp_path.joinpath("การจัดซื้อจัดจ้าง", "ข้อมูลดิบ")
+    raw.mkdir(parents=True)
+    (raw / "พรบ.pdf").write_bytes(b"%PDF-1.4 law")
+    monkeypatch.setenv("KB_SOURCES_ROOT", str(tmp_path))
+    files = list_mandatory_sources()
+    names = {item.path.name for item in files}
+    assert HANDBOOK_FILENAME in names
+    assert "พรบ.pdf" in names
+
+
 def test_raw_docs_dir_adds_extra_pdf(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("RAW_DOCS_DIR", raising=False)
+    monkeypatch.delenv("KB_SOURCES_ROOT", raising=False)
     extra = tmp_path / "extra"
     extra.mkdir()
     (extra / "more.pdf").write_bytes(b"%PDF-1.4 extra")
@@ -55,7 +71,9 @@ def test_raw_docs_dir_adds_extra_pdf(tmp_path: Path, monkeypatch):
     assert all(item.group == GROUP_MANDATORY_RAW for item in files)
 
 
-def test_live_mandatory_folders_when_present():
+def test_live_mandatory_folders_when_present(monkeypatch):
+    monkeypatch.delenv("KB_SOURCES_ROOT", raising=False)
+    monkeypatch.delenv("RAW_DOCS_DIR", raising=False)
     files = list_mandatory_sources()
     if not files:
         pytest.skip("mandatory PDFs are not available on this machine")

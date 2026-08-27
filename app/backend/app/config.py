@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_password: str = "changeme_redis_password"
+    redis_tls: bool = False
 
     # -------------------------------------------------------------------------
     # MinIO (Object Storage)
@@ -62,6 +63,9 @@ class Settings(BaseSettings):
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "changeme_minio_secret"
     minio_bucket: str = "tor-documents"
+    minio_secure: bool = False
+    minio_region: str = ""
+    minio_use_iam: bool = False
 
     # -------------------------------------------------------------------------
     # API Keys (Cloud Mode)
@@ -177,8 +181,9 @@ class Settings(BaseSettings):
 
     @cached_property
     def redis_url(self) -> str:
-        """Redis connection string."""
-        return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/0"
+        """Redis connection string. Use REDIS_TLS=true for ElastiCache in-transit encryption."""
+        scheme = "rediss" if self.redis_tls else "redis"
+        return f"{scheme}://:{self.redis_password}@{self.redis_host}:{self.redis_port}/0"
 
     agent_cache_extraction_ttl_hours: int = 24
     agent_cache_mapping_ttl_hours: int = 24

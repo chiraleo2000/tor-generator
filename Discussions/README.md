@@ -10,6 +10,8 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 
 คำอธิบายเวิร์กโฟลว์สามบริการหลัก (ภาษาไทย ตรวจจากโค้ดจริง **26 ส.ค. 2026 รอบบ่าย**) อยู่ที่ **21–23** ใช้ชุดนี้เมื่อขัดกับบันทึกเก่าใน `15`/`19` (เช่น วิเคราะห์ขั้นที่ ๐ ไม่ดึงกฎหมายอัตโนมัติแล้ว และเกต HITL บนปุ่มไปทบทวนไม่มีแล้ว)
 
+**Production บน AWS ล้วน (ไม่มี hybrid):** ชุด **24–27** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS
+
 | File | Topic |
 |------|--------|
 | `13-USER_GUIDELINE.md` | คู่มือผู้ใช้ทีละขั้นพร้อมภาพ |
@@ -22,10 +24,14 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 | `19-APPLICATION_OPERATING_REPORT.docx` | ฉบับ Word (TH Sarabun New, ตาราง, ภาพจอ, ไดอะแกรม) |
 | `19-APPLICATION_OPERATING_REPORT.pdf` | ฉบับ PDF ส่งออกจาก Word |
 | `19-APPLICATION_OPERATING_REPORT.pptx` | สไลด์นำเสนอ (สร้างจาก `_build_report_exports.py`) |
-| `20-AWS_BEDROCK_SETUP.md` | **Setup บน Amazon / Bedrock (path production หลัก)** |
+| `20-AWS_BEDROCK_SETUP.md` | ทางลัด **EC2 + Compose + Bedrock** (ไม่ใช่ ECS/RDS ล้วน) |
 | `21-WORKFLOW_DRAFT_TOR.md` | เวิร์กโฟลว์ **ร่าง TOR** (ห้าขั้น จากโค้ด 26 ส.ค. 2026 — ไม่มีเกต HITL บนจอ) |
 | `22-WORKFLOW_REVIEW_TOR.md` | เวิร์กโฟลว์ **ตรวจสอบ TOR** (หน้าล้วน `/review` + ขั้นที่ ๔ + แชท `/review/comment`) |
 | `23-WORKFLOW_KB_QA.md` | เวิร์กโฟลว์ **ถาม-ตอบ** ลึก (RAG 32/48, คำตอบแบบเจ้าหน้าที่พัสดุ) และฐานความรู้ |
+| `24-AWS_CLOUD_OVERVIEW.md` | **AWS-only:** เป้าหมาย สถาปัตยกรรม เฟส A–G |
+| `25-AWS_SERVICE_CATALOG.md` | จับคู่ทุกชิ้น Docker กับบริการ AWS |
+| `26-AWS_INSTALL_AND_WIRING.md` | ติดตั้ง ตั้งค่า เชื่อมโยงทีละขั้น (VPC→ECS→WAF) |
+| `27-AWS_CODE_AND_CUTOVER.md` | โค้ดที่ปรับแล้ว (S3/IAM, Redis TLS) และงานตัดระบบ |
 
 ชุด `01`–`12` เป็นบันทึกออกแบบก่อนหน้า (รวม PoC HTML) — อย่าใช้ `10`/`11` เป็นคู่มือติดตั้งของแอป Docker ปัจจุบัน
 

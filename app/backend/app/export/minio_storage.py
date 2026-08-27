@@ -13,9 +13,40 @@ from typing import Optional
 
 from minio import Minio
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 logger = logging.getLogger("tor_app.export.minio_storage")
+
+
+def build_minio_client(settings: Settings) -> Minio:
+    """MinIO SDK client for local MinIO (HTTP) or Amazon S3 (TLS + optional IAM)."""
+    kwargs: dict = {"secure": settings.minio_secure}
+    if settings.minio_region:
+        kwargs["region"] = settings.minio_region
+    if settings.minio_use_iam:
+        from minio.credentials import IamAwsProvider
+
+        return Minio(settings.minio_endpoint, credentials=IamAwsProvider(), **kwargs)
+    return Minio(
+        settings.minio_endpoint,
+        access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key,
+        **kwargs,
+    )
+
+
+def ensure_minio_bucket(client: Minio, settings: Settings) -> None:
+    """Create the bucket only for local MinIO. S3/IAM buckets are provisioned in AWS."""
+    if client.bucket_exists(settings.minio_bucket):
+        return
+    if settings.minio_secure or settings.minio_use_iam:
+        logger.warning(
+            "Object bucket missing: %s (app will not create it on S3/IAM)",
+            settings.minio_bucket,
+        )
+        return
+    client.make_bucket(settings.minio_bucket)
+    logger.info("MinIO bucket created: %s", settings.minio_bucket)
 
 # Default TTL for download URLs in hours
 DEFAULT_DOWNLOAD_TTL_HOURS: int = 24
