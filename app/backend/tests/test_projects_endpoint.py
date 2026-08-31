@@ -19,8 +19,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.v1.endpoints.projects import officer_can_submit
+from app.api.v1.endpoints.projects import missing_submit_sections, officer_can_submit
 from app.deps import get_current_user, get_db
+from app.domain.tor_sections import TOR_SECTION_ORDER
 from app.main import app
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
@@ -77,6 +78,43 @@ def _make_project(
     project.created_at = datetime(2024, 8, 15, 10, 0, 0, tzinfo=timezone.utc)
     project.updated_at = datetime(2024, 8, 15, 12, 0, 0, tzinfo=timezone.utc)
     return project
+
+
+def _filled_tor_rows():
+    rows = []
+    for key in TOR_SECTION_ORDER:
+        row = MagicMock()
+        row.section_key = key
+        row.sub_key = None
+        row.content = f"เนื้อหาหมวด {key} สำหรับทดสอบ"
+        row.ai_draft = f"เนื้อหาหมวด {key} สำหรับทดสอบ"
+        rows.append(row)
+    return rows
+
+
+def _project_result(project):
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = project
+    return result
+
+
+def _sections_result(rows):
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = rows
+    return result
+
+
+def _submit_db(project, rows=None):
+    mock_db = AsyncMock()
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock()
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            _project_result(project),
+            _sections_result(rows if rows is not None else _filled_tor_rows()),
+        ]
+    )
+    return mock_db
 
 
 def _make_version(
@@ -753,12 +791,7 @@ class TestWorkflowAndWorkspaceWrites:
 
     def test_submit_draft_moves_to_in_review(self, client, mock_officer_user):
         project = _make_project(status="draft")
-        mock_db = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = project
-        mock_db.execute = AsyncMock(return_value=result)
-        mock_db.flush = AsyncMock()
-        mock_db.refresh = AsyncMock()
+        mock_db = _submit_db(project)
 
         async def override_db():
             yield mock_db
@@ -774,12 +807,7 @@ class TestWorkflowAndWorkspaceWrites:
 
     def test_submit_archived_phase4_moves_to_in_review(self, client, mock_officer_user):
         project = _make_project(status="archived", current_phase=4)
-        mock_db = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = project
-        mock_db.execute = AsyncMock(return_value=result)
-        mock_db.flush = AsyncMock()
-        mock_db.refresh = AsyncMock()
+        mock_db = _submit_db(project)
 
         async def override_db():
             yield mock_db
@@ -811,12 +839,7 @@ class TestWorkflowAndWorkspaceWrites:
         self, client, mock_officer_user
     ):
         project = _make_project(status="archived", current_phase=3, quality_score=82)
-        mock_db = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = project
-        mock_db.execute = AsyncMock(return_value=result)
-        mock_db.flush = AsyncMock()
-        mock_db.refresh = AsyncMock()
+        mock_db = _submit_db(project)
 
         async def override_db():
             yield mock_db
@@ -829,6 +852,23 @@ class TestWorkflowAndWorkspaceWrites:
             response = client.post(f"/api/v1/projects/{PROJECT_ID}/submit")
         assert response.status_code == 200
         assert project.status == "in_review"
+
+    def test_submit_incomplete_sections_is_rejected(self, client, mock_officer_user):
+        project = _make_project(status="draft")
+        mock_db = _submit_db(project, rows=[])
+        audit = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        with patch("app.api.v1.endpoints.projects.AuditService.log", new=audit):
+            response = client.post(f"/api/v1/projects/{PROJECT_ID}/submit")
+        assert response.status_code == 400
+        assert project.status == "draft"
+        audit.assert_not_called()
+        missing = response.json()["error"]["details"]["missing"]
+        assert {item["section_key"] for item in missing} == set(TOR_SECTION_ORDER)
 
     def test_submit_approved_is_rejected(self, client, mock_officer_user):
         project = _make_project(status="approved")

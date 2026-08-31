@@ -1,7 +1,11 @@
 # 24 — AWS Cloud ล้วน (ไม่มี hybrid)
 
-ชุดนี้เป็น **เส้นทาง production บน Amazon Web Services เท่านั้น**: แอป ข้อมูล คิว ไฟล์ กราฟ RAG และ LLM อยู่บน AWS  
-**ไม่** รัน LM Studio / Ollama / SGLang / GPU ในเครื่อง และ **ไม่** ผสม on-prem กับคลาวด์
+ชุดนี้เป็น **เส้นทาง production บน Amazon Web Services เท่านั้น**: แอป คิว ไฟล์ กราฟ (ถ้าเปิด) และ **LLM/embeddings** อยู่บน AWS  
+**ไม่** รัน LM Studio / Ollama / SGLang / GPU ในเครื่องเป็นโมเดลของ task production และ **ไม่** ใช้ `DEPLOYMENT_MODE=hybrid`
+
+ข้อยกเว้นข้อมูล: คลัง RAG **มีได้สองแหล่ง** (คลังกลางที่ sync จากสำนักงานขึ้น S3 + เอกสารของฉัน/ระบบอื่น) โดยยังฝังและตอบด้วย Bedrock — ดู [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md)
+
+เกตตรวจ Local LLM และแผนตัดระบบฉบับรวม: [28-VERIFICATION-AND-MIGRATION.md](28-VERIFICATION-AND-MIGRATION.md)
 
 | เอกสาร | เนื้อหา |
 |--------|---------|
@@ -9,6 +13,7 @@
 | [25-AWS_SERVICE_CATALOG.md](25-AWS_SERVICE_CATALOG.md) | จับคู่ทุกชิ้นใน Docker กับบริการ AWS + บริการเสริม |
 | [26-AWS_INSTALL_AND_WIRING.md](26-AWS_INSTALL_AND_WIRING.md) | ติดตั้ง ตั้งค่า เชื่อมโยงทีละขั้น |
 | [27-AWS_CODE_AND_CUTOVER.md](27-AWS_CODE_AND_CUTOVER.md) | โค้ดที่ต้องปรับ ย้ายข้อมูล ตัดระบบเก่า |
+| [28](28-VERIFICATION-AND-MIGRATION.md) / [29](29-TBW-AWS-CLOUD-ONLY.md) | เกตตรวจ + TBW Cloud ล้วน / RAG สองแหล่ง |
 | โครงไฟล์ | `app/infra/aws/` (Terraform, IAM, ECS task, `.env` คลาวด์) |
 
 [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md) ยังใช้ได้เมื่อต้องการ **แค่ Bedrock** บน EC2+Compose — **ไม่ใช่** เป้าหมายของชุด 24–27
@@ -67,7 +72,8 @@ task ใน private subnet ออกอินเทอร์เน็ตผ่�
 
 | หลัก | ทำอย่างไร |
 |------|-----------|
-| ไม่มี hybrid | ไม่ชี้ `LM_STUDIO_BASE_URL` / `SGLANG_*` ใน task definition ของ production |
+| ไม่มี hybrid LLM | ไม่ชี้ `LM_STUDIO_BASE_URL` / `SGLANG_*` ใน task definition ของ production; ห้าม `EMBEDDING_PROVIDER=local` |
+| RAG สองแหล่งได้ | คลังกลาง (S3→Titan→pgvector) + ของฉัน/`CUSTOM_RAG_*` — ไม่สลับโมเดลกลับเครื่อง |
 | ไม่เก็บคีย์ในอิมเมจ | IAM role ของ task; รหัส DB จาก Secrets Manager |
 | อย่างน้อยสิทธิ์ | policy แยก execution role vs task role; Bedrock จำกัด ARN โมเดล |
 | ข้อมูลใน AZ อย่างน้อย 2 | RDS Multi-AZ, ElastiCache failover, S3 ข้าม AZ โดยค่าเริ่มต้น |
@@ -120,6 +126,6 @@ task ใน private subnet ออกอินเทอร์เน็ตผ่�
 
 1. **Neptune ไม่ใช่ Neo4j drop-in** — ไดรเวอร์ `neo4j://` ใช้กับ Aura/Neo4j; Neptune ใช้ `bolt`/openCypher คนละ endpoint และจำกัดบาง Cypher ต้องมีอะแดปเตอร์ (เอกสาร 27)
 2. **DocumentDB ไม่รองรับ GridFS เต็ม** — ย้ายไฟล์ต้นฉบับไป S3 ปลอดภัยกว่า
-3. **งานร่างในหน่วยความจำ** — อย่าทำ `desiredCount` ของ backend เป็นหลาย task จนกว่าคิวร่างจะอยู่ Redis/SQS (ตอนนี้คิวรับ LLM อยู่ Redis แต่ job ร่างบางส่วนยังในโปรเซส)
+3. **งานร่างข้าม task** — โค้ด `Draft_Job_Store` (Redis `draft:job:{id}`) พร้อมในรีโปแล้ว (เอกสาร 28 ส่วน D) ต้อง **deploy อิมเมจ** ก่อนจึงปลด `desiredCount=1` ได้; อย่า scale ถ้ายังรันไบนารีเก่าที่เก็บคิวในโปรเซส
 4. **Cookie JWT** — ต้อง `COOKIE_SECURE=true` + SameSite บนโดเมน HTTPS
 5. **Seed คลัง** — PDF ต้นฉบับอยู่ `documents/sources`; บน AWS ใส่ S3 แล้วรัน task one-shot ไม่ bind-mount โฟลเดอร์ไทยจาก Windows

@@ -55,6 +55,9 @@ def setup_app_state():
     from app.api.v1.endpoints import draft_chat as draft_chat_ep
 
     draft_chat_ep._DRAFT_JOBS.clear()
+    from app.draft_job_store import clear_memory
+
+    clear_memory()
     app.state.db_session_factory = None
     app.state.db_engine = None
     app.state.redis = None

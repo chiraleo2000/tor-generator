@@ -11,6 +11,7 @@
 | [25-AWS_SERVICE_CATALOG.md](25-AWS_SERVICE_CATALOG.md) | จับคู่ Docker → บริการ AWS |
 | [26-AWS_INSTALL_AND_WIRING.md](26-AWS_INSTALL_AND_WIRING.md) | ติดตั้ง ตั้งค่า เชื่อมโยงทีละขั้น |
 | [27-AWS_CODE_AND_CUTOVER.md](27-AWS_CODE_AND_CUTOVER.md) | โค้ดที่ปรับแล้วและงานที่เหลือ |
+| [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md) | TBW: Cloud ล้วน + RAG สองแหล่ง (ห้าม hybrid LLM) |
 | โครงไฟล์ | `app/infra/aws/` (Terraform, IAM, ECS, `.env` คลาวด์) |
 
 ตัวเลือกอื่น (LM Studio, Ollama, llama.cpp, SGLang, Claude/OpenAI/Gemini/Azure) **ยังสลับได้จาก Admin** บนเส้นทางนี้ — บนเส้น 24–27 ห้ามชี้ GPU ในสำนักงาน

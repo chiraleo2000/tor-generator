@@ -1,0 +1,30 @@
+# Cloud-only runtime knobs (no secrets). Copy values into ECS task env / SSM.
+# Policy: Discussions/29-TBW-AWS-CLOUD-ONLY.md and 30-DEV-ASSIGNMENT-MCP-AND-AWS.md
+
+deployment:
+  mode: cloud
+  region: ap-southeast-1
+  llm_provider: bedrock
+  embedding_provider: bedrock
+  vector_store: pgvector
+  cookie_secure: true
+  redis_tls: true
+  minio_secure: true
+  minio_use_iam: true
+
+rag:
+  dual_sources: true
+  custom_rag_enabled: false
+  mcp_rag_enabled: false
+  mcp_config: app/infra/mcp/rag-sources.yaml
+
+ecs:
+  cluster: tor-prod
+  backend_desired_count: 1
+  frontend_desired_count: 2
+  backend_cpu: "1024"
+  backend_memory: "2048"
+
+health:
+  path: /health
+  expected: healthy

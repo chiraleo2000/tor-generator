@@ -87,6 +87,30 @@ def officer_can_submit(
     return current_phase >= 4 or has_review_score
 
 
+def _row_has_content(row: TORSection | None) -> bool:
+    if row is None:
+        return False
+    return bool(str(row.content or "").strip() or str(row.ai_draft or "").strip())
+
+
+def missing_submit_sections(rows: list[TORSection]) -> list[dict[str, str]]:
+    """Unfilled s1–s13 for server-side submit (s4 ok if parent or any s4.N is filled)."""
+    by_key, subs = _index_tor_sections(rows)
+    missing: list[dict[str, str]] = []
+    for key in TOR_SECTION_ORDER:
+        parent = by_key.get(key)
+        if key == "s4":
+            scope = subs.get("s4") or {}
+            has_sub = any(_row_has_content(row) for row in scope.values())
+            if _row_has_content(parent) or has_sub:
+                continue
+            missing.append({"section_key": "s4", "sub_key": "s4.1"})
+            continue
+        if not _row_has_content(parent):
+            missing.append({"section_key": key, "sub_key": ""})
+    return missing
+
+
 def _index_tor_sections(
     rows: list[TORSection],
 ) -> tuple[dict[str, TORSection], dict[str, dict[str, TORSection]]]:
@@ -592,6 +616,15 @@ async def submit_project(
         project.quality_score is not None,
     ):
         raise ValidationError(message="สามารถส่งตรวจสอบได้เฉพาะโครงการที่เป็นร่างหรือถูกส่งกลับ")
+    section_rows = (
+        await db.execute(select(TORSection).where(TORSection.project_id == project_id))
+    ).scalars().all()
+    missing = missing_submit_sections(list(section_rows))
+    if missing:
+        raise ValidationError(
+            message="ยังร่างไม่ครบ 13 หมวด จึงส่งตรวจสอบไม่ได้",
+            details={"missing": missing},
+        )
     project.status = "in_review"
     await db.flush()
     await db.refresh(project)

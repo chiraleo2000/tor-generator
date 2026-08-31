@@ -70,4 +70,8 @@ AI_OVERLAY_FIELDS = (
     "custom_rag_top_k",
     "custom_rag_timeout_seconds",
     "rag_sources",
+    "mcp_rag_enabled",
+    "mcp_rag_config_path",
+    "mcp_rag_servers_json",
+    "mcp_rag_timeout_seconds",
 )

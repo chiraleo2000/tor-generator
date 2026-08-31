@@ -91,7 +91,9 @@
 มีโค้ดอยู่แล้ว: `app/providers/llm/bedrock_provider.py`, `app/providers/embedding/bedrock_provider.py`  
 สิทธิ์ IAM: `bedrock:Converse`, `bedrock:ConverseStream`, `bedrock:InvokeModel` จำกัด ARN
 
-**อย่า** ใช้ `EMBEDDING_PROVIDER=local` บน task production — นั่นคือ hybrid
+**อย่า** ใช้ `EMBEDDING_PROVIDER=local` บน task production — นั่นคือ hybrid LLM และนอกนโยบาย Cloud ล้วน ([29](29-TBW-AWS-CLOUD-ONLY.md))
+
+คลังถาม-ตอบ**อนุญาตสองแหล่งข้อมูล** (`global` + `mine`, หรือ Custom RAG HTTP) โดยยังฝังด้วย Bedrock — ไม่ใช่การเปิด `DEPLOYMENT_MODE=hybrid`
 
 มิติ: Titan v2 ค่าเริ่มต้นมัก **1024**; โค้ดปัจจุบัน `_fit_dimensions` ตัดเหลือ 768 ให้ตรงคอลัมน์ RDS — ใช้ได้แต่คุณภาพด้อยกว่าการย้ายคอลัมน์เป็น 1024 (เอกสาร 27)
 
@@ -107,7 +109,7 @@
 - **Inspector** สแกนอิมเมจ ECR
 - **Macie** ถ้าคลังมีข้อมูลอ่อนไหว
 - **PrivateLink** ให้หน่วยงานอื่นเรียก API โดยไม่ผ่านอินเทอร์เน็ต
-- **Bedrock Knowledge Bases** — ยังไม่แทน `seed_raw_docs` + pgvector ใน v0.2.4; เป็นเฟสหลังบ้านถ้าต้องการจัดการคลังในคอนโซล AWS
+- **Bedrock Knowledge Bases** — ยังไม่แทน `seed_raw_docs` + pgvector ใน v0.2.4; เป็นแหล่งคลาวด์เสริมได้ในอนาคต (TBW T10/เอกสาร 29) ไม่ใช่เหตุผลเปิด hybrid
 - **Step Functions** กำกับ pipeline ingest คลัง
 - **EventBridge** ตั้งเวลา seed / สำรอง
 - **OpenSearch Serverless** ถ้าเลิก pgvector (ต้องเขียน vector provider ใหม่ — ไม่ทำในรอบนี้)

@@ -1,17 +1,20 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
+> **รอบตรวจรวมล่าสุด (31 สิงหาคม 2026):** [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md) — pytest 1642 + live ECT 3 ผ่าน (คะแนนโครงการ 95) + Vitest 209 + Playwright headed KB  
+> ไฟล์นี้เก็บวงจรและภาพรอบ **25–27 ส.ค. 2026** เป็น baseline — ตัวเลขในตารางด้านล่างอาจต่างจากรอบ 28
+
 วันที่ **27 สิงหาคม 2026** (อัปเดตรอบ ECT AI Chatbot full coverage 26–27 ส.ค.) · ฐานเดิม v0.2.4 **25 สิงหาคม 2026**  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234` (fallback เมื่อ SGLang `:30000` ยังไม่ขึ้น)  
 `GET http://localhost:4000/health` = `healthy` ทั้ง `postgres` `redis` `minio` `mongo` `neo4j`
 
-เอกสารชุดปัจจุบันเรียง **13–23**. หลักฐานภาพอยู่ใน `discussions/test-evidence/`
+เอกสารชุดปัจจุบันเรียง **13–23** (AWS ล้วน **24–27** + เกต **28** + TBW **29**). หลักฐานภาพอยู่ใน `discussions/test-evidence/`
 
 | โมเดล | ค่า |
 |--------|-----|
 | Chat / draft (dev) | SGLang `:30000` เมื่อ healthy ไม่เช่นนั้น `google/gemma-4-e4b` ผ่าน LM Studio |
 | Structured JSON (intake / ReviewAgent / graph) | SGLang `guided_json` เมื่อ healthy; LM Studio + `parse_json_lenient` เป็น fallback · ข้อเสนอแนะ ReviewAgent จำกัด completion **4,096** โทเคน |
 | Embeddings (dev) | `text-embedding-embeddinggemma-300m` (768 มิติ) |
-| Production แนะนำ | Amazon Bedrock (ดู `20-AWS_BEDROCK_SETUP.md`) |
+| Production แนะนำ | Amazon Bedrock บน **ECS/RDS ล้วน** — [`24`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md), TBW [`29`](29-TBW-AWS-CLOUD-ONLY.md); ทางลัด EC2+Compose คือเอกสาร 20 |
 
 ภาพถ่ายจาก Playwright แบบ **headed** (`slowMo` 400ms, พิมพ์ทีละตัวอักษร delay 70ms, เบราว์เซอร์โชว์บนจอ) หลังเคสผ่านแล้วเท่านั้น  
 คู่มือผู้ใช้: `13-USER_GUIDELINE.md` · รายงานการทำงาน: `19-APPLICATION_OPERATING_REPORT.md`

@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     custom_rag_top_k: int = 24
     custom_rag_timeout_seconds: float = 30.0
     rag_sources: Literal["local", "custom", "both"] = "both"
+    mcp_rag_enabled: bool = False
+    mcp_rag_config_path: str = ""
+    mcp_rag_servers_json: str = ""
+    mcp_rag_timeout_seconds: float = 20.0
 
     # -------------------------------------------------------------------------
     # Cloud model ids

@@ -11,6 +11,7 @@ from app.providers.base import SearchResult
 from app.providers.factory import ProviderFactory
 from app.rag.acl import document_is_visible
 from app.rag.custom_rag_client import build_custom_rag_client
+from app.rag.mcp_rag import retrieve_mcp_chunks
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
 from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk
 
@@ -74,7 +75,7 @@ async def hybrid_retrieve(
     section_relevance: str | None = None,
     extra_filter: RetrievalFilter | None = None,
 ) -> tuple[RetrievalResult, list[dict[str, str]], bool]:
-    """Return local vector chunks, optional custom RAG, plus graph citations.
+    """Return local vector chunks, optional custom/MCP RAG, plus graph citations.
 
     The third value is True when Neo4j expansion was skipped (degraded).
     """
@@ -132,6 +133,13 @@ async def hybrid_retrieve(
                 logger.exception("Custom RAG retrieve failed; continuing with local results")
                 custom_degraded = True
 
+    try:
+        chunks.extend(
+            await retrieve_mcp_chunks(query, user_id=user_id, search_scope=search_scope)
+        )
+    except Exception:
+        logger.exception("MCP RAG retrieve failed; continuing with other sources")
+
     chunks.sort(key=lambda item: item.score, reverse=True)
     chunks = chunks[: max(top_k * 2, top_k)]
 
@@ -145,9 +153,12 @@ async def hybrid_retrieve(
 
     citations: list[dict[str, str]] = []
     for chunk in chunks:
-        if (chunk.metadata or {}).get("rag_source") == "custom_rag":
+        source_kind = (chunk.metadata or {}).get("rag_source")
+        if source_kind == "custom_rag":
             label = chunk.source_document or "Custom RAG"
             citations.append({"type": "custom_rag", "label": str(label)})
+        if source_kind == "mcp":
+            citations.append({"type": "mcp", "label": str(chunk.source_document or "MCP")})
         if chunk.source_document:
             citations.append({"type": "document", "label": chunk.source_document})
         if chunk.legal_reference:

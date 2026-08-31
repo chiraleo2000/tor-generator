@@ -1,0 +1,61 @@
+# Fargate task skeleton — AWS Cloud only (no hybrid LLM).
+# Replace ACCOUNT_ID. Keep MCP_RAG_ENABLED=false until a VPC MCP endpoint exists.
+
+family: tor-backend
+networkMode: awsvpc
+cpu: "1024"
+memory: "2048"
+executionRoleArn: arn:aws:iam::ACCOUNT_ID:role/tor-prod-ecs-execution
+taskRoleArn: arn:aws:iam::ACCOUNT_ID:role/tor-prod-ecs-task
+
+containerDefinitions:
+  - name: backend
+    image: ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/tor-backend:prod
+    essential: true
+    portMappings:
+      - containerPort: 4000
+        protocol: tcp
+    environment:
+      - name: DEPLOYMENT_MODE
+        value: cloud
+      - name: LLM_PROVIDER
+        value: bedrock
+      - name: EMBEDDING_PROVIDER
+        value: bedrock
+      - name: BEDROCK_REGION
+        value: ap-southeast-1
+      - name: VECTOR_STORE_PROVIDER
+        value: pgvector
+      - name: MINIO_ENDPOINT
+        value: s3.ap-southeast-1.amazonaws.com
+      - name: MINIO_SECURE
+        value: "true"
+      - name: MINIO_USE_IAM
+        value: "true"
+      - name: REDIS_TLS
+        value: "true"
+      - name: COOKIE_SECURE
+        value: "true"
+      - name: MCP_RAG_ENABLED
+        value: "false"
+      - name: CUSTOM_RAG_ENABLED
+        value: "false"
+    secrets:
+      - name: POSTGRES_HOST
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/rds:host::"
+      - name: POSTGRES_PASSWORD
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/rds:password::"
+      - name: JWT_SECRET
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/jwt:jwt_secret::"
+    logConfiguration:
+      logDriver: awslogs
+      options:
+        awslogs-group: /ecs/tor-backend
+        awslogs-region: ap-southeast-1
+        awslogs-stream-prefix: ecs
+    healthCheck:
+      command: ["CMD-SHELL", "curl -f http://localhost:4000/health || exit 1"]
+      interval: 30
+      timeout: 10
+      retries: 3
+      startPeriod: 60

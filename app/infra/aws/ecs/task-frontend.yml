@@ -1,0 +1,25 @@
+family: tor-frontend
+networkMode: awsvpc
+cpu: "512"
+memory: "1024"
+executionRoleArn: arn:aws:iam::ACCOUNT_ID:role/tor-prod-ecs-execution
+taskRoleArn: arn:aws:iam::ACCOUNT_ID:role/tor-prod-ecs-task
+
+containerDefinitions:
+  - name: frontend
+    image: ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/tor-frontend:prod
+    essential: true
+    portMappings:
+      - containerPort: 3000
+        protocol: tcp
+    environment:
+      - name: NEXT_PUBLIC_API_URL
+        value: /api/v1
+      - name: BACKEND_INTERNAL_URL
+        value: http://backend.tor.local:4000/api/v1
+    logConfiguration:
+      logDriver: awslogs
+      options:
+        awslogs-group: /ecs/tor-frontend
+        awslogs-region: ap-southeast-1
+        awslogs-stream-prefix: ecs

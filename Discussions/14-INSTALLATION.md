@@ -1,7 +1,8 @@
 # การติดตั้งและรันระบบ TOR
 
 คู่มือนี้สำหรับสแตกที่รันจริง: Next.js + FastAPI ใน Docker  
-**Production แนะนำ:** Amazon Bedrock บนบัญชี AWS — ดู [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
+**Production บน AWS ล้วน (ECS/RDS/Bedrock):** ชุด [`24`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md) และรายการค้าง [`29-TBW-AWS-CLOUD-ONLY.md`](29-TBW-AWS-CLOUD-ONLY.md) — **ไม่มี hybrid**  
+ทางลัด EC2+Compose+Bedrock เท่านั้น: [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
 **Dev / on-prem:** LM Studio บนเครื่องโฮสต์ (ค่าเริ่มต้น) หรือ Ollama / llama.cpp / SGLang — สลับได้จาก Admin โดยไม่ถอดตัวเลือก
 
 แอปปัจจุบันเป็นกระบวนการร่าง **5 Phase (0–4)** ไม่ใช่วิซาร์ด 8 ขั้น และไม่ใช่ไฟล์ HTML ต้นแบบใน `06-UXUI-Mockup.html` — ไฟล์นั้นเป็นแบบออกแบบเท่านั้น
@@ -161,7 +162,7 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 เข้าสู่ระบบด้วยบัญชี admin แล้วเปิด **การตั้งค่า AI**:
 
-- **Production แนะนำ:** Amazon Bedrock (คู่มือเต็ม [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)) — เว้นว่าง AWS key ได้ถ้าใช้ IAM role บน EC2/ECS
+- **Production บน AWS ล้วน:** Bedrock + IAM task role — คู่มือ [`24`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md); ห้าม `EMBEDDING_PROVIDER=local` ใน task ECS (นั่นคือ hybrid)
 - แชทและ embeddings เลือกอิสระในทุกโหมด ไม่สลับคู่อัตโนมัติ เช่น Claude API + EmbeddingGemma ในเครื่อง
 - รันในเครื่อง: LM Studio / Ollama / llama.cpp / **SGLang** — เซิร์ฟเวอร์ embeddings แยกจากแชทได้ (`LOCAL_EMBEDDING_SERVER`)
 - คลาวด์: Bedrock / Claude / OpenAI / Gemini / Azure Foundry / OpenAI-compatible + API key (ใส่ในหน้านี้ได้ ไม่ต้องใส่ใน `.env`)

@@ -1,0 +1,57 @@
+# Skeleton deploy to ECS. Manual only until GitHub OIDC + secrets exist.
+# Enable push-to-main later via app/infra/aws/ci/github-ecs-deploy.yml.example
+# Assignment: Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md
+
+name: Deploy TOR images to ECS
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster:
+        description: ECS cluster name
+        required: true
+        default: tor-prod
+      confirm:
+        description: Type deploy to continue
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  build-push:
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push
+        env:
+          ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          REG="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+          docker build -t "$REG/tor-backend:${GITHUB_SHA}" ./app/backend
+          docker build -t "$REG/tor-frontend:${GITHUB_SHA}" ./app/frontend \
+            --build-arg NEXT_PUBLIC_API_URL=/api/v1 \
+            --build-arg BACKEND_INTERNAL_URL=http://backend.tor.local:4000/api/v1
+          docker tag "$REG/tor-backend:${GITHUB_SHA}" "$REG/tor-backend:prod"
+          docker tag "$REG/tor-frontend:${GITHUB_SHA}" "$REG/tor-frontend:prod"
+          docker push "$REG/tor-backend:${GITHUB_SHA}"
+          docker push "$REG/tor-backend:prod"
+          docker push "$REG/tor-frontend:${GITHUB_SHA}"
+          docker push "$REG/tor-frontend:prod"
+      - name: Roll ECS services
+        env:
+          CLUSTER: ${{ github.event.inputs.cluster }}
+        run: |
+          aws ecs update-service --cluster "$CLUSTER" --service backend --force-new-deployment
+          aws ecs update-service --cluster "$CLUSTER" --service frontend --force-new-deployment

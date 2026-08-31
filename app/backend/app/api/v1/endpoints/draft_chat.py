@@ -28,6 +28,7 @@ from app.domain.tor_sections import (
     TOR_SECTION_LABELS,
     TOR_SECTION_ORDER,
 )
+from app.draft_job_store import bump_progress, get_job, mark_status, set_job
 from app.exceptions import NotFoundError, ValidationError
 from app.export.table_parse import split_scope_subsection_draft
 from app.llm_admission import AdmissionTimeoutError, admit
@@ -50,6 +51,7 @@ from app.services.intake_service import is_ready_to_compose, slot_map_of, with_p
 logger = logging.getLogger("tor_app.draft_chat")
 router = APIRouter()
 _DRAFT_JOBS: dict[str, asyncio.Task[int]] = {}
+SECTION_TIMEOUT_SECONDS = 1800
 
 
 async def _consume_sse(events: AsyncIterator[str]) -> int:
@@ -382,6 +384,70 @@ async def _iter_s4_subsection_sse(
                 yield event
 
 
+async def _draft_missing_section(
+    session_factory: Any,
+    project_id: uuid.UUID,
+    section_key: str,
+    slot_map: dict[str, Any],
+    user_id: uuid.UUID,
+    request_id: str,
+    redis: Any,
+) -> bool:
+    """Draft one missing section. Return True when content was saved."""
+    if section_key == "s4":
+        collected: dict[str, str] = {}
+        errors: list[str] = []
+        async with session_factory() as read_session:
+            prior_rows = await _load_s4_rows(read_session, project_id)
+        prior_ai = {
+            row.sub_key: (row.ai_draft or "").strip()
+            for row in prior_rows
+            if row.sub_key and str(row.ai_draft or "").strip()
+        }
+        await _consume_sse(
+            _iter_s4_subsection_sse(
+                redis,
+                request_id,
+                slot_map,
+                user_id,
+                prior_ai,
+                collected,
+                errors,
+                session_factory=session_factory,
+                project_id=project_id,
+            )
+        )
+        if not _s4_complete(collected):
+            logger.warning(
+                "s4 incomplete for %s (%s/%s)",
+                project_id,
+                len(collected),
+                len(SCOPE_SUBSECTIONS),
+            )
+            return False
+        preview = build_merged_scope(collected)
+        async with session_factory() as persist:
+            await _save_s4_bundle(persist, project_id, preview, collected)
+            await persist.commit()
+        return True
+    parts: list[str] = []
+    errors: list[str] = []
+    await _consume_sse(
+        _iter_llm_section_sse(
+            redis, request_id, section_key, slot_map, user_id, parts, errors
+        )
+    )
+    if errors:
+        return False
+    full_text = "".join(parts).strip()
+    if not full_text:
+        return False
+    async with session_factory() as persist:
+        await _save_section(persist, project_id, section_key, full_text)
+        await persist.commit()
+    return True
+
+
 async def _run_sequential_draft(
     session_factory: Any,
     project_id: uuid.UUID,
@@ -390,104 +456,87 @@ async def _run_sequential_draft(
     request_id: str,
     redis: Any,
     remaining_passes: int = 1,
+    reset_store: bool = True,
 ) -> int:
     """Draft s1–s13 (and s4.1–s4.14) one LM Studio call at a time. Survives SSE disconnect."""
+    total = len(TOR_SECTION_ORDER)
     drafted_count = 0
-    for section_key in TOR_SECTION_ORDER:
-        existing = await _existing_section_text(session_factory, project_id, section_key)
-        if existing:
-            drafted_count += 1
-            logger.info("Skip existing %s for %s", section_key, project_id)
-            continue
-        logger.info("Drafting %s for %s", section_key, project_id)
-        try:
-            if section_key == "s4":
-                collected: dict[str, str] = {}
-                errors: list[str] = []
-                async with session_factory() as read_session:
-                    prior_rows = await _load_s4_rows(read_session, project_id)
-                prior_ai = {
-                    row.sub_key: (row.ai_draft or "").strip()
-                    for row in prior_rows
-                    if row.sub_key and str(row.ai_draft or "").strip()
-                }
-                await _consume_sse(
-                    _iter_s4_subsection_sse(
-                        redis,
-                        request_id,
+    if reset_store:
+        await set_job(redis, project_id, "running", 0, total)
+    try:
+        for section_key in TOR_SECTION_ORDER:
+            existing = await _existing_section_text(session_factory, project_id, section_key)
+            if existing:
+                drafted_count += 1
+                await bump_progress(redis, project_id, drafted_count)
+                logger.info("Skip existing %s for %s", section_key, project_id)
+                continue
+            logger.info("Drafting %s for %s", section_key, project_id)
+            try:
+                saved = await asyncio.wait_for(
+                    _draft_missing_section(
+                        session_factory,
+                        project_id,
+                        section_key,
                         slot_map,
                         user_id,
-                        prior_ai,
-                        collected,
-                        errors,
-                        session_factory=session_factory,
-                        project_id=project_id,
-                    )
+                        request_id,
+                        redis,
+                    ),
+                    timeout=SECTION_TIMEOUT_SECONDS,
                 )
-                if not _s4_complete(collected):
-                    logger.warning(
-                        "s4 incomplete for %s (%s/%s)",
-                        project_id,
-                        len(collected),
-                        len(SCOPE_SUBSECTIONS),
-                    )
-                    continue
-                preview = build_merged_scope(collected)
-                async with session_factory() as persist:
-                    await _save_s4_bundle(persist, project_id, preview, collected)
-                    await persist.commit()
-                drafted_count += 1
-                logger.info("Drafted s4 subsections for %s", project_id)
+            except TimeoutError:
+                logger.warning("Draft timed out for %s on %s", section_key, project_id)
+                saved = False
+            except Exception:
+                logger.exception("Draft failed for %s on %s", section_key, project_id)
+                saved = False
+            if not saved:
                 continue
-            parts: list[str] = []
-            errors: list[str] = []
-            await _consume_sse(
-                _iter_llm_section_sse(
-                    redis, request_id, section_key, slot_map, user_id, parts, errors
-                )
-            )
-            if errors:
-                continue
-            full_text = "".join(parts).strip()
-            if not full_text:
-                continue
-            async with session_factory() as persist:
-                await _save_section(persist, project_id, section_key, full_text)
-                await persist.commit()
             drafted_count += 1
-        except Exception:
-            logger.exception("Draft failed for %s on %s", section_key, project_id)
-    if drafted_count < len(TOR_SECTION_ORDER) and remaining_passes > 0:
-        logger.info(
-            "Retry incomplete draft for %s (%s/%s)",
-            project_id,
-            drafted_count,
-            len(TOR_SECTION_ORDER),
+            await bump_progress(redis, project_id, drafted_count)
+        if drafted_count < total and remaining_passes > 0:
+            logger.info(
+                "Retry incomplete draft for %s (%s/%s)",
+                project_id,
+                drafted_count,
+                total,
+            )
+            return await _run_sequential_draft(
+                session_factory,
+                project_id,
+                slot_map,
+                user_id,
+                request_id,
+                redis,
+                remaining_passes - 1,
+                reset_store=False,
+            )
+        await mark_status(
+            redis, project_id, "done" if drafted_count == total else "failed"
         )
-        return await _run_sequential_draft(
-            session_factory,
-            project_id,
-            slot_map,
-            user_id,
-            request_id,
-            redis,
-            remaining_passes - 1,
-        )
-    return drafted_count
+        return drafted_count
+    except Exception:
+        await mark_status(redis, project_id, "failed")
+        raise
 
 
-def _ensure_draft_job(
+async def _ensure_draft_job(
     session_factory: Any,
     project_id: uuid.UUID,
     slot_map: dict[str, Any],
     user_id: uuid.UUID,
     request_id: str,
     redis: Any,
-) -> asyncio.Task[int]:
+) -> asyncio.Task[int] | None:
     key = str(project_id)
     task = _DRAFT_JOBS.get(key)
     if task is not None and not task.done():
         return task
+    stored = await get_job(redis, project_id)
+    if stored and stored["status"] in {"queued", "running"}:
+        return None
+    await set_job(redis, project_id, "queued", 0, len(TOR_SECTION_ORDER))
     _DRAFT_JOBS[key] = asyncio.create_task(
         _run_sequential_draft(
             session_factory, project_id, slot_map, user_id, request_id, redis
@@ -515,7 +564,7 @@ async def start_draft_chat(
     ).strip()
     session_factory = request.app.state.db_session_factory
     redis = getattr(request.app.state, "redis", None)
-    job = _ensure_draft_job(
+    job = await _ensure_draft_job(
         session_factory, project_id, slot_map, current_user.id, request_id, redis
     )
 
@@ -539,6 +588,25 @@ async def start_draft_chat(
         seen: set[str] = set()
         async for event in _emit_newly_done(seen):
             yield event
+        if job is None:
+            drafted_count = len(seen)
+            while True:
+                stored = await get_job(redis, project_id)
+                async for event in _emit_newly_done(seen):
+                    yield event
+                if stored is None or stored["status"] in {"done", "failed"}:
+                    drafted_count = int((stored or {}).get("drafted_count") or len(seen))
+                    break
+                yield ": ping\n\n"
+                await asyncio.sleep(2)
+            yield _sse(
+                "all_done",
+                {
+                    "drafted_count": drafted_count,
+                    "total": len(TOR_SECTION_ORDER),
+                },
+            )
+            return
         while not job.done():
             yield ": ping\n\n"
             _done, _pending = await asyncio.wait({job}, timeout=2)
@@ -711,6 +779,8 @@ async def draft_chat_status(
 ) -> JSONResponse:
     """Get current drafting progress."""
     await _project(db, project_id, current_user)
+    redis = getattr(request.app.state, "redis", None)
+    job = await get_job(redis, project_id)
     sections = (
         await db.execute(
             select(TORSection).where(
@@ -748,12 +818,15 @@ async def draft_chat_status(
                 "human_confirmed": bool(row.is_approved) if row else False,
             }
         )
-    return _ok(
-        request,
-        {
-            "sections": status_list,
-            "drafted_count": drafted_count,
-            "total": len(TOR_SECTION_ORDER),
-            "all_drafted": drafted_count == len(TOR_SECTION_ORDER),
-        },
-    )
+    payload: dict[str, Any] = {
+        "sections": status_list,
+        "drafted_count": drafted_count,
+        "total": len(TOR_SECTION_ORDER),
+        "all_drafted": drafted_count == len(TOR_SECTION_ORDER),
+    }
+    if job:
+        payload["job_status"] = job["status"]
+        payload["drafted_count"] = job["drafted_count"]
+        payload["total"] = job["total"] or payload["total"]
+        payload["all_drafted"] = job["status"] == "done"
+    return _ok(request, payload)

@@ -62,11 +62,13 @@ Compose ในเครื่องไม่ต้องเปลี่ยน: �
 
 ### 3.3 คิวร่างหลาย task
 
-`draft-chat/start` ส่งงานพื้นหลังในโปรเซส  
-เมื่อ `desiredCount > 1` ผู้ใช้ที่ตีอีก task จะไม่เห็นสถานะร่าง  
-งาน: ย้ายสถานะ job เข้า Redis (มีแบบอย่างแคชเอเจนต์อยู่แล้ว) หรือ **SQS + worker service**
+โค้ดในรีโป (เฟส 3 ของเอกสาร 28): `app/backend/app/draft_job_store.py` คีย์ Redis `draft:job:{project_id}` TTL 600s fail-open เมื่อ Redis ล่ม  
+ผูกกับ `draft-chat/start` และ `draft-chat/status` แล้ว — **ยังต้อง build/deploy อิมเมจ** เข้า ECS
 
-จนกว่าจะเสร็จ: backend service **desiredCount = 1** + deployment แบบ rolling ระวังงานค้าง
+จนกว่าอิมเมจบน AWS จะมีโมดูลนี้: backend **desiredCount = 1**  
+ทางเลือกขยายต่อ: **SQS + worker** (รายการ TBW ในเอกสาร 29 T3)
+
+ดูนโยบาย RAG สองแหล่ง vs ห้าม hybrid ที่ [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md)
 
 ### 3.4 มิติเวกเตอร์ Titan
 
@@ -177,6 +179,8 @@ Discussions/24-AWS_CLOUD_OVERVIEW.md
 Discussions/25-AWS_SERVICE_CATALOG.md
 Discussions/26-AWS_INSTALL_AND_WIRING.md
 Discussions/27-AWS_CODE_AND_CUTOVER.md          ← ไฟล์นี้
+Discussions/28-VERIFICATION-AND-MIGRATION.md
+Discussions/29-TBW-AWS-CLOUD-ONLY.md            ← Cloud ล้วน + RAG สองแหล่ง + TBW
 Discussions/20-AWS_BEDROCK_SETUP.md             ← ทางลัด EC2+Compose+Bedrock
 app/infra/aws/README.md
 app/infra/aws/env.cloud.example

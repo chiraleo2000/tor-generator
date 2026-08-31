@@ -1,0 +1,20 @@
+# Local experiment with *cloud env labels only*.
+# Does not start LM Studio. Point LLM at Bedrock via env.cloud.example (IAM/keys).
+# Not a substitute for ECS/RDS. See Discussions/30 and 24–27.
+
+name: tor-cloud-shape
+
+services:
+  backend:
+    image: tor-app-backend:latest
+    env_file:
+      - ../../../.env
+    environment:
+      DEPLOYMENT_MODE: cloud
+      LLM_PROVIDER: bedrock
+      EMBEDDING_PROVIDER: bedrock
+      MCP_RAG_ENABLED: "false"
+      CUSTOM_RAG_ENABLED: "false"
+    ports:
+      - "4000:4000"
+    profiles: ["cloud-shape"]

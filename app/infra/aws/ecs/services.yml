@@ -1,0 +1,19 @@
+# ECS service skeleton (apply via AWS CLI / Terraform after cluster exists).
+# Do not raise backend desiredCount above 1 until Draft_Job_Store is in the running image.
+
+cluster: tor-prod
+region: ap-southeast-1
+
+services:
+  backend:
+    task_definition: tor-backend
+    desired_count: 1
+    launch_type: FARGATE
+    container_port: 4000
+    health_check_path: /health
+  frontend:
+    task_definition: tor-frontend
+    desired_count: 2
+    launch_type: FARGATE
+    container_port: 3000
+    health_check_path: /
