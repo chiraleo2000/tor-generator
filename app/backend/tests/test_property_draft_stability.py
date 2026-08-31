@@ -127,7 +127,7 @@ def test_property_10_draft_job_reaches_terminal_status(fail_mask: list[bool]):
 
 
 @pytest.mark.property
-def test_property_11_sse_contract_compatible():
+def test_property_11_sse_contract_compatible(monkeypatch):
     """Feature: local-llm-verification-aws-migration-plan, Property 11: สัญญา SSE เข้ากันได้กับ frontend เดิม"""
     user = MagicMock(spec=User)
     user.id = USER_ID
@@ -188,7 +188,7 @@ def test_property_11_sse_contract_compatible():
         async def __aexit__(self, *_args):
             return False
 
-    app.state.db_session_factory = lambda: _SessionCM(persist)
+    monkeypatch.setattr(app.state, "db_session_factory", lambda: _SessionCM(persist))
 
     async def existing(*_args, **_kwargs):
         return "ร่างที่มีอยู่แล้วอย่างน้อยยี่สิบตัวอักษร"

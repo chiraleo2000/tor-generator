@@ -761,6 +761,44 @@ async def extract_project_reference(
     )
 
 
+async def _upsert_tor_section(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    key: str,
+    content: str,
+) -> None:
+    existing = (
+        await db.execute(
+            select(TORSection).where(
+                TORSection.project_id == project_id,
+                TORSection.section_key == key,
+                TORSection.sub_key.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        existing.content = content
+        existing.version += 1
+        return
+    db.add(
+        TORSection(
+            project_id=project_id,
+            section_key=key,
+            content=content,
+            version=1,
+        )
+    )
+
+
+def _apply_nlp_fields(project: Project, nlp: dict) -> None:
+    if isinstance(nlp.get("projectName"), str) and nlp["projectName"].strip():
+        project.name = nlp["projectName"].strip()[:500]
+    if isinstance(nlp.get("ministry"), str) and nlp["ministry"].strip():
+        project.ministry = nlp["ministry"].strip()[:255]
+    if isinstance(nlp.get("budget"), int) and nlp["budget"] > 0:
+        project.budget = nlp["budget"]
+
+
 @router.post(
     "/{project_id}/extraction/apply",
     response_model=SuccessResponse,
@@ -786,40 +824,14 @@ async def apply_project_extraction(
     for key, content in body.sections.items():
         if not content:
             continue
-        existing = (
-            await db.execute(
-                select(TORSection).where(
-                    TORSection.project_id == project_id,
-                    TORSection.section_key == key,
-                    TORSection.sub_key.is_(None),
-                )
-            )
-        ).scalar_one_or_none()
-        if existing:
-            existing.content = content
-            existing.version += 1
-        else:
-            db.add(
-                TORSection(
-                    project_id=project_id,
-                    section_key=key,
-                    content=content,
-                    version=1,
-                )
-            )
+        await _upsert_tor_section(db, project_id, key, content)
         written += 1
 
     extracted = dict(project.extracted_fields or {})
     if body.extracted:
         extracted.update(body.extracted)
     project.extracted_fields = extracted
-    nlp = body.extracted or {}
-    if isinstance(nlp.get("projectName"), str) and nlp["projectName"].strip():
-        project.name = nlp["projectName"].strip()[:500]
-    if isinstance(nlp.get("ministry"), str) and nlp["ministry"].strip():
-        project.ministry = nlp["ministry"].strip()[:255]
-    if isinstance(nlp.get("budget"), int) and nlp["budget"] > 0:
-        project.budget = nlp["budget"]
+    _apply_nlp_fields(project, body.extracted or {})
     await db.flush()
     await db.refresh(project)
     await AuditService.log(
@@ -897,6 +909,35 @@ async def put_project_analysis(
     return _build_success_response(request, {"analysis": project.analysis_json})
 
 
+def _section_list_item(
+    key: str,
+    row: TORSection | None,
+    *,
+    subs: dict[str, dict[str, TORSection]],
+    extracted: dict,
+    slot_map: dict,
+) -> dict:
+    content = (row.content if row else "") or ""
+    if key != "s4":
+        content = _normalize_parent_content(key, content, row)
+    filled = bool(str(content or "").strip())
+    item: dict = {
+        "key": key,
+        "title": TOR_SECTION_LABELS[key],
+        "filled": filled,
+        "content": content,
+        "ai_draft": row.ai_draft if row else "",
+        "human_confirmed": bool(row.is_approved) if row else False,
+        "hitl": key in MANDATORY_HUMAN_REVIEW_SECTIONS,
+        "matchStatus": "matched" if extracted else "partial",
+    }
+    if key == "s4":
+        item["big"] = True
+        item["subs"] = _hydrate_scope_subs(row, subs.get("s4") or {}, slot_map)
+        item["filled"] = filled or any(sub["filled"] for sub in item["subs"])
+    return item
+
+
 @router.get(
     "/{project_id}/sections",
     response_model=SuccessResponse,
@@ -916,28 +957,16 @@ async def list_project_sections(
     extracted = project.extracted_fields or {}
     raw_slots = (project.analysis_json or {}).get("slot_map") or {}
     slot_map = raw_slots if isinstance(raw_slots, dict) else {}
-    sections = []
-    for key in TOR_SECTION_ORDER:
-        row = by_key.get(key)
-        content = (row.content if row else "") or ""
-        if key != "s4":
-            content = _normalize_parent_content(key, content, row)
-        filled = bool(str(content or "").strip())
-        item: dict = {
-            "key": key,
-            "title": TOR_SECTION_LABELS[key],
-            "filled": filled,
-            "content": content,
-            "ai_draft": row.ai_draft if row else "",
-            "human_confirmed": bool(row.is_approved) if row else False,
-            "hitl": key in MANDATORY_HUMAN_REVIEW_SECTIONS,
-            "matchStatus": "matched" if extracted else "partial",
-        }
-        if key == "s4":
-            item["big"] = True
-            item["subs"] = _hydrate_scope_subs(row, subs.get("s4") or {}, slot_map)
-            item["filled"] = filled or any(sub["filled"] for sub in item["subs"])
-        sections.append(item)
+    sections = [
+        _section_list_item(
+            key,
+            by_key.get(key),
+            subs=subs,
+            extracted=extracted,
+            slot_map=slot_map,
+        )
+        for key in TOR_SECTION_ORDER
+    ]
     return _build_success_response(request, {"sections": sections})
 
 
