@@ -16,7 +16,7 @@ import httpx
 
 from app.config import get_settings
 from app.rag.acl import document_is_visible
-from app.rag.retrieval import RetrievedChunk
+from app.rag.retrieval import RetrievedChunk, coerce_page_number
 
 logger = logging.getLogger(__name__)
 
@@ -131,12 +131,7 @@ def _coerce_page_number(item: dict[str, Any], metadata: dict[str, Any]) -> int |
     raw = item.get("page_number")
     if raw is None:
         raw = metadata.get("page_number")
-    if raw is None or isinstance(raw, bool):
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
+    return coerce_page_number(raw)
 
 
 def _chunk_from_item(item: dict[str, Any], server_id: str, index: int) -> RetrievedChunk | None:

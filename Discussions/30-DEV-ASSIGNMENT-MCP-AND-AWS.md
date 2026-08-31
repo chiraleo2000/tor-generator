@@ -1,8 +1,8 @@
-# 30 — มอบหมายทีม DEV: ต่อยอด MCP RAG + โครง deploy AWS
+# 30 — มอบหมายทีม DEV: ต่อยอด MCP RAG + โครง deploy AWS (แอป v0.2.5)
 
 เอกสารนี้มอบงานให้ทีมพัฒนาต่อจากเกต Local LLM ([28](28-VERIFICATION-AND-MIGRATION.md)) นโยบาย Cloud ล้วน ([29](29-TBW-AWS-CLOUD-ONLY.md)) และชุด AWS ([24](24-AWS_CLOUD_OVERVIEW.md)–[27](27-AWS_CODE_AND_CUTOVER.md))
 
-**ขอบเขตรอบนี้ในรีโป:** โครง (skeleton) พร้อมต่อยอด — **ยังไม่ provision บัญชี AWS จริง** และ **ยังไม่ชี้ MCP ภายนอกใน production**
+**ขอบเขตรอบนี้ในรีโป (v0.2.5):** โครง (skeleton) พร้อมต่อยอด — **ยังไม่ provision บัญชี AWS จริง** และ **ยังไม่ชี้ MCP ภายนอกใน production**
 
 ---
 

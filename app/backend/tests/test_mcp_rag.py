@@ -6,8 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.rag.mcp_rag import load_mcp_servers, parse_rag_sources_yaml, retrieve_mcp_chunks
-from app.rag.mcp_rag import _chunks_from_tool_result
+from app.rag.mcp_rag import (
+    _chunks_from_tool_result,
+    load_mcp_servers,
+    parse_rag_sources_yaml,
+    retrieve_mcp_chunks,
+)
+from app.rag.retrieval import coerce_page_number
 
 
 def test_parse_rag_sources_yaml_reads_disabled_servers() -> None:
@@ -104,3 +109,10 @@ def test_chunks_from_tool_result_coerces_page_number() -> None:
     }
     chunks = _chunks_from_tool_result(payload, "agency")
     assert chunks[0].page_number == 12
+
+
+def test_coerce_page_number_rejects_bool_and_junk() -> None:
+    assert coerce_page_number(True) is None
+    assert coerce_page_number("x") is None
+    assert coerce_page_number("3") == 3
+    assert coerce_page_number(None) is None

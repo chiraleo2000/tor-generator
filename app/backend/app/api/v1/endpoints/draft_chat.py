@@ -287,6 +287,16 @@ async def _save_section(db: AsyncSession, project_id: uuid.UUID, key: str, conte
     row.ai_draft = content
 
 
+def _s4_overview_text(parts: dict[str, str], content: str) -> str:
+    overview = build_scope_overview(parts) if parts else (content or "").strip()
+    if overview or not content.strip():
+        return overview
+    clipped = content.strip()
+    if len(clipped) > 360:
+        clipped = clipped[:360].rstrip() + "…"
+    return f"{clipped}\n\n(รายละเอียดครบในหัวข้อย่อย ๔.๑–๔.๑๔)"
+
+
 async def _save_s4_bundle(
     db: AsyncSession,
     project_id: uuid.UUID,
@@ -298,17 +308,11 @@ async def _save_s4_bundle(
     if not parts:
         parts = split_scope_subsection_draft(content)
     for sub_key, body in parts.items():
-        if sub_key not in SCOPE_SUBSECTIONS:
-            continue
         text = (body or "").strip()
-        if text:
-            await _upsert_sub(db, project_id, sub_key, text)
-    overview = build_scope_overview(parts) if parts else (content or "").strip()
-    if not overview and content.strip():
-        overview = content.strip()
-        if len(overview) > 360:
-            overview = overview[:360].rstrip() + "…"
-        overview = f"{overview}\n\n(รายละเอียดครบในหัวข้อย่อย ๔.๑–๔.๑๔)"
+        if sub_key not in SCOPE_SUBSECTIONS or not text:
+            continue
+        await _upsert_sub(db, project_id, sub_key, text)
+    overview = _s4_overview_text(parts, content)
     row = await _get_section(db, project_id, "s4")
     if row is None:
         db.add(

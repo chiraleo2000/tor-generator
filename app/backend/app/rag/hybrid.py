@@ -13,7 +13,7 @@ from app.rag.acl import document_is_visible
 from app.rag.custom_rag_client import build_custom_rag_client
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
 from app.rag.mcp_rag import retrieve_mcp_chunks
-from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk
+from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk, coerce_page_number
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def _chunk_from_hit(
         section_relevance=metadata.get("section_relevance"),
         source_document=_meta_source(metadata),
         section_label=metadata.get("section_label"),
-        page_number=metadata.get("page_number"),
+        page_number=coerce_page_number(metadata.get("page_number")),
         metadata=metadata,
     )
 

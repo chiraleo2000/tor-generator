@@ -16,12 +16,23 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.providers.base import EmbeddingProvider, SearchResult, VectorStoreProvider
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOP_K = 5
+
+
+def coerce_page_number(raw: Any) -> int | None:
+    """Normalize MCP/vector metadata page numbers to int (Thai-safe, no bool)."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass
