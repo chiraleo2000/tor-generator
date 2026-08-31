@@ -11,8 +11,8 @@ from app.providers.base import SearchResult
 from app.providers.factory import ProviderFactory
 from app.rag.acl import document_is_visible
 from app.rag.custom_rag_client import build_custom_rag_client
-from app.rag.mcp_rag import retrieve_mcp_chunks
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
+from app.rag.mcp_rag import retrieve_mcp_chunks
 from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -121,25 +121,24 @@ async def _retrieve_custom_chunks(
     search_scope: str,
     top_k: int,
     rag_sources: str,
-) -> tuple[list[RetrievedChunk], bool]:
+) -> list[RetrievedChunk]:
     client = build_custom_rag_client()
     if client is None:
         if rag_sources == "custom":
             logger.warning("rag_sources=custom but custom RAG is not configured")
-        return [], False
+        return []
     try:
         settings = get_settings()
         custom_k = int(getattr(settings, "custom_rag_top_k", top_k) or top_k)
-        chunks = await client.retrieve(
+        return await client.retrieve(
             query,
             user_id=user_id,
             search_scope=search_scope,
             top_k=max(top_k, custom_k),
         )
-        return chunks, False
-    except Exception:
+    except Exception:  # NOSONAR python:S110 — fail-open extra RAG
         logger.exception("Custom RAG retrieve failed; continuing with local results")
-        return [], True
+        return []
 
 
 def _citations_for_chunk(chunk: RetrievedChunk) -> list[dict[str, str]]:
@@ -203,7 +202,7 @@ async def _expand_graph(
                 extra_bits[:graph_limit]
             )
         return citations, False
-    except Exception:
+    except Exception:  # NOSONAR python:S110 — fail-open graph expand
         logger.exception("GraphRAG expand failed; continuing with vector/custom RAG")
         return [], True
 
@@ -241,20 +240,21 @@ async def hybrid_retrieve(
         )
 
     if _use_custom_rag(rag_sources):
-        custom_chunks, _custom_degraded = await _retrieve_custom_chunks(
-            query,
-            user_id=user_id,
-            search_scope=search_scope,
-            top_k=top_k,
-            rag_sources=rag_sources,
+        chunks.extend(
+            await _retrieve_custom_chunks(
+                query,
+                user_id=user_id,
+                search_scope=search_scope,
+                top_k=top_k,
+                rag_sources=rag_sources,
+            )
         )
-        chunks.extend(custom_chunks)
 
     try:
         chunks.extend(
             await retrieve_mcp_chunks(query, user_id=user_id, search_scope=search_scope)
         )
-    except Exception:
+    except Exception:  # NOSONAR python:S110 — fail-open MCP
         logger.exception("MCP RAG retrieve failed; continuing with other sources")
 
     chunks.sort(key=lambda item: item.score, reverse=True)

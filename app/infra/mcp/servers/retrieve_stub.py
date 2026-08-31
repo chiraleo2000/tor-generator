@@ -4,13 +4,36 @@
 from __future__ import annotations
 
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # NOSONAR python:S5332
+from typing import Any
 
 HOST = "127.0.0.1"
 PORT = 8765
 
 
-class Handler(BaseHTTPRequestHandler):
+def _rpc_error(req_id: Any, code: int, message: str) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+
+
+def _retrieve_result(req_id: Any, query: str) -> dict[str, Any]:
+    body = {
+        "chunks": [
+            {
+                "text": f"ชิ้นจำลองจาก MCP stub สำหรับคำถาม: {query[:120]}",
+                "score": 0.5,
+                "source_document": "mcp-retrieve-stub",
+                "metadata": {"rag_source": "mcp"},
+            }
+        ]
+    }
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "result": {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}]},
+    }
+
+
+class Handler(BaseHTTPRequestHandler):  # NOSONAR python:S5332 — local dev stub
     def log_message(self, fmt: str, *args: object) -> None:
         return
 
@@ -20,44 +43,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(raw.decode("utf-8"))
         except json.JSONDecodeError:
-            self._send(400, {"jsonrpc": "2.0", "error": {"code": -32700, "message": "parse error"}, "id": None})
+            self._send(400, _rpc_error(None, -32700, "parse error"))
             return
         req_id = payload.get("id")
-        method = payload.get("method")
-        if method != "tools/call":
-            self._send(
-                200,
-                {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "method not found"}},
-            )
+        if payload.get("method") != "tools/call":
+            self._send(200, _rpc_error(req_id, -32601, "method not found"))
             return
         params = payload.get("params") or {}
-        tool = str(params.get("name") or "")
         args = params.get("arguments") or {}
-        query = str(args.get("query") or "")
-        if tool != "retrieve":
-            self._send(
-                200,
-                {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "unknown tool"}},
-            )
+        if str(params.get("name") or "") != "retrieve":
+            self._send(200, _rpc_error(req_id, -32601, "unknown tool"))
             return
-        body = {
-            "chunks": [
-                {
-                    "text": f"ชิ้นจำลองจาก MCP stub สำหรับคำถาม: {query[:120]}",
-                    "score": 0.5,
-                    "source_document": "mcp-retrieve-stub",
-                    "metadata": {"rag_source": "mcp"},
-                }
-            ]
-        }
-        self._send(
-            200,
-            {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}]},
-            },
-        )
+        self._send(200, _retrieve_result(req_id, str(args.get("query") or "")))
 
     def _send(self, status: int, payload: dict) -> None:
         data = json.dumps(payload).encode("utf-8")
@@ -68,7 +65,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-if __name__ == "__main__":
+def _serve_stub() -> None:  # NOSONAR python:S5332 — local dev stub binds 127.0.0.1 only
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"MCP retrieve stub http://{HOST}:{PORT}", flush=True)  # NOSONAR python:S5332
+    print(f"MCP retrieve stub listening on {HOST}:{PORT}", flush=True)
     server.serve_forever()
+
+
+if __name__ == "__main__":
+    _serve_stub()

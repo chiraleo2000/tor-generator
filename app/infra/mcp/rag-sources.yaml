@@ -2,7 +2,7 @@
 
 # Production remains AWS Cloud-only (Bedrock). These servers are extra **data** sources, not a hybrid LLM.
 
-Set `MCP_RAG_ENABLED=true` and `MCP_RAG_CONFIG_PATH` to this file (or another path in the task).
+# Set `MCP_RAG_ENABLED=true` and `MCP_RAG_CONFIG_PATH` to this file (or another path in the task).
 
 servers:
   - id: agency-legal-mcp

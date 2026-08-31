@@ -424,7 +424,7 @@ def test_start_llm_error_does_not_save_fallback(client, mock_officer_user, monke
 async def test_iter_s4_subsection_sse_drafts_each_sub_in_order():
     from contextlib import asynccontextmanager
 
-    from app.api.v1.endpoints.draft_chat import _iter_s4_subsection_sse
+    from app.api.v1.endpoints.draft_chat import _S4Work, _iter_s4_subsection_sse
     from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
     order: list[str] = []
@@ -439,16 +439,19 @@ async def test_iter_s4_subsection_sse_drafts_each_sub_in_order():
         order.append(sub_key)
         yield f"llm-{sub_key}"
 
+    work = _S4Work(
+        redis=None,
+        request_id="req",
+        slot_map={},
+        user_id=USER_ID,
+        collected=collected,
+        errors=errors,
+    )
     with (
         patch("app.api.v1.endpoints.draft_chat.admit", passthrough_admit),
         patch("app.api.v1.endpoints.draft_chat.draft_scope_subsection", side_effect=fake_sub),
     ):
-        events = [
-            event
-            async for event in _iter_s4_subsection_sse(
-                None, "req", {}, USER_ID, {}, collected, errors
-            )
-        ]
+        events = [event async for event in _iter_s4_subsection_sse(work, {})]
     assert order == list(SCOPE_SUBSECTIONS)
     assert collected == {key: f"llm-{key}" for key in SCOPE_SUBSECTIONS}
     assert not errors

@@ -53,6 +53,22 @@ def _start_server_entry(rest: str) -> dict[str, Any]:
     return current
 
 
+def _parse_yaml_server_line(
+    servers: list[dict[str, Any]],
+    current: dict[str, Any] | None,
+    line: str,
+) -> dict[str, Any] | None:
+    if line.startswith("  - "):
+        if current:
+            servers.append(current)
+        return _start_server_entry(line[4:])
+    if current is not None and line.startswith("    "):
+        parsed = _parse_yaml_kv(line.strip())
+        if parsed:
+            current[parsed[0]] = parsed[1]
+    return current
+
+
 def parse_rag_sources_yaml(text: str) -> list[dict[str, Any]]:
     """Parse the constrained rag-sources.yaml shape (no PyYAML dependency)."""
     servers: list[dict[str, Any]] = []
@@ -61,15 +77,7 @@ def parse_rag_sources_yaml(text: str) -> list[dict[str, Any]]:
         line = raw.split("#", 1)[0].rstrip()
         if not line.strip() or line.strip() == "servers:":
             continue
-        if line.startswith("  - "):
-            if current:
-                servers.append(current)
-            current = _start_server_entry(line[4:])
-            continue
-        if current is not None and line.startswith("    "):
-            parsed = _parse_yaml_kv(line.strip())
-            if parsed:
-                current[parsed[0]] = parsed[1]
+        current = _parse_yaml_server_line(servers, current, line)
     if current:
         servers.append(current)
     return servers
@@ -119,6 +127,18 @@ def _tool_result_body(payload: Any) -> Any:
         return {"chunks": []}
 
 
+def _coerce_page_number(item: dict[str, Any], metadata: dict[str, Any]) -> int | None:
+    raw = item.get("page_number")
+    if raw is None:
+        raw = metadata.get("page_number")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _chunk_from_item(item: dict[str, Any], server_id: str, index: int) -> RetrievedChunk | None:
     text = str(item.get("text") or "").strip()
     if not text:
@@ -130,16 +150,20 @@ def _chunk_from_item(item: dict[str, Any], server_id: str, index: int) -> Retrie
         or metadata.get("source_document")
         or metadata.get("document_name")
     )
+    try:
+        score = float(item.get("score") or 0.0)
+    except (TypeError, ValueError):
+        score = 0.0
     return RetrievedChunk(
         id=str(item.get("id") or f"mcp-{server_id}-{uuid4().hex[:8]}-{index}"),
         text=text,
-        score=float(item.get("score") or 0.0),
+        score=score,
         document_type=metadata.get("document_type"),
         legal_reference=metadata.get("legal_reference"),
         section_relevance=metadata.get("section_relevance"),
         source_document=str(source) if source else server_id,
         section_label=metadata.get("section_label"),
-        page_number=metadata.get("page_number"),
+        page_number=_coerce_page_number(item, metadata),
         metadata=metadata,
     )
 
@@ -177,6 +201,29 @@ def _visible_chunks(
     return visible
 
 
+def _tools_call_payload(
+    server: dict[str, Any],
+    query: str,
+    *,
+    user_id: UUID | str | None,
+    search_scope: str,
+) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": str(server.get("tool") or "retrieve"),
+            "arguments": {
+                "query": query,
+                "top_k": int(server.get("top_k") or 8),
+                "search_scope": search_scope,
+                "user_id": str(user_id) if user_id else None,
+            },
+        },
+    }
+
+
 async def _call_server(
     server: dict[str, Any],
     query: str,
@@ -188,24 +235,11 @@ async def _call_server(
     url = str(server.get("url") or "").strip()
     if not url:
         return []
-    tool = str(server.get("tool") or "retrieve")
     timeout = float(server.get("timeout_seconds") or default_timeout)
-    top_k = int(server.get("top_k") or 8)
     server_id = str(server.get("id") or "mcp")
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {
-            "name": tool,
-            "arguments": {
-                "query": query,
-                "top_k": top_k,
-                "search_scope": search_scope,
-                "user_id": str(user_id) if user_id else None,
-            },
-        },
-    }
+    payload = _tools_call_payload(
+        server, query, user_id=user_id, search_scope=search_scope
+    )
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(url, json=payload)
         response.raise_for_status()
@@ -245,6 +279,10 @@ async def retrieve_mcp_chunks(
                     default_timeout=default_timeout,
                 )
             )
-        except Exception:
-            logger.warning("MCP RAG server %s failed; continuing", server.get("id"))
+        except (httpx.HTTPError, OSError, json.JSONDecodeError):
+            logger.warning(
+                "MCP RAG server %s failed; continuing",
+                server.get("id"),
+                exc_info=True,
+            )
     return collected

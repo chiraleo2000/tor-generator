@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,8 @@ async def set_job(
     try:
         await redis.hset(key, mapping=mapping)
         await redis.expire(key, TTL_SECONDS)
-    except Exception:
-        logger.warning("Draft job store write failed; using in-memory fallback")
+    except (RedisError, OSError):
+        logger.warning("Draft job store write failed; using in-memory fallback", exc_info=True)
     return stored
 
 
@@ -141,8 +142,8 @@ async def _read_job_from_redis(
 ) -> dict[str, Any] | None:
     try:
         data = await redis.hgetall(_key(project_id))
-    except Exception:
-        logger.warning("Draft job store read failed; using in-memory fallback")
+    except (RedisError, OSError):
+        logger.warning("Draft job store read failed; using in-memory fallback", exc_info=True)
         return None
     return _decode_redis_hash(data) if data else None
 
