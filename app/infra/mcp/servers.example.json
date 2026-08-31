@@ -1,0 +1,13 @@
+{
+  "servers": [
+    {
+      "id": "agency-legal-mcp",
+      "enabled": false,
+      "transport": "http",
+      "url": "https://mcp.example.go.th/rag",
+      "tool": "retrieve",
+      "timeout_seconds": 20,
+      "top_k": 8
+    }
+  ]
+}

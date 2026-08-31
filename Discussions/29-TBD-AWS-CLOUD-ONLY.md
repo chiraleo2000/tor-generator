@@ -1,6 +1,6 @@
-# 29 — TBW: AWS Cloud ล้วน (ไม่มี hybrid) + RAG สองแหล่ง
+# 29 — TBD: AWS Cloud ล้วน (ไม่มี hybrid) + RAG สองแหล่ง
 
-**TBW** = To Be Written / งานที่ยังต้องทำหรือยังต้องขยายเอกสารก่อนขึ้น production บน Amazon  
+**TBD** = To Be Determined / งานที่ยังไม่ปิดใน production บน Amazon (ยังต้องกำหนดเจ้าของ บัญชี หรือรอบ deploy)  
 **สถานะรันไทม์เป้าหมาย:** `DEPLOYMENT_MODE=cloud` — แอป แชท ร่าง ฝังเวกเตอร์ และฐานข้อมูลหลักอยู่บน AWS เท่านั้น
 
 เอกสารนี้ไม่แทนชุดติดตั้ง [24](24-AWS_CLOUD_OVERVIEW.md)–[27](27-AWS_CODE_AND_CUTOVER.md) และไม่ใช่รายงานตรวจ Local LLM ([28](28-VERIFICATION-AND-MIGRATION.md))  
@@ -8,9 +8,11 @@
 
 เกตจากเอกสาร 28 **เปิดแล้ว** (รอบ 31 ส.ค. 2026) — อนุญาตให้วางแผนคลาวด์ต่อได้ แต่ **ยังไม่ provision/deploy จริง** จากเอกสารชุดนี้
 
+มอบหมายทีมและสปรินต์: [30](30-DEV-ASSIGNMENT-MCP-AND-AWS.md)
+
 ---
 
-## 1. สิ่งที่ล็อกแล้ว (ไม่ใช่ TBW)
+## 1. สิ่งที่ล็อกแล้ว (ไม่ใช่ TBD)
 
 | หัวข้อ | ค่า production | ห้ามใน task ECS |
 |--------|----------------|-----------------|
@@ -41,6 +43,7 @@ flowchart TB
   srcA --> rds[(RDS pgvector บน AWS)]
   srcB --> rds
   srcB --> custom[Custom RAG HTTP ทางเลือก]
+  srcB --> mcp[MCP retrieve ทางเลือก]
   files[PDF คู่มือในสำนักงาน] -.->|sync ครั้งเดียว| s3[S3 tor-kb-source]
   s3 -->|seed_raw_docs + Titan| rds
 ```
@@ -62,13 +65,14 @@ flowchart TB
 |------|-------------------|--------|
 | คลังส่วนตัว | `search_scope=mine`, `POST /knowledge-base/mine`, แนบจาก `/chat` | ไบต์ใน S3 + ชิ้นใน RDS คนละ `owner_id` |
 | คลังกลางเพิ่มโดยแอดมิน | `POST /knowledge-base/upload` | เช่นเดียวกับแหล่ง A หลัง ingest |
-| ระบบ RAG อื่นของหน่วยงาน | `CUSTOM_RAG_*` → `CustomRagClient` (`POST {base}/v1/retrieve`) | **TBW ผูก ACL + ไม่ปนเวกเตอร์คนละมิติ** |
+| ระบบ RAG อื่นของหน่วยงาน | `CUSTOM_RAG_*` → `CustomRagClient` (`POST {base}/v1/retrieve`) | **TBD ผูก ACL + ไม่ปนเวกเตอร์คนละมิติ** |
+| MCP `retrieve` | `MCP_RAG_*` → `mcp_rag.py` (ค่าเริ่มต้นปิด) | **TBD เปิดบน UAT ใน VPC** |
 
 ขอบเขตบนจอ: `mine` หรือครึ่งหนึ่งของ `both` (ค่าเริ่มต้น)
 
 การมีไฟล์ต้นทางสองที่ (ดิสก์สำนักงาน + S3) **ระหว่างตัดระบบ** ถือว่าเป็นสำเนาข้อมูล ไม่ใช่ `DEPLOYMENT_MODE=hybrid`
 
-### 2.3 สิ่งที่ยังไม่ทำ (TBW ของแหล่งคู่)
+### 2.3 สิ่งที่ยังไม่ทำ (TBD ของแหล่งคู่)
 
 - รวมผล Custom RAG กับ pgvector แล้วจัดอันดับซ้ำอย่างเป็นทางการ (ตอนนี้เป็น retrieve เสริม)
 - Bedrock Knowledge Bases เป็นคลังที่สามในคอนโซล AWS — **ยังไม่แทน** `seed_raw_docs` (ดูเอกสาร 25 §6)
@@ -77,15 +81,15 @@ flowchart TB
 
 ---
 
-## 3. รายการ TBW (งานค้างก่อน/หลังขึ้นคลาวด์)
+## 3. รายการ TBD (งานค้างก่อน/หลังขึ้นคลาวด์)
 
-คอลัมน์สถานะ: **ค้าง** = ยังไม่มีใน production AWS · **โค้ดพร้อม** = มีในรีโป ยังต้อง deploy · **เอกสารพร้อม** = มีคู่มือ ยังไม่ provision
+คอลัมน์สถานะ: **ค้าง** = ยังไม่มีใน production AWS · **โค้ดพร้อม** = มีในรีโป ยังต้อง deploy · **เอกสารพร้อม** = มีคู่มือ ยังไม่ provision · **โครงพร้อม** = YAML/config ในรีโป ยังไม่ชี้บัญชีจริง
 
 | # | รายการ | สถานะ | อ้างอิง |
 |---|--------|--------|---------|
 | T1 | Provision VPC, RDS, ElastiCache, S3, ECS, Bedrock | ค้าง — ห้ามทำจากเอกสารนี้ | 26 |
 | T2 | ตั้ง task env ตาม `env.cloud.example` (ไม่มี hybrid) | เอกสารพร้อม | 24 §3, ไฟล์นี้ §1 |
-| T3 | Deploy `Draft_Job_Store` Redis แล้วค่อย `desiredCount>1` | โค้ดพร้อมบนดิสก์ ยังไม่เข้าอิมเมจที่รันตรวจ Local | 28 (D), 27 §3.3 |
+| T3 | Deploy `Draft_Job_Store` Redis แล้วค่อย `desiredCount>1` | โค้ดพร้อม | 28 (D), 27 §3.3 |
 | T4 | ย้ายมิติเวกเตอร์ Titan (เช่น 1024) + seed คลังใหม่ | ค้าง | 27 §3.4 |
 | T5 | ต้นฉบับ GridFS → S3 | ค้าง | 27 §3.5 |
 | T6 | อะแดปเตอร์ Neo4j → Neptune หรือ `GRAPH_PROVIDER=off` | ค้าง | 27 §3.6 |
@@ -124,6 +128,8 @@ CUSTOM_RAG_TOP_K=24
 
 ถ้าไม่ใช้ระบบ RAG ภายนอก ให้ `CUSTOM_RAG_ENABLED=false` — แหล่ง A+B ยังครบด้วย pgvector (`both` / `global` / `mine`)
 
+บน ECS อย่าพึ่ง `MCP_RAG_CONFIG_PATH` ชี้ไฟล์ในอิมเมจ — build context ของ backend คือ `app/backend` จึง**ไม่มี** `app/infra/mcp` ใน image ให้ใช้ `MCP_RAG_SERVERS_JSON` (ตัวอย่าง `app/infra/mcp/servers.example.json`)
+
 ---
 
 ## 5. ความสัมพันธ์กับเอกสารอื่น
@@ -135,6 +141,7 @@ CUSTOM_RAG_TOP_K=24
 | [20](20-AWS_BEDROCK_SETUP.md) | ทางลัด EC2+Compose+Bedrock **ไม่ใช่** ECS/RDS ล้วน |
 | [23](23-WORKFLOW_KB_QA.md) | พฤติกรรม `both` / `global` / `mine` บน UI |
 | [12](12-HYBRID_ONPREM_CLOUD_LLM_ARCHITECTURE.md) | ประวัติออกแบบสามโหมด — ไม่ใช่รันบุ๊ก prod AWS |
+| [30](30-DEV-ASSIGNMENT-MCP-AND-AWS.md) | สปรินต์ MCP + YAML ที่มอบทีม DEV |
 | `app/infra/aws/env.cloud.example` | ค่า env ตั้งต้นของ task |
 
 ---
@@ -143,4 +150,26 @@ CUSTOM_RAG_TOP_K=24
 
 Production ของระบบนี้บนหน่วยงานให้รัน **บน AWS Cloud ล้วน**: แชทและ embeddings เป็น Bedrock ไม่ผสมโมเดลในเครื่อง  
 คลังความรู้**อนุญาตสองแหล่งข้อมูล** — คลังกลาง (คู่มือ/กฎหมายที่ sync จากสำนักงานขึ้น S3 แล้วฝังบน RDS) และคลังของผู้ใช้หรือระบบ RAG อื่น — โดยยังตอบด้วยโมเดลคลาวด์ชุดเดียว  
-งานที่เหลือเป็นรายการ TBW ในตาราง §3 ไม่ใช่การเปิด `DEPLOYMENT_MODE=hybrid`
+งานที่เหลือเป็นรายการ TBD ในตาราง §3 ไม่ใช่การเปิด `DEPLOYMENT_MODE=hybrid`
+
+---
+
+## 7. รีวิวความพร้อมของโครงในรีโป (v0.2.6)
+
+รีวิวไฟล์จริงใน `app/infra/` และ `.github/workflows/` สำหรับทีม DEV — **พร้อมต่อยอด** ไม่ใช่พร้อม `terraform apply` ในบัญชีหน่วยงาน
+
+| ชุด | ไฟล์ | สถานะโครง | หมายเหตุให้ทีม |
+|-----|------|-----------|----------------|
+| นโยบาย | เอกสารนี้ + [30](30-DEV-ASSIGNMENT-MCP-AND-AWS.md) | พร้อมอ่าน | Cloud ล้วน; MCP ไม่ใช่ hybrid LLM |
+| ติดตั้ง AWS | [26](26-AWS_INSTALL_AND_WIRING.md), Terraform `app/infra/aws/terraform/` | เอกสาร + tf พร้อม | เปิดแฟล็กทีละชั้น; ห้าม apply โดยไม่มี plan |
+| Env / Secrets | `env.cloud.example` | พร้อมคัดลอก | ห้าม commit รหัส; คีย์ยาวเว้นว่าง ใช้ IAM |
+| ECS YAML | `ecs/services.yml`, `task-backend.yml`, `task-frontend.yml` | พร้อมโครง | แทน `ACCOUNT_ID`; backend `desiredCount=1` จนกว่า Redis job store อยู่ในอิมเมจที่ deploy |
+| App config | `config/cloud-app.yaml` | พร้อม | ไม่มีความลับ; `mcp_rag_enabled: false` |
+| CI | `.github/workflows/ecs-deploy.yml` | พร้อมมือ | `workflow_dispatch` + พิมพ์ `deploy`; ต้องมี OIDC secret |
+| Compose ป้ายคลาวด์ | `compose/docker-compose.cloud.yml` | พร้อมทดลองบนเครื่อง | ไม่ผูก LM Studio; ไม่แทน ECS |
+| MCP รายการ | `app/infra/mcp/rag-sources.yaml` | พร้อมปิดทุกตัว | YAML สำหรับ dev/bind-mount |
+| MCP บน ECS | `app/infra/mcp/servers.example.json` | พร้อมวางใน Secrets | อิมเมจ backend **ไม่มี** ไฟล์ YAML — ใช้ `MCP_RAG_SERVERS_JSON` |
+| MCP ไคลเอนต์ | `app/backend/app/rag/mcp_rag.py` | โค้ดพร้อม ปิดโดยค่าเริ่มต้น | fail-open; pytest `tests/test_mcp_rag.py` |
+| MCP สตับ | `servers/retrieve_stub.py` | พร้อม dev เท่านั้น | พอร์ต 8765 บน `127.0.0.1` |
+
+**ยังเป็น TBD (อย่าถือว่าพร้อมขึ้น prod):** บัญชี AWS, โควตา Bedrock, โดเมน HTTPS, OIDC GitHub, คลัง Titan ที่ seed แล้ว, เซิร์ฟเวอร์ MCP จริงใน VPC

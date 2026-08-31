@@ -253,7 +253,7 @@ docker run --rm -u root --network container:tor-app-backend-1 -e PATH=/opt/venv/
 ## (C) แผนย้ายขึ้น AWS
 
 เนื้อหานี้เป็นแนวทางเท่านั้น **ไม่มี code diff และไม่มีคำสั่ง provision/deploy ทรัพยากร AWS จริง**  
-โหมดเป้าหมายคือ **AWS Cloud ล้วน** (`DEPLOYMENT_MODE=cloud`) **ไม่มี hybrid LLM** — คลัง RAG มีได้สองแหล่งข้อมูล (กลาง + ของฉัน/Custom RAG) ดู [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md)  
+โหมดเป้าหมายคือ **AWS Cloud ล้วน** (`DEPLOYMENT_MODE=cloud`) **ไม่มี hybrid LLM** — คลัง RAG มีได้สองแหล่งข้อมูล (กลาง + ของฉัน/Custom RAG) ดู [29-TBD-AWS-CLOUD-ONLY.md](29-TBD-AWS-CLOUD-ONLY.md)  
 รายละเอียดเต็มให้อ่านเอกสารอ้างอิง ไม่ทำซ้ำ
 
 ### 1. เอกสารอ้างอิง
@@ -263,7 +263,7 @@ docker run --rm -u root --network container:tor-app-backend-1 -e PATH=/opt/venv/
 - [25-AWS_SERVICE_CATALOG.md](25-AWS_SERVICE_CATALOG.md)
 - [26-AWS_INSTALL_AND_WIRING.md](26-AWS_INSTALL_AND_WIRING.md)
 - [27-AWS_CODE_AND_CUTOVER.md](27-AWS_CODE_AND_CUTOVER.md)
-- [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md)
+- [29-TBD-AWS-CLOUD-ONLY.md](29-TBD-AWS-CLOUD-ONLY.md)
 - [30-DEV-ASSIGNMENT-MCP-AND-AWS.md](30-DEV-ASSIGNMENT-MCP-AND-AWS.md)
 - [`app/infra/aws/env.cloud.example`](../app/infra/aws/env.cloud.example)
 

@@ -23,7 +23,7 @@ flowchart LR
 
 `redirect_slashes=False` so `POST /api/v1/projects` is not 307’d to `/projects/` (that redirect dropped the JSON body through the Next.js rewrite). The Next.js rewrite proxy timeout is 5 minutes (`experimental.proxyTimeout`) so LangGraph draft retries are not hung up at 30s.
 
-**Production AWS:** compute และ LLM เป็น Cloud ล้วน (Bedrock) ไม่ใช่ hybrid — ดู [`24`](24-AWS_CLOUD_OVERVIEW.md) และ [`29-TBW-AWS-CLOUD-ONLY.md`](29-TBW-AWS-CLOUD-ONLY.md). RAG ในแอปมีสองขอบเขตอยู่แล้ว (`global` / `mine` / `both`); บนคลาวด์ทั้งสองฝังใน RDS ไม่เรียก EmbeddingGemma ในเครื่อง. แหล่งข้อมูลเพิ่ม (ไม่ใช่ hybrid LLM): Custom RAG HTTP และ MCP `retrieve` — ค่าเริ่มต้นปิด ดู [`30`](30-DEV-ASSIGNMENT-MCP-AND-AWS.md) และ `app/rag/mcp_rag.py`.
+**Production AWS:** compute และ LLM เป็น Cloud ล้วน (Bedrock) ไม่ใช่ hybrid — ดู [`24`](24-AWS_CLOUD_OVERVIEW.md) และ [`29-TBD-AWS-CLOUD-ONLY.md`](29-TBD-AWS-CLOUD-ONLY.md). RAG ในแอปมีสองขอบเขตอยู่แล้ว (`global` / `mine` / `both`); บนคลาวด์ทั้งสองฝังใน RDS ไม่เรียก EmbeddingGemma ในเครื่อง. แหล่งข้อมูลเพิ่ม (ไม่ใช่ hybrid LLM): Custom RAG HTTP และ MCP `retrieve` — ค่าเริ่มต้นปิด ดู [`30`](30-DEV-ASSIGNMENT-MCP-AND-AWS.md) และ `app/rag/mcp_rag.py`.
 
 ## Layers
 

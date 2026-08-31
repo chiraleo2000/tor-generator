@@ -1,6 +1,6 @@
 # AWS infrastructure templates (production path)
 
-เอกสารหลัก: [Discussions/24–27](../../../Discussions/24-AWS_CLOUD_OVERVIEW.md) · TBW Cloud ล้วน + RAG สองแหล่ง: [29](../../../Discussions/29-TBW-AWS-CLOUD-ONLY.md)  
+เอกสารหลัก: [Discussions/24–27](../../../Discussions/24-AWS_CLOUD_OVERVIEW.md) · TBD Cloud ล้วน + RAG สองแหล่ง: [29](../../../Discussions/29-TBD-AWS-CLOUD-ONLY.md)  
 `DEPLOYMENT_MODE=cloud` เท่านั้น — ห้าม hybrid LLM ใน task นี้
 
 โฟลเดอร์นี้เป็น **โครงพร้อมใส่บัญชี** ไม่ใช่สแตกที่ apply แล้วเสร็จเอง
@@ -16,6 +16,6 @@
 | `.github/workflows/ecs-deploy.yml` | skeleton `workflow_dispatch` (ต้องพิมพ์ `deploy`) |
 | `ecs/*.yml` + `config/cloud-app.yaml` | ค่า service/task/แอปแบบ YAML |
 | `compose/docker-compose.cloud.yml` | ทดลองป้าย env คลาวด์บนเครื่อง |
-| `../mcp/` | โครง MCP RAG (`rag-sources.yaml`, stub server) |
+| `../mcp/` | โครง MCP RAG (`rag-sources.yaml` สำหรับ bind-mount, `servers.example.json` สำหรับ ECS JSON) |
 
 อย่ารัน `terraform apply` ในบัญชีจริงโดยไม่ `plan` และไม่ตั้งงบเตือน Bedrock

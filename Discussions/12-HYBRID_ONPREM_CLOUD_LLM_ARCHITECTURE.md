@@ -2,7 +2,7 @@
 ### ระบบ TOR Generator — สถาปัตยกรรม AI/LLM แบบ Hybrid (On-Premise / Cloud) พร้อม RAG และ Orchestration
 
 > **Production บน AWS:** โหมดเป้าหมายคือ **Cloud ล้วน** (`DEPLOYMENT_MODE=cloud` + Bedrock ทั้งแชทและ embeddings) — **ไม่ใช้ Hybrid** ใน task production  
-> RAG ยังมีได้ **สองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังอยู่บน AWS — ดู [`29-TBW-AWS-CLOUD-ONLY.md`](29-TBW-AWS-CLOUD-ONLY.md)  
+> RAG ยังมีได้ **สองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังอยู่บน AWS — ดู [`29-TBD-AWS-CLOUD-ONLY.md`](29-TBD-AWS-CLOUD-ONLY.md)  
 > คู่มือ ECS/RDS: [`24-AWS_CLOUD_OVERVIEW.md`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md) ไม่ใช่ไฟล์นี้  
 > **Dev ค่าเริ่มต้น:** LM Studio `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` (768 มิติ), pgvector, Mongo GridFS, Neo4j GraphRAG  
 > **ทางลัด Bedrock บน EC2+Compose (ไม่ใช่ ECS ล้วน):** [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  

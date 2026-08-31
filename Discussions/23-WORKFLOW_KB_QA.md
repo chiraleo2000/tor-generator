@@ -25,7 +25,7 @@
 
 สิทธิ์ค้น**ปิดเมื่อไม่ชัด:** เจ้าหน้าที่อื่นมองไม่เห็นไฟล์ที่มี `owner_id` คนละคน (`rag/acl.py`)
 
-แหล่งค้นเพิ่ม (ปิดโดยค่าเริ่มต้น): Custom RAG HTTP และเซิร์ฟเวอร์ MCP เครื่องมือ `retrieve` — ไม่เปลี่ยนโมเดลตอบ (ยังเป็น Gemma ในเครื่องหรือ Bedrock บนคลาวด์) ดู [29](29-TBW-AWS-CLOUD-ONLY.md) และมอบหมายทีม [30](30-DEV-ASSIGNMENT-MCP-AND-AWS.md)
+แหล่งค้นเพิ่ม (ปิดโดยค่าเริ่มต้น): Custom RAG HTTP และเซิร์ฟเวอร์ MCP เครื่องมือ `retrieve` — ไม่เปลี่ยนโมเดลตอบ (ยังเป็น Gemma ในเครื่องหรือ Bedrock บนคลาวด์) ดู [29](29-TBD-AWS-CLOUD-ONLY.md) และมอบหมายทีม [30](30-DEV-ASSIGNMENT-MCP-AND-AWS.md)
 
 ---
 
@@ -52,7 +52,7 @@ flowchart LR
 `python -m app.seed_kb` เป็น extracts งานวิจัย **ไม่ใช่** คลังที่แชทใช้หลังรีเซ็ต
 
 บน **AWS Cloud ล้วน** สองแหล่งนี้ยังใช้ได้ (`both` / `global` / `mine`) แต่ทั้งคู่ถูกฝังด้วย Titan บน RDS — ไม่เรียก LM Studio เพื่อ embed  
-รายละเอียดและรายการ TBW: [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md)
+รายละเอียดและรายการ TBD: [29-TBD-AWS-CLOUD-ONLY.md](29-TBD-AWS-CLOUD-ONLY.md)
 
 ถ้า Neo4j ไม่ขึ้น การค้นตั้ง `graph_degraded` แชทยังตอบจากชิ้นข้อความได้
 

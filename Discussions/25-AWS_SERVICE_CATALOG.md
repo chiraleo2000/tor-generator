@@ -91,7 +91,7 @@
 มีโค้ดอยู่แล้ว: `app/providers/llm/bedrock_provider.py`, `app/providers/embedding/bedrock_provider.py`  
 สิทธิ์ IAM: `bedrock:Converse`, `bedrock:ConverseStream`, `bedrock:InvokeModel` จำกัด ARN
 
-**อย่า** ใช้ `EMBEDDING_PROVIDER=local` บน task production — นั่นคือ hybrid LLM และนอกนโยบาย Cloud ล้วน ([29](29-TBW-AWS-CLOUD-ONLY.md))
+**อย่า** ใช้ `EMBEDDING_PROVIDER=local` บน task production — นั่นคือ hybrid LLM และนอกนโยบาย Cloud ล้วน ([29](29-TBD-AWS-CLOUD-ONLY.md))
 
 คลังถาม-ตอบ**อนุญาตสองแหล่งข้อมูล** (`global` + `mine`, หรือ Custom RAG HTTP) โดยยังฝังด้วย Bedrock — ไม่ใช่การเปิด `DEPLOYMENT_MODE=hybrid`
 
@@ -109,7 +109,7 @@
 - **Inspector** สแกนอิมเมจ ECR
 - **Macie** ถ้าคลังมีข้อมูลอ่อนไหว
 - **PrivateLink** ให้หน่วยงานอื่นเรียก API โดยไม่ผ่านอินเทอร์เน็ต
-- **Bedrock Knowledge Bases** — ยังไม่แทน `seed_raw_docs` + pgvector ใน v0.2.4; เป็นแหล่งคลาวด์เสริมได้ในอนาคต (TBW T10/เอกสาร 29) ไม่ใช่เหตุผลเปิด hybrid
+- **Bedrock Knowledge Bases** — ยังไม่แทน `seed_raw_docs` + pgvector ใน v0.2.4; เป็นแหล่งคลาวด์เสริมได้ในอนาคต (TBD T10/เอกสาร 29) ไม่ใช่เหตุผลเปิด hybrid
 - **Step Functions** กำกับ pipeline ingest คลัง
 - **EventBridge** ตั้งเวลา seed / สำรอง
 - **OpenSearch Serverless** ถ้าเลิก pgvector (ต้องเขียน vector provider ใหม่ — ไม่ทำในรอบนี้)

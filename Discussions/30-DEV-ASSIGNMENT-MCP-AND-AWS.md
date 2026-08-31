@@ -1,8 +1,8 @@
-# 30 — มอบหมายทีม DEV: ต่อยอด MCP RAG + โครง deploy AWS (แอป v0.2.5)
+# 30 — มอบหมายทีม DEV: ต่อยอด MCP RAG + โครง deploy AWS (แอป v0.2.6)
 
-เอกสารนี้มอบงานให้ทีมพัฒนาต่อจากเกต Local LLM ([28](28-VERIFICATION-AND-MIGRATION.md)) นโยบาย Cloud ล้วน ([29](29-TBW-AWS-CLOUD-ONLY.md)) และชุด AWS ([24](24-AWS_CLOUD_OVERVIEW.md)–[27](27-AWS_CODE_AND_CUTOVER.md))
+เอกสารนี้มอบงานให้ทีมพัฒนาต่อจากเกต Local LLM ([28](28-VERIFICATION-AND-MIGRATION.md)) นโยบาย Cloud ล้วน ([29](29-TBD-AWS-CLOUD-ONLY.md)) และชุด AWS ([24](24-AWS_CLOUD_OVERVIEW.md)–[27](27-AWS_CODE_AND_CUTOVER.md))
 
-**ขอบเขตรอบนี้ในรีโป (v0.2.5):** โครง (skeleton) พร้อมต่อยอด — **ยังไม่ provision บัญชี AWS จริง** และ **ยังไม่ชี้ MCP ภายนอกใน production**
+**ขอบเขตรอบนี้ในรีโป (v0.2.6):** โครง (skeleton) พร้อมต่อยอด — **ยังไม่ provision บัญชี AWS จริง** และ **ยังไม่ชี้ MCP ภายนอกใน production**
 
 ---
 
@@ -115,6 +115,7 @@ flowchart LR
 | [`app/infra/aws/ecs/task-frontend.yml`](../app/infra/aws/ecs/task-frontend.yml) | Next.js |
 | [`app/infra/aws/config/cloud-app.yaml`](../app/infra/aws/config/cloud-app.yaml) | ค่าไม่ลับของแอป |
 | [`app/infra/aws/compose/docker-compose.cloud.yml`](../app/infra/aws/compose/docker-compose.cloud.yml) | ทดลอง env คลาวด์บนเครื่อง **ไม่** ผูก LM Studio |
+| [`app/infra/mcp/servers.example.json`](../app/infra/mcp/servers.example.json) | วางใน Secrets เป็น `MCP_RAG_SERVERS_JSON` | อิมเมจ backend ไม่มี YAML MCP |
 | [`app/infra/aws/env.cloud.example`](../app/infra/aws/env.cloud.example) | ต้นทาง Secrets / task |
 | [`app/infra/aws/terraform/`](../app/infra/aws/terraform/) | รอบ 1–3 ตาม tfvars |
 
@@ -135,3 +136,24 @@ flowchart LR
 - Blocker AWS (โควตา Bedrock, VPC) → Cloud Eng + Tech lead
 - สัญญา `retrieve` เปลี่ยนฟิลด์ → ประกาศใน PR ที่แตะทั้ง `mcp_rag.py` และ `rag-sources.yaml`
 - ตัดระบบ prod → ทำตามเอกสาร 28 ส่วน C ไม่ข้ามเกต UAT
+
+---
+
+## 8. รีวิวความพร้อมของโครง (v0.2.6) — สำหรับทีม DEV
+
+ตารางเต็มอยู่ที่ [29 §7](29-TBD-AWS-CLOUD-ONLY.md) สรุปสั้น:
+
+| พร้อมต่อยอดในรีโป | ยังเป็น TBD (อย่าถือว่าขึ้น prod ได้) |
+|-------------------|----------------------------------------|
+| ECS YAML คลาวด์ล้วน + MCP ปิด (`task-backend.yml`, `services.yml`) | บัญชี AWS, โควตา Bedrock, โดเมน HTTPS |
+| `workflow_dispatch` OIDC (`ecs-deploy.yml`) — ต้องพิมพ์ `deploy` | GitHub secrets `AWS_DEPLOY_ROLE_ARN` / `AWS_ACCOUNT_ID` |
+| `env.cloud.example` + `config/cloud-app.yaml` | ค่าจริงใน Secrets Manager |
+| Terraform / IAM JSON ใน `app/infra/aws/` | `terraform apply` โดยไม่มี plan |
+| MCP client + pytest + YAML ปิดทุกเซิร์ฟเวอร์ | เซิร์ฟเวอร์ MCP จริงใน VPC |
+| `servers.example.json` สำหรับ `MCP_RAG_SERVERS_JSON` | ไฟล์ `rag-sources.yaml` **ในอิมเมจ backend** (build context คือ `app/backend` จึงไม่มี `app/infra/mcp`) |
+| Compose ป้ายคลาวด์ (`docker-compose.cloud.yml`) | แทน ECS/RDS |
+| Draft job store ในซอร์ส | `desiredCount>1` ก่อนอิมเมจที่มี Redis store ถูก deploy |
+
+**ติดตั้ง:** Docker ในสำนักงาน = [14](14-INSTALLATION.md) · AWS ล้วน = [26](26-AWS_INSTALL_AND_WIRING.md)–[27](27-AWS_CODE_AND_CUTOVER.md) · เอกสาร 20 เป็นทางลัด EC2+Compose เท่านั้น
+
+อย่าข้าม S1 → S5 ในตาราง §3

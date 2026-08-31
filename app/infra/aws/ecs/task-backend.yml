@@ -38,6 +38,8 @@ containerDefinitions:
         value: "true"
       - name: MCP_RAG_ENABLED
         value: "false"
+      - name: MCP_RAG_SERVERS_JSON
+        value: ""
       - name: CUSTOM_RAG_ENABLED
         value: "false"
     secrets:

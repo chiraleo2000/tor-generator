@@ -1,7 +1,7 @@
 # การติดตั้งและรันระบบ TOR
 
 คู่มือนี้สำหรับสแตกที่รันจริง: Next.js + FastAPI ใน Docker  
-**Production บน AWS ล้วน (ECS/RDS/Bedrock):** ชุด [`24`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md) และรายการค้าง [`29-TBW-AWS-CLOUD-ONLY.md`](29-TBW-AWS-CLOUD-ONLY.md) — **ไม่มี hybrid**  
+**Production บน AWS ล้วน (ECS/RDS/Bedrock):** ชุด [`24`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md) และรายการค้าง [`29-TBD-AWS-CLOUD-ONLY.md`](29-TBD-AWS-CLOUD-ONLY.md) — **ไม่มี hybrid**  
 ทางลัด EC2+Compose+Bedrock เท่านั้น: [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
 **Dev / on-prem:** LM Studio บนเครื่องโฮสต์ (ค่าเริ่มต้น) หรือ Ollama / llama.cpp / SGLang — สลับได้จาก Admin โดยไม่ถอดตัวเลือก
 

@@ -3,7 +3,7 @@
 ชุดนี้เป็น **เส้นทาง production บน Amazon Web Services เท่านั้น**: แอป คิว ไฟล์ กราฟ (ถ้าเปิด) และ **LLM/embeddings** อยู่บน AWS  
 **ไม่** รัน LM Studio / Ollama / SGLang / GPU ในเครื่องเป็นโมเดลของ task production และ **ไม่** ใช้ `DEPLOYMENT_MODE=hybrid`
 
-ข้อยกเว้นข้อมูล: คลัง RAG **มีได้สองแหล่ง** (คลังกลางที่ sync จากสำนักงานขึ้น S3 + เอกสารของฉัน/ระบบอื่น) โดยยังฝังและตอบด้วย Bedrock — ดู [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md)
+ข้อยกเว้นข้อมูล: คลัง RAG **มีได้สองแหล่ง** (คลังกลางที่ sync จากสำนักงานขึ้น S3 + เอกสารของฉัน/ระบบอื่น) โดยยังฝังและตอบด้วย Bedrock — ดู [29-TBD-AWS-CLOUD-ONLY.md](29-TBD-AWS-CLOUD-ONLY.md)
 
 เกตตรวจ Local LLM และแผนตัดระบบฉบับรวม: [28-VERIFICATION-AND-MIGRATION.md](28-VERIFICATION-AND-MIGRATION.md)
 
@@ -13,7 +13,7 @@
 | [25-AWS_SERVICE_CATALOG.md](25-AWS_SERVICE_CATALOG.md) | จับคู่ทุกชิ้นใน Docker กับบริการ AWS + บริการเสริม |
 | [26-AWS_INSTALL_AND_WIRING.md](26-AWS_INSTALL_AND_WIRING.md) | ติดตั้ง ตั้งค่า เชื่อมโยงทีละขั้น |
 | [27-AWS_CODE_AND_CUTOVER.md](27-AWS_CODE_AND_CUTOVER.md) | โค้ดที่ต้องปรับ ย้ายข้อมูล ตัดระบบเก่า |
-| [28](28-VERIFICATION-AND-MIGRATION.md) / [29](29-TBW-AWS-CLOUD-ONLY.md) | เกตตรวจ + TBW Cloud ล้วน / RAG สองแหล่ง |
+| [28](28-VERIFICATION-AND-MIGRATION.md) / [29](29-TBD-AWS-CLOUD-ONLY.md) | เกตตรวจ + TBD Cloud ล้วน / RAG สองแหล่ง |
 | โครงไฟล์ | `app/infra/aws/` (Terraform, IAM, ECS task, `.env` คลาวด์) |
 
 [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md) ยังใช้ได้เมื่อต้องการ **แค่ Bedrock** บน EC2+Compose — **ไม่ใช่** เป้าหมายของชุด 24–27

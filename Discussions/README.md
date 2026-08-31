@@ -2,7 +2,7 @@
 
 Architecture, API, UX, and product write-ups. **Not imported** by Next.js or FastAPI.
 
-Help text in the running app is under `/help` (`app/frontend`). Operator/install guides for Docker + LM Studio are `13`–`23`; AWS Cloud ล้วน is `24`–`27` plus `28` (เกต) and `29` (TBW). Files `01`–`12` are earlier design notes.
+Help text in the running app is under `/help` (`app/frontend`). Operator/install guides for Docker + LM Studio are `13`–`23`; AWS Cloud ล้วน is `24`–`27` plus `28` (เกต) and `29` (TBD). Files `01`–`12` are earlier design notes.
 
 Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.html` at repo root, branch `gh-pages`). `06-UXUI-Mockup.html` is the older PoC mock.
 
@@ -10,9 +10,9 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 
 คำอธิบายเวิร์กโฟลว์สามบริการหลัก (ภาษาไทย ตรวจจากโค้ดจริง **26 ส.ค. 2026 รอบบ่าย**) อยู่ที่ **21–23** ใช้ชุดนี้เมื่อขัดกับบันทึกเก่าใน `15`/`19` (เช่น วิเคราะห์ขั้นที่ ๐ ไม่ดึงกฎหมายอัตโนมัติแล้ว และเกต HITL บนปุ่มไปทบทวนไม่มีแล้ว)
 
-**Production บน AWS ล้วน (ไม่มี hybrid LLM):** ชุด **24–27** + **29 (TBW)** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS  
-RAG **อนุญาตสองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังเป็น Bedrock — ดู [29](29-TBW-AWS-CLOUD-ONLY.md)  
-หลักฐานตรวจ Local LLM ล่าสุด (31 ส.ค. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.2.5**
+**Production บน AWS ล้วน (ไม่มี hybrid LLM):** ชุด **24–27** + **29 (TBD)** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS  
+RAG **อนุญาตสองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังเป็น Bedrock — ดู [29](29-TBD-AWS-CLOUD-ONLY.md)  
+หลักฐานตรวจ Local LLM ล่าสุด (31 ส.ค. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.2.6**
 
 | File | Topic |
 |------|--------|
@@ -35,7 +35,7 @@ RAG **อนุญาตสองแหล่งข้อมูล** (คลั�
 | `26-AWS_INSTALL_AND_WIRING.md` | ติดตั้ง ตั้งค่า เชื่อมโยงทีละขั้น (VPC→ECS→WAF) |
 | `27-AWS_CODE_AND_CUTOVER.md` | โค้ดที่ปรับแล้ว (S3/IAM, Redis TLS) และงานตัดระบบ |
 | `28-VERIFICATION-AND-MIGRATION.md` | Combined_Report: ตรวจ Local LLM + เกต + แผนย้าย AWS + เสถียรภาพ (31 ส.ค. 2026) |
-| `29-TBW-AWS-CLOUD-ONLY.md` | **TBW** AWS Cloud ล้วน (ห้าม hybrid) + RAG สองแหล่ง + งานค้าง |
+| `29-TBD-AWS-CLOUD-ONLY.md` | **TBD** AWS Cloud ล้วน (ห้าม hybrid) + RAG สองแหล่ง + งานค้าง + รีวิวความพร้อมโครง |
 | `30-DEV-ASSIGNMENT-MCP-AND-AWS.md` | มอบหมายทีม DEV: สปรินต์ MCP RAG + YAML deploy AWS |
 
 ชุด `01`–`12` เป็นบันทึกออกแบบก่อนหน้า (รวม PoC HTML) — อย่าใช้ `10`/`11` เป็นคู่มือติดตั้งของแอป Docker ปัจจุบัน

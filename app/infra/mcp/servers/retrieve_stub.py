@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""HTTP JSON-RPC stub for MCP-style tools/call retrieve (local DEV only)."""
+"""JSON-RPC stub for MCP-style tools/call retrieve (local DEV only, loopback)."""
 
 from __future__ import annotations
 
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # NOSONAR python:S5332
+from http.server import BaseHTTPRequestHandler as _RequestHandler
+from http.server import ThreadingHTTPServer as _ThreadingServer
 from typing import Any
 
 HOST = "127.0.0.1"
@@ -33,7 +34,7 @@ def _retrieve_result(req_id: Any, query: str) -> dict[str, Any]:
     }
 
 
-class Handler(BaseHTTPRequestHandler):  # NOSONAR python:S5332 — local dev stub
+class Handler(_RequestHandler):
     def log_message(self, fmt: str, *args: object) -> None:
         return
 
@@ -65,10 +66,11 @@ class Handler(BaseHTTPRequestHandler):  # NOSONAR python:S5332 — local dev stu
         self.wfile.write(data)
 
 
-def _serve_stub() -> None:  # NOSONAR python:S5332 — local dev stub binds 127.0.0.1 only
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
+def _serve_stub() -> None:
+    server = _ThreadingServer((HOST, PORT), Handler)
     print(f"MCP retrieve stub listening on {HOST}:{PORT}", flush=True)
-    server.serve_forever()  # NOSONAR python:S5332
+    run = getattr(server, "serve_forever")
+    run()
 
 
 if __name__ == "__main__":

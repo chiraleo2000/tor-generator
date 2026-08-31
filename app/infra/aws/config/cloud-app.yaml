@@ -1,5 +1,5 @@
 # Cloud-only runtime knobs (no secrets). Copy values into ECS task env / SSM.
-# Policy: Discussions/29-TBW-AWS-CLOUD-ONLY.md and 30-DEV-ASSIGNMENT-MCP-AND-AWS.md
+# Policy: Discussions/29-TBD-AWS-CLOUD-ONLY.md and 30-DEV-ASSIGNMENT-MCP-AND-AWS.md
 
 deployment:
   mode: cloud
@@ -16,7 +16,9 @@ rag:
   dual_sources: true
   custom_rag_enabled: false
   mcp_rag_enabled: false
-  mcp_config: app/infra/mcp/rag-sources.yaml
+  # YAML path is for local bind-mount only; ECS backend image does not include app/infra/mcp.
+  mcp_config: ""
+  mcp_servers_json: secrets-manager:tor/prod/mcp-servers
 
 ecs:
   cluster: tor-prod

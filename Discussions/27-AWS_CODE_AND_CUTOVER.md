@@ -66,9 +66,9 @@ Compose ในเครื่องไม่ต้องเปลี่ยน: �
 ผูกกับ `draft-chat/start` และ `draft-chat/status` แล้ว — **ยังต้อง build/deploy อิมเมจ** เข้า ECS
 
 จนกว่าอิมเมจบน AWS จะมีโมดูลนี้: backend **desiredCount = 1**  
-ทางเลือกขยายต่อ: **SQS + worker** (รายการ TBW ในเอกสาร 29 T3)
+ทางเลือกขยายต่อ: **SQS + worker** (รายการ TBD ในเอกสาร 29 หลัง T3)
 
-ดูนโยบาย RAG สองแหล่ง vs ห้าม hybrid ที่ [29-TBW-AWS-CLOUD-ONLY.md](29-TBW-AWS-CLOUD-ONLY.md)
+ดูนโยบาย RAG สองแหล่ง vs ห้าม hybrid ที่ [29-TBD-AWS-CLOUD-ONLY.md](29-TBD-AWS-CLOUD-ONLY.md)
 
 ### 3.4 มิติเวกเตอร์ Titan
 
@@ -180,7 +180,7 @@ Discussions/25-AWS_SERVICE_CATALOG.md
 Discussions/26-AWS_INSTALL_AND_WIRING.md
 Discussions/27-AWS_CODE_AND_CUTOVER.md          ← ไฟล์นี้
 Discussions/28-VERIFICATION-AND-MIGRATION.md
-Discussions/29-TBW-AWS-CLOUD-ONLY.md            ← Cloud ล้วน + RAG สองแหล่ง + TBW
+Discussions/29-TBD-AWS-CLOUD-ONLY.md            ← Cloud ล้วน + RAG สองแหล่ง + TBD
 Discussions/20-AWS_BEDROCK_SETUP.md             ← ทางลัด EC2+Compose+Bedrock
 app/infra/aws/README.md
 app/infra/aws/env.cloud.example
