@@ -68,7 +68,7 @@ class Handler(BaseHTTPRequestHandler):  # NOSONAR python:S5332 — local dev stu
 def _serve_stub() -> None:  # NOSONAR python:S5332 — local dev stub binds 127.0.0.1 only
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"MCP retrieve stub listening on {HOST}:{PORT}", flush=True)
-    server.serve_forever()
+    server.serve_forever()  # NOSONAR python:S5332
 
 
 if __name__ == "__main__":
