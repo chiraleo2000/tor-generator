@@ -620,7 +620,6 @@ async def _stream_background_job_progress(
 
 async def _stream_attached_job_progress(
     job: asyncio.Task[int],
-    redis: Any,
     session_factory: Any,
     project_id: uuid.UUID,
     seen: set[str],
@@ -668,7 +667,7 @@ async def _stream_start_draft_chat(
             yield event
         return
     async for event in _stream_attached_job_progress(
-        job, redis, session_factory, project_id, seen
+        job, session_factory, project_id, seen
     ):
         yield event
 
