@@ -1,5 +1,6 @@
-# Skeleton deploy to ECS. Manual only until GitHub OIDC + secrets exist.
-# Enable push-to-main later via app/infra/aws/ci/github-ecs-deploy.yml.example
+# Canonical in-repo copy. Copy to .github/workflows/ecs-deploy.yml on a machine that uses GitHub Actions.
+# .github/ is gitignored — this file stays in Git. Manual only until OIDC + secrets exist.
+# Enable push-to-main later via github-ecs-deploy.yml.example
 # Assignment: Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md
 
 name: Deploy TOR images to ECS

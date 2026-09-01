@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.2.7**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ (ต่อยอด MCP + โครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md))  
+แอปที่รันจริงคือ **v0.2.8**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ (ต่อยอด MCP + โครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md))  
 **Production แนะนำ:** Amazon Bedrock (ดู [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md))  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
 
@@ -24,8 +24,8 @@
 
 | Path | บทบาท |
 |------|--------|
-| [skills/](skills/) | Skill packs ออฟไลน์ (Claude / ChatGPT / Gemini / Hermes) |
-| [.kiro/](.kiro/) | สเปก Kiro และสกิลใน IDE — ดู [SKILLS.md](SKILLS.md) |
+| [skills/](skills/) | Skill packs ออฟไลน์ (Claude / ChatGPT / Gemini / Hermes) — ดู [SKILLS.md](SKILLS.md) |
+| `.cursor/` `.github/` `.kiro/` | อยู่บนเครื่องเท่านั้น (อยู่ใน `.gitignore`) — ก๊อป workflow จาก [app/infra/aws/ci/ecs-deploy.yml](app/infra/aws/ci/ecs-deploy.yml) |
 | `docker-compose.yml` | รัน **app/** พร้อม Postgres, Redis, MinIO, Mongo, Neo4j |
 
 คีย์หมวด TOR ตามมาตรฐานคือ `s1`–`s13` — นิยามร่วม: `app/backend/app/domain/tor_sections.py` และ `app/frontend/src/lib/tor-sections.ts`

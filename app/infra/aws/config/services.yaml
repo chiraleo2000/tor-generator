@@ -1,4 +1,4 @@
-# Inventory of AWS service configs in this repo (v0.2.7).
+# Inventory of AWS service configs in this repo (v0.2.8).
 # Skeleton only — flags in terraform.tfvars stay false until a plan is reviewed.
 # Do not put secrets here. Policy: Discussions/25, 26, 29.
 
@@ -23,7 +23,7 @@ services:
   ecr:
     status: skeleton
     terraform: app/infra/aws/terraform/main.tf
-    ci: .github/workflows/ecs-deploy.yml
+    ci: app/infra/aws/ci/ecs-deploy.yml
   secrets_manager:
     status: skeleton
     names: [tor/prod/rds, tor/prod/redis, tor/prod/jwt]

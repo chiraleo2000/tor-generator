@@ -169,3 +169,7 @@ app/backend/agent-uploads/
 .hypothesis/
 .ruff_cache/
 
+# Local IDE / GitHub Actions / Kiro working trees (stay on disk, not in Git)
+.cursor/
+.github/
+.kiro/

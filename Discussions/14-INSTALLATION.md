@@ -283,7 +283,7 @@ npm run test:e2e:headed
 | `documents/knowledge-base` | extracts งานวิจัย (ไม่ใช่คลัง RAG หลักหลังรีเซ็ตรอบนี้) |
 | `.env` | ความลับและโมเดล (ไม่ commit) |
 
-อย่าวางซอร์สแอปหรือเมล็ด RAG ที่รากรีโป — ดู `.cursor/rules/repo-layout.mdc`
+อย่าวางซอร์สแอปหรือเมล็ด RAG ที่รากรีโป — ดูตารางโครงสร้างใน [README.md](../README.md) และ [Discussions/README.md](README.md)
 
 ## หยุดและลบ
 

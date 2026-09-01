@@ -24,6 +24,9 @@
 
 ## 1. Kiro (AWS IDE)
 
+โฟลเดอร์ `.kiro/` อยู่บนเครื่องผู้พัฒนาเท่านั้น (อยู่ใน `.gitignore` ของรีโป)  
+สกิลชุดเดียวกันที่ขึ้น Git อยู่ที่ `skills/Draft-TORs-Skills/` และ `skills/check-TORs-Skills/` — ดู [SKILLS.md](../../SKILLS.md)
+
 ### การตั้งค่า
 ```
 โปรเจกต์นี้ → เปิดด้วย Kiro → สกิลจะเปิดเองจาก .kiro/skills/

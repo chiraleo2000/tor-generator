@@ -13,7 +13,7 @@
 | `terraform/` | รอบ 1: VPC/ECR/S3/IAM — รอบ 2–3: RDS/Redis/ECS เมื่อเปิดแฟล็กใน tfvars |
 | `scripts/pull-kb-from-s3.sh` | ดึงคลังจาก S3 แล้ว seed (`KB_SOURCES_ROOT`) |
 | `ci/github-ecs-deploy.yml.example` | แบบ push-to-main (เปิดเมื่อ OIDC พร้อม) |
-| `.github/workflows/ecs-deploy.yml` | skeleton `workflow_dispatch` (ต้องพิมพ์ `deploy`) |
+| `app/infra/aws/ci/ecs-deploy.yml` | skeleton `workflow_dispatch` (ก๊อปไป `.github/workflows/` บนเครื่อง — `.github/` ไม่ขึ้น Git) |
 | `ecs/*.yml` + `config/cloud-app.yaml` | ค่า service/task/แอปแบบ YAML |
 | `config/services.yaml` | แคตตาล็อกบริการ AWS ↔ ไฟล์โครง (skeleton / gated / TBD) |
 | `compose/docker-compose.cloud.yml` | ทดลองป้าย env คลาวด์บนเครื่อง |
