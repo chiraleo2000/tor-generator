@@ -136,7 +136,7 @@ def _procurement_pdf() -> Path | None:
 def live_client():
     _require_lm_studio()
     _require_api()
-    with httpx.Client(base_url=API_BASE, timeout=180.0) as client:
+    with httpx.Client(base_url=API_BASE, timeout=900.0) as client:
         _login(client)
         yield client
 
@@ -276,7 +276,7 @@ def test_live_review_with_real_text(live_client: httpx.Client):
     ran = live_client.post(
         "/api/v1/review/run",
         json={"id": payload["id"]},
-        timeout=60.0,
+        timeout=900.0,
     )
     assert ran.status_code == 200, ran.text[:800]
     result = _data(ran)

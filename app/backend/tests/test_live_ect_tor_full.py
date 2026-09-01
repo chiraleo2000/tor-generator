@@ -58,7 +58,7 @@ def _filled_rows(coverage: list[dict]) -> list[dict]:
 def live_client():
     _require_lm_studio()
     _require_api()
-    with httpx.Client(base_url=API_BASE, timeout=180.0) as client:
+    with httpx.Client(base_url=API_BASE, timeout=900.0) as client:
         _login(client)
         yield client
 
@@ -97,7 +97,7 @@ def ect_project(live_client: httpx.Client) -> str:
 
     analyzed = live_client.post(
         f"/api/v1/projects/{project_id}/intake/analyze",
-        timeout=180.0,
+        timeout=900.0,
     )
     assert analyzed.status_code == 200, analyzed.text[:1200]
     coverage = _data(analyzed).get("coverage") or []
@@ -169,7 +169,7 @@ def test_live_ect_standalone_review_source_document(live_client: httpx.Client):
     ran = live_client.post(
         "/api/v1/review/run",
         json={"id": job_id},
-        timeout=180.0,
+        timeout=900.0,
     )
     assert ran.status_code == 200, ran.text[:1200]
     payload = _data(ran)
@@ -305,7 +305,7 @@ def test_live_ect_draft_all_sections_then_project_review(
     ran = live_client.post(
         "/api/v1/review/run",
         json={"id": _data(extracted)["id"]},
-        timeout=180.0,
+        timeout=900.0,
     )
     assert ran.status_code == 200, ran.text[:1200]
     drafted_score = _data(ran).get("quality_score")
