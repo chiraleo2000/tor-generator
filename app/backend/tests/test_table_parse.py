@@ -103,3 +103,6 @@ def test_merge_scope_and_sub_prompt_are_thai():
     assert "พ.ร.บ." in prompt
     assert "6144" in prompt
     assert "กระชับ" not in prompt
+    current = scope_sub_prompt("s4.2", {}, "")
+    assert "ระบบงานปัจจุบัน" in current
+    assert "As-Is System" not in current

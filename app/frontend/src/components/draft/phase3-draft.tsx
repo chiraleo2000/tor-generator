@@ -12,6 +12,7 @@ import {
   isSectionFilled,
   parseSectionDraft,
   previewSectionDraft,
+  scopeSubsectionTitle,
   serializeSectionDraft,
   type SectionField,
 } from "@/lib/tor-sections";
@@ -82,7 +83,9 @@ export function Phase3Draft({
   return (
     <div className="space-y-4" data-testid="phase3-draft">
       <div className="gov-card">
-        <h3 className="mb-1 text-navy">ขั้นที่ ๓: ร่างเนื้อหา — คุยแล้วให้ระบบร่าง</h3>
+        <h3 className="mb-1 text-navy" data-testid="phase3-heading">
+          ขั้นที่ ๓: ร่างเนื้อหา — คุยแล้วให้ระบบร่าง
+        </h3>
         <p className="mb-4 text-xs text-muted-foreground">
           ระบบร่างทั้ง ๑๓ หมวดเป็นภาษาไทยจากเอกสารขั้นที่ ๐ ของโครงการนี้และกฎหมายกลาง
           แล้วใส่ลงหัวข้อย่อยของแต่ละหมวดโดยตรง (หมวด ๔ ใช้ช่อง ๔.๑–๔.๑๔)
@@ -328,7 +331,7 @@ function ScopeSubsectionEditor({
             )}
             onClick={() => onOpenSub(openSub === sub.key ? "" : sub.key)}
           >
-            {sub.key.replace("s4.", "4.")} {sub.title}
+            {sub.key.replace("s4.", "4.")} {scopeSubsectionTitle(sub.key, sub.title)}
           </button>
         ))}
       </div>
@@ -344,7 +347,7 @@ function ScopeSubsectionEditor({
               data-testid={`scope-sub-${sub.key}`}
             >
               <Label>
-                {sub.key.replace("s4.", "4.")} {sub.title}
+                {sub.key.replace("s4.", "4.")} {scopeSubsectionTitle(sub.key, sub.title)}
               </Label>
               {sub.content ? (
                 <div className="mt-1 mb-2 rounded border bg-white p-2">

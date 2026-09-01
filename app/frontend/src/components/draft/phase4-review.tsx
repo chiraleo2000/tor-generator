@@ -10,7 +10,12 @@ import { findingCheckTone, type ReviewFinding } from "@/lib/review-findings";
 import type { ReviewSuggestion, SectionPayload } from "@/components/draft/draft-types";
 import { ReviewChat } from "@/components/draft/review-chat";
 import { RichDraftText } from "@/components/draft/rich-draft-text";
-import { TOR_SECTION_LABELS, labeledSectionBlocks, type TorSectionKey } from "@/lib/tor-sections";
+import {
+  TOR_SECTION_LABELS,
+  labeledSectionBlocks,
+  scopeSubsectionTitle,
+  type TorSectionKey,
+} from "@/lib/tor-sections";
 
 export function Phase4Review({
   projectId,
@@ -169,7 +174,7 @@ function MergedTorPreview({ sections }: Readonly<{ sections: SectionPayload[] }>
                 {subs.map((sub) => (
                   <div key={sub.key}>
                     <p className="text-xs font-semibold text-foreground">
-                      {sub.key.replace("s4.", "4.")} {sub.title}
+                      {sub.key.replace("s4.", "4.")} {scopeSubsectionTitle(sub.key, sub.title)}
                     </p>
                     <RichDraftText text={sub.content || ""} className="text-muted-foreground" />
                   </div>

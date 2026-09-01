@@ -237,10 +237,18 @@ const SAMPLE_SCOPE_TABLE = [
 ].join("\n");
 
 async function assertPhase3SubsectionsThaiAndTable(page: Page) {
-  await expect(page.getByTestId("phase3-draft")).toContainText("ขั้นที่ ๓");
-  await expect(page.getByTestId("phase3-draft")).toContainText("๔.๑–๔.๑๔");
-  await expect(page.getByText("Phase 3")).toHaveCount(0);
-  await expect(page.getByText("As-Is")).toHaveCount(0);
+  const phase3 = page.getByTestId("phase3-draft");
+  await expect(phase3).toContainText("ขั้นที่ ๓");
+  await expect(phase3).toContainText("๔.๑–๔.๑๔");
+  await expect(page.getByTestId("phase3-heading")).toBeVisible();
+  await expect(page.getByTestId("phase3-heading")).toHaveText(/ขั้นที่ ๓/);
+  await expect(page.getByTestId("phase3-heading")).not.toContainText("Phase 3");
+  await expect(page.getByTestId("phase3-heading")).not.toContainText("As-Is");
+  await expect(phase3.locator("h3", { hasText: "As-Is" })).toHaveCount(0);
+  await expect(phase3.locator("label", { hasText: "As-Is" })).toHaveCount(0);
+  await expect(
+    page.getByTestId("scope-subsection-editor").getByRole("button", { name: /As-Is/ })
+  ).toHaveCount(0);
   await expect(page.getByText("เนื้อหาร่าง (จากเอกสารหรือระบบ)")).toHaveCount(0);
   await expect(page.getByText("เนื้อหาร่าง (จากเอกสาร/AI)")).toHaveCount(0);
   const s1Header = page.getByRole("button", { name: /หมวด 1:/ });
@@ -284,6 +292,11 @@ async function assertPhase4Assemble(page: Page) {
 
 /** From a completed Phase 3 (13/13): HITL-free confirm, Rule Engine, export, submit. */
 export async function finishLivePhase3ToSubmit(page: Page) {
+  const draftUrl = page.url();
+  await page.goto("/projects");
+  await expect(page.getByTestId("projects-page")).toBeVisible();
+  await page.goto(draftUrl);
+  await expect(page.getByTestId("phase3-draft")).toBeVisible({ timeout: 30_000 });
   await assertPhase3SubsectionsThaiAndTable(page);
   await saveEvidence(page, "08-phase-2-ai-draft");
   await saveEvidence(page, "e2e-phase-3-draft");

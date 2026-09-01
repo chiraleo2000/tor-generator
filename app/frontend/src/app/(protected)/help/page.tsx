@@ -34,7 +34,7 @@ export default function HelpPage() {
       <div className="mb-2">
         <h1 className="text-2xl font-extrabold text-navy">คู่มือการใช้งาน</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          คำอธิบายและภาพประกอบแต่ละส่วนของระบบ — สรุปจาก discussions/13–30 (v0.2.8)
+          คำอธิบายและภาพประกอบแต่ละส่วนของระบบ — สรุปจาก discussions/13–30 (v0.2.9)
         </p>
       </div>
       <div className="mb-5 flex flex-wrap gap-1.5 border-b-2 pb-0">
@@ -324,7 +324,7 @@ function DashboardTab() {
 
 function DraftTab() {
   return (
-    <GuideBlock title="กระบวนการร่างห้าขั้น">
+    <GuideBlock title="กระบวนการร่างห้าขั้น" headingTestId="help-draft-heading">
       <Flow
         steps={[
           "ขั้นที่ ๐ อัปโหลด",
@@ -750,12 +750,18 @@ function Figure({
 interface GuideBlockProps {
   title: string;
   children: React.ReactNode;
+  headingTestId?: string;
 }
 
-function GuideBlock({ title, children }: Readonly<GuideBlockProps>) {
+function GuideBlock({ title, children, headingTestId }: Readonly<GuideBlockProps>) {
   return (
     <div className="guide-content space-y-3">
-      <h2 className="text-[19px] font-bold text-navy">{title}</h2>
+      <h2
+        className="scroll-mt-4 text-[22px] font-extrabold text-navy"
+        data-testid={headingTestId}
+      >
+        {title}
+      </h2>
       <div className="space-y-3 text-[13.8px] leading-relaxed text-gray-700 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[12px] [&_h3]:mt-3 [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-navy [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_table]:w-full [&_table]:text-left [&_td]:border-t [&_td]:py-1.5 [&_td]:pr-3 [&_th]:py-1.5 [&_th]:pr-3 [&_th]:text-navy">
         {children}
       </div>

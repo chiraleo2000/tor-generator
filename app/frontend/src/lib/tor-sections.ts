@@ -51,6 +51,12 @@ export const SCOPE_SUBSECTIONS: { key: string; title: string }[] = [
   { key: "s4.14", title: "ข้อกำหนดด้านความมั่นคงปลอดภัย" },
 ];
 
+/** Always show the Thai chip/label, even if an older API payload still says As-Is. */
+export function scopeSubsectionTitle(key: string, fallback = ""): string {
+  const found = SCOPE_SUBSECTIONS.find((item) => item.key === key);
+  return found?.title || fallback || key;
+}
+
 export const STEP_SECTION_MAP: Record<number, string[]> = {
   1: ["s5", "s7"],
   2: ["s1"],

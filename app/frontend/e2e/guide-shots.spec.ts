@@ -31,7 +31,10 @@ test.describe("Guide screenshots", () => {
     await page.getByTestId("help-tab-dashboard").click();
     await saveEvidence(page, "10b-help-dashboard");
     await page.getByTestId("help-tab-draft").click();
-    await expect(page.getByRole("heading", { name: "กระบวนการร่าง 5 Phase" })).toBeVisible();
+    const draftHeading = page.getByTestId("help-draft-heading");
+    await draftHeading.scrollIntoViewIfNeeded();
+    await expect(draftHeading).toBeVisible();
+    await expect(page.getByRole("heading", { name: "กระบวนการร่างห้าขั้น" })).toBeVisible();
     await saveEvidence(page, "10c-help-draft");
     await page.getByTestId("help-tab-chat").click();
     await saveEvidence(page, "10f-help-chat");

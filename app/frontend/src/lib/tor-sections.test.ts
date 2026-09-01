@@ -7,6 +7,7 @@ import {
   TOR_SECTION_LABELS,
   TOR_SECTION_ORDER,
   parseSectionDraft,
+  scopeSubsectionTitle,
   serializeSectionDraft,
 } from "./tor-sections";
 
@@ -15,6 +16,7 @@ describe("canonical TOR sections", () => {
     expect(TOR_SECTION_ORDER).toHaveLength(13);
     expect(Object.keys(TOR_SECTION_LABELS)).toHaveLength(13);
     expect(SCOPE_SUBSECTIONS).toHaveLength(14);
+    expect(SCOPE_SUBSECTIONS.find((item) => item.key === "s4.2")?.title).toBe("ระบบงานปัจจุบัน");
     expect(HITL_SECTIONS).toEqual(["s3", "s6", "s8", "s10", "s13"]);
     expect(DOC_CLASSES.filter((item) => item.required).map((item) => item.id)).toEqual(
       ["announced_price", "budget_approval"]
@@ -54,5 +56,10 @@ describe("canonical TOR sections", () => {
       history: "ระบบเดิม",
       problems: "ซ่อมบ่อย",
     });
+  });
+
+  it("ignores stale As-Is titles from older payloads", () => {
+    expect(scopeSubsectionTitle("s4.2", "ระบบงานปัจจุบัน (As-Is)")).toBe("ระบบงานปัจจุบัน");
+    expect(scopeSubsectionTitle("s4.2")).not.toMatch(/As-Is/);
   });
 });

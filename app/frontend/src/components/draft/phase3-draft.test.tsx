@@ -283,4 +283,39 @@ describe("Phase3Draft", () => {
     expect(screen.queryByText("As-Is")).not.toBeInTheDocument();
     expect(screen.getByTestId("scope-sub-s4.1")).toBeInTheDocument();
   });
+
+  it("keeps Thai chip labels when the API still sends As-Is titles", () => {
+    render(
+      <Phase3Draft
+        sections={[
+          {
+            ...s4,
+            subs: [
+              {
+                key: "s4.2",
+                title: "ระบบงานปัจจุบัน (As-Is)",
+                content: "ระบบงานเดิมใช้เอกสารกระดาษทั้งสายงาน",
+                filled: true,
+              },
+            ],
+          },
+        ]}
+        expanded="s4"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByTestId("phase3-heading")).toHaveTextContent("ขั้นที่ ๓");
+    expect(screen.getByTestId("scope-sub-s4.2")).toHaveTextContent("ระบบงานปัจจุบัน");
+    expect(screen.getByTestId("phase3-draft").textContent).not.toContain("As-Is");
+  });
 });
