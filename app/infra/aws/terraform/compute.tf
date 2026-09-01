@@ -86,6 +86,22 @@ resource "aws_lb_target_group" "backend" {
   }
 }
 
+resource "aws_lb_listener" "http_redirect" {
+  count             = var.enable_ecs ? 1 : 0
+  load_balancer_arn = aws_lb.tor[0].arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
 resource "aws_lb_listener" "https" {
   count             = var.enable_ecs ? 1 : 0
   load_balancer_arn = aws_lb.tor[0].arn
@@ -146,6 +162,8 @@ resource "aws_ecs_task_definition" "backend" {
         { name = "MINIO_USE_IAM", value = "true" },
         { name = "REDIS_TLS", value = "true" },
         { name = "COOKIE_SECURE", value = "true" },
+        { name = "MCP_RAG_ENABLED", value = "false" },
+        { name = "CUSTOM_RAG_ENABLED", value = "false" },
         { name = "CORS_ORIGINS", value = "https://${var.app_domain}" },
         { name = "POSTGRES_PORT", value = "5432" },
         { name = "REDIS_PORT", value = "6379" },

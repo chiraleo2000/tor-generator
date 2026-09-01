@@ -1,6 +1,6 @@
 [project]
 name = "tor-drafting-app"
-version = "0.2.6"
+version = "0.2.7"
 description = "TOR Drafting and Review Application - Backend API"
 requires-python = ">=3.11"
 license = {text = "MIT"}

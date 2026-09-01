@@ -1,8 +1,8 @@
-# 30 — มอบหมายทีม DEV: ต่อยอด MCP RAG + โครง deploy AWS (แอป v0.2.6)
+# 30 — มอบหมายทีม DEV: ต่อยอด MCP RAG + โครง deploy AWS (แอป v0.2.7)
 
 เอกสารนี้มอบงานให้ทีมพัฒนาต่อจากเกต Local LLM ([28](28-VERIFICATION-AND-MIGRATION.md)) นโยบาย Cloud ล้วน ([29](29-TBD-AWS-CLOUD-ONLY.md)) และชุด AWS ([24](24-AWS_CLOUD_OVERVIEW.md)–[27](27-AWS_CODE_AND_CUTOVER.md))
 
-**ขอบเขตรอบนี้ในรีโป (v0.2.6):** โครง (skeleton) พร้อมต่อยอด — **ยังไม่ provision บัญชี AWS จริง** และ **ยังไม่ชี้ MCP ภายนอกใน production**
+**ขอบเขตรอบนี้ในรีโป (v0.2.7):** โครง (skeleton) พร้อมต่อยอด — **ยังไม่ provision บัญชี AWS จริง** และ **ยังไม่ชี้ MCP ภายนอกใน production**
 
 ---
 
@@ -114,6 +114,7 @@ flowchart LR
 | [`app/infra/aws/ecs/task-backend.yml`](../app/infra/aws/ecs/task-backend.yml) | env คลาวด์ล้วน + MCP ปิด |
 | [`app/infra/aws/ecs/task-frontend.yml`](../app/infra/aws/ecs/task-frontend.yml) | Next.js |
 | [`app/infra/aws/config/cloud-app.yaml`](../app/infra/aws/config/cloud-app.yaml) | ค่าไม่ลับของแอป |
+| [`app/infra/aws/config/services.yaml`](../app/infra/aws/config/services.yaml) | แคตตาล็อกบริการ AWS ↔ ไฟล์โครง |
 | [`app/infra/aws/compose/docker-compose.cloud.yml`](../app/infra/aws/compose/docker-compose.cloud.yml) | ทดลอง env คลาวด์บนเครื่อง **ไม่** ผูก LM Studio |
 | [`app/infra/mcp/servers.example.json`](../app/infra/mcp/servers.example.json) | วางใน Secrets เป็น `MCP_RAG_SERVERS_JSON` | อิมเมจ backend ไม่มี YAML MCP |
 | [`app/infra/aws/env.cloud.example`](../app/infra/aws/env.cloud.example) | ต้นทาง Secrets / task |
@@ -139,7 +140,7 @@ flowchart LR
 
 ---
 
-## 8. รีวิวความพร้อมของโครง (v0.2.6) — สำหรับทีม DEV
+## 8. รีวิวความพร้อมของโครง (v0.2.7) — สำหรับทีม DEV
 
 ตารางเต็มอยู่ที่ [29 §7](29-TBD-AWS-CLOUD-ONLY.md) สรุปสั้น:
 

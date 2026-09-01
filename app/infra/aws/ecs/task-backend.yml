@@ -30,6 +30,8 @@ containerDefinitions:
         value: s3.ap-southeast-1.amazonaws.com
       - name: MINIO_SECURE
         value: "true"
+      - name: MINIO_REGION
+        value: ap-southeast-1
       - name: MINIO_USE_IAM
         value: "true"
       - name: REDIS_TLS
@@ -47,6 +49,14 @@ containerDefinitions:
         valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/rds:host::"
       - name: POSTGRES_PASSWORD
         valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/rds:password::"
+      - name: POSTGRES_USER
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/rds:username::"
+      - name: POSTGRES_DB
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/rds:dbname::"
+      - name: REDIS_HOST
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/redis:host::"
+      - name: REDIS_PASSWORD
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/redis:auth_token::"
       - name: JWT_SECRET
         valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/jwt:jwt_secret::"
     logConfiguration:

@@ -1,7 +1,15 @@
 resource "aws_security_group" "alb" {
   name        = "${local.name}-alb"
-  description = "ALB HTTPS in; forward to ECS"
+  description = "ALB HTTP redirect and HTTPS in; forward to ECS"
   vpc_id      = aws_vpc.tor.id
+
+  ingress {
+    description = "HTTP redirect to HTTPS"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   ingress {
     description = "HTTPS from internet or CloudFront"

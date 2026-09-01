@@ -154,7 +154,7 @@ Production ของระบบนี้บนหน่วยงานให้
 
 ---
 
-## 7. รีวิวความพร้อมของโครงในรีโป (v0.2.6)
+## 7. รีวิวความพร้อมของโครงในรีโป (v0.2.7)
 
 รีวิวไฟล์จริงใน `app/infra/` และ `.github/workflows/` สำหรับทีม DEV — **พร้อมต่อยอด** ไม่ใช่พร้อม `terraform apply` ในบัญชีหน่วยงาน
 
@@ -165,6 +165,7 @@ Production ของระบบนี้บนหน่วยงานให้
 | Env / Secrets | `env.cloud.example` | พร้อมคัดลอก | ห้าม commit รหัส; คีย์ยาวเว้นว่าง ใช้ IAM |
 | ECS YAML | `ecs/services.yml`, `task-backend.yml`, `task-frontend.yml` | พร้อมโครง | แทน `ACCOUNT_ID`; backend `desiredCount=1` จนกว่า Redis job store อยู่ในอิมเมจที่ deploy |
 | App config | `config/cloud-app.yaml` | พร้อม | ไม่มีความลับ; `mcp_rag_enabled: false` |
+| แคตตาล็อกบริการ | `config/services.yaml` | พร้อมอ่าน | จับคู่ VPC/RDS/ECS/S3/IAM กับไฟล์ในรีโป; รายการ TBD ที่ยังไม่มีไฟล์ |
 | CI | `.github/workflows/ecs-deploy.yml` | พร้อมมือ | `workflow_dispatch` + พิมพ์ `deploy`; ต้องมี OIDC secret |
 | Compose ป้ายคลาวด์ | `compose/docker-compose.cloud.yml` | พร้อมทดลองบนเครื่อง | ไม่ผูก LM Studio; ไม่แทน ECS |
 | MCP รายการ | `app/infra/mcp/rag-sources.yaml` | พร้อมปิดทุกตัว | YAML สำหรับ dev/bind-mount |

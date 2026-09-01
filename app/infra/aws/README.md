@@ -15,6 +15,7 @@
 | `ci/github-ecs-deploy.yml.example` | แบบ push-to-main (เปิดเมื่อ OIDC พร้อม) |
 | `.github/workflows/ecs-deploy.yml` | skeleton `workflow_dispatch` (ต้องพิมพ์ `deploy`) |
 | `ecs/*.yml` + `config/cloud-app.yaml` | ค่า service/task/แอปแบบ YAML |
+| `config/services.yaml` | แคตตาล็อกบริการ AWS ↔ ไฟล์โครง (skeleton / gated / TBD) |
 | `compose/docker-compose.cloud.yml` | ทดลองป้าย env คลาวด์บนเครื่อง |
 | `../mcp/` | โครง MCP RAG (`rag-sources.yaml` สำหรับ bind-mount, `servers.example.json` สำหรับ ECS JSON) |
 
