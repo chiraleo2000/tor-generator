@@ -203,19 +203,9 @@ async def validate_draft_node(state: AgentWorkflowState) -> dict[str, Any]:
     drafts = dict(state.get("section_drafts") or {})
     attempts = dict(state.get("correction_attempts") or {})
     validation = generator.validate_document(drafts, state.get("project_metadata"))
-    findings = []
-    for finding in validation.findings:
-        severity = finding.severity
-        severity_value = severity.value if hasattr(severity, "value") else str(severity)
-        findings.append(
-            {
-                "severity": severity_value,
-                "rule_violated": finding.rule_violated,
-                "affected_section": finding.affected_section,
-                "message": finding.message,
-                "recommended_correction": finding.recommended_correction,
-            }
-        )
+    from app.rule_engine.engine import finding_as_dict
+
+    findings = [finding_as_dict(finding) for finding in validation.findings]
     errors = [item for item in findings if item["severity"] == "error"]
     need_retry = False
     for item in errors:

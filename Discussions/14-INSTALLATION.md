@@ -149,12 +149,16 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 บัญชีทดลอง: `officer@example.go.th` / `admin@example.go.th` / `reviewer@example.go.th` รหัส `Passw0rd!`
 
-คลังกฎหมายใช้งานรอบนี้มาจาก PDF สองกลุ่มผ่าน `seed_raw_docs`:
+คลังกฎหมายใช้งานรอบนี้มาจาก PDF สองกลุ่มผ่าน `seed_raw_docs` (ค่าเริ่ม **incremental** — ingest ไฟล์ใหม่เทียบชื่อ+SHA-256 ไม่ลบเอกสารที่ผู้ใช้อัปโหลด; `--wipe-baseline` ล้างเฉพาะคลังกลาง):
 
 - `documents/sources/คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf`
-- ไฟล์ใน `documents/sources/การจัดซื้อจัดจ้าง/ข้อมูลดิบ`
+- ไฟล์ใน `documents/sources/การจัดซื้อจัดจ้าง/ข้อมูลดิบ` (ค้นแบบ `rglob` รวมโฟลเดอร์ย่อย)
 
-ไม่ ingest JSON extracts ใน `documents/knowledge-base` เป็นคลังหลัก เจ้าหน้าที่อัปโหลดไฟล์ส่วนตัวที่หน้าฐานความรู้ (`POST /knowledge-base/mine`) — ระบบ chunk/embed ให้เฉพาะบัญชีนั้น
+Docker Compose เมานต์ `./documents/sources:/documents/sources:ro` และตั้ง `KB_SOURCES_ROOT=/documents/sources` เพื่อให้ปุ่มซิงก์ในแอปเห็นโฟลเดอร์เดียวกัน — บน Windows ถ้า bind-mount ชื่อไทยล้ม (Errno 5) ให้รัน CLI บนโฮสต์
+
+ไม่ ingest PDF ใน `documents/sources/ตัวอย่าง/` เข้าคลังถาม-ตอบกฎหมาย และไม่ ingest JSON extracts ใน `documents/knowledge-base` เป็นคลังหลัก เจ้าหน้าที่อัปโหลดไฟล์ส่วนตัวที่หน้าฐานความรู้ (`POST /knowledge-base/mine`) — ระบบ chunk/embed ให้เฉพาะบัญชีนั้น
+
+ผู้ดูแลกด **ซิงก์จากโฟลเดอร์ข้อมูลดิบ** ที่ `/admin/knowledge-base` (`POST /knowledge-base/sync-mandatory`)
 
 `python -m app.seed_kb` ยังมีถ้าต้องการชุด extracts เก่าสำหรับงานวิจัย — บน Windows ชื่อโฟลเดอร์ไทยอาจทำให้ bind-mount ล้ม (Errno 5)
 

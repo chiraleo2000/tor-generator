@@ -8,7 +8,7 @@ import { CheckItem } from "@/components/brand/check-item";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
-import { findingCheckTone } from "@/lib/review-findings";
+import { toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
 import {
   persistReviewJobId,
   readReviewJobId,
@@ -22,19 +22,13 @@ import {
   type JaccardComparison,
   type ReviewExtractJob,
 } from "@/lib/review-compare";
+import { ReviewFindingBuckets } from "@/components/review/finding-buckets";
 import { cn } from "@/lib/utils";
-
-interface Finding {
-  severity: string;
-  rule: string;
-  section: string;
-  message: string;
-  recommendation?: string | null;
-}
 
 interface ReviewResult {
   quality_score?: number;
-  findings?: Finding[];
+  findings?: ReviewFinding[];
+  overall_assessment?: string;
 }
 
 interface CompareRow {
@@ -131,7 +125,7 @@ function ReviewResults({
   comparisons,
 }: Readonly<{
   result: ReviewResult | null;
-  findings: Finding[];
+  findings: ReviewFinding[];
   comparisons: JaccardComparison[];
 }>) {
   if (!result) {
@@ -154,14 +148,12 @@ function ReviewResults({
           }
         />
       </div>
-      {findings.map((finding, index) => (
-        <CheckItem
-          key={`${finding.rule}-${index}`}
-          tone={findingCheckTone(finding.severity)}
-          title={finding.message}
-          detail={finding.recommendation || finding.section}
-        />
-      ))}
+      {result.overall_assessment ? (
+        <p className="mb-3 text-sm text-navy" data-testid="review-assessment">
+          {result.overall_assessment}
+        </p>
+      ) : null}
+      <ReviewFindingBuckets findings={findings} />
       {comparisons.map((row) => (
         <CheckItem
           key={`${row.left}-${row.right}`}
@@ -199,7 +191,9 @@ export default function StandaloneReviewPage() {
     if (restored.step === 3 && typeof restored.qualityScore === "number") {
       setResult({
         quality_score: restored.qualityScore,
-        findings: restored.findings as Finding[],
+        findings: restored.findings
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+          .map((item) => toReviewFinding(item)),
       });
       setStep(3);
       setStatus(reviewRestoreStatus(restored.qualityScore));
@@ -274,7 +268,13 @@ export default function StandaloneReviewPage() {
         await apiClient.post("/review/run", { id: extracted.id })
       );
       persistReviewJobId(extracted.id);
-      setResult(ran);
+      const normalized: ReviewResult = {
+        ...ran,
+        findings: (ran.findings || []).map((item) =>
+          toReviewFinding(item as unknown as Record<string, unknown>)
+        ),
+      };
+      setResult(normalized);
       setComparisons(compared.comparisons);
       setStep(3);
       const score = ran.quality_score ?? 0;

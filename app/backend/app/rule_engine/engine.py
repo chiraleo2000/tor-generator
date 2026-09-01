@@ -36,6 +36,10 @@ class Finding:
         affected_section: The TOR section key where the issue was found.
         message: Human-readable description of the issue (Thai).
         recommended_correction: Optional suggestion for how to fix the issue.
+        finding_kind: legal_violation or risk_abnormality.
+        legal_basis: Statute/regulation citation from RAG when available.
+        excerpt: TOR excerpt that triggered the finding.
+        risk_type: vague | price | cost | content when finding_kind is risk.
     """
 
     severity: Severity
@@ -43,6 +47,10 @@ class Finding:
     affected_section: str
     message: str
     recommended_correction: str | None = None
+    finding_kind: str = ""
+    legal_basis: str | None = None
+    excerpt: str | None = None
+    risk_type: str | None = None
 
 
 @dataclass
@@ -247,3 +255,68 @@ class RuleEngine:
             total += cs.score * cs.weight
         # Round and clamp to [0, 100]
         return max(0, min(100, round(total)))
+
+
+KIND_LEGAL = "legal_violation"
+KIND_RISK = "risk_abnormality"
+
+_RISK_RULE_MARKERS = (
+    "CONSISTENCY_",
+    "FORMAT_INFORMAL",
+    "RISK_",
+)
+
+
+def resolve_finding_kind(finding: Finding) -> str:
+    if finding.finding_kind in {KIND_LEGAL, KIND_RISK}:
+        return finding.finding_kind
+    rule = finding.rule_violated or ""
+    if any(marker in rule for marker in _RISK_RULE_MARKERS):
+        return KIND_RISK
+    return KIND_LEGAL
+
+
+def finding_as_dict(finding: Finding, *, aliases: bool = False) -> dict:
+    kind = resolve_finding_kind(finding)
+    data = {
+        "severity": finding.severity.value
+        if hasattr(finding.severity, "value")
+        else str(finding.severity),
+        "rule_violated": finding.rule_violated,
+        "affected_section": finding.affected_section,
+        "message": finding.message,
+        "recommended_correction": finding.recommended_correction,
+        "finding_kind": kind,
+        "legal_basis": finding.legal_basis or None,
+        "excerpt": finding.excerpt or None,
+        "risk_type": finding.risk_type or None,
+    }
+    if aliases:
+        data["rule"] = finding.rule_violated
+        data["section"] = finding.affected_section
+        data["recommendation"] = finding.recommended_correction
+    return data
+
+
+def attach_legal_basis(findings: list[Finding], rag_text: str) -> None:
+    """Fill legal_basis on legal findings from RAG excerpts when missing."""
+    citation = first_law_citation(rag_text)
+    if not citation:
+        return
+    for finding in findings:
+        if resolve_finding_kind(finding) != KIND_LEGAL:
+            continue
+        if finding.legal_basis:
+            continue
+        finding.legal_basis = citation
+
+
+def first_law_citation(rag_text: str) -> str:
+    text = (rag_text or "").strip()
+    if not text:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if "มาตรา" in stripped or stripped.startswith("ข้อ") or "พ.ร.บ." in stripped:
+            return stripped[:280]
+    return text[:280]

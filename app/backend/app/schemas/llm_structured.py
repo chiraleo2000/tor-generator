@@ -38,6 +38,9 @@ class ReviewSuggestionItem(BaseModel):
     current_text: str = ""
     suggested_text: str = ""
     predicted_score_improvement: float = 1.0
+    finding_kind: Literal["legal_violation", "risk_abnormality"] = "risk_abnormality"
+    legal_basis: str = ""
+    risk_type: str = ""
 
 
 class ReviewSuggestionsResult(BaseModel):

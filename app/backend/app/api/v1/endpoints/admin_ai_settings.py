@@ -160,6 +160,9 @@ class AiSettingsUpdate(BaseModel):
     custom_rag_api_key: str | None = None
     custom_rag_top_k: int | None = None
     custom_rag_timeout_seconds: float | None = None
+    chat_rag_top_k: int | None = None
+    chat_max_context_chunks: int | None = None
+    draft_rag_top_k: int | None = None
     rag_sources: str | None = None
 
 
@@ -251,124 +254,159 @@ def _resolved_embed_model(body: AiSettingsUpdate, existing: dict[str, Any]) -> s
     )
 
 
-def _validate_local_fields(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
-    chat_is_local = body.llm_provider in LOCAL_LLM_PROVIDERS
-    embed_is_local = body.embedding_provider in LOCAL_EMBEDDING_PROVIDERS
-    if chat_is_local and not _resolved_local_url(body, existing):
+def _require_local_chat(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
+    if body.llm_provider not in LOCAL_LLM_PROVIDERS:
+        return
+    if not _resolved_local_url(body, existing):
         raise ValidationError(
             message="ต้องระบุ URL ของเซิร์ฟเวอร์แชทในเครื่อง",
             field="lm_studio_base_url",
         )
-    if chat_is_local and not _resolved_chat_model(body, existing):
+    if not _resolved_chat_model(body, existing):
         raise ValidationError(message="ต้องระบุชื่อโมเดลแชท", field="lm_studio_model")
-    if embed_is_local and not _resolved_embed_url(body, existing):
+
+
+def _require_local_embed(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
+    if body.embedding_provider not in LOCAL_EMBEDDING_PROVIDERS:
+        return
+    if not _resolved_embed_url(body, existing):
         raise ValidationError(
             message="ต้องระบุ URL ของเซิร์ฟเวอร์ embeddings ในเครื่อง",
             field="local_embedding_base_url",
         )
-    if embed_is_local and not _resolved_embed_model(body, existing):
+    if not _resolved_embed_model(body, existing):
         raise ValidationError(
             message="ต้องระบุชื่อโมเดล embeddings", field="lm_studio_embedding_model"
         )
-    if body.custom_rag_enabled or existing.get("custom_rag_enabled"):
-        enabled = (
-            body.custom_rag_enabled
-            if body.custom_rag_enabled is not None
-            else bool(existing.get("custom_rag_enabled"))
+
+
+def _validate_custom_rag(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
+    if not (body.custom_rag_enabled or existing.get("custom_rag_enabled")):
+        return
+    enabled = (
+        body.custom_rag_enabled
+        if body.custom_rag_enabled is not None
+        else bool(existing.get("custom_rag_enabled"))
+    )
+    if not enabled:
+        return
+    base = str(body.custom_rag_base_url or existing.get("custom_rag_base_url") or "").strip()
+    if not base:
+        raise ValidationError(
+            message="ต้องระบุ Custom RAG base URL",
+            field="custom_rag_base_url",
         )
-        if enabled:
-            base = str(
-                body.custom_rag_base_url or existing.get("custom_rag_base_url") or ""
-            ).strip()
-            if not base:
-                raise ValidationError(
-                    message="ต้องระบุ Custom RAG base URL",
-                    field="custom_rag_base_url",
-                )
-            sources = str(body.rag_sources or existing.get("rag_sources") or "both")
-            if sources not in ("local", "custom", "both"):
-                raise ValidationError(
-                    message="rag_sources ต้องเป็น local, custom หรือ both",
-                    field="rag_sources",
-                )
+    sources = str(body.rag_sources or existing.get("rag_sources") or "both")
+    if sources not in ("local", "custom", "both"):
+        raise ValidationError(
+            message="rag_sources ต้องเป็น local, custom หรือ both",
+            field="rag_sources",
+        )
+
+
+def _validate_local_fields(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
+    _require_local_chat(body, existing)
+    _require_local_embed(body, existing)
+    _validate_custom_rag(body, existing)
+
+
+def _resolved_secret(body: AiSettingsUpdate, existing: dict[str, Any], name: str) -> str:
+    incoming = getattr(body, name)
+    if incoming and not _is_masked_secret(incoming):
+        return incoming
+    return str(existing.get(name) or "")
+
+
+def _require_provider_url(
+    selected: str, expected: str, resolved: str, message: str, field: str
+) -> None:
+    if selected != expected or resolved:
+        return
+    raise ValidationError(message=message, field=field)
 
 
 def _validate_selected_cloud_keys(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
-    def resolved_key(name: str) -> str:
-        incoming = getattr(body, name)
-        if incoming and not _is_masked_secret(incoming):
-            return incoming
-        return str(existing.get(name) or "")
-
     _require_cloud_key(
         body.llm_provider,
         "claude",
-        resolved_key("anthropic_api_key"),
+        _resolved_secret(body, existing, "anthropic_api_key"),
         _MSG_ANTHROPIC_KEY,
         "anthropic_api_key",
     )
     _require_cloud_key(
         body.llm_provider,
         "openai",
-        resolved_key("openai_api_key"),
+        _resolved_secret(body, existing, "openai_api_key"),
         _MSG_OPENAI_KEY,
         "openai_api_key",
     )
     _require_cloud_key(
         body.llm_provider,
         "gemini",
-        resolved_key("gemini_api_key"),
+        _resolved_secret(body, existing, "gemini_api_key"),
         _MSG_GEMINI_KEY,
         "gemini_api_key",
     )
     _require_cloud_key(
         body.embedding_provider,
         "openai",
-        resolved_key("openai_api_key"),
+        _resolved_secret(body, existing, "openai_api_key"),
         _MSG_OPENAI_KEY,
         "openai_api_key",
     )
     _require_cloud_key(
         body.embedding_provider,
         "gemini",
-        resolved_key("gemini_api_key"),
+        _resolved_secret(body, existing, "gemini_api_key"),
         _MSG_GEMINI_KEY,
         "gemini_api_key",
     )
     _require_cloud_key(
         body.llm_provider,
         "azure_foundry",
-        resolved_key("azure_foundry_api_key"),
+        _resolved_secret(body, existing, "azure_foundry_api_key"),
         _MSG_AZURE_KEY,
         "azure_foundry_api_key",
     )
     _require_cloud_key(
         body.embedding_provider,
         "azure_foundry",
-        resolved_key("azure_foundry_api_key"),
+        _resolved_secret(body, existing, "azure_foundry_api_key"),
         _MSG_AZURE_KEY,
         "azure_foundry_api_key",
     )
-    if body.llm_provider == "openai_compatible" and not (
-        body.openai_compatible_base_url or existing.get("openai_compatible_base_url")
-    ):
-        raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
-    if body.embedding_provider == "openai_compatible" and not (
-        body.openai_compatible_base_url or existing.get("openai_compatible_base_url")
-    ):
-        raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
-    if body.llm_provider == "azure_foundry" and not (
-        body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
-    ):
-        raise ValidationError(
-            message="ต้องใส่ Azure Foundry endpoint", field="azure_foundry_endpoint"
-        )
-    if body.embedding_provider == "azure_foundry" and not (
-        body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
-    ):
-        raise ValidationError(
-            message="ต้องใส่ Azure Foundry endpoint", field="azure_foundry_endpoint"
-        )
+    compat = str(
+        body.openai_compatible_base_url or existing.get("openai_compatible_base_url") or ""
+    )
+    azure_ep = str(body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint") or "")
+    _require_provider_url(
+        body.llm_provider,
+        "openai_compatible",
+        compat,
+        _MSG_COMPAT_URL,
+        "openai_compatible_base_url",
+    )
+    _require_provider_url(
+        body.embedding_provider,
+        "openai_compatible",
+        compat,
+        _MSG_COMPAT_URL,
+        "openai_compatible_base_url",
+    )
+    _require_provider_url(
+        body.llm_provider,
+        "azure_foundry",
+        azure_ep,
+        "ต้องใส่ Azure Foundry endpoint",
+        "azure_foundry_endpoint",
+    )
+    _require_provider_url(
+        body.embedding_provider,
+        "azure_foundry",
+        azure_ep,
+        "ต้องใส่ Azure Foundry endpoint",
+        "azure_foundry_endpoint",
+    )
 
 
 def _validate_update(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
@@ -523,67 +561,79 @@ async def _probe_local_models(base_url: str) -> str:
     return url
 
 
+async def _probe_claude(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    key = _usable_secret(body.anthropic_api_key or existing.get("anthropic_api_key"))
+    if not key:
+        raise ValidationError(message=_MSG_ANTHROPIC_KEY, field="anthropic_api_key")
+    await _http_get_ok(
+        "https://api.anthropic.com/v1/models",
+        {"x-api-key": key, "anthropic-version": "2023-06-01"},
+    )
+
+
+async def _probe_openai(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    key = _usable_secret(body.openai_api_key or existing.get("openai_api_key"))
+    if not key:
+        raise ValidationError(message=_MSG_OPENAI_KEY, field="openai_api_key")
+    await _http_get_ok(
+        "https://api.openai.com/v1/models",
+        {"Authorization": f"Bearer {key}"},
+    )
+
+
+async def _probe_gemini(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    key = _usable_secret(body.gemini_api_key or existing.get("gemini_api_key"))
+    if not key:
+        raise ValidationError(message=_MSG_GEMINI_KEY, field="gemini_api_key")
+    await _http_get_ok(
+        f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
+    )
+
+
+async def _probe_openai_compatible(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    base = (
+        body.openai_compatible_base_url
+        or existing.get("openai_compatible_base_url")
+        or ""
+    ).rstrip("/")
+    if not base:
+        raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
+    key = _usable_secret(
+        body.openai_compatible_api_key or existing.get("openai_compatible_api_key")
+    )
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    await _http_get_ok(f"{base}/models", headers)
+
+
+async def _probe_azure_foundry(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    endpoint = body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
+    key = _usable_secret(
+        body.azure_foundry_api_key or existing.get("azure_foundry_api_key")
+    )
+    version = (
+        body.azure_foundry_api_version
+        or existing.get("azure_foundry_api_version")
+        or "2024-10-21"
+    )
+    if not endpoint or not key:
+        raise ValidationError(message=_MSG_AZURE_KEY, field="azure_foundry_api_key")
+    url = f"{str(endpoint).rstrip('/')}/openai/models?api-version={version}"
+    await _http_get_ok(url, {"api-key": key})
+
+
 async def _probe_cloud_chat(body: AiSettingsTest, existing: dict[str, Any]) -> None:
-    provider = body.llm_provider
-    if provider == "claude":
-        key = _usable_secret(body.anthropic_api_key or existing.get("anthropic_api_key"))
-        if not key:
-            raise ValidationError(message=_MSG_ANTHROPIC_KEY, field="anthropic_api_key")
-        await _http_get_ok(
-            "https://api.anthropic.com/v1/models",
-            {"x-api-key": key, "anthropic-version": "2023-06-01"},
-        )
-        return
-    if provider == "openai":
-        key = _usable_secret(body.openai_api_key or existing.get("openai_api_key"))
-        if not key:
-            raise ValidationError(message=_MSG_OPENAI_KEY, field="openai_api_key")
-        await _http_get_ok(
-            "https://api.openai.com/v1/models",
-            {"Authorization": f"Bearer {key}"},
-        )
-        return
-    if provider == "gemini":
-        key = _usable_secret(body.gemini_api_key or existing.get("gemini_api_key"))
-        if not key:
-            raise ValidationError(message=_MSG_GEMINI_KEY, field="gemini_api_key")
-        await _http_get_ok(
-            f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
-        )
-        return
-    if provider == "openai_compatible":
-        base = (
-            body.openai_compatible_base_url
-            or existing.get("openai_compatible_base_url")
-            or ""
-        ).rstrip("/")
-        if not base:
-            raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
-        key = _usable_secret(
-            body.openai_compatible_api_key or existing.get("openai_compatible_api_key")
-        )
-        headers = {"Authorization": f"Bearer {key}"} if key else {}
-        await _http_get_ok(f"{base}/models", headers)
-        return
-    if provider == "azure_foundry":
-        endpoint = body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
-        key = _usable_secret(
-            body.azure_foundry_api_key or existing.get("azure_foundry_api_key")
-        )
-        version = (
-            body.azure_foundry_api_version
-            or existing.get("azure_foundry_api_version")
-            or "2024-10-21"
-        )
-        if not endpoint or not key:
-            raise ValidationError(message=_MSG_AZURE_KEY, field="azure_foundry_api_key")
-        url = f"{str(endpoint).rstrip('/')}/openai/models?api-version={version}"
-        await _http_get_ok(url, {"api-key": key})
-        return
-    if provider == "bedrock":
-        await _probe_bedrock(body, existing)
-        return
-    raise ValidationError(message="ผู้ให้บริการไม่ถูกต้อง", field="llm_provider")
+    probes = {
+        "claude": _probe_claude,
+        "openai": _probe_openai,
+        "gemini": _probe_gemini,
+        "openai_compatible": _probe_openai_compatible,
+        "azure_foundry": _probe_azure_foundry,
+        "bedrock": _probe_bedrock,
+    }
+    probe = probes.get(body.llm_provider)
+    if probe is None:
+        raise ValidationError(message="ผู้ให้บริการไม่ถูกต้อง", field="llm_provider")
+    await probe(body, existing)
 
 
 def _sts_caller_identity(region: str, access: str, secret: str) -> None:

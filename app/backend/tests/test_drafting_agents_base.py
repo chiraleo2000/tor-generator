@@ -51,6 +51,9 @@ async def test_draft_invokes_fake_llm_with_rag_and_feedback():
         human_feedback="โปรดกระชับย่อหน้าแรก",
     )
     assert text == "ร่างความเป็นมา"
+    assert llm.invoke.await_count == 2
+    analyze_messages = llm.invoke.await_args_list[0].args[0]
+    assert "วิเคราะห์" in analyze_messages[0]["content"]
     messages = llm.invoke.await_args.args[0]
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == "system-prompt"
@@ -59,7 +62,10 @@ async def test_draft_invokes_fake_llm_with_rag_and_feedback():
     assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in user
     assert "ยังไม่ระบุภารกิจ" in user
     assert "โปรดกระชับย่อหน้าแรก" in user
-    assert llm.invoke.await_args.kwargs.get("max_tokens") == DRAFT_MAX_TOKENS
+    assert "ขั้นที่ 2" in user
+    max_out = llm.invoke.await_args.kwargs.get("max_tokens")
+    assert max_out <= DRAFT_MAX_TOKENS
+    assert max_out >= 256
 
 
 def test_background_agent_prompt_uses_thai_preamble():

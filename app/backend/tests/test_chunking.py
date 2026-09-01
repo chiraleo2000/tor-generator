@@ -290,7 +290,7 @@ class TestChunkText:
             assert "ขอบเขตงาน" in result.chunks[0].metadata.section_label
 
     def test_default_parameters(self):
-        """Works with default parameters (500-1000 tokens, 100 overlap)."""
+        """Works with default parameters (800-1800 tokens, 120 overlap)."""
         # Create text that's about 2000 tokens
         text = "การจัดซื้อจัดจ้างภาครัฐ " * 800
         result = chunk_text(text, document_id="doc-1")

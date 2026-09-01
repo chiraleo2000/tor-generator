@@ -75,36 +75,47 @@ def _is_listable_dir(path: Path) -> bool:
         return False
 
 
+def _add_corpus_file(
+    files: list[CorpusFile], seen: set[Path], path: Path, group: str
+) -> None:
+    if not path.is_file():
+        return
+    resolved = path.resolve()
+    if resolved in seen:
+        return
+    seen.add(resolved)
+    files.append(CorpusFile(path=path, group=group))
+
+
+def _collect_pdfs(
+    files: list[CorpusFile], seen: set[Path], directory: Path, group: str
+) -> None:
+    if not _is_listable_dir(directory):
+        return
+    for pdf in sorted(directory.rglob("*.pdf")):
+        _add_corpus_file(files, seen, pdf, group)
+
+
+def _add_raw_docs_env(files: list[CorpusFile], seen: set[Path]) -> None:
+    env_dir = os.environ.get("RAW_DOCS_DIR")
+    if not env_dir:
+        return
+    extra = Path(env_dir)
+    if extra.is_file() and extra.suffix.lower() == ".pdf":
+        _add_corpus_file(files, seen, extra, GROUP_MANDATORY_RAW)
+        return
+    _collect_pdfs(files, seen, extra, GROUP_MANDATORY_RAW)
+
+
 def list_mandatory_sources(root: Path | None = None) -> list[CorpusFile]:
     """Handbook PDF + PDFs under การจัดซื้อจัดจ้าง/ข้อมูลดิบ, tagged by group."""
     files: list[CorpusFile] = []
     seen: set[Path] = set()
-
-    def _add(path: Path, group: str) -> None:
-        if not path.is_file():
-            return
-        resolved = path.resolve()
-        if resolved in seen:
-            return
-        seen.add(resolved)
-        files.append(CorpusFile(path=path, group=group))
-
     base = sources_root(root)
     if base is not None:
-        _add(base / HANDBOOK_FILENAME, GROUP_MANDATORY_HANDBOOK)
-        raw_dir = base.joinpath(*RAW_FOLDER)
-        if _is_listable_dir(raw_dir):
-            for pdf in sorted(raw_dir.glob("*.pdf")):
-                _add(pdf, GROUP_MANDATORY_RAW)
-
-    env_dir = os.environ.get("RAW_DOCS_DIR")
-    if env_dir:
-        extra = Path(env_dir)
-        if extra.is_file() and extra.suffix.lower() == ".pdf":
-            _add(extra, GROUP_MANDATORY_RAW)
-        elif _is_listable_dir(extra):
-            for pdf in sorted(extra.glob("*.pdf")):
-                _add(pdf, GROUP_MANDATORY_RAW)
+        _add_corpus_file(files, seen, base / HANDBOOK_FILENAME, GROUP_MANDATORY_HANDBOOK)
+        _collect_pdfs(files, seen, base.joinpath(*RAW_FOLDER), GROUP_MANDATORY_RAW)
+    _add_raw_docs_env(files, seen)
     return files
 
 

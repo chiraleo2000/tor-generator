@@ -81,7 +81,8 @@ describe("Phase4Review", () => {
     );
     expect(await screen.findByText("ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน")).toBeInTheDocument();
     expect(screen.getByText("คะแนนคุณภาพจากการตรวจกฎ 82/100")).toBeInTheDocument();
-    expect(screen.getByText("วงเงินไม่สอดคล้อง")).toBeInTheDocument();
+    expect(screen.getByTestId("review-legal-findings")).toHaveTextContent("วงเงินไม่สอดคล้อง");
+    expect(screen.getByTestId("review-risk-findings")).toHaveTextContent("ไม่พบรายการในกลุ่มนี้");
     expect(screen.getByText("ความชัดเจน: ระบุหน่วยงานให้ชัด")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("run-review"));
     expect(onReview).toHaveBeenCalled();

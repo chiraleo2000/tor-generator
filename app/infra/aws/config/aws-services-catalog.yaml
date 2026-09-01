@@ -1,0 +1,99 @@
+# Inventory of AWS service configs in this repo (v0.3.0).
+# Skeleton only — flags in terraform.tfvars stay false until a plan is reviewed.
+# Do not put secrets here. Policy: Discussions/25, 26, 29.
+# Named aws-services-catalog.yaml (not services.yaml) to avoid Symfony IDE schema false positives.
+
+region: ap-southeast-1
+deployment_mode: cloud
+llm: bedrock
+embeddings: bedrock
+
+services:
+  vpc:
+    status: skeleton
+    terraform: app/infra/aws/terraform/main.tf
+    notes: public + private-app + private-data; NAT; S3 gateway endpoint
+  kms:
+    status: skeleton
+    terraform: app/infra/aws/terraform/main.tf
+  s3:
+    status: skeleton
+    buckets: [exports, originals, kb-source]
+    terraform: app/infra/aws/terraform/main.tf
+    env: app/infra/aws/env.cloud.example
+  ecr:
+    status: skeleton
+    terraform: app/infra/aws/terraform/main.tf
+    ci: app/infra/aws/ci/ecs-deploy.yml
+  secrets_manager:
+    status: skeleton
+    names: [tor/prod/rds, tor/prod/redis, tor/prod/jwt]
+    terraform: app/infra/aws/terraform/main.tf
+  iam_ecs:
+    status: skeleton
+    terraform: app/infra/aws/terraform/main.tf
+    json:
+      - app/infra/aws/iam/ecs-execution-role.json
+      - app/infra/aws/iam/ecs-task-role.json
+  github_oidc:
+    status: skeleton
+    terraform: app/infra/aws/terraform/oidc.tf
+    json: app/infra/aws/iam/github-oidc-deploy.json
+    when: set github_org_repo in tfvars
+  rds_postgres:
+    status: gated
+    terraform: app/infra/aws/terraform/data_plane.tf
+    flag: enable_managed_data
+  elasticache_redis:
+    status: gated
+    terraform: app/infra/aws/terraform/data_plane.tf
+    flag: enable_managed_data
+  ecs_fargate:
+    status: gated
+    terraform: app/infra/aws/terraform/compute.tf
+    yaml:
+      - app/infra/aws/ecs/services.yml
+      - app/infra/aws/ecs/task-backend.yml
+      - app/infra/aws/ecs/task-frontend.yml
+    json:
+      - app/infra/aws/ecs/backend.task-definition.json
+      - app/infra/aws/ecs/frontend.task-definition.json
+    flag: enable_ecs
+  alb:
+    status: gated
+    terraform: app/infra/aws/terraform/compute.tf
+    flag: enable_ecs
+    notes: HTTPS 443 + HTTP 80 redirect; needs certificate_arn
+  cloud_map:
+    status: gated
+    terraform: app/infra/aws/terraform/compute.tf
+    hostname: backend.tor.local
+  cloudwatch_logs:
+    status: skeleton
+    terraform: app/infra/aws/terraform/main.tf
+  security_groups:
+    status: skeleton
+    terraform: app/infra/aws/terraform/security_groups.tf
+  bedrock:
+    status: env_only
+    env: app/infra/aws/env.cloud.example
+    iam: ecs task role Bedrock actions in main.tf
+    notes: enable model access in the AWS account; not a Terraform resource
+  mcp_rag:
+    status: off
+    json: app/infra/mcp/servers.example.json
+    yaml: app/infra/mcp/rag-sources.yaml
+    task_env: MCP_RAG_ENABLED=false
+  custom_rag:
+    status: off
+    env: CUSTOM_RAG_ENABLED=false
+
+tbd_no_files_yet:
+  - vpc_interface_endpoints  # ECR, logs, secrets, kms, bedrock-runtime (doc 26 B)
+  - cloudfront_waf
+  - route53_acm
+  - cloudtrail_guardduty_config
+  - neptune
+  - cognito
+  - sqs_draft_worker
+  - bedrock_knowledge_bases

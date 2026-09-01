@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.kb_chat_session import KBChatSession
 from app.providers.factory import ProviderFactory
-from app.rag.hybrid import hybrid_retrieve
-from app.rag.kb_qa import CHAT_MAX_TOKENS, CHAT_RAG_TOP_K, build_kb_qa_messages
+from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
+from app.rag.kb_qa import CHAT_MAX_TOKENS, build_kb_qa_messages, chat_rag_top_k
 from app.services.session_cache import SessionCacheService
 
 logger = logging.getLogger("tor_app.kb_chat")
@@ -85,7 +85,7 @@ class KnowledgeChatService:
             text,
             user_id=user_id,
             search_scope="both",
-            top_k=CHAT_RAG_TOP_K,
+            top_k=chat_rag_top_k(),
         )
         relevant = [
             chunk

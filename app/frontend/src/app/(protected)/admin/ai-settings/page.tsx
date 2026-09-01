@@ -529,6 +529,48 @@ export default function AdminAiSettingsPage() {
             }
           />
         </div>
+        <div>
+          <Label htmlFor="chat-rag-topk">ถาม-ตอบ top_k</Label>
+          <Input
+            id="chat-rag-topk"
+            type="number"
+            min={8}
+            max={128}
+            value={form.chat_rag_top_k}
+            onChange={(event) =>
+              patch("chat_rag_top_k", Number.parseInt(event.target.value, 10) || 96)
+            }
+          />
+        </div>
+        <div>
+          <Label htmlFor="chat-max-chunks">ชิ้นบริบทสูงสุด</Label>
+          <Input
+            id="chat-max-chunks"
+            type="number"
+            min={16}
+            max={128}
+            value={form.chat_max_context_chunks}
+            onChange={(event) =>
+              patch(
+                "chat_max_context_chunks",
+                Number.parseInt(event.target.value, 10) || 96
+              )
+            }
+          />
+        </div>
+        <div>
+          <Label htmlFor="draft-rag-topk">ร่าง/ตรวจ TOR top_k</Label>
+          <Input
+            id="draft-rag-topk"
+            type="number"
+            min={8}
+            max={96}
+            value={form.draft_rag_top_k}
+            onChange={(event) =>
+              patch("draft_rag_top_k", Number.parseInt(event.target.value, 10) || 32)
+            }
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

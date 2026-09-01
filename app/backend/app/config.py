@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     custom_rag_api_key: str = ""
     custom_rag_top_k: int = 24
     custom_rag_timeout_seconds: float = 30.0
+    chat_rag_top_k: int = 96
+    chat_max_context_chunks: int = 96
+    draft_rag_top_k: int = 32
     rag_sources: Literal["local", "custom", "both"] = "both"
     mcp_rag_enabled: bool = False
     mcp_rag_config_path: str = ""

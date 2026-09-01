@@ -12,10 +12,17 @@ from typing import Any, AsyncIterator
 from uuid import UUID
 
 from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_LABELS
-from app.llm_tokens import DRAFT_MAX_TOKENS
+from app.llm_tokens import DRAFT_MAX_TOKENS, GEMMA_CONTEXT_WINDOW, clamp_max_tokens
 from app.providers.factory import ProviderFactory
+from app.rag.kb_qa import draft_rag_top_k
 from app.rag.hybrid import hybrid_retrieve
 from app.services.intake_service import resolve_draft_section_key, slot_content
+from app.services.staged_prompts import (
+    COMPOSE_SECTION_INSTRUCTION,
+    SECTION_ANALYZE_SYSTEM,
+    analyze_notes,
+    attach_analysis,
+)
 from app.services.thai_draft import (
     LENGTH_RULES,
     TABLE_FORMAT_HINT,
@@ -32,7 +39,11 @@ DRAFT_SYSTEM_PROMPT = (
     "ร่างเป็นภาษาราชการ ชัดเจน ครบถ้วน ตามโครงสร้าง "
     "พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ "
     "ใช้ข้อมูลจากช่องข้อมูลและบริบทกฎหมายที่ให้มาเท่านั้น "
-    "ห้ามแต่งมาตราที่ไม่มีในบริบท\n"
+    "ห้ามแต่งมาตราที่ไม่มีในบริบท "
+    "ให้ครบด้านวิธีจัดซื้อ ราคากลาง คุณสมบัติ ขอบเขต SLA งวดงาน ค่าปรับ "
+    "เกณฑ์คัดเลือก เอกสารยื่น และเงื่อนไขลิขสิทธิ์/ความลับ ตามแนวทางตัวอย่าง TOR "
+    "ขั้นที่ 2 ส่งเฉพาะเนื้อหาหมวดฉบับสมบูรณ์ตามรูปแบบเอกสารกำหนดขอบเขตงาน "
+    "ห้ามส่งบันทึกวิเคราะห์ ห้ามย่อจนขาดสาระ\n"
     f"{THAI_ONLY_RULES}"
     f"{LENGTH_RULES}"
 )
@@ -110,15 +121,23 @@ def _section_prompt_context(
 async def _stream_llm_prompt(
     system: str, user_prompt: str, *, max_tokens: int = DRAFT_MAX_TOKENS
 ) -> AsyncIterator[str]:
-    """Stream draft tokens from the configured LLM (LM Studio). One call at a time."""
+    """Analyze then stream the composed draft from the configured LLM."""
     llm = ProviderFactory().get_llm("draft")  # NOSONAR python:S930
+    notes = await analyze_notes(llm, user_prompt, SECTION_ANALYZE_SYSTEM)
+    compose_user = attach_analysis(user_prompt, notes, COMPOSE_SECTION_INSTRUCTION)
+    max_out = clamp_max_tokens(
+        compose_user,
+        max_tokens,
+        context_window=GEMMA_CONTEXT_WINDOW,
+        system=system,
+    )
     async for token in llm.stream(
         [
             {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
+            {"role": "user", "content": compose_user},
         ],
         temperature=0.3,
-        max_tokens=max_tokens,
+        max_tokens=max_out,
     ):
         yield token
 
@@ -138,9 +157,9 @@ async def draft_single_section(
             user_id=user_id,
             search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
             section_relevance=section_key,
-            top_k=8,
+            top_k=draft_rag_top_k(),
         )
-        rag_context = "\n".join(c.text[:1500] for c in result.chunks[:8])
+        rag_context = "\n".join(c.text[:2000] for c in result.chunks[:16])
     except Exception:
         logger.warning("RAG failed for %s, proceeding without context", section_key)
         rag_context = ""
@@ -168,9 +187,9 @@ async def draft_scope_subsection(
             user_id=user_id,
             search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
             section_relevance="s4",
-            top_k=6,
+            top_k=max(6, draft_rag_top_k() // 2),
         )
-        rag_context = "\n".join(c.text[:1200] for c in result.chunks[:6])
+        rag_context = "\n".join(c.text[:1800] for c in result.chunks[:12])
     except Exception:
         rag_context = ""
 

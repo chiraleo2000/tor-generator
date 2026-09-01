@@ -165,7 +165,7 @@ Production ของระบบนี้บนหน่วยงานให้
 | Env / Secrets | `env.cloud.example` | พร้อมคัดลอก | ห้าม commit รหัส; คีย์ยาวเว้นว่าง ใช้ IAM |
 | ECS YAML | `ecs/services.yml`, `task-backend.yml`, `task-frontend.yml` | พร้อมโครง | แทน `ACCOUNT_ID`; backend `desiredCount=1` จนกว่า Redis job store อยู่ในอิมเมจที่ deploy |
 | App config | `config/cloud-app.yaml` | พร้อม | ไม่มีความลับ; `mcp_rag_enabled: false` |
-| แคตตาล็อกบริการ | `config/services.yaml` | พร้อมอ่าน | จับคู่ VPC/RDS/ECS/S3/IAM กับไฟล์ในรีโป; รายการ TBD ที่ยังไม่มีไฟล์ |
+| แคตตาล็อกบริการ | `config/aws-services-catalog.yaml` | พร้อมอ่าน | จับคู่ VPC/RDS/ECS/S3/IAM กับไฟล์ในรีโป; รายการ TBD ที่ยังไม่มีไฟล์ |
 | CI | `app/infra/aws/ci/ecs-deploy.yml` | พร้อมมือ | ก๊อปไป `.github/workflows/` (โฟลเดอร์นั้น gitignore); ต้องพิมพ์ `deploy`; ต้องมี OIDC secret |
 | Compose ป้ายคลาวด์ | `compose/docker-compose.cloud.yml` | พร้อมทดลองบนเครื่อง | ไม่ผูก LM Studio; ไม่แทน ECS |
 | MCP รายการ | `app/infra/mcp/rag-sources.yaml` | พร้อมปิดทุกตัว | YAML สำหรับ dev/bind-mount |

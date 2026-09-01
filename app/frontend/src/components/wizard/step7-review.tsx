@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useWizardStore } from "@/stores/wizard-store";
 import { apiClient } from "@/lib/api-client";
 import { unwrapData } from "@/lib/api-unwrap";
-import { toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
+import { splitReviewFindings, toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
 import { useRealtimeValidation } from "@/lib/use-realtime-validation";
 import { InlineValidationFeedback } from "@/components/wizard/inline-validation-feedback";
 import { TOR_SECTION_LABELS, TOR_SECTION_ORDER, SCOPE_SUBSECTIONS } from "@/lib/tor-sections";
@@ -190,6 +190,46 @@ function getSeverityLabel(severity: string): string {
   }
 }
 
+function WizardFindingGroup({
+  title,
+  items,
+}: Readonly<{ title: string; items: ReviewFinding[] }>) {
+  return (
+    <div>
+      <h4 className="mb-2 text-xs font-semibold text-navy">{title}</h4>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground">ไม่พบรายการในกลุ่มนี้</p>
+      ) : (
+        <div className="max-h-60 space-y-2 overflow-y-auto">
+          {items.map((finding) => (
+            <div
+              key={`${finding.rule}-${finding.section}-${finding.message}`}
+              className={cn(
+                "rounded-md border p-3 text-sm",
+                getSeverityStyle(finding.severity)
+              )}
+            >
+              <div className="mb-1 flex items-center gap-2">
+                <span className="rounded-full bg-white/50 px-2 py-0.5 text-xs font-medium">
+                  {getSeverityLabel(finding.severity)}
+                </span>
+                <span className="text-xs opacity-75">ส่วน: {finding.section}</span>
+              </div>
+              <p>{finding.message}</p>
+              {finding.legalBasis ? (
+                <p className="mt-1 text-xs opacity-75">อ้างอิง: {finding.legalBasis}</p>
+              ) : null}
+              {finding.recommendation ? (
+                <p className="mt-1 text-xs opacity-75">แนะนำ: {finding.recommendation}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Component ---
 
 /**
@@ -324,6 +364,7 @@ export function Step7Review() {
   const qualityScore = reviewResult?.quality_score ?? 0;
   const categories = reviewResult?.categories || DEFAULT_CATEGORIES;
   const findings = reviewResult?.findings || [];
+  const findingGroups = splitReviewFindings(findings);
 
   return (
     <div className="space-y-6">
@@ -425,36 +466,18 @@ export function Step7Review() {
 
           {/* Findings */}
           {findings.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-4">
               <h3 className="font-medium text-sm">
                 ผลการตรวจสอบ ({findings.length} รายการ)
               </h3>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {findings.map((finding) => (
-                  <div
-                    key={`${finding.rule}-${finding.section}-${finding.message}`}
-                    className={cn(
-                      "border rounded-md p-3 text-sm",
-                      getSeverityStyle(finding.severity)
-                    )}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-xs px-2 py-0.5 rounded-full bg-white/50">
-                        {getSeverityLabel(finding.severity)}
-                      </span>
-                      <span className="text-xs opacity-75">
-                        ส่วน: {finding.section}
-                      </span>
-                    </div>
-                    <p>{finding.message}</p>
-                    {finding.recommendation && (
-                      <p className="mt-1 text-xs opacity-75">
-                        แนะนำ: {finding.recommendation}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <WizardFindingGroup
+                title="กลุ่ม ก — ผิดกฎหมาย / ระเบียบ"
+                items={findingGroups.legal}
+              />
+              <WizardFindingGroup
+                title="กลุ่ม ข — ความเสี่ยงจากความผิดปกติ"
+                items={findingGroups.risk}
+              />
             </div>
           )}
 

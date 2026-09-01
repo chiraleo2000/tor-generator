@@ -19,6 +19,25 @@ def _user(role="admin"):
     return user
 
 
+def _no_ai_review():
+    async def empty_enrich(*_args, **_kwargs):
+        return [], ""
+
+    async def empty_law():
+        return ""
+
+    return (
+        patch(
+            "app.api.v1.endpoints.standalone_review._enrich_with_review_agent",
+            new=empty_enrich,
+        ),
+        patch(
+            "app.api.v1.endpoints.standalone_review._law_context",
+            new=empty_law,
+        ),
+    )
+
+
 def test_standalone_review_run_with_text():
     user = _user("officer")
     app.dependency_overrides[get_current_user] = lambda: user
@@ -28,10 +47,12 @@ def test_standalone_review_run_with_text():
 
     app.dependency_overrides[get_db] = mock_db
     client = TestClient(app, raise_server_exceptions=False)
-    response = client.post(
-        "/api/v1/review/run",
-        json={"text": "1. ความเป็นมา\nโครงการทดสอบระบบจัดซื้อจัดจ้างของหน่วยงาน"},
-    )
+    enrich, law = _no_ai_review()
+    with enrich, law:
+        response = client.post(
+            "/api/v1/review/run",
+            json={"text": "1. ความเป็นมา\nโครงการทดสอบระบบจัดซื้อจัดจ้างของหน่วยงาน"},
+        )
     app.dependency_overrides.clear()
     assert response.status_code == 200
     body = response.json()
@@ -49,8 +70,10 @@ def test_run_engine_attaches_budget_from_ect_prose():
     )
     payload = _run_engine(text, "ect-job")
     assert payload["quality_score"] > 0
-    rules = [item.get("rule") for item in payload.get("findings") or []]
+    rules = [item.get("rule") or item.get("rule_violated") for item in payload.get("findings") or []]
     assert "LEGAL_CAPITAL_NO_BUDGET" not in rules
+    if payload.get("findings"):
+        assert "finding_kind" in payload["findings"][0]
 
 
 def test_standalone_review_run_requires_text():
@@ -123,6 +146,7 @@ def test_standalone_review_extract_then_run_with_id():
     client = TestClient(app, raise_server_exceptions=False)
     extracted_result = MagicMock()
     extracted_result.text = "1. ความเป็นมา\nโครงการทดสอบระบบจัดซื้อจัดจ้าง"
+    enrich_patch, law_patch = _no_ai_review()
     try:
         with (
             patch(
@@ -145,6 +169,8 @@ def test_standalone_review_extract_then_run_with_id():
                 "app.api.v1.endpoints.standalone_review.save_review_result",
                 side_effect=fake_result,
             ),
+            enrich_patch,
+            law_patch,
         ):
             extracted = client.post(
                 "/api/v1/review/extract",

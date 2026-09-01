@@ -29,15 +29,15 @@ from app.models.chat_room import ChatRoom
 from app.models.user import User
 from app.providers.factory import ProviderFactory
 from app.rag.document_pipeline import ingest_file_bytes
-from app.rag.hybrid import hybrid_retrieve
+from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.rag.kb_qa import (
     CHAT_MAX_TOKENS,
-    CHAT_RAG_TOP_K,
     DRAFT_INTAKE_CONTEXT_CHUNKS,
     DRAFT_INTAKE_MAX_TOKENS,
     DRAFT_INTAKE_SYSTEM,
     DRAFT_INTAKE_TOP_K,
     build_kb_qa_messages,
+    chat_rag_top_k,
     trim_history,
 )
 from app.rate_limiter import rate_limit_ai
@@ -307,6 +307,177 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _intake_messages(question: str, chunks: Any, degraded: bool) -> list[dict[str, str]]:
+    context_bits = [
+        f"[{chunk.source_document or 'คลัง'}] {chunk.text}" for chunk in chunks
+    ]
+    system = DRAFT_INTAKE_SYSTEM
+    if degraded:
+        system += " (กราฟ Neo4j ไม่พร้อม ใช้เฉพาะชิ้นข้อความ)"
+    return [
+        {"role": "system", "content": system},
+        {
+            "role": "user",
+            "content": (
+                "บริบทจากคลังความรู้:\n"
+                + "\n\n".join(context_bits[:DRAFT_INTAKE_CONTEXT_CHUNKS])
+                + "\n\nคำถาม:\n"
+                + question
+            ),
+        },
+    ]
+
+
+def _room_llm_messages(
+    *,
+    is_kb: bool,
+    question: str,
+    chunks: Any,
+    history: list[dict[str, str]],
+    degraded: bool,
+) -> list[dict[str, str]]:
+    if is_kb:
+        return build_kb_qa_messages(
+            question=question,
+            chunks=chunks,
+            history=history,
+            degraded=degraded,
+        )
+    return _intake_messages(question, chunks, degraded)
+
+
+async def _persist_assistant_reply(
+    session_factory: Any,
+    room_id: uuid.UUID,
+    content: str,
+    citations: Any,
+) -> None:
+    async with session_factory() as persist:
+        persist.add(
+            ChatMessage(
+                room_id=room_id,
+                role="assistant",
+                content=content,
+                citations=citations,
+            )
+        )
+        await persist.commit()
+
+
+def _queued_event(event_q: Any, request_id: str):
+    async def on_wait(position: int, waiting_ms: int) -> None:
+        await event_q.put(
+            (
+                "queued",
+                {
+                    "request_id": request_id,
+                    "position": position,
+                    "waiting_ms": waiting_ms,
+                },
+            )
+        )
+
+    return on_wait
+
+
+async def _run_chat_llm(
+    *,
+    redis: Any,
+    request_id: str,
+    event_q: Any,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    session_factory: Any,
+    room_id: uuid.UUID,
+    citations: Any,
+    degraded: bool,
+) -> None:
+    parts_local: list[str] = []
+    try:
+        async with admit(redis, "llm", request_id, on_wait=_queued_event(event_q, request_id)):
+            await event_q.put(("started", {"request_id": request_id}))
+            llm = ProviderFactory().get_llm()
+            async for token in llm.stream(
+                messages,
+                temperature=0.2,
+                max_tokens=max_tokens,
+            ):
+                parts_local.append(token)
+                await event_q.put(("token", {"text": token}))
+        full_text = "".join(parts_local)
+        await _persist_assistant_reply(session_factory, room_id, full_text, citations)
+        await event_q.put(
+            (
+                "done",
+                {
+                    "content": full_text,
+                    "citations": citations,
+                    "graph_degraded": degraded,
+                },
+            )
+        )
+    except AdmissionTimeoutError as exc:
+        await event_q.put(("error", {"message": str(exc)}))
+    except Exception as exc:
+        logger.exception("chat stream failed")
+        await event_q.put(("error", {"message": str(exc)}))
+    finally:
+        await event_q.put(None)
+
+
+async def _iter_chat_sse(
+    *,
+    request: Request,
+    room: ChatRoom,
+    user: User,
+    question: str,
+    scope: str,
+    prior: list[dict[str, str]],
+    is_kb: bool,
+    top_k: int,
+    max_tokens: int,
+    request_id: str,
+) -> AsyncIterator[str]:
+    import asyncio
+
+    result, citations, degraded = await hybrid_retrieve(
+        question,
+        user_id=user.id,
+        search_scope=scope,
+        top_k=top_k,
+    )
+    messages = _room_llm_messages(
+        is_kb=is_kb,
+        question=question,
+        chunks=result.chunks,
+        history=prior,
+        degraded=degraded,
+    )
+    event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
+    task = asyncio.create_task(
+        _run_chat_llm(
+            redis=getattr(request.app.state, "redis", None),
+            request_id=request_id,
+            event_q=event_q,
+            messages=messages,
+            max_tokens=max_tokens,
+            session_factory=request.app.state.db_session_factory,
+            room_id=room.id,
+            citations=citations,
+            degraded=degraded,
+        )
+    )
+    try:
+        while True:
+            item = await event_q.get()
+            if item is None:
+                break
+            event_name, payload = item
+            yield _sse(event_name, payload)
+    finally:
+        await task
+
+
 @router.post("/rooms/{room_id}/messages", dependencies=[Depends(rate_limit_ai)])
 async def send_message(
     request: Request,
@@ -332,112 +503,23 @@ async def send_message(
         ]
     )
     is_kb = room.kind == KIND_KB
-    top_k = CHAT_RAG_TOP_K if is_kb else DRAFT_INTAKE_TOP_K
+    top_k = chat_rag_top_k() if is_kb else DRAFT_INTAKE_TOP_K
     max_tokens = CHAT_MAX_TOKENS if is_kb else DRAFT_INTAKE_MAX_TOKENS
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()
-
-    async def generate() -> AsyncIterator[str]:
-        import asyncio
-
-        result, citations, degraded = await hybrid_retrieve(
-            body.content,
-            user_id=current_user.id,
-            search_scope=scope,
+    return StreamingResponse(
+        _iter_chat_sse(
+            request=request,
+            room=room,
+            user=current_user,
+            question=body.content,
+            scope=scope,
+            prior=prior,
+            is_kb=is_kb,
             top_k=top_k,
-        )
-        if is_kb:
-            messages = build_kb_qa_messages(
-                question=body.content,
-                chunks=result.chunks,
-                history=prior,
-                degraded=degraded,
-            )
-        else:
-            context_bits = [
-                f"[{chunk.source_document or 'คลัง'}] {chunk.text}"
-                for chunk in result.chunks
-            ]
-            system = DRAFT_INTAKE_SYSTEM
-            if degraded:
-                system += " (กราฟ Neo4j ไม่พร้อม ใช้เฉพาะชิ้นข้อความ)"
-            messages = [
-                {"role": "system", "content": system},
-                {
-                    "role": "user",
-                    "content": "บริบทจากคลังความรู้:\n"
-                    + "\n\n".join(context_bits[:DRAFT_INTAKE_CONTEXT_CHUNKS])
-                    + "\n\nคำถาม:\n"
-                    + body.content,
-                },
-            ]
-        redis = getattr(request.app.state, "redis", None)
-        event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
-
-        async def on_wait(position: int, waiting_ms: int) -> None:
-            await event_q.put(
-                (
-                    "queued",
-                    {
-                        "request_id": request_id,
-                        "position": position,
-                        "waiting_ms": waiting_ms,
-                    },
-                )
-            )
-
-        async def run_llm() -> None:
-            parts_local: list[str] = []
-            try:
-                async with admit(redis, "llm", request_id, on_wait=on_wait):
-                    await event_q.put(("started", {"request_id": request_id}))
-                    llm = ProviderFactory().get_llm()
-                    async for token in llm.stream(
-                        messages,
-                        temperature=0.2,
-                        max_tokens=max_tokens,
-                    ):
-                        parts_local.append(token)
-                        await event_q.put(("token", {"text": token}))
-                full_text = "".join(parts_local)
-                async with request.app.state.db_session_factory() as persist:
-                    persist.add(
-                        ChatMessage(
-                            room_id=room.id,
-                            role="assistant",
-                            content=full_text,
-                            citations=citations,
-                        )
-                    )
-                    await persist.commit()
-                await event_q.put(
-                    (
-                        "done",
-                        {
-                            "content": full_text,
-                            "citations": citations,
-                            "graph_degraded": degraded,
-                        },
-                    )
-                )
-            except AdmissionTimeoutError as exc:
-                await event_q.put(("error", {"message": str(exc)}))
-            except Exception as exc:
-                logger.exception("chat stream failed")
-                await event_q.put(("error", {"message": str(exc)}))
-            finally:
-                await event_q.put(None)
-
-        task = asyncio.create_task(run_llm())
-        try:
-            while True:
-                item = await event_q.get()
-                if item is None:
-                    break
-                event_name, payload = item
-                yield _sse(event_name, payload)
-        finally:
-            await task
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
+            max_tokens=max_tokens,
+            request_id=request_id,
+        ),
+        media_type="text/event-stream",
+    )

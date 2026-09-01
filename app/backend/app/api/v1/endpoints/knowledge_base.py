@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,7 @@ from app.domain.corpus import (
     GROUP_ORDER,
     GROUP_USER,
     group_for_filename,
+    list_mandatory_sources,
 )
 from app.domain.file_magic import require_kb_upload
 from app.exceptions import NotFoundError, ValidationError
@@ -52,6 +53,7 @@ from app.schemas.knowledge_base import (
     KBDocumentListResponse,
     KBDocumentResponse,
     KBDocumentStatusResponse,
+    KBSyncMandatoryResponse,
     KBUploadResponse,
 )
 from app.schemas.responses import MetaInfo, SuccessResponse
@@ -679,6 +681,47 @@ async def batch_ingest(
     return _build_success_response(request, response_data, status_code=202)
 
 
+@router.post(
+    "/sync-mandatory",
+    response_model=SuccessResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Sync mandatory PDFs from documents/sources",
+    description="Ingest handbook + ข้อมูลดิบ PDFs incrementally. Admin only.",
+)
+async def sync_mandatory_corpus(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_user: Annotated[User, Depends(require_role([Role.ADMIN]))],
+    wipe_baseline: Annotated[bool, Query()] = False,
+) -> JSONResponse:
+    sources = list_mandatory_sources()
+    if not sources:
+        raise ValidationError(
+            message="ไม่พบ PDF ในโฟลเดอร์ข้อมูลดิบหรือคู่มือแนวปฏิบัติ",
+            field="sources",
+        )
+    background_tasks.add_task(
+        _run_sync_mandatory,
+        wipe_baseline=wipe_baseline,
+        app=request.app,
+    )
+    response_data = KBSyncMandatoryResponse(
+        scanned=len(sources),
+        wipe_baseline=wipe_baseline,
+        message=(
+            f"เริ่มซิงก์ {len(sources)} ไฟล์จากโฟลเดอร์ข้อมูลดิบ"
+            + (" (แทนที่คลังกลาง)" if wipe_baseline else " (เพิ่มเฉพาะไฟล์ใหม่)")
+        ),
+    ).model_dump(mode="json")
+    logger.info(
+        "Mandatory corpus sync triggered: scanned=%d wipe=%s by user %s",
+        len(sources),
+        wipe_baseline,
+        current_user.id,
+    )
+    return _build_success_response(request, response_data, status_code=202)
+
+
 @router.get(
     "/{document_id}/file",
     summary="Download a central knowledge-base original (admin)",
@@ -732,6 +775,35 @@ async def get_document_status(
 # ---------------------------------------------------------------------------
 # Background task helpers
 # ---------------------------------------------------------------------------
+
+
+async def _run_sync_mandatory(*, wipe_baseline: bool, app) -> None:
+    from app.rag.seed_corpus import sync_mandatory_sources
+    from app.storage.mongo_store import OriginalDocumentStore
+
+    session_factory = getattr(app.state, "db_session_factory", None) or runtime.session_factory
+    if session_factory is None:
+        logger.error("DB session factory not available for mandatory corpus sync")
+        return
+    if wipe_baseline:
+        try:
+            mongo = getattr(app.state, "mongo", None) or runtime.mongo_client
+            if mongo is not None:
+                OriginalDocumentStore(mongo).wipe_baseline()
+        except Exception:
+            logger.exception("Mongo wipe_baseline failed during mandatory sync")
+    try:
+        async with session_factory() as session:
+            stats = await sync_mandatory_sources(
+                session,
+                session_factory,
+                wipe_baseline=wipe_baseline,
+                neo4j_driver=getattr(runtime, "neo4j_driver", None),
+            )
+            await session.commit()
+        logger.info("Mandatory corpus sync finished: %s", stats.as_dict())
+    except Exception:
+        logger.exception("Mandatory corpus sync failed")
 
 
 async def _run_ingestion(
@@ -816,6 +888,103 @@ async def _run_ingestion(
             await unlink_path(tmp_path)
 
 
+def _batch_ingest_providers():
+    from app.config import get_settings
+    from app.providers.factory import ProviderFactory
+
+    settings = get_settings()
+    try:
+        factory = ProviderFactory(settings)
+        return settings, factory.get_embedding(), factory.get_vector_store()
+    except Exception:
+        logger.exception("Failed to initialize providers for batch ingestion")
+        return None, None, None
+
+
+def _read_minio_object(
+    minio_client, bucket: str, storage_path: str
+) -> tuple[bytes | None, str | None]:
+    try:
+        response = minio_client.get_object(bucket, storage_path)
+        file_content = response.read()
+        response.close()
+        response.release_conn()
+        return file_content, None
+    except Exception as exc:
+        logger.exception("Failed to download %s from MinIO", storage_path)
+        return None, f"File download failed: {str(exc)}"
+
+
+async def _ingest_one_batch_document(
+    doc_id: str,
+    settings,
+    embedding_provider,
+    vector_store_provider,
+    session_factory,
+    minio_client,
+) -> None:
+    from app.rag.ingestion import ingest_document
+
+    tmp_path = None
+    extra_metadata: dict | None = None
+    try:
+        async with session_factory() as session:
+            doc_uuid = uuid.UUID(doc_id)
+            doc = await session.get(KnowledgeBaseDocument, doc_uuid)
+            if doc is None:
+                logger.warning("Document %s not found for batch ingestion", doc_id)
+                return
+            extra_metadata = {
+                "corpus_group": getattr(doc, "corpus_group", None),
+                "scope": getattr(doc, "scope", None),
+                "owner_id": str(doc.owner_id) if doc.owner_id else None,
+            }
+            file_content, err = _read_minio_object(
+                minio_client, settings.minio_bucket, doc.storage_path
+            )
+            if err or file_content is None:
+                doc.processing_status = "failed"
+                doc.error_message = err or "File download failed"
+                await session.commit()
+                return
+            mime_map = {"pdf": MIME_PDF, "docx": MIME_DOCX, "txt": MIME_TXT}
+            mime_type = mime_map.get(doc.file_type, "application/octet-stream")
+            tmp_path = await write_temp_bytes(file_content, f".{doc.file_type}")
+            await session.execute(delete(KBChunk).where(KBChunk.document_id == doc_uuid))
+            await session.commit()
+            document_name = doc.name
+
+        async with session_factory() as session:
+            result = await ingest_document(
+                document_id=doc_id,
+                document_name=document_name,
+                file_path=tmp_path,
+                mime_type=mime_type,
+                embedding_provider=embedding_provider,
+                vector_store_provider=vector_store_provider,
+                session=session,
+                extra_metadata=extra_metadata,
+            )
+            if result.success:
+                logger.info(
+                    "Batch ingestion: document %s completed (%d chunks)",
+                    doc_id, result.embedded_chunks,
+                )
+            else:
+                logger.warning(
+                    "Batch ingestion: document %s failed: %s",
+                    doc_id, result.error_message,
+                )
+    except Exception:
+        logger.exception(
+            "Unexpected error in batch ingestion for document %s",
+            doc_id,
+        )
+    finally:
+        if tmp_path:
+            await unlink_path(tmp_path)
+
+
 async def _run_batch_ingestion(
     document_ids: list[str],
     app,
@@ -825,105 +994,21 @@ async def _run_batch_ingestion(
     Processes documents sequentially through the ingestion pipeline.
     Downloads each file from MinIO before processing.
     """
-    from app.config import get_settings
-    from app.providers.factory import ProviderFactory
-    from app.rag.ingestion import ingest_document
-
-    settings = get_settings()
-
-    try:
-        factory = ProviderFactory(settings)
-        embedding_provider = factory.get_embedding()
-        vector_store_provider = factory.get_vector_store()
-    except Exception:
-        logger.exception("Failed to initialize providers for batch ingestion")
+    settings, embedding_provider, vector_store_provider = _batch_ingest_providers()
+    if embedding_provider is None:
         return
-
     session_factory = app.state.db_session_factory
     if session_factory is None:
         logger.error("DB session factory not available for batch ingestion task")
         return
-
     minio_client = app.state.minio
-
     for doc_id in document_ids:
-        tmp_path = None
-        extra_metadata: dict | None = None
-        try:
-            async with session_factory() as session:
-                # Fetch document record
-                doc_uuid = uuid.UUID(doc_id)
-                doc = await session.get(KnowledgeBaseDocument, doc_uuid)
-                if doc is None:
-                    logger.warning("Document %s not found for batch ingestion", doc_id)
-                    continue
-
-                extra_metadata = {
-                    "corpus_group": getattr(doc, "corpus_group", None),
-                    "scope": getattr(doc, "scope", None),
-                    "owner_id": str(doc.owner_id) if doc.owner_id else None,
-                }
-
-                # Download file from MinIO
-                try:
-                    response = minio_client.get_object(
-                        settings.minio_bucket, doc.storage_path
-                    )
-                    file_content = response.read()
-                    response.close()
-                    response.release_conn()
-                except Exception as e:
-                    logger.exception(
-                        "Failed to download %s from MinIO", doc.storage_path
-                    )
-                    doc.processing_status = "failed"
-                    doc.error_message = f"File download failed: {str(e)}"
-                    await session.commit()
-                    continue
-
-                # Write to temp file
-                mime_map = {"pdf": MIME_PDF, "docx": MIME_DOCX, "txt": MIME_TXT}
-                mime_type = mime_map.get(doc.file_type, "application/octet-stream")
-                suffix = f".{doc.file_type}"
-                tmp_path = await write_temp_bytes(file_content, suffix)
-
-                # Delete existing chunks before re-ingestion
-                await session.execute(
-                    delete(KBChunk).where(KBChunk.document_id == doc_uuid)
-                )
-                await session.commit()
-
-            # Run ingestion with a fresh session
-            async with session_factory() as session:
-                result = await ingest_document(
-                    document_id=doc_id,
-                    document_name=doc.name,
-                    file_path=tmp_path,
-                    mime_type=mime_type,
-                    embedding_provider=embedding_provider,
-                    vector_store_provider=vector_store_provider,
-                    session=session,
-                    extra_metadata=extra_metadata,
-                )
-
-                if result.success:
-                    logger.info(
-                        "Batch ingestion: document %s completed (%d chunks)",
-                        doc_id, result.embedded_chunks,
-                    )
-                else:
-                    logger.warning(
-                        "Batch ingestion: document %s failed: %s",
-                        doc_id, result.error_message,
-                    )
-
-        except Exception:
-            logger.exception(
-                "Unexpected error in batch ingestion for document %s",
-                doc_id,
-            )
-        finally:
-            if tmp_path:
-                await unlink_path(tmp_path)
-
+        await _ingest_one_batch_document(
+            doc_id,
+            settings,
+            embedding_provider,
+            vector_store_provider,
+            session_factory,
+            minio_client,
+        )
     logger.info("Batch re-ingestion complete for %d documents", len(document_ids))

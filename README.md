@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.2.9**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ (ต่อยอด MCP + โครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md))  
+แอปที่รันจริงคือ **v0.3.0**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ (ต่อยอด MCP + โครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md))  
 **Production แนะนำ:** Amazon Bedrock (ดู [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md))  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
 

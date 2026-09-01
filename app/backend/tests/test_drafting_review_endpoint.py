@@ -321,12 +321,18 @@ class TestRunReview:
         async def fake_suggestions(*_args, **_kwargs):
             return 3, "ต้องแก้ให้สอดคล้องกฎหมายและความต้องการโครงการ"
 
+        async def fake_law():
+            return "พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มาตรา 8"
+
         with patch(
             "app.orchestrator.graph._create_rule_engine",
             return_value=mock_engine,
         ), patch(
             "app.api.v1.endpoints.review._generate_suggestions",
             new=fake_suggestions,
+        ), patch(
+            "app.api.v1.endpoints.review._law_review_context",
+            new=fake_law,
         ):
             response = client.post(f"/api/v1/projects/{PROJECT_ID}/review")
 
@@ -337,6 +343,8 @@ class TestRunReview:
         assert data["data"]["is_valid"] is True
         assert len(data["data"]["findings"]) == 1
         assert data["data"]["findings"][0]["severity"] == "warning"
+        assert data["data"]["findings"][0]["finding_kind"] == "legal_violation"
+        assert "มาตรา 8" in (data["data"]["findings"][0].get("legal_basis") or "")
         assert data["data"]["suggestions_generated"] == 3
 
     def test_review_rule_engine_failure_returns_validation_error(
@@ -639,9 +647,15 @@ class TestValidate:
         mock_engine = MagicMock()
         mock_engine.validate.return_value = mock_validation_result
 
+        async def fake_law():
+            return ""
+
         with patch(
             "app.orchestrator.graph._create_rule_engine",
             return_value=mock_engine,
+        ), patch(
+            "app.api.v1.endpoints.review._law_review_context",
+            new=fake_law,
         ):
             response = client.post(f"/api/v1/projects/{PROJECT_ID}/validate")
 
@@ -688,9 +702,15 @@ class TestValidate:
         mock_engine = MagicMock()
         mock_engine.validate.return_value = mock_validation_result
 
+        async def fake_law():
+            return ""
+
         with patch(
             "app.orchestrator.graph._create_rule_engine",
             return_value=mock_engine,
+        ), patch(
+            "app.api.v1.endpoints.review._law_review_context",
+            new=fake_law,
         ):
             response = client.post(
                 f"/api/v1/projects/{PROJECT_ID}/validate",

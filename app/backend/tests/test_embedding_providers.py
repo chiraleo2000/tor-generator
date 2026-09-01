@@ -231,6 +231,20 @@ class TestQwen3LocalEmbedQuery:
             input="ทดสอบข้อความภาษาไทย",
         )
 
+    @pytest.mark.asyncio
+    async def test_embed_query_truncates_to_embedding_window(
+        self, provider, mock_embedding_response
+    ):
+        from app.llm_tokens import EMBEDDING_MAX_TOKENS, chars_for_tokens
+
+        provider._client.embeddings.create = AsyncMock(
+            return_value=mock_embedding_response
+        )
+        long_text = "ก" * (chars_for_tokens(EMBEDDING_MAX_TOKENS) + 80)
+        await provider.embed_query(long_text)
+        sent = provider._client.embeddings.create.await_args.kwargs["input"]
+        assert len(sent) == chars_for_tokens(EMBEDDING_MAX_TOKENS)
+
 
 class TestQwen3LocalEmbedDocuments:
     """Test Qwen3LocalEmbeddingProvider.embed_documents."""

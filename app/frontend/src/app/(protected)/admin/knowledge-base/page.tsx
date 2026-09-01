@@ -17,7 +17,14 @@ interface KBDoc {
   chunk_count: number;
   error_message?: string | null;
   uploaded_at: string;
+  corpus_group?: string;
 }
+
+const GROUP_LABELS: Record<string, string> = {
+  mandatory_handbook: "คู่มือแนวปฏิบัติ (บังคับ)",
+  mandatory_raw: "ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)",
+  user: "เอกสารของฉัน",
+};
 
 export default function AdminKnowledgeBasePage() {
   const [items, setItems] = useState<KBDoc[]>([]);
@@ -82,6 +89,27 @@ export default function AdminKnowledgeBasePage() {
         >
           ประมวลผลใหม่ทั้งชุด
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          data-testid="kb-sync-mandatory"
+          onClick={async () => {
+            setError(null);
+            try {
+              const response = await apiClient.post("/knowledge-base/sync-mandatory");
+              const payload = unwrapData<{ scanned?: number; message?: string }>(response);
+              setMessage(
+                payload.message ||
+                  `เริ่มซิงก์ ${payload.scanned ?? ""} ไฟล์จากโฟลเดอร์ข้อมูลดิบ`
+              );
+              await load();
+            } catch (err: unknown) {
+              setError(apiErrorMessage(err, "ซิงก์โฟลเดอร์ข้อมูลดิบไม่สำเร็จ"));
+            }
+          }}
+        >
+          ซิงก์จากโฟลเดอร์ข้อมูลดิบ
+        </Button>
         </div>
       <label
         className={`block border-2 border-dashed rounded-lg p-10 text-center ${
@@ -129,6 +157,7 @@ export default function AdminKnowledgeBasePage() {
             <div>
               <p className="font-medium">{doc.name}</p>
               <p className="text-xs text-muted-foreground">
+                {GROUP_LABELS[doc.corpus_group || ""] || doc.corpus_group || "คลัง"} ·{" "}
                 {doc.category} · {doc.file_type} · {doc.processing_status} ·{" "}
                 {doc.chunk_count} chunks
               </p>

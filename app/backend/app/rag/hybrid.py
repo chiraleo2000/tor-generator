@@ -66,6 +66,21 @@ def _use_custom_rag(rag_sources: str) -> bool:
     return rag_sources in ("custom", "both")
 
 
+def query_with_section(query: str, section_relevance: str | None) -> str:
+    """Fold TOR section labels into the search text instead of JSONB equality."""
+    if not section_relevance:
+        return query
+    from app.domain.slots import slot_label
+
+    label = slot_label(section_relevance)
+    parts = [query.strip()]
+    if label and label not in query:
+        parts.insert(0, label)
+    if section_relevance not in query:
+        parts.insert(0, section_relevance)
+    return " ".join(part for part in parts if part)
+
+
 def _merged_search_filter(
     *,
     user_id: UUID | str | None,
@@ -73,12 +88,17 @@ def _merged_search_filter(
     section_relevance: str | None,
     extra_filter: RetrievalFilter | None,
 ) -> dict:
+    """ACL + optional document_type/legal_reference.
+
+    Do not apply section_relevance as JSONB containment: baseline law PDFs
+    are not tagged with s1–s13, so an exact filter returns zero chunks.
+    """
+    del section_relevance
     merged_filter = owner_filter_dict(user_id=user_id, search_scope=search_scope)
     if extra_filter:
         extra = extra_filter.to_filter_dict() or {}
+        extra.pop("section_relevance", None)
         merged_filter.update(extra)
-    elif section_relevance:
-        merged_filter["section_relevance"] = section_relevance
     return merged_filter
 
 
@@ -96,7 +116,9 @@ async def _retrieve_local_chunks(
         return []
     factory = ProviderFactory()
     store = factory.get_vector_store(db_factory)
-    query_vector = await factory.get_embedding().embed_query(query)
+    query_vector = await factory.get_embedding().embed_query(
+        query_with_section(query, section_relevance)
+    )
     merged_filter = _merged_search_filter(
         user_id=user_id,
         search_scope=search_scope,
@@ -183,7 +205,7 @@ async def _expand_graph(
         return [], True
     try:
         store_graph = GraphRAGStore(runtime.neo4j_driver)
-        graph_limit = max(8, min(32, top_k))
+        graph_limit = max(8, min(48, top_k))
         rows = await store_graph.expand(
             query_text=query,
             slot_key=section_relevance,
@@ -286,3 +308,118 @@ async def hybrid_retrieve(
     citations.extend(graph_citations)
 
     return result, _dedupe_citations(citations), graph_degraded
+
+
+_QA_QUESTION_TAILS = (
+    "หมายความว่าอย่างไร",
+    "ได้หรือไม่",
+    "หรือไม่",
+    "อย่างไร",
+    "คืออะไร",
+    "ไหม",
+)
+
+
+def expand_qa_queries(query: str) -> list[str]:
+    """Primary question plus a shorter keyword variant for recall."""
+    text = " ".join((query or "").split())
+    if not text:
+        return []
+    out: list[str] = [text]
+    stripped = text
+    for tail in _QA_QUESTION_TAILS:
+        if stripped.endswith(tail) and len(stripped) > len(tail) + 6:
+            stripped = stripped[: -len(tail)].strip(" \t?？")
+            break
+    if stripped and stripped not in out:
+        out.append(stripped)
+    if len(text) > 160:
+        short = text[:160].rsplit(" ", 1)[0] or text[:160]
+        if short not in out:
+            out.append(short)
+    return out[:3]
+
+
+def _chunk_identity(chunk: RetrievedChunk) -> str:
+    return str(chunk.id or "") or str(chunk.text or "")[:80]
+
+
+async def _safe_local_chunks(
+    query: str,
+    *,
+    user_id: UUID | str | None,
+    search_scope: str,
+    top_k: int,
+    section_relevance: str | None,
+    extra_filter: RetrievalFilter | None,
+) -> list[RetrievedChunk]:
+    try:
+        return await _retrieve_local_chunks(
+            query,
+            user_id=user_id,
+            search_scope=search_scope,
+            top_k=top_k,
+            section_relevance=section_relevance,
+            extra_filter=extra_filter,
+        )
+    except Exception:
+        logger.exception("variant RAG query failed")
+        return []
+
+
+async def hybrid_retrieve_multi(
+    query: str,
+    *,
+    user_id: UUID | str | None = None,
+    search_scope: str = "both",
+    top_k: int = 5,
+    section_relevance: str | None = None,
+    extra_filter: RetrievalFilter | None = None,
+) -> tuple[RetrievalResult, list[dict[str, str]], bool]:
+    """Primary hybrid retrieve plus extra vector hits from query variants."""
+    primary, citations, degraded = await hybrid_retrieve(
+        query,
+        user_id=user_id,
+        search_scope=search_scope,
+        top_k=top_k,
+        section_relevance=section_relevance,
+        extra_filter=extra_filter,
+    )
+    variants = expand_qa_queries(query)[1:]
+    if not variants:
+        return primary, citations, degraded
+
+    merged = list(primary.chunks)
+    seen: set[str] = set()
+    for chunk in merged:
+        key = _chunk_identity(chunk)
+        if key:
+            seen.add(key)
+    extra_k = max(8, top_k // 2)
+    for variant in variants:
+        extra = await _safe_local_chunks(
+            variant,
+            user_id=user_id,
+            search_scope=search_scope,
+            top_k=extra_k,
+            section_relevance=section_relevance,
+            extra_filter=extra_filter,
+        )
+        for chunk in extra:
+            key = _chunk_identity(chunk)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(chunk)
+
+    merged.sort(key=lambda item: item.score, reverse=True)
+    cap = max(top_k * 2, top_k)
+    merged = merged[:cap]
+    result = RetrievalResult(
+        chunks=merged,
+        query=query,
+        top_k=top_k,
+        actual_count=len(merged),
+        filter_applied=extra_filter,
+    )
+    return result, citations, degraded

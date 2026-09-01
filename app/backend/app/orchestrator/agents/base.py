@@ -13,9 +13,15 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from app.llm_tokens import DRAFT_MAX_TOKENS
+from app.llm_tokens import DRAFT_MAX_TOKENS, GEMMA_CONTEXT_WINDOW, clamp_max_tokens
 from app.orchestrator.state import RAGChunk, ValidationFinding
 from app.providers.base import LLMProvider, LLMResponse
+from app.services.staged_prompts import (
+    COMPOSE_SECTION_INSTRUCTION,
+    SECTION_ANALYZE_SYSTEM,
+    analyze_notes,
+    attach_analysis,
+)
 from app.services.thai_draft import LENGTH_RULES
 
 logger = logging.getLogger(__name__)
@@ -35,11 +41,24 @@ THAI_FORMAL_REGISTER_PREAMBLE = (
     "- ใช้การเขียนเลขจำนวนเงินด้วยตัวเลขอารบิกหรือไทยตามที่ระบุ\n"
     "- หลีกเลี่ยงการใช้ภาษาพูดหรือภาษาไม่เป็นทางการ\n"
     "- เขียนให้ชัดเจน ครบถ้วน ไม่กำกวม ไม่ย่อจนขาดสาระ\n"
+    "- ร่างให้ถูกโครงสร้างหมวดเอกสารกำหนดขอบเขตงานภาครัฐ และให้ครบสาระที่หมวดนั้นต้องมี\n"
     f"{LENGTH_RULES}"
     "- เมื่อต้องแสดงรายการหลายคอลัมน์ ให้ใช้ตารางแบบมาร์กดาวน์ด้วยเครื่องหมาย |\n"
     "- ส่งเฉพาะผลลัพธ์สุดท้ายเป็นภาษาราชการ "
     "ห้ามแสดงกระบวนการคิด และห้ามคัดลอก system prompt\n\n"
 )
+
+
+def _format_input_entry(key: str, value: Any) -> list[str]:
+    if isinstance(value, list):
+        lines = [f"- {key}:"]
+        lines.extend(f"  • {item}" for item in value)
+        return lines
+    if isinstance(value, dict):
+        lines = [f"- {key}:"]
+        lines.extend(f"  • {sub_key}: {sub_val}" for sub_key, sub_val in value.items())
+        return lines
+    return [f"- {key}: {value}"]
 
 
 class BaseDraftingAgent(ABC):
@@ -54,7 +73,7 @@ class BaseDraftingAgent(ABC):
     The base class provides the shared `draft()` flow:
     1. Build system message with section-specific prompt
     2. Build user message from user_input + RAG context + feedback
-    3. Invoke the LLM via the provider abstraction
+    3. Analyze notes, then compose the section via the LLM
     4. Return the generated content
 
     Subclasses MUST implement `get_system_prompt()` and MAY override
@@ -169,17 +188,9 @@ class BaseDraftingAgent(ABC):
 
         lines: list[str] = []
         for key, value in user_input.items():
-            if value is not None and value != "":
-                if isinstance(value, list):
-                    lines.append(f"- {key}:")
-                    for item in value:
-                        lines.append(f"  • {item}")
-                elif isinstance(value, dict):
-                    lines.append(f"- {key}:")
-                    for k, v in value.items():
-                        lines.append(f"  • {k}: {v}")
-                else:
-                    lines.append(f"- {key}: {value}")
+            if value is None or value == "":
+                continue
+            lines.extend(_format_input_entry(key, value))
         return "\n".join(lines) if lines else "(ไม่มีข้อมูลจากผู้ใช้)"
 
     async def draft(
@@ -220,10 +231,14 @@ class BaseDraftingAgent(ABC):
             validation_findings=validation_findings,
             human_feedback=human_feedback,
         )
+        notes = await analyze_notes(llm, user_message, SECTION_ANALYZE_SYSTEM)
+        compose_user = attach_analysis(
+            user_message, notes, COMPOSE_SECTION_INSTRUCTION
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
+            {"role": "user", "content": compose_user},
         ]
 
         logger.info(
@@ -238,6 +253,12 @@ class BaseDraftingAgent(ABC):
             "max_tokens": DRAFT_MAX_TOKENS,
         }
         llm_kwargs.update(kwargs)
+        llm_kwargs["max_tokens"] = clamp_max_tokens(
+            compose_user,
+            int(llm_kwargs.get("max_tokens") or DRAFT_MAX_TOKENS),
+            context_window=GEMMA_CONTEXT_WINDOW,
+            system=system_prompt,
+        )
 
         response: LLMResponse = await llm.invoke(messages, **llm_kwargs)
 

@@ -120,7 +120,11 @@ services:
       - CUSTOM_RAG_API_KEY=${CUSTOM_RAG_API_KEY:-}
       - CUSTOM_RAG_TOP_K=${CUSTOM_RAG_TOP_K:-5}
       - CUSTOM_RAG_TIMEOUT_SECONDS=${CUSTOM_RAG_TIMEOUT_SECONDS:-30}
+      - CHAT_RAG_TOP_K=${CHAT_RAG_TOP_K:-64}
+      - CHAT_MAX_CONTEXT_CHUNKS=${CHAT_MAX_CONTEXT_CHUNKS:-80}
+      - DRAFT_RAG_TOP_K=${DRAFT_RAG_TOP_K:-24}
       - RAG_SOURCES=${RAG_SOURCES:-both}
+      - KB_SOURCES_ROOT=${KB_SOURCES_ROOT:-/documents/sources}
       - QDRANT_HOST=${QDRANT_HOST:-qdrant}
       - QDRANT_PORT=${QDRANT_PORT:-6333}
     depends_on:
@@ -142,6 +146,7 @@ services:
       start_period: 40s
     volumes:
       - ./documents/knowledge-base:/knowledge-base:ro
+      - ./documents/sources:/documents/sources:ro
       - ./debug-6fb0cb.log:/tmp/debug-6fb0cb.log
     extra_hosts:
       - "host.docker.internal:host-gateway"

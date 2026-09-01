@@ -83,6 +83,10 @@ describe("StandaloneReviewPage", () => {
     expect(await screen.findByTestId("review-score")).toHaveTextContent(
       "คะแนนความพร้อม 40/100"
     );
+    expect(screen.getByTestId("review-legal-findings")).toHaveTextContent(
+      "ไม่พบรายการในกลุ่มนี้"
+    );
+    expect(screen.getByTestId("review-risk-findings")).toBeInTheDocument();
     expect(screen.getByTestId("review-result")).toBeInTheDocument();
     expect(screen.getByText("ตรวจเสร็จ — ยังไม่ผ่านเกณฑ์ 70 (40/100)")).toBeInTheDocument();
   });

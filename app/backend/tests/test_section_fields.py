@@ -34,3 +34,24 @@ def test_migrate_body_blob_into_first_field() -> None:
     assert '"history"' in raw
     assert "body" not in raw
     assert "โครงการจัดซื้อระบบคอมพิวเตอร์" in raw
+
+
+def test_parse_empty_and_invalid_json_and_paragraphs() -> None:
+    assert parse_section_fields("s1", "  ") == {}
+    fallback = parse_section_fields("s1", "{not-json")
+    assert fallback["history"].startswith("{not-json")
+    paras = parse_section_fields(
+        "s1",
+        "ย่อหน้าประวัติระบบเดิม\n\nย่อหน้าปัญหาที่พบ\n\nย่อหน้านโยบาย",
+    )
+    assert paras["history"] == "ย่อหน้าประวัติระบบเดิม"
+    assert paras["problems"] == "ย่อหน้าปัญหาที่พบ"
+    assert "นโยบาย" in paras["policy"]
+
+
+def test_parse_json_object_fields() -> None:
+    parsed = parse_section_fields(
+        "s1",
+        '{"history": "ระบบเดิม", "problems": "ซ่อมบ่อย"}',
+    )
+    assert parsed == {"history": "ระบบเดิม", "problems": "ซ่อมบ่อย"}

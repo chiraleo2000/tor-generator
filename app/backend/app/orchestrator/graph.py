@@ -202,6 +202,77 @@ def _build_section_filter(target_section: str) -> RetrievalFilter | None:
     return RetrievalFilter(section_relevance=target_section)
 
 
+def _format_user_input(user_input: dict) -> list[str]:
+    lines = ["### ข้อมูลจากผู้ใช้:"]
+    for key, value in user_input.items():
+        if value:
+            lines.append(f"- {key}: {value}")
+    lines.append("")
+    return lines
+
+
+def _format_template(template: dict, target_section: str) -> list[str]:
+    if not template:
+        return []
+    lines = ["### แนวทางจากแม่แบบ:"]
+    if isinstance(template, dict):
+        guidance = template.get("placeholder_guidance", {})
+        structure = template.get("section_structure", {})
+        if guidance.get(target_section):
+            lines.append(f"คำแนะนำ: {guidance[target_section]}")
+        if structure.get(target_section):
+            lines.append(f"โครงสร้าง: {structure[target_section]}")
+    lines.append("")
+    return lines
+
+
+def _format_rag_chunks(rag_chunks: list[dict]) -> list[str]:
+    if not rag_chunks:
+        return [
+            "### หมายเหตุ: ไม่สามารถดึงข้อมูลอ้างอิงจากฐานความรู้ได้ "
+            "กรุณาร่างตามข้อมูลที่มี\n"
+        ]
+    lines = ["### ข้อมูลอ้างอิงจากฐานความรู้:"]
+    for i, chunk in enumerate(rag_chunks[:5], 1):
+        chunk_text = chunk.get("text", "")
+        source = chunk.get("source_document", "ไม่ระบุแหล่ง")
+        lines.append(f"[{i}] {chunk_text[:500]}")
+        lines.append(f"    (ที่มา: {source})")
+    lines.append("")
+    return lines
+
+
+def _format_retry_feedback(
+    retry_count: int, validation_findings: list[dict] | None
+) -> list[str]:
+    if retry_count <= 0 or not validation_findings:
+        return []
+    lines = [
+        "### ⚠️ ข้อแก้ไขจากการตรวจสอบครั้งก่อน:",
+        "กรุณาแก้ไขประเด็นต่อไปนี้ในฉบับร่างใหม่:",
+    ]
+    for finding in validation_findings:
+        severity = finding.get("severity", "warning")
+        message = finding.get("message", "")
+        correction = finding.get("recommended_correction", "")
+        icon = "❌" if severity == "error" else "⚠️"
+        lines.append(f"  {icon} {message}")
+        if correction:
+            lines.append(f"    → แนะนำ: {correction}")
+    lines.append("")
+    return lines
+
+
+def _format_human_feedback(human_feedback: str | None) -> list[str]:
+    if not human_feedback:
+        return []
+    return [
+        "### 💬 ข้อเสนอแนะจากผู้ใช้:",
+        human_feedback,
+        "",
+    ]
+
+
 def _build_llm_messages(
     target_section: str,
     user_input: dict,
@@ -211,110 +282,27 @@ def _build_llm_messages(
     human_feedback: str | None = None,
     retry_count: int = 0,
 ) -> list[dict]:
-    """Build the message list for the LLM invocation.
-
-    Constructs system prompt + user messages with:
-    - Agent system prompt for the target section
-    - User input data from the wizard
-    - RAG-retrieved context for reference
-    - Template guidance
-    - Validation feedback (on retry)
-    - Human feedback (on re-draft request)
-
-    Args:
-        target_section: TOR section key.
-        user_input: User form data.
-        template: Template structure and guidance.
-        rag_chunks: Retrieved RAG context chunks.
-        validation_findings: Findings from previous attempt (on retry).
-        human_feedback: Human feedback requesting re-draft.
-        retry_count: Current retry count.
-
-    Returns:
-        List of message dicts with 'role' and 'content' keys.
-    """
-    messages: list[dict] = []
-
-    # System prompt: agent-specific instruction
+    """Build the message list for the LLM invocation."""
     system_prompt = AGENT_SYSTEM_PROMPTS.get(
         target_section,
         "คุณเป็น AI ผู้เชี่ยวชาญด้านการจัดทำ TOR ภาครัฐไทย ใช้ภาษาราชการไทยที่เป็นทางการ",
     )
-    messages.append({"role": "system", "content": system_prompt})
-
-    # User message: combine all context into a structured prompt
-    user_parts: list[str] = []
-
-    # Section header
     section_name = SECTION_NAMES.get(target_section, target_section)
-    user_parts.append(f"## กรุณาร่าง TOR ส่วนที่: {section_name}\n")
-
-    # User input data
-    user_parts.append("### ข้อมูลจากผู้ใช้:")
-    for key, value in user_input.items():
-        if value:
-            user_parts.append(f"- {key}: {value}")
-    user_parts.append("")
-
-    # Template guidance
-    if template:
-        user_parts.append("### แนวทางจากแม่แบบ:")
-        if isinstance(template, dict):
-            guidance = template.get("placeholder_guidance", {})
-            structure = template.get("section_structure", {})
-            if guidance.get(target_section):
-                user_parts.append(f"คำแนะนำ: {guidance[target_section]}")
-            if structure.get(target_section):
-                user_parts.append(f"โครงสร้าง: {structure[target_section]}")
-        user_parts.append("")
-
-    # RAG context
-    if rag_chunks:
-        user_parts.append("### ข้อมูลอ้างอิงจากฐานความรู้:")
-        for i, chunk in enumerate(rag_chunks[:5], 1):
-            chunk_text = chunk.get("text", "")
-            source = chunk.get("source_document", "ไม่ระบุแหล่ง")
-            user_parts.append(f"[{i}] {chunk_text[:500]}")
-            user_parts.append(f"    (ที่มา: {source})")
-        user_parts.append("")
-    else:
-        user_parts.append(
-            "### หมายเหตุ: ไม่สามารถดึงข้อมูลอ้างอิงจากฐานความรู้ได้ "
-            "กรุณาร่างตามข้อมูลที่มี\n"
-        )
-
-    # Validation feedback (on retry) — structured correction instructions (Req 12.3)
-    if retry_count > 0 and validation_findings:
-        user_parts.append("### ⚠️ ข้อแก้ไขจากการตรวจสอบครั้งก่อน:")
-        user_parts.append(
-            "กรุณาแก้ไขประเด็นต่อไปนี้ในฉบับร่างใหม่:"
-        )
-        for finding in validation_findings:
-            severity = finding.get("severity", "warning")
-            message = finding.get("message", "")
-            correction = finding.get("recommended_correction", "")
-            icon = "❌" if severity == "error" else "⚠️"
-            user_parts.append(f"  {icon} {message}")
-            if correction:
-                user_parts.append(f"    → แนะนำ: {correction}")
-        user_parts.append("")
-
-    # Human feedback (on re-draft request)
-    if human_feedback:
-        user_parts.append("### 💬 ข้อเสนอแนะจากผู้ใช้:")
-        user_parts.append(human_feedback)
-        user_parts.append("")
-
-    # Final instruction
-    user_parts.append(
+    user_parts = [
+        f"## กรุณาร่าง TOR ส่วนที่: {section_name}\n",
+        *_format_user_input(user_input),
+        *_format_template(template, target_section),
+        *_format_rag_chunks(rag_chunks),
+        *_format_retry_feedback(retry_count, validation_findings),
+        *_format_human_feedback(human_feedback),
         "### คำสั่ง: กรุณาร่างเนื้อหา TOR ส่วนนี้ให้สมบูรณ์ "
         "ถูกต้องตามกฎหมาย พ.ร.บ. การจัดซื้อจัดจ้าง 2560 "
-        "และใช้ภาษาราชการไทยที่เป็นทางการ"
-    )
-
-    messages.append({"role": "user", "content": "\n".join(user_parts)})
-
-    return messages
+        "และใช้ภาษาราชการไทยที่เป็นทางการ",
+    ]
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "\n".join(user_parts)},
+    ]
 
 
 async def _draft_section_with_agent(
@@ -351,24 +339,53 @@ async def _draft_section_with_agent(
             timeout=agent_timeout,
         )
 
-    messages = _build_llm_messages(
-        target_section=target_section,
-        user_input=user_input,
-        template=template,
-        rag_chunks=rag_chunks,
-        validation_findings=findings,
-        human_feedback=human_feedback,
-        retry_count=retry_count,
-    )
-    response = await asyncio.wait_for(
-        llm.invoke(
-            messages=messages,
-            temperature=0.3,
-            max_tokens=DRAFT_MAX_TOKENS,
+    return await _fallback_llm_draft(
+        llm,
+        _build_llm_messages(
+            target_section=target_section,
+            user_input=user_input,
+            template=template,
+            rag_chunks=rag_chunks,
+            validation_findings=findings,
+            human_feedback=human_feedback,
+            retry_count=retry_count,
         ),
-        timeout=agent_timeout,
+        agent_timeout,
     )
-    return response.content
+
+
+async def _fallback_llm_draft(llm: Any, messages: list[dict], agent_timeout: float | int) -> str:
+    """Analyze-then-compose when no section agent is registered."""
+    from app.llm_tokens import GEMMA_CONTEXT_WINDOW, clamp_max_tokens
+    from app.services.staged_prompts import (
+        COMPOSE_SECTION_INSTRUCTION,
+        SECTION_ANALYZE_SYSTEM,
+        analyze_notes,
+        attach_analysis,
+    )
+
+    async def _run() -> str:
+        system = messages[0]["content"]
+        user = messages[1]["content"]
+        notes = await analyze_notes(llm, user, SECTION_ANALYZE_SYSTEM)
+        compose_user = attach_analysis(user, notes, COMPOSE_SECTION_INSTRUCTION)
+        max_out = clamp_max_tokens(
+            compose_user,
+            DRAFT_MAX_TOKENS,
+            context_window=GEMMA_CONTEXT_WINDOW,
+            system=system,
+        )
+        response = await llm.invoke(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": compose_user},
+            ],
+            temperature=0.3,
+            max_tokens=max_out,
+        )
+        return response.content
+
+    return await asyncio.wait_for(_run(), timeout=agent_timeout)
 
 
 def _create_rule_engine() -> RuleEngine:
@@ -402,6 +419,21 @@ def _create_rule_engine() -> RuleEngine:
         engine.register_rule("legal", TimelineFeasibilityRule())
     except ImportError:
         logger.debug("Legal rules module not available, skipping registration")
+
+    try:
+        from app.rule_engine.rules.risk import (
+            AnnouncedPriceRule,
+            CostAbnormalityRule,
+            ProcurementMethodRule,
+            VagueLanguageRule,
+        )
+
+        engine.register_rule("legal", AnnouncedPriceRule())
+        engine.register_rule("legal", ProcurementMethodRule())
+        engine.register_rule("consistency", VagueLanguageRule())
+        engine.register_rule("consistency", CostAbnormalityRule())
+    except ImportError:
+        logger.debug("Risk rules module not available, skipping registration")
 
     # Register completeness rules
     try:
@@ -542,12 +574,13 @@ async def retrieve_context(state: TORDraftState) -> TORDraftState:
 
     try:
         from app.rag.hybrid import hybrid_retrieve
+        from app.rag.kb_qa import draft_rag_top_k
 
         query = _build_rag_query(target_section, user_input)
         result, citations, degraded = await hybrid_retrieve(
             query,
             search_scope="global",
-            top_k=5,
+            top_k=draft_rag_top_k(),
             section_relevance=target_section if target_section.startswith("s") else None,
         )
 
@@ -774,16 +807,9 @@ async def rule_guardrail(state: TORDraftState) -> TORDraftState:
         result = engine.validate(tor_document)
 
         # Convert Finding objects to dicts for state
-        findings_dicts = [
-            {
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-                "rule_violated": f.rule_violated,
-                "affected_section": f.affected_section,
-                "message": f.message,
-                "recommended_correction": f.recommended_correction,
-            }
-            for f in result.findings
-        ]
+        from app.rule_engine.engine import finding_as_dict
+
+        findings_dicts = [finding_as_dict(f) for f in result.findings]
 
         quality_score = result.quality_score
         passed = quality_score >= GUARDRAIL_THRESHOLD
@@ -841,6 +867,10 @@ async def rule_guardrail(state: TORDraftState) -> TORDraftState:
                     "affected_section": target_section,
                     "message": f"Rule Engine execution failed: {exc}",
                     "recommended_correction": None,
+                    "finding_kind": "risk_abnormality",
+                    "legal_basis": None,
+                    "excerpt": None,
+                    "risk_type": "content",
                 }
             ],
             "guardrail_passed": False,

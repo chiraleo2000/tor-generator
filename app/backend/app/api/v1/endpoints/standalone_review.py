@@ -23,6 +23,15 @@ from app.models.tor_section import TORSection
 from app.models.user import User
 from app.orchestrator.graph import _create_rule_engine
 from app.rag.extraction import extract_text
+from app.rule_engine.engine import (
+    KIND_LEGAL,
+    KIND_RISK,
+    Finding,
+    Severity,
+    attach_legal_basis,
+    finding_as_dict,
+    first_law_citation,
+)
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.review_job_store import (
     fetch_review_job,
@@ -160,7 +169,7 @@ async def _collect_compare_documents(
     return items
 
 
-def _run_engine(text: str, job_id: str) -> dict[str, Any]:
+def _validate_document(text: str) -> tuple[Any, dict[str, Any]]:
     engine = _create_rule_engine()
     mapped = map_extracted_text(text)
     if not mapped:
@@ -171,21 +180,101 @@ def _run_engine(text: str, job_id: str) -> dict[str, Any]:
     if budget is not None:
         document["budget"] = budget
         metadata["budget"] = budget
-    result = engine.validate(document)
+    return engine.validate(document), document
+
+
+def _run_engine(text: str, job_id: str) -> dict[str, Any]:
+    result, _document = _validate_document(text)
+    attach_legal_basis(result.findings, "")
     return {
         "id": job_id,
         "quality_score": result.quality_score,
-        "findings": [
-            {
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-                "rule": f.rule_violated,
-                "section": f.affected_section,
-                "message": f.message,
-                "recommendation": f.recommended_correction,
-            }
-            for f in result.findings
-        ],
+        "findings": [finding_as_dict(f, aliases=True) for f in result.findings],
         "status": "completed",
+        "overall_assessment": "",
+    }
+
+
+def _suggestion_as_finding(suggestion: Any, rag_text: str) -> dict[str, Any]:
+    kind = str(getattr(suggestion, "finding_kind", "") or KIND_RISK)
+    if kind not in {KIND_LEGAL, KIND_RISK}:
+        kind = KIND_RISK
+    basis = str(getattr(suggestion, "legal_basis", "") or "")
+    if kind == KIND_LEGAL and not basis:
+        basis = first_law_citation(rag_text)
+    finding = Finding(
+        severity=Severity.WARNING,
+        rule_violated=f"REVIEW_{str(getattr(suggestion, 'category', 'ai')).upper()}",
+        affected_section=str(getattr(suggestion, "section_key", "s1") or "s1"),
+        message=str(getattr(suggestion, "suggested_text", "") or "")[:280],
+        recommended_correction=str(getattr(suggestion, "suggested_text", "") or ""),
+        finding_kind=kind,
+        legal_basis=basis or None,
+        excerpt=str(getattr(suggestion, "current_text", "") or "")[:180] or None,
+        risk_type=str(getattr(suggestion, "risk_type", "") or "") or None,
+    )
+    return finding_as_dict(finding, aliases=True)
+
+
+async def _law_context() -> str:
+    try:
+        from app.rag.law_review import law_review_context
+
+        return await law_review_context()
+    except Exception:
+        return ""
+
+
+async def _enrich_with_review_agent(
+    sections_map: dict[str, str],
+    document: dict[str, Any],
+    rag_text: str,
+) -> tuple[list[dict[str, Any]], str]:
+    try:
+        from app.orchestrator.agents.review_agent import ReviewAgent
+        from app.providers.factory import ProviderFactory
+
+        factory = ProviderFactory()
+        llm = factory.get_llm("structured")
+        agent = ReviewAgent()
+        result = await agent.review(
+            llm=llm,
+            sections=sections_map,
+            project_metadata={
+                "budget": document.get("budget"),
+                "legal_context": rag_text,
+            },
+        )
+    except Exception:
+        return [], ""
+    extras = [_suggestion_as_finding(item, rag_text) for item in result.suggestions]
+    return extras, result.overall_assessment
+
+
+async def _run_full_review(text: str, job_id: str) -> dict[str, Any]:
+    result, document = _validate_document(text)
+    rag_text = await _law_context()
+    attach_legal_basis(result.findings, rag_text)
+    findings = [finding_as_dict(f, aliases=True) for f in result.findings]
+    sections_map = {
+        key: value
+        for key, value in document.items()
+        if isinstance(key, str) and key.startswith("s") and isinstance(value, str)
+    }
+    extras, assessment = await _enrich_with_review_agent(sections_map, document, rag_text)
+    seen = {(item.get("rule_violated"), item.get("message")) for item in findings}
+    for item in extras:
+        key = (item.get("rule_violated"), item.get("message"))
+        if key in seen:
+            continue
+        findings.append(item)
+        seen.add(key)
+    return {
+        "id": job_id,
+        "quality_score": result.quality_score,
+        "findings": findings,
+        "status": "completed",
+        "overall_assessment": assessment,
     }
 
 
@@ -251,7 +340,7 @@ async def run_standalone_review(
             job_id = str(job.id)
     if not text:
         raise ValidationError(message="ไม่มีข้อความให้ตรวจสอบ")
-    payload = _run_engine(text, str(job_id or uuid.uuid4()))
+    payload = await _run_full_review(text, str(job_id or uuid.uuid4()))
     if job is not None:
         await save_review_result(db, job, payload)
     return _envelope(request, payload)

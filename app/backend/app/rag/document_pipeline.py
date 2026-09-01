@@ -60,6 +60,7 @@ async def ingest_file_bytes(
     session_factory,
     corpus_group: str | None = None,
     category: str | None = None,
+    content_sha256: str | None = None,
 ) -> KnowledgeBaseDocument:
     """Store original, chunk/embed, and optionally extract a graph."""
     resolved_group = corpus_group or group_for_filename(filename, owner_id=owner_id)
@@ -94,6 +95,7 @@ async def ingest_file_bytes(
         mongo_gridfs_id=grid_id,
         scope=scope,
         corpus_group=resolved_group,
+        content_sha256=content_sha256,
     )
     db.add(doc)
     await db.flush()

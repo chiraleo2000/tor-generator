@@ -94,6 +94,11 @@ def scope_sub_prompt(
         parts.append(f"ข้อมูลขอบเขตงานรวม:\n{parent[:6000]}")
     if rag_context:
         parts.append(f"บริบทกฎหมาย:\n{rag_context[:4000]}")
+    from app.domain.tor_draft_hints import hint_for
+
+    hint = hint_for(sub_key)
+    if hint:
+        parts.append(f"แนวทางความครบถ้วนจากตัวอย่าง TOR: {hint}")
     parts.append(LENGTH_RULES)
     parts.append(
         "เขียนเนื้อหาหัวข้อย่อยนี้เป็นภาษาไทยเท่านั้น "
@@ -104,6 +109,33 @@ def scope_sub_prompt(
 
 _PIPE_ROW = re.compile(r"^\|.+\|$")
 _SEP_ROW = re.compile(r"^\|[\s\-:|]+\|$")
+
+
+def _is_table_start(lines: list[str], index: int) -> bool:
+    if index + 1 >= len(lines):
+        return False
+    return bool(
+        _PIPE_ROW.match(lines[index].strip())
+        and _SEP_ROW.match(lines[index + 1].strip())
+    )
+
+
+def _consume_table(
+    lines: list[str], start: int
+) -> tuple[list[list[str]] | None, int]:
+    if not _is_table_start(lines, start):
+        return None, start
+    rows: list[list[str]] = []
+    i = start
+    while i < len(lines) and _PIPE_ROW.match(lines[i].strip()):
+        raw = lines[i].strip()
+        if _SEP_ROW.match(raw):
+            i += 1
+            continue
+        cells = [c.strip() for c in raw.strip("|").split("|")]
+        rows.append(cells)
+        i += 1
+    return rows, i
 
 
 def split_content_blocks(text: str) -> list[tuple[str, list[list[str]] | str]]:
@@ -121,24 +153,14 @@ def split_content_blocks(text: str) -> list[tuple[str, list[list[str]] | str]]:
         para_buf = []
 
     while i < len(lines):
-        line = lines[i].rstrip()
-        if _PIPE_ROW.match(line.strip()) and i + 1 < len(lines) and _SEP_ROW.match(
-            lines[i + 1].strip()
-        ):
+        rows, next_i = _consume_table(lines, i)
+        if rows is not None:
             flush_para()
-            rows: list[list[str]] = []
-            while i < len(lines) and _PIPE_ROW.match(lines[i].strip()):
-                raw = lines[i].strip()
-                if _SEP_ROW.match(raw):
-                    i += 1
-                    continue
-                cells = [c.strip() for c in raw.strip("|").split("|")]
-                rows.append(cells)
-                i += 1
             if rows:
                 blocks.append(("table", rows))
+            i = next_i
             continue
-        para_buf.append(line)
+        para_buf.append(lines[i].rstrip())
         i += 1
     flush_para()
     return blocks

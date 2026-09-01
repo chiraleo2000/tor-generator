@@ -48,6 +48,9 @@ export interface AiSettings {
   custom_rag_api_key_set?: boolean;
   custom_rag_top_k: number;
   custom_rag_timeout_seconds: number;
+  chat_rag_top_k: number;
+  chat_max_context_chunks: number;
+  draft_rag_top_k: number;
   rag_sources: string;
   restart_required?: boolean;
   reingest_required?: boolean;
@@ -140,6 +143,9 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   custom_rag_api_key: "",
   custom_rag_top_k: 24,
   custom_rag_timeout_seconds: 30,
+  chat_rag_top_k: 96,
+  chat_max_context_chunks: 96,
+  draft_rag_top_k: 32,
   rag_sources: "both",
 };
 

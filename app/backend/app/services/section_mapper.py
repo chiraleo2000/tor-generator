@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.domain.slots import INTAKE_SLOT_ORDER
+from app.llm_tokens import CHAT_MAX_TOKENS
 from app.providers.factory import ProviderFactory
 from app.providers.structured_invoke import invoke_with_schema
 from app.schemas.llm_structured import IntakeAnalyzeResult, IncrementalClassifyResult, json_schema_for
@@ -18,7 +19,9 @@ logger = logging.getLogger("tor_app.section_mapper")
 ANALYSIS_TIMEOUT = 90
 INCREMENTAL_TIMEOUT = 5
 RETRY_REDUCTION = 0.5
-VALID_STATUSES = {"filled", "gap", "reference_only"}
+VALID_SLOT_STATUSES = {"filled", "gap", "reference_only"}
+VALID_LLM_CATEGORIES = {"compliance", "clarity", "completeness", "consistency"}
+VALID_SECTION_KEYS = {f"s{i}" for i in range(1, 14)}
 
 INCREMENTAL_PROMPT = """คุณเป็นผู้ช่วยจัดทำ TOR ภาครัฐไทย
 จำแนกคำตอบของผู้ใช้เข้าช่อง TOR แล้วตอบเป็น JSON เท่านั้น:
@@ -53,7 +56,7 @@ class IncrementalUpdateResult:
 
 def _normalize_slot(value: dict[str, Any]) -> dict[str, Any]:
     status = value.get("status")
-    if status not in VALID_STATUSES:
+    if status not in VALID_SLOT_STATUSES:
         status = "gap"
     sources = value.get("sources")
     return {
@@ -83,6 +86,40 @@ def mark_unmapped_errors(slot_map: dict[str, dict[str, Any]]) -> dict[str, dict[
             continue
         updated.setdefault(key, {"content": "", "status": "gap", "sources": []})
     return updated
+
+
+def _prepare_slot_map(current_slot_map: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    slot_map = {
+        key: dict(value) if isinstance(value, dict) else value
+        for key, value in (current_slot_map or empty_slot_map()).items()
+    }
+    for key in INTAKE_SLOT_ORDER:
+        slot_map.setdefault(key, {"content": "", "status": "gap", "sources": []})
+    return slot_map
+
+
+def _merge_target_content(
+    slot_map: dict[str, dict[str, Any]],
+    item: dict[str, Any],
+    answer_text: str,
+) -> str | None:
+    key = str(item.get("slot_key") or "")
+    if key not in slot_map:
+        return None
+    content = str(item.get("content") or answer_text).strip()
+    if not content:
+        return None
+    action = item.get("action") if item.get("action") in {"append", "replace"} else "append"
+    existing = str((slot_map[key] or {}).get("content") or "")
+    merged = content if action == "replace" or not existing else f"{existing}\n{content}"
+    sources = list((slot_map[key] or {}).get("sources") or [])
+    sources.append("ผู้ใช้ตอบในแชท")
+    slot_map[key] = {
+        "content": merged.strip(),
+        "status": "filled",
+        "sources": sources,
+    }
+    return key
 
 
 class SectionMapper:
@@ -140,7 +177,7 @@ class SectionMapper:
                 json_schema_for(IntakeAnalyzeResult),
                 "intake_analyze",
                 temperature=0.2,
-                max_tokens=8192,
+                max_tokens=CHAT_MAX_TOKENS,
             ),
             timeout=ANALYSIS_TIMEOUT,
         )
@@ -153,10 +190,7 @@ class SectionMapper:
         current_slot_map: dict[str, Any],
         context_questions: list[str] | None = None,
     ) -> IncrementalUpdateResult:
-        slot_map = {key: dict(value) if isinstance(value, dict) else value
-                    for key, value in (current_slot_map or empty_slot_map()).items()}
-        for key in INTAKE_SLOT_ORDER:
-            slot_map.setdefault(key, {"content": "", "status": "gap", "sources": []})
+        slot_map = _prepare_slot_map(current_slot_map)
         try:
             targets = await self._classify(answer_text, context_questions or [])
         except Exception as exc:
@@ -169,23 +203,9 @@ class SectionMapper:
             )
         affected: list[str] = []
         for item in targets:
-            key = str(item.get("slot_key") or "")
-            if key not in slot_map:
-                continue
-            content = str(item.get("content") or answer_text).strip()
-            if not content:
-                continue
-            action = item.get("action") if item.get("action") in {"append", "replace"} else "append"
-            existing = str((slot_map[key] or {}).get("content") or "")
-            merged = content if action == "replace" or not existing else f"{existing}\n{content}"
-            sources = list((slot_map[key] or {}).get("sources") or [])
-            sources.append("ผู้ใช้ตอบในแชท")
-            slot_map[key] = {
-                "content": merged.strip(),
-                "status": "filled",
-                "sources": sources,
-            }
-            affected.append(key)
+            key = _merge_target_content(slot_map, item, answer_text)
+            if key is not None:
+                affected.append(key)
         return IncrementalUpdateResult(slot_map=slot_map, affected=affected)
 
     async def _classify(self, answer_text: str, questions: list[str]) -> list[dict[str, Any]]:

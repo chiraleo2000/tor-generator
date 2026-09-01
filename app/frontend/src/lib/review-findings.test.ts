@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { findingCheckTone, toFindingSeverity, toReviewFinding } from "./review-findings";
+import {
+  findingCheckTone,
+  splitReviewFindings,
+  toFindingSeverity,
+  toReviewFinding,
+} from "./review-findings";
 
 describe("toFindingSeverity", () => {
   it("keeps known severities and defaults the rest to warning", () => {
@@ -33,7 +38,21 @@ describe("toReviewFinding", () => {
       section: "s9",
       message: "งวดจ่ายไม่ครบ 100%",
       recommendation: "ปรับเปอร์เซ็นต์ให้รวม 100",
+      findingKind: "legal_violation",
+      legalBasis: "",
+      excerpt: "",
+      riskType: "",
     });
+  });
+
+  it("classifies RISK_ and CONSISTENCY_ rules as risk when kind is omitted", () => {
+    const risk = toReviewFinding({
+      severity: "warning",
+      rule_violated: "RISK_VAGUE_LANGUAGE",
+      affected_section: "s4",
+      message: "คลุมเครือ",
+    });
+    expect(risk.findingKind).toBe("risk_abnormality");
   });
 
   it("does not stringify nested objects into [object Object]", () => {
@@ -48,5 +67,29 @@ describe("toReviewFinding", () => {
     expect(finding.section).toBe("");
     expect(finding.message).toBe("");
     expect(finding.recommendation).toBe("");
+  });
+});
+
+describe("splitReviewFindings", () => {
+  it("puts unspecified kinds in the legal bucket", () => {
+    const split = splitReviewFindings([
+      {
+        severity: "error",
+        rule: "LEGAL_X",
+        section: "s6",
+        message: "ผิดกฎ",
+        recommendation: "",
+      },
+      {
+        severity: "warning",
+        rule: "RISK_VAGUE_LANGUAGE",
+        section: "s4",
+        message: "คลุมเครือ",
+        recommendation: "",
+        findingKind: "risk_abnormality",
+      },
+    ]);
+    expect(split.legal).toHaveLength(1);
+    expect(split.risk).toHaveLength(1);
   });
 });

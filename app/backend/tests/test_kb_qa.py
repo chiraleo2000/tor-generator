@@ -1,4 +1,4 @@
-"""KB Q&A context packing and officer-style prompt."""
+"""KB Q&A context packing and content-style prompt."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from app.rag.kb_qa import (
     CHAT_RAG_TOP_K,
     KB_QA_SYSTEM,
     build_kb_qa_messages,
+    chat_rag_top_k,
     diversify_chunks,
     pack_kb_context,
     trim_history,
@@ -55,7 +56,7 @@ def test_pack_kb_context_keeps_multiple_documents_and_stops_at_budget():
     assert tight.count("[") == 1
 
 
-def test_build_kb_qa_messages_is_officer_memo_and_uses_rag():
+def test_build_kb_qa_messages_is_content_style_and_uses_rag():
     chunks = [_chunk("ห้ามแบ่งซื้อแบ่งจ้าง", "พ.ร.บ.2560.pdf")]
     messages = build_kb_qa_messages(
         question="แบ่งซื้อได้หรือไม่",
@@ -64,8 +65,9 @@ def test_build_kb_qa_messages_is_officer_memo_and_uses_rag():
         degraded=True,
     )
     assert messages[0]["role"] == "system"
-    assert "เจ้าหน้าที่พัสดุอาวุโส" in messages[0]["content"]
-    assert "หลักกฎหมายและระเบียบที่เกี่ยวข้อง" in messages[0]["content"]
+    assert "ข้อความเนื้อหา" in messages[0]["content"]
+    assert "ห้ามใช้โครงหัวข้อบังคับ" in messages[0]["content"]
+    assert "ประเด็นคำถาม" in messages[0]["content"]
     assert "Neo4j" in messages[0]["content"]
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "สวัสดี"
@@ -73,10 +75,12 @@ def test_build_kb_qa_messages_is_officer_memo_and_uses_rag():
     assert "พ.ร.บ.2560.pdf" in user
     assert "ห้ามแบ่งซื้อแบ่งจ้าง" in user
     assert "แบ่งซื้อได้หรือไม่" in user
-    assert CHAT_RAG_TOP_K >= 24
-    assert CHAT_MAX_TOKENS >= 32768
-    assert "ห้ามตอบสั้น" in KB_QA_SYSTEM
-    assert "6144" in KB_QA_SYSTEM
+    assert CHAT_RAG_TOP_K >= 96
+    assert chat_rag_top_k() >= 64
+    assert CHAT_MAX_TOKENS == 32_768
+    assert "ไม่บังคับความยาวขั้นต่ำ" in KB_QA_SYSTEM
+    assert "ถักทอสาระ" in KB_QA_SYSTEM
+    assert "6144" not in KB_QA_SYSTEM
 
 
 def test_trim_history_caps_long_officer_answers():

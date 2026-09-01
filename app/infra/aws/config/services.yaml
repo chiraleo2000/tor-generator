@@ -1,4 +1,4 @@
-# Inventory of AWS service configs in this repo (v0.2.9).
+# Inventory of AWS service configs in this repo (v0.3.0).
 # Skeleton only — flags in terraform.tfvars stay false until a plan is reviewed.
 # Do not put secrets here. Policy: Discussions/25, 26, 29.
 

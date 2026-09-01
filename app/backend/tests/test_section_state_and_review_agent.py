@@ -416,7 +416,9 @@ class TestReviewAgentParsing:
         assert results[0].category == "consistency"
         assert results[0].section_key == "s4"
         assert results[0].predicted_score_improvement == 2.5
+        assert results[0].finding_kind == "risk_abnormality"
         assert results[1].category == "compliance"
+        assert results[1].finding_kind == "legal_violation"
 
     def test_parse_json_in_markdown_code_block(self):
         """Handles JSON wrapped in markdown code blocks."""
@@ -436,6 +438,25 @@ class TestReviewAgentParsing:
 
         assert len(results) == 1
         assert results[0].category == "clarity"
+
+    def test_parse_finding_kind_and_legal_basis(self):
+        llm_output = json.dumps({
+            "suggestions": [
+                {
+                    "category": "compliance",
+                    "section_key": "s6",
+                    "current_text": "งบประมาณอย่างเดียว",
+                    "suggested_text": "ระบุราคากลาง",
+                    "predicted_score_improvement": 3.0,
+                    "finding_kind": "legal_violation",
+                    "legal_basis": "หลักเกณฑ์ราคากลาง",
+                    "risk_type": "",
+                }
+            ]
+        })
+        results = self.agent._parse_llm_suggestions(llm_output)
+        assert results[0].finding_kind == "legal_violation"
+        assert results[0].legal_basis == "หลักเกณฑ์ราคากลาง"
 
     def test_parse_invalid_json_returns_empty(self):
         """Invalid JSON returns empty list."""

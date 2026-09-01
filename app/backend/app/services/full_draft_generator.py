@@ -16,6 +16,7 @@ from app.orchestrator.graph import _create_rule_engine
 from app.orchestrator.state import RAGChunk
 from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve
+from app.rag.kb_qa import draft_rag_top_k
 from app.services.session_cache import SessionCacheService
 
 logger = logging.getLogger("tor_app.full_draft")
@@ -23,7 +24,7 @@ logger = logging.getLogger("tor_app.full_draft")
 TOTAL_TIMEOUT = 14400
 MAX_CORRECTIONS_PER_SECTION = 3
 RAG_THRESHOLD = 0.5
-RAG_TOP_K = 8
+RAG_TOP_K = 24
 
 
 @dataclass
@@ -60,6 +61,15 @@ def slot_user_input(slot_map: dict[str, Any], section_key: str) -> dict[str, Any
     return payload
 
 
+def _warn_missing_facts(slot_map: dict[str, Any], result: DraftResult) -> None:
+    for key in FACT_REQUIRED_SLOTS:
+        slot = (slot_map or {}).get(key) or {}
+        if slot.get("status") == "filled" and str(slot.get("content") or "").strip():
+            continue
+        label = INTAKE_SLOT_LABELS.get(key, key)
+        result.warnings.append(f"ยังขาดข้อเท็จจริงใน {label} ({key})")
+
+
 class FullDraftGenerator:
     """Draft s1–s13 using section agents and hybrid RAG."""
 
@@ -73,6 +83,34 @@ class FullDraftGenerator:
         self._cache = cache or SessionCacheService()
         self._retrieve = retrieve
         self._deployment_mode: str | None = None
+
+    async def _use_cached_or_draft(
+        self,
+        section_key: str,
+        slot_map: dict[str, Any],
+        meta: dict[str, Any],
+        result: DraftResult,
+        project_id: str | None,
+        user_id: str | None,
+    ) -> None:
+        cached = None
+        if project_id:
+            cached = await self._cache.get_draft(project_id, section_key)
+        if isinstance(cached, str) and cached.strip():
+            result.section_drafts[section_key] = cached
+            result.draft_quality_scores[section_key] = 70.0
+            return
+        draft, warnings, score = await self._draft_section(
+            section_key, slot_map, meta, user_id
+        )
+        result.warnings.extend(warnings)
+        if not draft:
+            result.sections_pending.append(section_key)
+            return
+        result.section_drafts[section_key] = draft
+        result.draft_quality_scores[section_key] = score
+        if project_id:
+            await self._cache.set_draft(project_id, section_key, draft)
 
     def _llm_client(self) -> Any:
         if self._llm is not None:
@@ -93,12 +131,7 @@ class FullDraftGenerator:
     ) -> DraftResult:
         self._deployment_mode = deployment_mode
         result = DraftResult()
-        for key in FACT_REQUIRED_SLOTS:
-            slot = (slot_map or {}).get(key) or {}
-            if slot.get("status") == "filled" and str(slot.get("content") or "").strip():
-                continue
-            label = INTAKE_SLOT_LABELS.get(key, key)
-            result.warnings.append(f"ยังขาดข้อเท็จจริงใน {label} ({key})")
+        _warn_missing_facts(slot_map, result)
         deadline = time.monotonic() + TOTAL_TIMEOUT
         meta = project_metadata or {}
         for section_key in TOR_SECTION_ORDER:
@@ -108,24 +141,9 @@ class FullDraftGenerator:
                 )
                 result.warnings.append("หมดเวลาสร้างร่าง TOR ทั้งฉบับ คืนเฉพาะส่วนที่เสร็จแล้ว")
                 break
-            cached = None
-            if project_id:
-                cached = await self._cache.get_draft(project_id, section_key)
-            if isinstance(cached, str) and cached.strip():
-                result.section_drafts[section_key] = cached
-                result.draft_quality_scores[section_key] = 70.0
-                continue
-            draft, warnings, score = await self._draft_section(
-                section_key, slot_map, meta, user_id
+            await self._use_cached_or_draft(
+                section_key, slot_map, meta, result, project_id, user_id
             )
-            result.warnings.extend(warnings)
-            if not draft:
-                result.sections_pending.append(section_key)
-                continue
-            result.section_drafts[section_key] = draft
-            result.draft_quality_scores[section_key] = score
-            if project_id:
-                await self._cache.set_draft(project_id, section_key, draft)
         result.overall_quality_score = mean_quality(result.draft_quality_scores)
         return result
 
@@ -177,7 +195,7 @@ class FullDraftGenerator:
                 INTAKE_SLOT_LABELS.get(section_key, section_key),
                 user_id=user_id,
                 search_scope="global",
-                top_k=RAG_TOP_K,
+                top_k=draft_rag_top_k(),
                 section_relevance=section_key,
             )
         except Exception as exc:

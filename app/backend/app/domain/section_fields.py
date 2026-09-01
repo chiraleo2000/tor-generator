@@ -11,6 +11,7 @@ SECTION_FIELDS: dict[str, list[tuple[str, str]]] = {
         ("history", "ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม"),
         ("problems", "ปัญหาที่พบ (ระบุตัวเลข/สถิติ)"),
         ("policy", "นโยบาย/กฎหมายที่เกี่ยวข้อง"),
+        ("workKind", "ประเภทงาน (จ้างพัฒนา/บำรุงรักษา/ที่ปรึกษา)"),
     ],
     "s2": [
         ("mainObj", "วัตถุประสงค์หลัก (ชัดเจน วัดผลได้)"),
@@ -18,9 +19,10 @@ SECTION_FIELDS: dict[str, list[tuple[str, str]]] = {
         ("kpi", "ตัวชี้วัดความสำเร็จ"),
     ],
     "s3": [
-        ("general", "คุณสมบัติทั่วไป"),
-        ("paidup", "ทุนจดทะเบียน/มูลค่ากิจการขั้นต่ำ"),
-        ("experience", "ผลงาน/ประสบการณ์ที่ต้องการ"),
+        ("general", "คุณสมบัติทั่วไป (e-GP ผู้ทิ้งงาน สถานะนิติบุคคล)"),
+        ("paidup", "ทุนจดทะเบียน/มูลค่าสุทธิกิจการ/วงเงินสินเชื่อ"),
+        ("experience", "ผลงานย้อนหลัง อายุบริษัท และวงเงินผลงาน"),
+        ("specialist", "ที่ปรึกษา/OEM/ทีมงานและ man-month"),
     ],
     "s5": [
         ("timelineRange", "วันเริ่มต้น - วันสิ้นสุด"),
@@ -29,20 +31,37 @@ SECTION_FIELDS: dict[str, list[tuple[str, str]]] = {
     "s6": [
         ("budgetAmount", "วงเงินงบประมาณ (บาท)"),
         ("budgetSource", "ที่มาของงบประมาณ"),
+        ("announcedPrice", "ราคากลาง (บาท)"),
+        ("priceBasis", "วิธีคำนวณราคากลาง"),
+        ("procurementMethod", "วิธีจัดซื้อจัดจ้าง"),
     ],
     "s7": [("location", "สถานที่ดำเนินการ")],
     "s8": [
         ("installments", "จำนวนงวดการจ่ายเงิน"),
         ("paymentTerms", "เงื่อนไขการเบิกจ่ายแต่ละงวด"),
+        ("retention", "เงินประกันผลงาน/หนังสือค้ำประกัน"),
     ],
     "s9": [("warranty", "ระยะเวลารับประกัน")],
-    "s10": [("penalty", "ค่าปรับกรณีระบบขัดข้อง/ล่าช้า")],
+    "s10": [
+        ("penalty", "ค่าปรับส่งมอบล่าช้า (ร้อยละต่อวัน)"),
+        ("slaPenalty", "ค่าปรับระบบขัดข้อง/SLA"),
+    ],
     "s11": [
         ("evalMethod", "วิธีการประเมิน"),
         ("evalWeight", "สัดส่วนคะแนน (ถ้ามีเกณฑ์คุณภาพ)"),
+        ("passingGrade", "คะแนนผ่านขั้นต่ำ/การนำเสนอ"),
     ],
-    "s12": [("docs", "รายการเอกสารที่ต้องยื่นประกอบ")],
-    "s13": [("other", "เงื่อนไขอื่น ๆ")],
+    "s12": [
+        ("docs", "รายการเอกสารที่ต้องยื่นประกอบ"),
+        ("socTable", "ตารางเปรียบเทียบข้อกำหนด (SoC)"),
+    ],
+    "s13": [
+        ("other", "เงื่อนไขอื่น ๆ"),
+        ("ipCopyright", "ลิขสิทธิ์ ซอร์สโค้ด และทรัพย์สินทางปัญญา"),
+        ("nda", "ความลับข้อมูลและ PDPA"),
+        ("reservations", "ข้อสงวนสิทธิ์"),
+        ("responsibleUnit", "หน่วยงานผู้รับผิดชอบ"),
+    ],
 }
 
 _HEADING = re.compile(r"^#{1,3}[ \t]+([^\r\n]+)")
@@ -65,6 +84,11 @@ def field_prompt_block(section_key: str) -> str:
     for key, label in rows:
         lines.append(f"### {key}")
         lines.append(f"({label})")
+    from app.domain.tor_draft_hints import hint_for
+
+    hint = hint_for(section_key)
+    if hint:
+        lines.append(f"แนวทางความครบถ้วนจากตัวอย่าง TOR: {hint}")
     return "\n".join(lines)
 
 
@@ -111,6 +135,72 @@ def _split_labeled_lines(raw: str, section_key: str) -> dict[str, str]:
     return {key: value for key, value in out.items() if value}
 
 
+def _merge_json_body(
+    out: dict[str, str], blob: str, first: str, section_key: str
+) -> None:
+    labeled_blob = _split_labeled_lines(blob, section_key)
+    if labeled_blob:
+        for key, value in labeled_blob.items():
+            out.setdefault(key, value)
+        return
+    if first not in out:
+        out[first] = blob
+
+
+def _fields_from_json(
+    raw: str, keys: list[str], first: str, section_key: str
+) -> dict[str, str] | None:
+    if not raw.startswith("{"):
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    out: dict[str, str] = {}
+    for key in keys or parsed.keys():
+        value = str(parsed.get(key) or "").strip()
+        if value:
+            out[str(key)] = value
+    blob = str(parsed.get("body") or "").strip()
+    if blob:
+        _merge_json_body(out, blob, first, section_key)
+    return out or None
+
+
+def _fields_from_markdown_headings(raw: str, section_key: str) -> dict[str, str]:
+    headed: dict[str, str] = {}
+    current: str | None = None
+    buf: list[str] = []
+    for line in raw.splitlines():
+        match = _HEADING.match(line.strip())
+        found = _match_heading(match.group(1).strip(), section_key) if match else None
+        if found:
+            if current:
+                headed[current] = "\n".join(buf).strip()
+            current = found
+            buf = []
+            continue
+        buf.append(line)
+    if current:
+        headed[current] = "\n".join(buf).strip()
+    return {key: value for key, value in headed.items() if value}
+
+
+def _fields_from_paragraphs(raw: str, keys: list[str], first: str) -> dict[str, str]:
+    paras = [part.strip() for part in re.split(r"\n\s*\n", raw) if part.strip()]
+    if not (keys and len(paras) >= 2):
+        return {first: raw}
+    out: dict[str, str] = {}
+    last = len(keys) - 1
+    for index, key in enumerate(keys):
+        if index >= len(paras):
+            break
+        out[key] = "\n\n".join(paras[index:]) if index == last else paras[index]
+    return out
+
+
 def parse_section_fields(section_key: str, text: str) -> dict[str, str]:
     """Parse JSON, ### headings, or a prose blob into structured fields (no combined body)."""
     keys = field_keys(section_key)
@@ -118,61 +208,16 @@ def parse_section_fields(section_key: str, text: str) -> dict[str, str]:
     raw = (text or "").strip()
     if not raw:
         return {}
-
-    if raw.startswith("{"):
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            parsed = None
-        if isinstance(parsed, dict):
-            out: dict[str, str] = {}
-            for key in keys or parsed.keys():
-                value = str(parsed.get(key) or "").strip()
-                if value:
-                    out[str(key)] = value
-            blob = str(parsed.get("body") or "").strip()
-            if blob:
-                labeled_blob = _split_labeled_lines(blob, section_key)
-                if labeled_blob:
-                    for key, value in labeled_blob.items():
-                        out.setdefault(key, value)
-                elif first not in out:
-                    out[first] = blob
-            if out:
-                return out
-
-    headed: dict[str, str] = {}
-    current: str | None = None
-    buf: list[str] = []
-    for line in raw.splitlines():
-        match = _HEADING.match(line.strip())
-        if match:
-            found = _match_heading(match.group(1).strip(), section_key)
-            if found:
-                if current:
-                    headed[current] = "\n".join(buf).strip()
-                current = found
-                buf = []
-                continue
-        buf.append(line)
-    if current:
-        headed[current] = "\n".join(buf).strip()
-    headed = {key: value for key, value in headed.items() if value}
+    from_json = _fields_from_json(raw, keys, first, section_key)
+    if from_json:
+        return from_json
+    headed = _fields_from_markdown_headings(raw, section_key)
     if headed:
         return headed
     labeled = _split_labeled_lines(raw, section_key)
     if labeled:
         return labeled
-    paras = [part.strip() for part in re.split(r"\n\s*\n", raw) if part.strip()]
-    if keys and len(paras) >= 2:
-        out: dict[str, str] = {}
-        last = len(keys) - 1
-        for index, key in enumerate(keys):
-            if index >= len(paras):
-                break
-            out[key] = "\n\n".join(paras[index:]) if index == last else paras[index]
-        return out
-    return {first: raw}
+    return _fields_from_paragraphs(raw, keys, first)
 
 
 def persist_section_fields(section_key: str, text: str) -> str:

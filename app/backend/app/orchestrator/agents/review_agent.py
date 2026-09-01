@@ -32,7 +32,15 @@ from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE
 from app.orchestrator.section_state import SECTION_NAMES_TH, SECTION_ORDER
 from app.providers.base import LLMProvider
 from app.providers.structured_invoke import invoke_with_schema
+from app.rule_engine.engine import KIND_LEGAL, KIND_RISK
 from app.schemas.llm_structured import ReviewSuggestionsResult, json_schema_for
+from app.services.staged_prompts import (
+    COMPOSE_REVIEW_COMMENT,
+    COMPOSE_REVIEW_INSTRUCTION,
+    REVIEW_ANALYZE_SYSTEM,
+    analyze_notes,
+    attach_analysis,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +68,9 @@ class ReviewSuggestion:
     current_text: str
     suggested_text: str
     predicted_score_improvement: float
+    finding_kind: str = KIND_RISK
+    legal_basis: str = ""
+    risk_type: str = ""
 
 
 @dataclass
@@ -125,6 +136,8 @@ REVIEW_SECTION_BATCHES: tuple[tuple[str, ...], ...] = (
     ("s9", "s10", "s11", "s12", "s13"),
 )
 MAX_REVIEW_SECTION_CHARS = 100_000
+VALID_LLM_CATEGORIES = {"compliance", "clarity", "completeness", "consistency"}
+VALID_SECTION_KEYS = {f"s{i}" for i in range(1, 14)}
 
 _INTAKE_WRAPPER_RE = re.compile(
     r"^(===|---)|^\[[^\]]{1,80}\]$|เอกสารขั้นที่\s*๐"
@@ -161,20 +174,28 @@ REVIEW_SYSTEM_PROMPT = (
     "วิเคราะห์เอกสาร TOR ทั้งฉบับเทียบกับ:\n"
     "1. พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ และระเบียบที่เกี่ยวข้อง (คลังกลาง)\n"
     "2. เอกสารที่เจ้าหน้าที่อัปโหลดหรือวางในขั้นที่ ๐ ของโครงการนี้เท่านั้น ห้ามใช้เอกสารโครงการอื่น\n"
-    "3. ความสอดคล้องระหว่างหมวด ความครบถ้วน ความชัดเจน\n\n"
+    "3. ความสอดคล้องระหว่างหมวด ความครบถ้วน ความชัดเจน ราคา/ต้นทุนผิดปกติ\n\n"
+    "แยกประเด็นเป็นสองกลุ่ม:\n"
+    "- legal_violation: ผิด พ.ร.บ./ระเบียบ/กฎเกณฑ์ ต้องมี legal_basis จากบริบทกฎหมายที่ให้มา ห้ามแต่งมาตรา\n"
+    "- risk_abnormality: ความเสี่ยงจากภาษาคลุมเครือ ราคา/ต้นทุนผิดปกติ หรือเนื้อหาขัดกัน (risk_type = vague|price|cost|content)\n"
     "ห้ามสรุปว่าสมบูรณ์ถ้ายังมีช่องว่าง ตัวเลขไม่ตรง หรือไม่สอดคล้องกฎหมาย\n"
-    "ตอบเป็นภาษาไทยราชการเท่านั้น\n\n"
+    "ตอบเป็นภาษาไทยราชการเท่านั้น\n"
+    "ขั้นที่ 2 ประกอบ JSON จากบันทึกวิเคราะห์ขั้นที่ 1 ที่แนบในข้อความผู้ใช้ "
+    "suggested_text ต้องพร้อมใช้และครบถ้วนตามรูปแบบหมวดนั้น\n\n"
     "=== รูปแบบผลลัพธ์ ===\n"
     "ตอบในรูปแบบ JSON object ที่มีคีย์ suggestions เป็น array ดังนี้:\n"
     "```json\n"
     '{ "suggestions": [\n'
-    '  {\n'
+    "  {\n"
     '    "category": "consistency|completeness|clarity|compliance",\n'
     '    "section_key": "s1|s2|...|s13",\n'
     '    "current_text": "ข้อความปัจจุบันที่มีปัญหา (ย่อหน้าหรือประโยค)",\n'
     '    "suggested_text": "ข้อความที่แนะนำให้แก้ไข",\n'
-    '    "predicted_score_improvement": 1.0\n'
-    '  }\n'
+    '    "predicted_score_improvement": 1.0,\n'
+    '    "finding_kind": "legal_violation|risk_abnormality",\n'
+    '    "legal_basis": "ชื่อกฎหมาย/ระเบียบ มาตรา หรือข้อ (ว่างได้ถ้าเป็นความเสี่ยง)",\n'
+    '    "risk_type": "vague|price|cost|content"\n'
+    "  }\n"
     "] }\n"
     "```\n\n"
     "=== กฎการให้คำแนะนำ ===\n"
@@ -182,9 +203,287 @@ REVIEW_SYSTEM_PROMPT = (
     "- predicted_score_improvement: 0.5-10.0\n"
     "- current_text: คัดลอกข้อความจริงจากเอกสาร (ไม่เกิน 200 ตัวอักษร)\n"
     "- suggested_text: ให้ข้อความทดแทนที่สมบูรณ์ พร้อมใช้งาน ยาวครบถ้วนตามภาษาราชการ\n"
-    "- เน้นช่องว่างเทียบกฎหมายและความต้องการโครงการ\n"
+    "- กลุ่ม ก (legal_violation) ต้องพยายามใส่ legal_basis จากชิ้นกฎหมายในบริบท\n"
+    "- เน้นช่องว่างเทียบกฎหมาย ความต้องการโครงการ ราคากลาง วิธีจัดซื้อ และค่าปรับ\n"
     "- ตอบเป็น JSON เท่านั้น ไม่มีข้อความอื่นนอก JSON\n"
 )
+
+
+def _kind_for_suggestion(category: str, explicit: str = "") -> str:
+    if explicit in {KIND_LEGAL, KIND_RISK}:
+        return explicit
+    if category == "compliance":
+        return KIND_LEGAL
+    return KIND_RISK
+
+
+def _risk_type_for(kind: str, explicit: str = "") -> str:
+    allowed = {"vague", "price", "cost", "content"}
+    if explicit in allowed:
+        return explicit
+    if kind == KIND_RISK:
+        return "content"
+    return ""
+
+
+def _make_suggestion(
+    *,
+    category: str,
+    section_key: str,
+    current_text: str,
+    suggested_text: str,
+    predicted_score_improvement: float,
+    finding_kind: str = "",
+    legal_basis: str = "",
+    risk_type: str = "",
+) -> ReviewSuggestion:
+    kind = _kind_for_suggestion(category, finding_kind)
+    return ReviewSuggestion(
+        category=category,
+        section_key=section_key,
+        current_text=current_text,
+        suggested_text=suggested_text,
+        predicted_score_improvement=predicted_score_improvement,
+        finding_kind=kind,
+        legal_basis=legal_basis,
+        risk_type=_risk_type_for(kind, risk_type),
+    )
+
+
+def _check_budget_scope_alignment(sections: dict[str, str]) -> list[ReviewSuggestion]:
+    if "s4" not in sections or "s6" not in sections:
+        return []
+    scope_text = sections["s4"]
+    budget_text = sections["s6"]
+    if len(scope_text) <= 500 or len(budget_text) >= 200:
+        return []
+    return [
+        _make_suggestion(
+            category="completeness",
+            section_key="s6",
+            current_text=budget_text[:150] if budget_text else "(งบประมาณว่างเปล่า)",
+            suggested_text=(
+                "ควรเพิ่มรายละเอียดการจัดสรรงบประมาณให้สอดคล้อง"
+                "กับขอบเขตงานที่ระบุไว้อย่างละเอียด"
+            ),
+            predicted_score_improvement=3.0,
+        )
+    ]
+
+
+def _check_payment_deliverables(sections: dict[str, str]) -> list[ReviewSuggestion]:
+    if "s8" not in sections or "s4" not in sections:
+        return []
+    payment_text = sections["s8"]
+    scope_text = sections["s4"]
+    scope_has_deliverables = "ผลงานส่งมอบ" in scope_text
+    payment_mentions_deliverable = (
+        "ผลงานส่งมอบ" in payment_text or "deliverable" in payment_text.lower()
+    )
+    if not scope_has_deliverables or payment_mentions_deliverable:
+        return []
+    return [
+        _make_suggestion(
+            category="consistency",
+            section_key="s8",
+            current_text=payment_text[:150] if payment_text else "(งวดงานว่างเปล่า)",
+            suggested_text=(
+                "ควรระบุผลงานส่งมอบที่ชัดเจนในแต่ละงวดงาน "
+                "โดยอ้างอิงจากขอบเขตงานในส่วนที่ 4"
+            ),
+            predicted_score_improvement=2.5,
+        )
+    ]
+
+
+def _check_objectives_scope(sections: dict[str, str]) -> list[ReviewSuggestion]:
+    if "s2" not in sections or "s4" not in sections:
+        return []
+    objectives_text = sections["s2"]
+    scope_text = sections["s4"]
+    if len(objectives_text) >= 100 or len(scope_text) <= 300:
+        return []
+    return [
+        _make_suggestion(
+            category="completeness",
+            section_key="s2",
+            current_text=objectives_text[:150],
+            suggested_text=(
+                "ควรเพิ่มวัตถุประสงค์ให้ครอบคลุมขอบเขตงานทั้งหมด "
+                "ตามหลัก SMART (Specific, Measurable, Achievable, "
+                "Relevant, Time-bound)"
+            ),
+            predicted_score_improvement=2.0,
+        )
+    ]
+
+
+def _check_background_legal_basis(sections: dict[str, str]) -> list[ReviewSuggestion]:
+    if "s1" not in sections:
+        return []
+    background = sections["s1"]
+    if "พ.ร.บ." in background or "พระราชบัญญัติ" in background:
+        return []
+    return [
+        _make_suggestion(
+            category="compliance",
+            section_key="s1",
+            current_text=background[:150],
+            suggested_text=(
+                "ควรอ้างอิง พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ "
+                "พ.ศ. 2560 หรือกฎหมายที่เกี่ยวข้องในส่วนความเป็นมา"
+            ),
+            predicted_score_improvement=2.0,
+            legal_basis="พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560",
+        )
+    ]
+
+
+def _check_qualifications_capital(
+    sections: dict[str, str],
+    project_metadata: dict[str, Any],
+) -> list[ReviewSuggestion]:
+    budget = project_metadata.get("budget")
+    if not budget or "s3" not in sections:
+        return []
+    expected_capital = budget // 4
+    qualifications = sections["s3"]
+    capital_str = f"{expected_capital:,}"
+    if str(expected_capital) in qualifications or capital_str in qualifications:
+        return []
+    return [
+        _make_suggestion(
+            category="compliance",
+            section_key="s3",
+            current_text=qualifications[:150],
+            suggested_text=(
+                f"ควรระบุทุนจดทะเบียนชำระแล้วไม่น้อยกว่า "
+                f"{expected_capital:,.0f} บาท "
+                f"(งบประมาณ {budget:,.0f} ÷ 4)"
+            ),
+            predicted_score_improvement=4.0,
+            legal_basis=(
+                "ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ "
+                "— ทุนจดทะเบียนหรือมูลค่าสุทธิไม่น้อยกว่า 1/4 ของวงเงิน"
+            ),
+        )
+    ]
+
+
+def _check_penalties_rate(sections: dict[str, str]) -> list[ReviewSuggestion]:
+    if "s10" not in sections:
+        return []
+    penalties = sections["s10"]
+    if "ร้อยละ" in penalties or "%" in penalties:
+        return []
+    return [
+        _make_suggestion(
+            category="compliance",
+            section_key="s10",
+            current_text=penalties[:150],
+            suggested_text=(
+                "ควรระบุอัตราค่าปรับเป็นร้อยละต่อวัน "
+                "(0.01%-0.20% ตามระเบียบ) อย่างชัดเจน"
+            ),
+            predicted_score_improvement=3.5,
+            legal_basis=(
+                "ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ "
+                "พ.ศ. 2560 ข้อว่าด้วยค่าปรับ"
+            ),
+        )
+    ]
+
+
+def _deterministic_review_suggestions(
+    sections: dict[str, str],
+    project_metadata: dict[str, Any],
+) -> list[ReviewSuggestion]:
+    suggestions: list[ReviewSuggestion] = []
+    suggestions.extend(_check_budget_scope_alignment(sections))
+    suggestions.extend(_check_payment_deliverables(sections))
+    suggestions.extend(_check_objectives_scope(sections))
+    suggestions.extend(_check_background_legal_basis(sections))
+    suggestions.extend(_check_qualifications_capital(sections, project_metadata))
+    suggestions.extend(_check_penalties_rate(sections))
+    return suggestions
+
+
+def _strip_markdown_json_block(text: str) -> str:
+    if not text.startswith("```"):
+        return text
+    lines = [line for line in text.split("\n") if not line.strip().startswith("```")]
+    return "\n".join(lines)
+
+
+def _decode_llm_review_json(text: str) -> list[Any]:
+    import json
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("[")
+        end = text.rfind("]")
+        if start == -1 or end == -1 or end <= start:
+            logger.warning("No JSON array found in LLM review output")
+            return []
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse LLM review output as JSON")
+            return []
+    if isinstance(data, dict):
+        raw_items = data.get("suggestions")
+        data = raw_items if isinstance(raw_items, list) else []
+    if not isinstance(data, list):
+        logger.warning("LLM review output is not a JSON array")
+        return []
+    return data
+
+
+def _clamp_score_improvement(value: Any) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return max(0.5, min(10.0, score))
+
+
+def _parse_suggestion_item(item: Any) -> ReviewSuggestion | None:
+    if not isinstance(item, dict):
+        return None
+    category = item.get("category", "")
+    section_key = item.get("section_key", "")
+    current_text = item.get("current_text", "")
+    suggested_text = item.get("suggested_text", "")
+    if category not in VALID_LLM_CATEGORIES:
+        return None
+    if not section_key or section_key not in VALID_SECTION_KEYS:
+        return None
+    if not current_text or not suggested_text:
+        return None
+    return _make_suggestion(
+        category=category,
+        section_key=section_key,
+        current_text=str(current_text)[:500],
+        suggested_text=str(suggested_text)[:1000],
+        predicted_score_improvement=_clamp_score_improvement(
+            item.get("predicted_score_improvement", 1.0)
+        ),
+        finding_kind=str(item.get("finding_kind") or ""),
+        legal_basis=str(item.get("legal_basis") or "")[:280],
+        risk_type=str(item.get("risk_type") or ""),
+    )
+
+
+def _parse_llm_suggestions_from_text(llm_output: str) -> list[ReviewSuggestion]:
+    text = _strip_markdown_json_block(llm_output.strip())
+    items = _decode_llm_review_json(text)
+    suggestions: list[ReviewSuggestion] = []
+    for item in items:
+        parsed = _parse_suggestion_item(item)
+        if parsed is not None:
+            suggestions.append(parsed)
+    return suggestions
 
 
 class ReviewAgent:
@@ -313,118 +612,7 @@ class ReviewAgent:
         Returns:
             List of suggestions from deterministic checks.
         """
-        suggestions: list[ReviewSuggestion] = []
-
-        # Check: Budget/Scope alignment
-        if "s4" in sections and "s6" in sections:
-            scope_text = sections["s4"]
-            budget_text = sections["s6"]
-
-            # If scope mentions specific quantities/items not reflected in budget
-            if len(scope_text) > 500 and len(budget_text) < 200:
-                suggestions.append(ReviewSuggestion(
-                    category="completeness",
-                    section_key="s6",
-                    current_text=budget_text[:150] if budget_text else "(งบประมาณว่างเปล่า)",
-                    suggested_text=(
-                        "ควรเพิ่มรายละเอียดการจัดสรรงบประมาณให้สอดคล้อง"
-                        "กับขอบเขตงานที่ระบุไว้อย่างละเอียด"
-                    ),
-                    predicted_score_improvement=3.0,
-                ))
-
-        # Check: Payment schedule references deliverables from scope
-        if "s8" in sections and "s4" in sections:
-            payment_text = sections["s8"]
-            scope_text = sections["s4"]
-            scope_has_deliverables = "ผลงานส่งมอบ" in scope_text
-            payment_mentions_deliverable = (
-                "ผลงานส่งมอบ" in payment_text
-                or "deliverable" in payment_text.lower()
-            )
-
-            if scope_has_deliverables and not payment_mentions_deliverable:
-                suggestions.append(ReviewSuggestion(
-                    category="consistency",
-                    section_key="s8",
-                    current_text=payment_text[:150] if payment_text else "(งวดงานว่างเปล่า)",
-                    suggested_text=(
-                        "ควรระบุผลงานส่งมอบที่ชัดเจนในแต่ละงวดงาน "
-                        "โดยอ้างอิงจากขอบเขตงานในส่วนที่ 4"
-                    ),
-                    predicted_score_improvement=2.5,
-                ))
-
-        # Check: Objectives should align with scope
-        if "s2" in sections and "s4" in sections:
-            objectives_text = sections["s2"]
-            scope_text = sections["s4"]
-
-            # Very basic check: if objectives is short relative to scope
-            if len(objectives_text) < 100 and len(scope_text) > 300:
-                suggestions.append(ReviewSuggestion(
-                    category="completeness",
-                    section_key="s2",
-                    current_text=objectives_text[:150],
-                    suggested_text=(
-                        "ควรเพิ่มวัตถุประสงค์ให้ครอบคลุมขอบเขตงานทั้งหมด "
-                        "ตามหลัก SMART (Specific, Measurable, Achievable, "
-                        "Relevant, Time-bound)"
-                    ),
-                    predicted_score_improvement=2.0,
-                ))
-
-        # Check: Background should mention legal basis
-        if "s1" in sections:
-            background = sections["s1"]
-            if "พ.ร.บ." not in background and "พระราชบัญญัติ" not in background:
-                suggestions.append(ReviewSuggestion(
-                    category="compliance",
-                    section_key="s1",
-                    current_text=background[:150],
-                    suggested_text=(
-                        "ควรอ้างอิง พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ "
-                        "พ.ศ. 2560 หรือกฎหมายที่เกี่ยวข้องในส่วนความเป็นมา"
-                    ),
-                    predicted_score_improvement=2.0,
-                ))
-
-        # Check: Qualifications capital should match budget
-        budget = project_metadata.get("budget")
-        if budget and "s3" in sections:
-            expected_capital = budget // 4
-            qualifications = sections["s3"]
-            capital_str = f"{expected_capital:,}"
-            # Simple heuristic: if capital amount isn't mentioned
-            if str(expected_capital) not in qualifications and capital_str not in qualifications:
-                suggestions.append(ReviewSuggestion(
-                    category="compliance",
-                    section_key="s3",
-                    current_text=qualifications[:150],
-                    suggested_text=(
-                        f"ควรระบุทุนจดทะเบียนชำระแล้วไม่น้อยกว่า "
-                        f"{expected_capital:,.0f} บาท "
-                        f"(งบประมาณ {budget:,.0f} ÷ 4)"
-                    ),
-                    predicted_score_improvement=4.0,
-                ))
-
-        # Check: Penalties section should mention rate
-        if "s10" in sections:
-            penalties = sections["s10"]
-            if "ร้อยละ" not in penalties and "%" not in penalties:
-                suggestions.append(ReviewSuggestion(
-                    category="compliance",
-                    section_key="s10",
-                    current_text=penalties[:150],
-                    suggested_text=(
-                        "ควรระบุอัตราค่าปรับเป็นร้อยละต่อวัน "
-                        "(0.01%-0.20% ตามระเบียบ) อย่างชัดเจน"
-                    ),
-                    predicted_score_improvement=3.5,
-                ))
-
-        return suggestions
+        return _deterministic_review_suggestions(sections, project_metadata)
 
     def _check_custom_requirements(
         self,
@@ -456,7 +644,7 @@ class ReviewAgent:
                 continue
             if _requirement_is_covered(paragraph, all_tor_text, tor_compact):
                 continue
-            suggestions.append(ReviewSuggestion(
+            suggestions.append(_make_suggestion(
                 category="completeness",
                 section_key="s4",
                 current_text=paragraph[:150],
@@ -565,15 +753,19 @@ class ReviewAgent:
         user_message = self._compose_review_user_message(
             sections, project_metadata, extra
         )
+        notes = await analyze_notes(llm, user_message, REVIEW_ANALYZE_SYSTEM)
+        compose_user = attach_analysis(
+            user_message, notes, COMPOSE_REVIEW_INSTRUCTION
+        )
         max_out = clamp_max_tokens(
-            user_message,
+            compose_user,
             REVIEW_SUGGESTION_MAX_TOKENS,
             context_window=REVIEW_CONTEXT_WINDOW,
             system=REVIEW_SYSTEM_PROMPT,
         )
         messages = [
             {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
+            {"role": "user", "content": compose_user},
         ]
         try:
             payload = await invoke_with_schema(
@@ -677,8 +869,10 @@ class ReviewAgent:
             THAI_FORMAL_REGISTER_PREAMBLE
             + "คุณเป็นผู้ตรวจ TOR ที่เข้มงวด ห้ามรับทุกอย่างว่าผ่าน ตอบภาษาไทยเท่านั้น"
         )
+        notes = await analyze_notes(llm, body, REVIEW_ANALYZE_SYSTEM)
+        compose_body = attach_analysis(body, notes, COMPOSE_REVIEW_COMMENT)
         max_out = clamp_max_tokens(
-            body,
+            compose_body,
             REVIEW_MAX_TOKENS,
             context_window=REVIEW_CONTEXT_WINDOW,
             system=system,
@@ -686,7 +880,7 @@ class ReviewAgent:
         response = await llm.invoke(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": body},
+                {"role": "user", "content": compose_body},
             ],
             temperature=0.2,
             max_tokens=max_out,
@@ -707,77 +901,7 @@ class ReviewAgent:
         Returns:
             List of parsed ReviewSuggestion objects.
         """
-        import json
-
-        # Strip markdown code blocks if present
-        text = llm_output.strip()
-        if text.startswith("```"):
-            # Remove opening ```json or ``` and closing ```
-            lines = text.split("\n")
-            # Remove first line (```json) and last line (```)
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            text = "\n".join(lines)
-
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            # Try to find JSON array in the text
-            start = text.find("[")
-            end = text.rfind("]")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    data = json.loads(text[start:end + 1])
-                except json.JSONDecodeError:
-                    logger.warning("Failed to parse LLM review output as JSON")
-                    return []
-            else:
-                logger.warning("No JSON array found in LLM review output")
-                return []
-
-        if isinstance(data, dict):
-            raw_items = data.get("suggestions")
-            data = raw_items if isinstance(raw_items, list) else []
-        if not isinstance(data, list):
-            logger.warning("LLM review output is not a JSON array")
-            return []
-
-        suggestions: list[ReviewSuggestion] = []
-        valid_categories = {"compliance", "clarity", "completeness", "consistency"}
-
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-
-            category = item.get("category", "")
-            section_key = item.get("section_key", "")
-            current_text = item.get("current_text", "")
-            suggested_text = item.get("suggested_text", "")
-            score_improvement = item.get("predicted_score_improvement", 1.0)
-
-            # Validate fields
-            if category not in valid_categories:
-                continue
-            if not section_key or section_key not in [f"s{i}" for i in range(1, 14)]:
-                continue
-            if not current_text or not suggested_text:
-                continue
-
-            # Clamp score improvement
-            try:
-                score_improvement = float(score_improvement)
-                score_improvement = max(0.5, min(10.0, score_improvement))
-            except (TypeError, ValueError):
-                score_improvement = 1.0
-
-            suggestions.append(ReviewSuggestion(
-                category=category,
-                section_key=section_key,
-                current_text=current_text[:500],  # Truncate if too long
-                suggested_text=suggested_text[:1000],
-                predicted_score_improvement=score_improvement,
-            ))
-
-        return suggestions
+        return _parse_llm_suggestions_from_text(llm_output)
 
     def _merge_suggestions(
         self,

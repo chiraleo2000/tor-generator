@@ -400,7 +400,7 @@ class TestLlmDraft:
 
         spy.assert_called_with("s1")
         assert result["draft_content"] == "ร่างจาก agent"
-        assert mock_llm.invoke.await_count == 1
+        assert mock_llm.invoke.await_count == 2
 
     @pytest.mark.asyncio
     async def test_falls_back_when_no_agent(self):
@@ -863,6 +863,9 @@ class TestCreateRuleEngine:
         legal_types = {type(rule) for rule in engine._rules["legal"]}
         assert PaymentScheduleRule in legal_types
         assert TimelineFeasibilityRule in legal_types
+        from app.rule_engine.rules.risk import AnnouncedPriceRule
+
+        assert AnnouncedPriceRule in legal_types
 
     def test_format_rules_registered(self):
         """Format rules are registered in the engine."""

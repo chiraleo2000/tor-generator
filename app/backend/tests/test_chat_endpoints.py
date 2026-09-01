@@ -13,7 +13,7 @@ from app.deps import get_current_user, get_db
 from app.main import app
 from app.models.user import User
 from app.rag.retrieval import RetrievalResult
-from app.rag.kb_qa import CHAT_MAX_TOKENS, CHAT_RAG_TOP_K
+from app.rag.kb_qa import CHAT_MAX_TOKENS, chat_rag_top_k
 
 USER_ID = uuid.UUID("12345678-1234-5678-1234-567812345678")
 OTHER_USER_ID = uuid.UUID("99999999-9999-9999-9999-999999999999")
@@ -187,7 +187,7 @@ def test_chat_sse_streams_tokens(client, mock_officer_user, monkeypatch):
 
     monkeypatch.setattr(app.state, "db_session_factory", lambda: _CM(), raising=False)
 
-    empty = RetrievalResult(chunks=[], query="งวดจ่าย", top_k=CHAT_RAG_TOP_K, actual_count=0)
+    empty = RetrievalResult(chunks=[], query="งวดจ่าย", top_k=chat_rag_top_k(), actual_count=0)
     captured: dict = {}
 
     async def fake_stream(messages, **kwargs):
@@ -219,9 +219,9 @@ def test_chat_sse_streams_tokens(client, mock_officer_user, monkeypatch):
     assert "event: done" in body
     persist.add.assert_called()
     retrieve.assert_awaited()
-    assert retrieve.await_args.kwargs["top_k"] == CHAT_RAG_TOP_K
+    assert retrieve.await_args.kwargs["top_k"] == chat_rag_top_k()
     assert captured["max_tokens"] == CHAT_MAX_TOKENS
-    assert "เจ้าหน้าที่พัสดุอาวุโส" in captured["messages"][0]["content"]
+    assert "ข้อความเนื้อหา" in captured["messages"][0]["content"]
 
 
 def test_rename_and_delete_room(client, mock_officer_user):

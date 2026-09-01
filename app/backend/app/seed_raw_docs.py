@@ -1,4 +1,4 @@
-"""Wipe old KB extracts and seed from raw procurement PDFs + GraphRAG.
+"""Seed from raw procurement PDFs + GraphRAG.
 
 Usage (from app/backend/ on the host):
 
@@ -8,25 +8,25 @@ Usage (from app/backend/ on the host):
   set NEO4J_URI=bolt://127.0.0.1:7687
   python -m app.seed_raw_docs
 
+Default is incremental (new/changed PDFs only). Use --wipe-baseline to replace
+the shared corpus without deleting officer private uploads.
+
 Does not ingest documents/knowledge-base JSON extracts. Does not wipe demo users.
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 from pathlib import Path
 
-from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.domain.corpus import list_mandatory_sources
 from app.infra import set_mongo_client, set_neo4j_driver, set_session_factory
-from app.models.kb_chunk import KBChunk
-from app.models.knowledge_base_document import KnowledgeBaseDocument
-from app.rag.document_pipeline import ingest_file_bytes
-from app.rag.graph_store import GraphRAGStore
+from app.rag.seed_corpus import sync_mandatory_sources
 from app.storage.mongo_store import OriginalDocumentStore
 
 _HOST_HINT = (
@@ -35,7 +35,8 @@ _HOST_HINT = (
     "  set LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1\n"
     "  set MONGO_URI=mongodb://127.0.0.1:27017\n"
     "  set NEO4J_URI=bolt://127.0.0.1:7687\n"
-    "  python -m app.seed_raw_docs"
+    "  python -m app.seed_raw_docs\n"
+    "  python -m app.seed_raw_docs --wipe-baseline"
 )
 
 
@@ -51,7 +52,7 @@ def list_raw_pdfs() -> list[Path]:
     return [item.path for item in list_mandatory_sources()]
 
 
-async def wipe_and_seed() -> None:
+async def run_seed(*, wipe_baseline: bool = False) -> None:
     sources = list_mandatory_sources()
     if not sources:
         _safe_print(_HOST_HINT)
@@ -70,11 +71,13 @@ async def wipe_and_seed() -> None:
         mongo = MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=8000)
         mongo.admin.command("ping")
         set_mongo_client(mongo)
-        OriginalDocumentStore(mongo).wipe_baseline()
-        _safe_print("wiped MongoDB baseline originals")
+        if wipe_baseline:
+            OriginalDocumentStore(mongo).wipe_baseline()
+            _safe_print("wiped MongoDB baseline originals")
     except Exception as exc:  # noqa: BLE001
         _safe_print(f"MongoDB unavailable: {exc}")
 
+    driver = None
     try:
         from neo4j import AsyncGraphDatabase
 
@@ -83,48 +86,46 @@ async def wipe_and_seed() -> None:
         )
         await driver.verify_connectivity()
         set_neo4j_driver(driver)
-        await GraphRAGStore(driver).wipe()
-        _safe_print("wiped Neo4j graph")
     except Exception as exc:  # noqa: BLE001
         _safe_print(f"Neo4j unavailable: {exc}")
         driver = None
 
     async with factory() as db:
-        await db.execute(delete(KBChunk))
-        await db.execute(delete(KnowledgeBaseDocument))
+        stats = await sync_mandatory_sources(
+            db,
+            factory,
+            wipe_baseline=wipe_baseline,
+            progress=_safe_print,
+            neo4j_driver=driver,
+        )
         await db.commit()
-        _safe_print("wiped kb_chunks and knowledge_base_documents")
-
-        for item in sources:
-            data = item.path.read_bytes()
-            _safe_print(f"ingest [{item.group}] {item.path.name} ({len(data)} bytes)")
-            try:
-                doc = await ingest_file_bytes(
-                    db=db,
-                    filename=item.path.name,
-                    content=data,
-                    mime_type="application/pdf",
-                    scope="baseline",
-                    owner_id=None,
-                    session_factory=factory,
-                    corpus_group=item.group,
-                )
-                await db.commit()
-                _safe_print(f"  status={doc.processing_status} chunks={doc.chunk_count}")
-            except Exception as exc:  # noqa: BLE001
-                await db.rollback()
-                _safe_print(f"  failed: {exc}")
 
     if driver is not None:
         await driver.close()
     if mongo is not None:
         mongo.close()
     await engine.dispose()
-    _safe_print(f"seed_raw_docs complete ({len(sources)} PDFs)")
+    _safe_print(
+        f"seed_raw_docs complete ingested={stats.ingested} "
+        f"skipped={stats.skipped} failed={stats.failed} "
+        f"(scanned {len(sources)} PDFs)"
+    )
+
+
+async def wipe_and_seed() -> None:
+    """Replace baseline corpus (used by S3 sync). Does not delete user uploads."""
+    await run_seed(wipe_baseline=True)
 
 
 def main() -> None:
-    asyncio.run(wipe_and_seed())
+    parser = argparse.ArgumentParser(description="Seed mandatory procurement PDFs into pgvector")
+    parser.add_argument(
+        "--wipe-baseline",
+        action="store_true",
+        help="Replace shared corpus; keep officer private documents",
+    )
+    args = parser.parse_args()
+    asyncio.run(run_seed(wipe_baseline=args.wipe_baseline))
 
 
 if __name__ == "__main__":

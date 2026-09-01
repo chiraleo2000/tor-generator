@@ -103,6 +103,13 @@ class FindingResponse(BaseModel):
     affected_section: str
     message: str
     recommended_correction: str | None = None
+    finding_kind: str = Field(
+        default="legal_violation",
+        description="legal_violation | risk_abnormality",
+    )
+    legal_basis: str | None = None
+    excerpt: str | None = None
+    risk_type: str | None = None
 
 
 class CategoryScoreResponse(BaseModel):

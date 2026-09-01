@@ -114,7 +114,7 @@ flowchart LR
 | [`app/infra/aws/ecs/task-backend.yml`](../app/infra/aws/ecs/task-backend.yml) | env คลาวด์ล้วน + MCP ปิด |
 | [`app/infra/aws/ecs/task-frontend.yml`](../app/infra/aws/ecs/task-frontend.yml) | Next.js |
 | [`app/infra/aws/config/cloud-app.yaml`](../app/infra/aws/config/cloud-app.yaml) | ค่าไม่ลับของแอป |
-| [`app/infra/aws/config/services.yaml`](../app/infra/aws/config/services.yaml) | แคตตาล็อกบริการ AWS ↔ ไฟล์โครง |
+| [`app/infra/aws/config/aws-services-catalog.yaml`](../app/infra/aws/config/aws-services-catalog.yaml) | แคตตาล็อกบริการ AWS ↔ ไฟล์โครง |
 | [`app/infra/aws/compose/docker-compose.cloud.yml`](../app/infra/aws/compose/docker-compose.cloud.yml) | ทดลอง env คลาวด์บนเครื่อง **ไม่** ผูก LM Studio |
 | [`app/infra/mcp/servers.example.json`](../app/infra/mcp/servers.example.json) | วางใน Secrets เป็น `MCP_RAG_SERVERS_JSON` | อิมเมจ backend ไม่มี YAML MCP |
 | [`app/infra/aws/env.cloud.example`](../app/infra/aws/env.cloud.example) | ต้นทาง Secrets / task |

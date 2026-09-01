@@ -10,6 +10,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from app.llm_tokens import truncate_for_embedding
 from app.providers.base import EmbeddingProvider
 from app.providers.constants import DEFAULT_EMBEDDING_MODEL
 
@@ -80,7 +81,7 @@ class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
         """
         response = await self._client.embeddings.create(
             model=self.model,
-            input=text,
+            input=truncate_for_embedding(text),
         )
         return response.data[0].embedding
 
@@ -107,7 +108,7 @@ class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
 
         # Process in batches to respect local server limits
         for i in range(0, len(texts), self._max_batch_size):
-            batch = texts[i : i + self._max_batch_size]
+            batch = [truncate_for_embedding(item) for item in texts[i : i + self._max_batch_size]]
             logger.debug(
                 "Embedding batch %d-%d of %d texts (local Qwen3)",
                 i,

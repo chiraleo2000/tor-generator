@@ -43,12 +43,12 @@ export const SCOPE_SUBSECTIONS: { key: string; title: string }[] = [
   { key: "s4.6", title: "จุดเชื่อมโยงระบบ" },
   { key: "s4.7", title: "มาตรฐานและแบบอ้างอิง" },
   { key: "s4.8", title: "ผลงานส่งมอบ" },
-  { key: "s4.9", title: "ระยะเวลาการสนับสนุนและบำรุงรักษา" },
-  { key: "s4.10", title: "บุคลากรและทีมงาน" },
-  { key: "s4.11", title: "รูปแบบการบำรุงรักษา" },
+  { key: "s4.9", title: "ระยะเวลาการสนับสนุน บำรุงรักษา และ SLA" },
+  { key: "s4.10", title: "บุคลากร ทีมงาน และปริมาณงาน (man-day)" },
+  { key: "s4.11", title: "รูปแบบการบำรุงรักษา (PM/CM)" },
   { key: "s4.12", title: "การดำเนินงานและการบริหารจัดการ" },
-  { key: "s4.13", title: "แผนสำรองและกู้คืนระบบ" },
-  { key: "s4.14", title: "ข้อกำหนดด้านความมั่นคงปลอดภัย" },
+  { key: "s4.13", title: "แผนสำรอง กู้คืนระบบ และการสำรองข้อมูล" },
+  { key: "s4.14", title: "ข้อกำหนดด้านความมั่นคงปลอดภัย PDPA" },
 ];
 
 /** Always show the Thai chip/label, even if an older API payload still says As-Is. */
@@ -106,6 +106,7 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
     { key: "history", label: "ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม", type: "textarea" },
     { key: "problems", label: "ปัญหาที่พบ (ระบุตัวเลข/สถิติ)", type: "textarea", mapField: "problem" },
     { key: "policy", label: "นโยบาย/กฎหมายที่เกี่ยวข้อง", type: "text" },
+    { key: "workKind", label: "ประเภทงาน (จ้างพัฒนา/บำรุงรักษา/ที่ปรึกษา)", type: "text" },
   ],
   s2: [
     { key: "mainObj", label: "วัตถุประสงค์หลัก (ชัดเจน วัดผลได้)", type: "textarea" },
@@ -113,9 +114,10 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
     { key: "kpi", label: "ตัวชี้วัดความสำเร็จ", type: "textarea" },
   ],
   s3: [
-    { key: "general", label: "คุณสมบัติทั่วไป", type: "textarea" },
-    { key: "paidup", label: "ทุนจดทะเบียน/มูลค่ากิจการขั้นต่ำ", type: "text", mapField: "paidupSuggest" },
-    { key: "experience", label: "ผลงาน/ประสบการณ์ที่ต้องการ", type: "textarea" },
+    { key: "general", label: "คุณสมบัติทั่วไป (e-GP ผู้ทิ้งงาน สถานะนิติบุคคล)", type: "textarea" },
+    { key: "paidup", label: "ทุนจดทะเบียน/มูลค่าสุทธิกิจการ/วงเงินสินเชื่อ", type: "text", mapField: "paidupSuggest" },
+    { key: "experience", label: "ผลงานย้อนหลัง อายุบริษัท และวงเงินผลงาน", type: "textarea" },
+    { key: "specialist", label: "ที่ปรึกษา/OEM/ทีมงานและ man-month", type: "textarea" },
   ],
   s5: [
     { key: "timelineRange", label: "วันเริ่มต้น - วันสิ้นสุด", type: "text", mapField: "timeline" },
@@ -124,14 +126,26 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
   s6: [
     { key: "budgetAmount", label: "วงเงินงบประมาณ (บาท)", type: "number", mapField: "budget" },
     { key: "budgetSource", label: "ที่มาของงบประมาณ", type: "text" },
+    { key: "announcedPrice", label: "ราคากลาง (บาท)", type: "number" },
+    { key: "priceBasis", label: "วิธีคำนวณราคากลาง", type: "textarea" },
+    {
+      key: "procurementMethod",
+      label: "วิธีจัดซื้อจัดจ้าง",
+      type: "select",
+      options: ["e-bidding / ประกาศเชิญชวนทั่วไป", "วิธีคัดเลือก", "วิธีเฉพาะเจาะจง"],
+    },
   ],
   s7: [{ key: "location", label: "สถานที่ดำเนินการ", type: "textarea" }],
   s8: [
     { key: "installments", label: "จำนวนงวดการจ่ายเงิน", type: "number" },
     { key: "paymentTerms", label: "เงื่อนไขการเบิกจ่ายแต่ละงวด", type: "textarea", mapField: "paymentPercentsText" },
+    { key: "retention", label: "เงินประกันผลงาน/หนังสือค้ำประกัน", type: "textarea" },
   ],
   s9: [{ key: "warranty", label: "ระยะเวลารับประกัน", type: "textarea" }],
-  s10: [{ key: "penalty", label: "ค่าปรับกรณีระบบขัดข้อง/ล่าช้า", type: "textarea" }],
+  s10: [
+    { key: "penalty", label: "ค่าปรับส่งมอบล่าช้า (ร้อยละต่อวัน)", type: "textarea" },
+    { key: "slaPenalty", label: "ค่าปรับระบบขัดข้อง/SLA", type: "textarea" },
+  ],
   s11: [
     {
       key: "evalMethod",
@@ -141,9 +155,19 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
       options: ["เกณฑ์ราคา", "เกณฑ์ราคาประกอบเกณฑ์คุณภาพ", "เกณฑ์คุณภาพเท่านั้น"],
     },
     { key: "evalWeight", label: "สัดส่วนคะแนน (ถ้ามีเกณฑ์คุณภาพ)", type: "text" },
+    { key: "passingGrade", label: "คะแนนผ่านขั้นต่ำ/การนำเสนอ", type: "text" },
   ],
-  s12: [{ key: "docs", label: "รายการเอกสารที่ต้องยื่นประกอบ", type: "textarea" }],
-  s13: [{ key: "other", label: "เงื่อนไขอื่น ๆ", type: "textarea" }],
+  s12: [
+    { key: "docs", label: "รายการเอกสารที่ต้องยื่นประกอบ", type: "textarea" },
+    { key: "socTable", label: "ตารางเปรียบเทียบข้อกำหนด (SoC)", type: "textarea" },
+  ],
+  s13: [
+    { key: "other", label: "เงื่อนไขอื่น ๆ", type: "textarea" },
+    { key: "ipCopyright", label: "ลิขสิทธิ์ ซอร์สโค้ด และทรัพย์สินทางปัญญา", type: "textarea" },
+    { key: "nda", label: "ความลับข้อมูลและ PDPA", type: "textarea" },
+    { key: "reservations", label: "ข้อสงวนสิทธิ์", type: "textarea" },
+    { key: "responsibleUnit", label: "หน่วยงานผู้รับผิดชอบ", type: "textarea" },
+  ],
 };
 
 export function parseSectionDraft(sectionKey: string, content: string): Record<string, string> {

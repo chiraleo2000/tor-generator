@@ -125,6 +125,16 @@ class KBBatchIngestResponse(BaseModel):
     message: str = "เริ่มประมวลผลเอกสารทั้งหมดแล้ว"
 
 
+class KBSyncMandatoryRequest(BaseModel):
+    wipe_baseline: bool = False
+
+
+class KBSyncMandatoryResponse(BaseModel):
+    scanned: int
+    wipe_baseline: bool = False
+    message: str = "เริ่มซิงก์เอกสารจากโฟลเดอร์ข้อมูลดิบ"
+
+
 # ---------------------------------------------------------------------------
 # Request schemas
 # ---------------------------------------------------------------------------

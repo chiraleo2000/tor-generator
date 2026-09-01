@@ -706,3 +706,59 @@ def test_sts_caller_identity_uses_default_chain_without_keys():
     with patch.dict("sys.modules", {"boto3": fake_boto3}):
         _sts_caller_identity("us-east-1", "", "")
     assert fake_boto3.client.call_args.kwargs == {"region_name": "us-east-1"}
+
+
+def test_validate_custom_rag_requires_url_and_sources():
+    missing_url = _local_body(custom_rag_enabled=True, custom_rag_base_url="")
+    with pytest.raises(ValidationError) as url_exc:
+        _validate_update(missing_url, {})
+    assert url_exc.value.field == "custom_rag_base_url"
+
+    bad_sources = _local_body(
+        custom_rag_enabled=True,
+        custom_rag_base_url="http://127.0.0.1:8088",
+        rag_sources="nope",
+    )
+    with pytest.raises(ValidationError) as src_exc:
+        _validate_update(bad_sources, {})
+    assert src_exc.value.field == "rag_sources"
+
+
+def test_validate_openai_compatible_requires_base_url():
+    body = _local_body(
+        llm_provider="openai_compatible",
+        embedding_provider="openai_compatible",
+        openai_compatible_base_url="",
+    )
+    with pytest.raises(ValidationError) as exc:
+        _validate_update(body, {})
+    assert exc.value.field == "openai_compatible_base_url"
+
+
+@pytest.mark.asyncio
+async def test_probe_cloud_chat_unknown_provider():
+    from app.api.v1.endpoints.admin_ai_settings import _probe_cloud_chat
+
+    body = AiSettingsTest(llm_provider="unknown-cloud", embedding_provider="openai")
+    with pytest.raises(ValidationError) as exc:
+        await _probe_cloud_chat(body, {})
+    assert exc.value.field == "llm_provider"
+
+
+@pytest.mark.asyncio
+async def test_probe_openai_compatible_hits_models():
+    from app.api.v1.endpoints.admin_ai_settings import _probe_cloud_chat
+
+    body = AiSettingsTest(
+        llm_provider="openai_compatible",
+        embedding_provider="openai",
+        openai_compatible_base_url="http://127.0.0.1:8000/v1",
+        openai_compatible_api_key="sk-test",
+    )
+    with patch(
+        "app.api.v1.endpoints.admin_ai_settings._http_get_ok",
+        new_callable=AsyncMock,
+    ) as get_ok:
+        await _probe_cloud_chat(body, {})
+    get_ok.assert_awaited()
+    assert "/models" in get_ok.await_args.args[0]

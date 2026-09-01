@@ -34,6 +34,7 @@ from app.models.tor_section import TORSection
 from app.models.user import User
 from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
+from app.rule_engine.engine import Finding, attach_legal_basis, finding_as_dict
 from app.schemas.drafting import (
     CategoryScoreResponse,
     FindingResponse,
@@ -53,6 +54,20 @@ logger = logging.getLogger("tor_app.review")
 
 router = APIRouter()
 
+def _slot_map_snippets(analysis: dict) -> list[str]:
+    slot_map = analysis.get("slot_map") or {}
+    if not isinstance(slot_map, dict):
+        return []
+    parts: list[str] = []
+    for key, row in slot_map.items():
+        if not isinstance(row, dict) or str(key).startswith("_"):
+            continue
+        content = str(row.get("content") or "").strip()
+        if content:
+            parts.append(f"{key}: {content[:2000]}")
+    return parts
+
+
 def _project_requirements_text(project: Project) -> str:
     parts: list[str] = []
     from app.services.intake_service import project_intake_pack
@@ -60,32 +75,39 @@ def _project_requirements_text(project: Project) -> str:
     intake = project_intake_pack(project)
     if intake:
         parts.append(intake)
-    analysis = dict(project.analysis_json or {})
-    slot_map = analysis.get("slot_map") or {}
-    if isinstance(slot_map, dict):
-        for key, row in slot_map.items():
-            if not isinstance(row, dict) or str(key).startswith("_"):
-                continue
-            content = str(row.get("content") or "").strip()
-            if content:
-                parts.append(f"{key}: {content[:2000]}")
+    parts.extend(_slot_map_snippets(dict(project.analysis_json or {})))
     extra = str(getattr(project, "custom_requirements_text", None) or "").strip()
     if extra:
         parts.append(extra[:16000])
     return "\n".join(parts)[:24000]
 
 
+def _finding_response(finding: Finding) -> FindingResponse:
+    payload = finding_as_dict(finding)
+    return FindingResponse(
+        severity=str(payload["severity"]),
+        rule_violated=str(payload["rule_violated"]),
+        affected_section=str(payload["affected_section"]),
+        message=str(payload["message"]),
+        recommended_correction=payload["recommended_correction"],
+        finding_kind=str(payload["finding_kind"]),
+        legal_basis=payload["legal_basis"],
+        excerpt=payload["excerpt"],
+        risk_type=payload["risk_type"],
+    )
+
+
+def _findings_response(findings: list[Finding], rag_text: str = "") -> list[FindingResponse]:
+    attach_legal_basis(findings, rag_text)
+    return [_finding_response(item) for item in findings]
+
+
 async def _law_review_context() -> str:
     """Global พ.ร.บ./ระเบียบ only — never another project's Phase 0 files."""
     try:
-        from app.rag.hybrid import hybrid_retrieve
+        from app.rag.law_review import law_review_context
 
-        result, _, _ = await hybrid_retrieve(
-            "พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 ระเบียบกระทรวงการคลัง",
-            search_scope="global",
-            top_k=8,
-        )
-        return "\n".join(chunk.text[:1500] for chunk in result.chunks[:8])
+        return await law_review_context()
     except Exception:
         return ""
 
@@ -200,17 +222,8 @@ async def run_review(
             details=str(exc),
         ) from exc
 
-    # Build findings response
-    findings_response = [
-        FindingResponse(
-            severity=f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-            rule_violated=f.rule_violated,
-            affected_section=f.affected_section,
-            message=f.message,
-            recommended_correction=f.recommended_correction,
-        )
-        for f in validation_result.findings
-    ]
+    legal_context = await _law_review_context()
+    findings_response = _findings_response(validation_result.findings, legal_context)
 
     # Build category scores response
     category_labels = {
@@ -250,7 +263,6 @@ async def run_review(
         ).strip()
         redis = getattr(request.app.state, "redis", None)
         requirements = _project_requirements_text(project)
-        legal_context = await _law_review_context()
         suggestions_generated, overall_assessment = await _generate_suggestions(
             project_id=project_id,
             sections_map=sections_map,
@@ -656,16 +668,7 @@ async def validate_tor(
             if f.affected_section == body.section_key
         ]
 
-    findings_response = [
-        FindingResponse(
-            severity=f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-            rule_violated=f.rule_violated,
-            affected_section=f.affected_section,
-            message=f.message,
-            recommended_correction=f.recommended_correction,
-        )
-        for f in findings
-    ]
+    findings_response = _findings_response(findings, await _law_review_context())
 
     response_data = ValidateResponse(
         project_id=project_id,

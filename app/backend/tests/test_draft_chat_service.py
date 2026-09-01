@@ -64,7 +64,8 @@ async def test_edit_section_draft_includes_intake_slot():
     mock_llm = MagicMock()
 
     async def fake_stream(messages, **kwargs):
-        assert kwargs["max_tokens"] == DRAFT_MAX_TOKENS
+        assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
+        assert kwargs["max_tokens"] >= 256
         user = messages[1]["content"]
         assert "กรมบัญชีกลาง" in user
         assert "ให้สั้นลง" in user
@@ -94,7 +95,8 @@ async def test_draft_single_section_streams_llm_tokens():
     mock_llm = MagicMock()
 
     async def fake_stream(_messages, **kwargs):
-        assert kwargs["max_tokens"] == DRAFT_MAX_TOKENS
+        assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
+        assert kwargs["max_tokens"] >= 256
         yield "ร่าง"
         yield "จาก"
         yield "LM Studio"
@@ -124,7 +126,8 @@ async def test_draft_scope_subsection_streams_llm_tokens():
     mock_llm = MagicMock()
 
     async def fake_stream(_messages, **kwargs):
-        assert kwargs["max_tokens"] == DRAFT_MAX_TOKENS
+        assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
+        assert kwargs["max_tokens"] >= 256
         yield "ตารางผลงานส่งมอบ"
 
     mock_result = MagicMock()

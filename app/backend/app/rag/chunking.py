@@ -1,7 +1,7 @@
 """Thai-aware text chunking module.
 
 Segments text using PyThaiNLP's newmm dictionary-based tokenizer for proper Thai
-word boundaries, then splits into chunks of 500–1000 tokens with 100-token overlap,
+word boundaries, then splits into chunks of 800–1800 tokens with 120-token overlap,
 preserving section boundaries.
 
 Requirements: 3.2, 16.4
@@ -17,10 +17,10 @@ from pythainlp.tokenize import word_tokenize
 
 logger = logging.getLogger(__name__)
 
-# Chunking parameters (in tokens)
-DEFAULT_MIN_CHUNK_SIZE = 500
-DEFAULT_MAX_CHUNK_SIZE = 1000
-DEFAULT_OVERLAP_SIZE = 100
+# Chunking parameters (in tokens). Max stays under EmbeddingGemma's 2048 cap.
+DEFAULT_MIN_CHUNK_SIZE = 800
+DEFAULT_MAX_CHUNK_SIZE = 1800
+DEFAULT_OVERLAP_SIZE = 120
 
 # Pattern to detect section headers in extracted text
 # Matches lines starting with:
@@ -193,16 +193,16 @@ def chunk_text(
     The algorithm:
     1. Tokenize the full text using PyThaiNLP's newmm engine.
     2. Detect section boundaries in the original text.
-    3. Split tokens into chunks of 500–1000 tokens with 100-token overlap.
+    3. Split tokens into chunks of 800–1800 tokens with 120-token overlap.
     4. Prefer to break at section boundaries when possible.
     5. Attach metadata (document_id, chunk_index, section_label, page_number) to each chunk.
 
     Args:
         text: The document text to chunk.
         document_id: Identifier for the source document.
-        min_chunk_size: Minimum tokens per chunk (default 500).
-        max_chunk_size: Maximum tokens per chunk (default 1000).
-        overlap_size: Number of overlapping tokens between consecutive chunks (default 100).
+        min_chunk_size: Minimum tokens per chunk (default 800).
+        max_chunk_size: Maximum tokens per chunk (default 1800).
+        overlap_size: Number of overlapping tokens between consecutive chunks (default 120).
         page_breaks: Optional list of character offsets indicating page boundaries.
 
     Returns:

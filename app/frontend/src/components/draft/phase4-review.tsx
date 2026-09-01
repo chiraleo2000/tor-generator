@@ -6,10 +6,11 @@ import { CheckItem } from "@/components/brand/check-item";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
-import { findingCheckTone, type ReviewFinding } from "@/lib/review-findings";
+import type { ReviewFinding } from "@/lib/review-findings";
 import type { ReviewSuggestion, SectionPayload } from "@/components/draft/draft-types";
 import { ReviewChat } from "@/components/draft/review-chat";
 import { RichDraftText } from "@/components/draft/rich-draft-text";
+import { ReviewFindingBuckets } from "@/components/review/finding-buckets";
 import {
   TOR_SECTION_LABELS,
   labeledSectionBlocks,
@@ -86,14 +87,7 @@ export function Phase4Review({
       ) : (
         <CheckItem tone="warn" title="ยังไม่ได้รันตรวจสอบ" detail="กดตรวจกฎเพื่อตรวจกฎหมาย ความครบถ้วน และความสอดคล้อง" />
       )}
-      {findings.map((finding, index) => (
-        <CheckItem
-          key={`${finding.rule}-${index}`}
-          tone={findingCheckTone(finding.severity)}
-          title={finding.message}
-          detail={[finding.section, finding.recommendation].filter(Boolean).join(" — ")}
-        />
-      ))}
+      <ReviewFindingBuckets findings={findings} />
       {suggestions.length ? (
         <h4 className="mb-1 mt-3 text-sm font-bold text-navy">
           ข้อเสนอแนะจากการทบทวน ({suggestions.length})

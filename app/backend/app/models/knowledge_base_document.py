@@ -44,6 +44,7 @@ class KnowledgeBaseDocument(Base):
     corpus_group: Mapped[str] = mapped_column(
         String(40), nullable=False, default="mandatory_raw"
     )
+    content_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     # Relationships
     chunks: Mapped[list["KBChunk"]] = relationship(  # noqa: F821

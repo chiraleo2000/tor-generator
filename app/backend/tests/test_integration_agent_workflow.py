@@ -183,6 +183,18 @@ async def test_rag_degradation_still_drafts():
         assert has_warning
 
 
+@pytest.mark.asyncio
+async def test_generate_all_uses_cached_section_draft():
+    cache = MagicMock()
+    cache.get_draft = AsyncMock(return_value="ร่างจากแคชที่ยาวพอ")
+    cache.set_draft = AsyncMock()
+    gen = FullDraftGenerator(llm=MagicMock(), cache=cache, retrieve=AsyncMock())
+    result = await gen.generate_all(_filled_map(), project_id=str(PROJECT_ID))
+    assert result.section_drafts["s1"] == "ร่างจากแคชที่ยาวพอ"
+    assert result.draft_quality_scores["s1"] == 70.0
+    cache.set_draft.assert_not_awaited()
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_kb_chat_acl_and_threshold():
