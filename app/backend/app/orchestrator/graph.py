@@ -23,7 +23,9 @@ from langgraph.graph import END, StateGraph
 
 from app.config import LOCAL_LLM_TIMEOUT_CAP_SECONDS
 from app.domain.tor_sections import (
+    CRITICAL_SECTIONS_MIN_LENGTH,
     MANDATORY_HUMAN_REVIEW_SECTIONS,
+    MINIMUM_CONTENT_LENGTH,
     TOR_SECTION_LABELS_BILINGUAL,
 )
 from app.llm_tokens import DRAFT_MAX_TOKENS
@@ -45,7 +47,7 @@ DEFAULT_MAX_RETRIES = 3
 # LLM timeout per invocation in seconds (Requirement 12.6)
 LLM_TIMEOUT_SECONDS = LOCAL_LLM_TIMEOUT_CAP_SECONDS
 
-# Maximum allowed timeout (Requirement 12.6); long 32k drafts need this headroom
+# Maximum allowed timeout (Requirement 12.6); long drafts need this headroom
 MAX_TIMEOUT_SECONDS = LOCAL_LLM_TIMEOUT_CAP_SECONDS
 
 SECTION_NAMES: dict[str, str] = dict(TOR_SECTION_LABELS_BILINGUAL)
@@ -809,9 +811,39 @@ async def rule_guardrail(state: TORDraftState) -> TORDraftState:
         # Convert Finding objects to dicts for state
         from app.rule_engine.engine import finding_as_dict
 
-        findings_dicts = [finding_as_dict(f) for f in result.findings]
-
-        quality_score = result.quality_score
+        missing_sections = set(getattr(result, "missing_sections", {}) or {})
+        section_only_validation = (
+            getattr(result, "halted", False) is True
+            and bool(target_section)
+            and target_section not in missing_sections
+        )
+        if section_only_validation:
+            # The full-document presence rule correctly halts an incomplete TOR,
+            # but this endpoint drafts one section at a time. Missing *other*
+            # sections must not trigger three costly LLM retries. The complete
+            # TOR is still checked by the project review endpoint.
+            minimum = CRITICAL_SECTIONS_MIN_LENGTH.get(
+                target_section, MINIMUM_CONTENT_LENGTH
+            )
+            if len(draft_content.strip()) >= minimum:
+                quality_score = 100
+                findings_dicts = []
+            else:
+                quality_score = 50
+                findings_dicts = [
+                    {
+                        "severity": "warning",
+                        "rule_violated": "SECTION_CONTENT_TOO_SHORT",
+                        "affected_section": target_section,
+                        "message": f"เนื้อหาหัวข้อ {target_section} สั้นเกินไป",
+                        "recommended_correction": (
+                            f"เพิ่มรายละเอียดให้มีอย่างน้อย {minimum} ตัวอักษร"
+                        ),
+                    }
+                ]
+        else:
+            findings_dicts = [finding_as_dict(f) for f in result.findings]
+            quality_score = result.quality_score
         passed = quality_score >= GUARDRAIL_THRESHOLD
 
         retry_count = state.get("retry_count", 0)

@@ -220,7 +220,12 @@ class FullDraftGenerator:
                 break
         if not chunks:
             return [], "ไม่พบเอกสารกฎหมายที่เกี่ยวข้องเพียงพอสำหรับหมวดนี้"
-        warning = "GraphRAG ลดระดับเหลือ pgvector" if degraded else None
+        uses_legacy_local_rag = get_settings().rag_sources in {"local", "both"}
+        warning = (
+            "GraphRAG ลดระดับเหลือ pgvector"
+            if degraded and uses_legacy_local_rag
+            else None
+        )
         return chunks, warning
 
     async def auto_correct(

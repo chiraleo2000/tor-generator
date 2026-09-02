@@ -55,7 +55,7 @@ def test_section_prompt_includes_this_project_intake_only():
     assert "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น" in prompt
     assert "เอกสารขั้นศูนย์ของโครงการนี้" in prompt
     assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in prompt
-    assert "6144" in prompt
+    assert "1024" in prompt
     assert "หนึ่งร้อยถึงห้าร้อยคำ" not in prompt
 
 

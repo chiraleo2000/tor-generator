@@ -6,7 +6,7 @@ import { Select } from "@/components/ui/select";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
-import { KB_CATEGORIES } from "@/lib/kb-categories";
+import { KB_CATEGORIES, kbCategoryLabel, kbProcessingLabel } from "@/lib/kb-categories";
 
 interface KBDoc {
   id: string;
@@ -158,8 +158,8 @@ export default function AdminKnowledgeBasePage() {
               <p className="font-medium">{doc.name}</p>
               <p className="text-xs text-muted-foreground">
                 {GROUP_LABELS[doc.corpus_group || ""] || doc.corpus_group || "คลัง"} ·{" "}
-                {doc.category} · {doc.file_type} · {doc.processing_status} ·{" "}
-                {doc.chunk_count} chunks
+                {kbCategoryLabel(doc.category)} · {doc.file_type.toUpperCase()} ·{" "}
+                {kbProcessingLabel(doc.processing_status)} · {doc.chunk_count} ส่วนเอกสาร
               </p>
               {doc.error_message && (
                 <p className="text-xs text-destructive">{doc.error_message}</p>

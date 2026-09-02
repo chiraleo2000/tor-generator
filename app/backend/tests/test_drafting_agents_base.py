@@ -73,7 +73,7 @@ def test_background_agent_prompt_uses_thai_preamble():
     assert prompt.startswith(THAI_FORMAL_REGISTER_PREAMBLE)
     assert "ความเป็นมา" in prompt
     assert "300-800" not in prompt
-    assert "6144" in prompt
+    assert "1024" in prompt
 
 
 def test_format_user_input_handles_empty_and_nested():

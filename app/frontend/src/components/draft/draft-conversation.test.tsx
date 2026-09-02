@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DraftConversation } from "@/components/draft/draft-conversation";
 import { apiClient } from "@/lib/api-client";
 import { streamSsePost } from "@/lib/chat-sse";
@@ -68,6 +68,57 @@ describe("DraftConversation", () => {
     await waitFor(() => expect(streamSsePost).toHaveBeenCalled());
     expect(String(vi.mocked(streamSsePost).mock.calls[0][0])).toContain(
       "/projects/p1/intake/chat"
+    );
+  });
+
+  it("shows processing then replaces it with streamed Bedrock tokens", async () => {
+    let emit: (event: string, data: Record<string, unknown>) => void = () => undefined;
+    let finish = () => undefined;
+    vi.mocked(streamSsePost).mockImplementation(
+      (_path, _body, _token, onEvent) =>
+        new Promise<void>((resolve) => {
+          emit = onEvent;
+          finish = resolve;
+        })
+    );
+    render(
+      <DraftConversation projectId="p1" mode="intake" apiBase="/api/v1" />
+    );
+    await screen.findByTestId("chat-msg-assistant");
+    fireEvent.change(screen.getByTestId("chat-input"), {
+      target: { value: "ช่วยตอบ" },
+    });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    await waitFor(() => expect(streamSsePost).toHaveBeenCalled());
+    act(() => emit("queued", { position: 1 }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("chat-msg-assistant").at(-1)).toHaveTextContent(
+        "AI กำลังประมวลผล"
+      )
+    );
+    act(() => emit("started", {}));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("chat-msg-assistant").at(-1)).toHaveTextContent(
+        "AI กำลังสร้างคำตอบ"
+      )
+    );
+    act(() => {
+      emit("token", { text: "คำ" });
+      emit("token", { text: "ตอบ" });
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("chat-msg-assistant").at(-1)).toHaveTextContent(
+        "คำตอบ"
+      )
+    );
+    act(() => {
+      emit("done", { content: "คำตอบ" });
+      finish();
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("chat-msg-assistant").at(-1)).toHaveTextContent(
+        "คำตอบ"
+      )
     );
   });
 

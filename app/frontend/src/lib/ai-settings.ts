@@ -80,6 +80,11 @@ export const LOCAL_EMBEDS = [
   { value: "qwen3", label: "ในเครื่อง (alias เดิม qwen3)" },
 ];
 
+export const NO_EMBED = {
+  value: "none",
+  label: "ไม่ใช้ Embedding (PageIndex-only)",
+};
+
 export const CLOUD_EMBEDS = [
   { value: "bedrock", label: "ฝังเวกเตอร์ Bedrock (Titan)" },
   { value: "openai", label: "ฝังเวกเตอร์ OpenAI" },
@@ -94,15 +99,15 @@ export const VECTOR_STORES = [
 ];
 
 export const RAG_SOURCE_OPTIONS = [
-  { value: "both", label: "คลังในเครื่อง + Custom RAG" },
+  { value: "both", label: "คลังเวกเตอร์เดิม + PageIndex RAG" },
   { value: "local", label: "เฉพาะคลังในเครื่อง" },
-  { value: "custom", label: "เฉพาะ Custom RAG" },
+  { value: "custom", label: "เฉพาะ PageIndex RAG (แนะนำ)" },
 ];
 
 export const EMPTY_AI_SETTINGS: AiSettings = {
   deployment_mode: "on_prem",
   llm_provider: "lm_studio",
-  embedding_provider: "local",
+  embedding_provider: "none",
   local_embedding_server: "lm_studio",
   local_embedding_base_url: "",
   lm_studio_base_url: "http://host.docker.internal:1234/v1",
@@ -129,24 +134,24 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   azure_foundry_api_key: "",
   openai_compatible_api_key: "",
   bedrock_region: "ap-southeast-1",
-  bedrock_model_id: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  bedrock_model_id: "global.anthropic.claude-sonnet-4-6",
   bedrock_embedding_model_id: "amazon.titan-embed-text-v2:0",
   azure_foundry_endpoint: "",
-  azure_foundry_deployment: "",
+  azure_foundry_deployment: "gpt-5.6-luna",
   azure_foundry_embedding_deployment: "",
-  azure_foundry_api_version: "2024-10-21",
+  azure_foundry_api_version: "v1",
   openai_compatible_base_url: "",
   openai_compatible_model: "",
   openai_compatible_embedding_model: "text-embedding-3-small",
-  custom_rag_enabled: false,
-  custom_rag_base_url: "",
+  custom_rag_enabled: true,
+  custom_rag_base_url: "http://host.docker.internal:8000/api/search",
   custom_rag_api_key: "",
   custom_rag_top_k: 24,
   custom_rag_timeout_seconds: 30,
   chat_rag_top_k: 96,
   chat_max_context_chunks: 96,
   draft_rag_top_k: 32,
-  rag_sources: "both",
+  rag_sources: "custom",
 };
 
 export function llmOptionsForMode(mode: string) {
@@ -158,9 +163,9 @@ export function llmOptionsForMode(mode: string) {
 
 export function embedOptionsForMode(mode: string) {
   if (mode === "cloud") {
-    return [...CLOUD_EMBEDS, ...LOCAL_EMBEDS];
+    return [NO_EMBED, ...CLOUD_EMBEDS, ...LOCAL_EMBEDS];
   }
-  return [...LOCAL_EMBEDS, ...CLOUD_EMBEDS];
+  return [NO_EMBED, ...LOCAL_EMBEDS, ...CLOUD_EMBEDS];
 }
 
 export function showLocalServerFields(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -45,8 +47,15 @@ async def test_hybrid_retrieve_degraded_without_session_factory():
 
     previous = runtime.session_factory
     runtime.set_session_factory(None)
+    from app.config import Settings
+
     try:
-        result, citations, degraded = await hybrid_mod.hybrid_retrieve("งวดจ่าย")
+        with patch.object(
+            hybrid_mod,
+            "get_settings",
+            return_value=Settings(rag_sources="local", embedding_provider="openai"),
+        ):
+            result, citations, degraded = await hybrid_mod.hybrid_retrieve("งวดจ่าย")
     finally:
         runtime.set_session_factory(previous)
     assert degraded is True
@@ -149,6 +158,53 @@ async def test_bedrock_llm_uses_converse():
         provider = BedrockLLMProvider(region="ap-southeast-1", model_id="demo-model")
         response = await provider.invoke([{"role": "user", "content": "hi"}])
     assert response.content == "สวัสดี"
+
+
+@pytest.mark.asyncio
+async def test_bedrock_llm_yields_each_stream_token_immediately():
+    from app.providers.llm.bedrock_provider import BedrockLLMProvider
+
+    release_second = threading.Event()
+
+    class TwoStepStream:
+        def __init__(self):
+            self.index = 0
+            self.closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            if self.index == 0:
+                self.index += 1
+                return {"contentBlockDelta": {"delta": {"text": "ก"}}}
+            if self.index == 1:
+                release_second.wait(timeout=2)
+                self.index += 1
+                return {"contentBlockDelta": {"delta": {"text": "ข"}}}
+            raise StopIteration
+
+        def close(self):
+            self.closed = True
+
+    fake_stream = TwoStepStream()
+    fake_client = MagicMock()
+    fake_client.converse_stream.return_value = {"stream": fake_stream}
+    fake_boto3 = MagicMock()
+    fake_boto3.client.return_value = fake_client
+    with patch.dict("sys.modules", {"boto3": fake_boto3}):
+        provider = BedrockLLMProvider(
+            region="ap-southeast-1", model_id="demo-model", timeout=2
+        )
+        tokens = provider.stream([{"role": "user", "content": "hi"}])
+        first = await asyncio.wait_for(anext(tokens), timeout=0.5)
+        assert first == "ก"
+        release_second.set()
+        second = await asyncio.wait_for(anext(tokens), timeout=0.5)
+        assert second == "ข"
+        with pytest.raises(StopAsyncIteration):
+            await anext(tokens)
+    assert fake_stream.closed is True
 
 
 def test_persist_keys_for_section_maps_scope_subkeys():

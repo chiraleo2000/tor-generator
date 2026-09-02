@@ -197,6 +197,49 @@ async def test_generate_all_uses_cached_section_draft():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_pageindex_context_reaches_tor_agent_before_llm_draft():
+    seen = {}
+
+    async def pageindex_retrieve(query, **kwargs):
+        seen["query"] = query
+        seen["scope"] = kwargs.get("search_scope")
+        chunk = SimpleNamespace(
+            id="pageindex-doc:1.2",
+            text="หลักประกันสัญญาร้อยละห้าของวงเงินตาม PageIndex",
+            score=0.91,
+            source_document="ระเบียบการจัดซื้อจัดจ้าง.pdf",
+            section_label="หลักประกันสัญญา",
+            page_number=12,
+            metadata={"rag_source": "pageindex_rag"},
+        )
+        return SimpleNamespace(chunks=[chunk]), [], False
+
+    agent = MagicMock()
+    generated = "ร่าง TOR ที่อ้างอิงหลักประกันสัญญาจากเอกสารระเบียบการจัดซื้อจัดจ้างของหน่วยงาน"
+    agent.draft = AsyncMock(return_value=generated)
+    with patch(
+        "app.services.full_draft_generator.get_agent_for_section",
+        return_value=agent,
+    ):
+        generator = FullDraftGenerator(
+            llm=FakeLLM("unused"), retrieve=pageindex_retrieve
+        )
+        draft, warnings, score = await generator._draft_section(
+            "s8", _filled_map(), {"name": "โครงการทดสอบ"}, str(USER_ID)
+        )
+
+    assert draft == generated
+    assert seen["scope"] == "global"
+    assert score == 80.0
+    assert warnings == []
+    rag_chunks = agent.draft.await_args.kwargs["rag_chunks"]
+    assert rag_chunks[0]["id"] == "pageindex-doc:1.2"
+    assert "ตาม PageIndex" in rag_chunks[0]["text"]
+    assert rag_chunks[0]["source_document"] == "ระเบียบการจัดซื้อจัดจ้าง.pdf"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_kb_chat_acl_and_threshold():
     user_id = USER_ID
     other = uuid.uuid4()

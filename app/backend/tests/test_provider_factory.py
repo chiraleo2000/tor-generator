@@ -7,8 +7,8 @@ Tests cover:
 - Error handling: invalid DEPLOYMENT_MODE, missing sub-provider vars, missing API keys
 """
 
-from unittest.mock import MagicMock, patch
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,13 +20,12 @@ if "qdrant_client" not in sys.modules:
 
 from app.config import Settings
 from app.providers.factory import (
-    ProviderFactory,
     VALID_DEPLOYMENT_MODES,
     VALID_EMBEDDING_PROVIDERS,
     VALID_LLM_PROVIDERS,
     VALID_VECTOR_STORE_PROVIDERS,
+    ProviderFactory,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper: create Settings instances with overrides
@@ -603,6 +602,7 @@ class TestConstants:
 
     def test_valid_embedding_providers(self):
         """Factory should recognize openai, local/qwen3 alias, and gemini."""
+        assert "none" in VALID_EMBEDDING_PROVIDERS
         assert "openai" in VALID_EMBEDDING_PROVIDERS
         assert "qwen3" in VALID_EMBEDDING_PROVIDERS
         assert "local" in VALID_EMBEDDING_PROVIDERS
@@ -612,3 +612,19 @@ class TestConstants:
         """Factory should recognize pgvector and qdrant vector store providers."""
         assert "pgvector" in VALID_VECTOR_STORE_PROVIDERS
         assert "qdrant" in VALID_VECTOR_STORE_PROVIDERS
+
+
+class TestPageIndexOnlyEmbeddingMode:
+    def test_none_embedding_is_valid_for_custom_rag(self):
+        settings = make_settings(embedding_provider="none", rag_sources="custom")
+
+        factory = ProviderFactory(settings=settings)
+
+        with pytest.raises(RuntimeError, match="embeddings are disabled"):
+            factory.get_embedding()
+
+    def test_none_embedding_is_rejected_for_local_rag(self):
+        settings = make_settings(embedding_provider="none", rag_sources="local")
+
+        with pytest.raises(ValueError, match="RAG_SOURCES='custom'"):
+            ProviderFactory(settings=settings)

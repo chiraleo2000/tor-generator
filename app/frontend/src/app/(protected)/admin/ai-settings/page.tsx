@@ -92,6 +92,7 @@ export default function AdminAiSettingsPage() {
         custom_rag_enabled: form.custom_rag_enabled,
         custom_rag_base_url: form.custom_rag_base_url,
         custom_rag_api_key: form.custom_rag_api_key,
+        rag_sources: form.rag_sources,
       });
       const payload = unwrapData<{ message?: string }>(response);
       setMessage(payload.message || "เชื่อมต่อได้");
@@ -118,10 +119,9 @@ export default function AdminAiSettingsPage() {
       <div className="gov-card">
         <h1 className="text-2xl font-extrabold text-navy">การตั้งค่า AI</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Production แนะนำ: Amazon Bedrock (ดู Discussions/20-AWS_BEDROCK_SETUP.md) — ยังสลับ LM Studio /
-          Ollama / llama.cpp / SGLang และคลาวด์อื่นได้ แชทกับฝังเวกเตอร์เลือกอิสระ
-          การบันทึกมีผลทันที ไม่ต้องรีสตาร์ทส่วนหลังบ้าน หากเปลี่ยนผู้ให้บริการหรือโมเดลฝังเวกเตอร์
-          ต้องประมวลผลฐานความรู้ใหม่ (`python -m app.seed_raw_docs`)
+          ระบบนี้ใช้ PageIndex RAG จึงไม่ต้องใช้ embeddings หรือ vector store ของ TOR
+          โมเดลแชทใช้สำหรับร่าง ตอบ และตรวจ TOR เท่านั้น การบันทึกมีผลทันที
+          ไม่ต้องรีสตาร์ทส่วนหลังบ้าน
         </p>
       </div>
 
@@ -169,7 +169,7 @@ export default function AdminAiSettingsPage() {
         </div>
 
         <div>
-          <Label htmlFor="ai-embed">ฝังเวกเตอร์</Label>
+          <Label htmlFor="ai-embed">Embedding ของ TOR</Label>
           <Select
             id="ai-embed"
             value={form.embedding_provider}
@@ -178,15 +178,21 @@ export default function AdminAiSettingsPage() {
           />
         </div>
 
-        <div>
-          <Label htmlFor="vector-store">คลังเวกเตอร์</Label>
-          <Select
-            id="vector-store"
-            value={form.vector_store_provider}
-            onChange={(event) => patch("vector_store_provider", event.target.value)}
-            options={VECTOR_STORES}
-          />
-        </div>
+        {form.embedding_provider === "none" ? (
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+            PageIndex เป็นผู้ค้นเอกสาร จึงไม่สร้าง embedding และไม่ใช้ vector store ใน TOR
+          </div>
+        ) : (
+          <div>
+            <Label htmlFor="vector-store">คลังเวกเตอร์</Label>
+            <Select
+              id="vector-store"
+              value={form.vector_store_provider}
+              onChange={(event) => patch("vector_store_provider", event.target.value)}
+              options={VECTOR_STORES}
+            />
+          </div>
+        )}
       </div>
 
       {showLocal ? (
@@ -374,7 +380,8 @@ export default function AdminAiSettingsPage() {
         <div className="gov-card space-y-3">
           <h2 className="font-semibold">Amazon Bedrock (แนะนำ production)</h2>
           <p className="text-xs text-muted-foreground">
-            บน EC2/ECS เว้นว่าง AWS key เพื่อใช้ IAM role — คู่มือ: Discussions/20-AWS_BEDROCK_SETUP.md
+            Bedrock API key ตั้งผ่าน AWS_BEARER_TOKEN_BEDROCK ใน .env; บน EC2/ECS
+            สามารถเว้น credentials ว่างเพื่อใช้ IAM role
           </p>
           <Label htmlFor="bedrock-region">ภูมิภาค</Label>
           <Input
@@ -432,14 +439,18 @@ export default function AdminAiSettingsPage() {
             value={form.azure_foundry_deployment}
             onChange={(event) => patch("azure_foundry_deployment", event.target.value)}
           />
-          <Label htmlFor="azure-embed-deploy">ชื่อดีพลอยเมนต์ฝังเวกเตอร์</Label>
-          <Input
-            id="azure-embed-deploy"
-            value={form.azure_foundry_embedding_deployment}
-            onChange={(event) =>
-              patch("azure_foundry_embedding_deployment", event.target.value)
-            }
-          />
+          {form.embedding_provider === "azure_foundry" ? (
+            <>
+              <Label htmlFor="azure-embed-deploy">ชื่อดีพลอยเมนต์ฝังเวกเตอร์</Label>
+              <Input
+                id="azure-embed-deploy"
+                value={form.azure_foundry_embedding_deployment}
+                onChange={(event) =>
+                  patch("azure_foundry_embedding_deployment", event.target.value)
+                }
+              />
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -477,9 +488,10 @@ export default function AdminAiSettingsPage() {
       ) : null}
 
       <div className="gov-card space-y-3">
-        <h2 className="font-semibold">Custom RAG (แหล่งข้อมูลเสริม)</h2>
+        <h2 className="font-semibold">PageIndex RAG (Knowledge-RAG)</h2>
         <p className="text-xs text-muted-foreground">
-          เรียก POST {"{base}"}/v1/retrieve แล้วรวมผลกับคลังในเครื่อง (pgvector / Neo4j)
+          ใช้ POST /api/search ของ Betimes Knowledge-RAG เป็นแหล่งทำความเข้าใจเอกสาร
+          โดยเลือกใช้แทนหรือใช้ร่วมกับคลังเวกเตอร์เดิมได้
         </p>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -487,19 +499,19 @@ export default function AdminAiSettingsPage() {
             checked={Boolean(form.custom_rag_enabled)}
             onChange={(event) => patch("custom_rag_enabled", event.target.checked)}
           />
-          <span>เปิดใช้ Custom RAG</span>
+          <span>เปิดใช้ PageIndex RAG</span>
         </label>
         <div>
-          <Label htmlFor="custom-rag-url">Base URL</Label>
+          <Label htmlFor="custom-rag-url">Search endpoint URL</Label>
           <Input
             id="custom-rag-url"
             value={form.custom_rag_base_url}
             onChange={(event) => patch("custom_rag_base_url", event.target.value)}
-            placeholder="https://rag.example.com"
+            placeholder="https://knowledge-rag.example.com/api/search"
           />
         </div>
         <div>
-          <Label htmlFor="custom-rag-key">API key</Label>
+          <Label htmlFor="custom-rag-key">Knowledge-RAG API key</Label>
           <Input
             id="custom-rag-key"
             type="password"

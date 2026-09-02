@@ -3,10 +3,12 @@
 import { cn } from "@/lib/utils";
 
 export function UploadArea({
+  accept = ".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg",
   hint,
   label,
   onFiles,
 }: Readonly<{
+  accept?: string;
   label: string;
   hint: string;
   onFiles: (files: FileList) => void;
@@ -22,7 +24,7 @@ export function UploadArea({
         type="file"
         className="hidden"
         multiple
-        accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg"
+        accept={accept}
         onChange={(event) => {
           if (event.target.files?.length) onFiles(event.target.files);
         }}

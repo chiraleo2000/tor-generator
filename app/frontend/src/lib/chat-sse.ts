@@ -49,10 +49,10 @@ export function attachIngestFeedback(
     return `ไม่สามารถประมวลผล «${name}» ได้`;
   }
   if (status === "completed" || chunks > 0) {
-    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — ใช้ค้นหาได้ทันที (${chunks} ส่วนข้อความ)`;
+    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — พร้อมค้นหาด้วย PageIndex`;
   }
   if (payload.document_id) {
-    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — กำลังจัดทำดัชนีค้นหา`;
+    return `เอกสาร «${name}» ถูกเพิ่มเข้าคลังของฉันแล้ว — PageIndex กำลังอ่านโครงสร้าง`;
   }
   return `กำลังประมวลผล «${name}» เข้าคลัง...`;
 }

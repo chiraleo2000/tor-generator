@@ -1,4 +1,4 @@
-"""Local Gemma needs a longer per-section timeout than cloud Claude."""
+"""Provider-specific per-section timeouts remain configurable and bounded."""
 
 from app.config import Settings
 
@@ -12,14 +12,27 @@ def test_on_prem_lm_studio_timeout_is_180():
     assert settings.drafting_agent_timeout_seconds() == 180
 
 
-def test_cloud_claude_timeout_is_60():
+def test_cloud_claude_timeout_defaults_to_300():
     settings = Settings(llm_provider="claude", deployment_mode="cloud")
-    assert settings.drafting_agent_timeout_seconds() == 60
+    assert settings.drafting_agent_timeout_seconds() == 300
 
 
 def test_on_prem_claude_uses_cloud_timeout():
-    settings = Settings(llm_provider="claude", deployment_mode="on_prem")
-    assert settings.drafting_agent_timeout_seconds() == 60
+    settings = Settings(
+        llm_provider="claude",
+        deployment_mode="on_prem",
+        cloud_llm_timeout=120.0,
+    )
+    assert settings.drafting_agent_timeout_seconds() == 120
+
+
+def test_cloud_timeout_is_clamped_to_1800():
+    settings = Settings(
+        llm_provider="bedrock",
+        deployment_mode="cloud",
+        cloud_llm_timeout=9999.0,
+    )
+    assert settings.drafting_agent_timeout_seconds() == 1800
 
 
 def test_timeout_is_clamped_to_1800():

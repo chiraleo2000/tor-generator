@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app import infra as runtime
+from app.config import Settings
 from app.rag import hybrid
 from app.rag.retrieval import RetrievalFilter
 
@@ -22,6 +23,11 @@ async def test_hybrid_retrieve_uses_session_factory_set_after_import():
         embedding = MagicMock()
         embedding.embed_query = AsyncMock(return_value=[0.1, 0.2])
         with (
+            patch.object(
+                hybrid,
+                "get_settings",
+                return_value=Settings(rag_sources="local", embedding_provider="openai"),
+            ),
             patch.object(hybrid.ProviderFactory, "get_vector_store", return_value=store) as gvs,
             patch.object(hybrid.ProviderFactory, "get_embedding", return_value=embedding),
         ):

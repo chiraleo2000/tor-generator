@@ -10,6 +10,32 @@
 
 services:
   # ---------------------------------------------------------------------------
+  # PageIndex: vectorless document indexing and retrieval
+  # ---------------------------------------------------------------------------
+  pageindex:
+    build:
+      context: ./services/pageindex
+      dockerfile: Dockerfile
+    ports:
+      - "${PAGEINDEX_PORT:-8100}:8000"
+    env_file:
+      - .env
+    environment:
+      - PAGEINDEX_UI_ENABLED=false
+      - PAGEINDEX_KB_DIR=/app/knowledge
+      - PAGEINDEX_API_KEY=${PAGEINDEX_API_KEY:-}
+    volumes:
+      - pageindex_data:/app/knowledge
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - tor_network
+
+  # ---------------------------------------------------------------------------
   # Frontend: Next.js 14 SSR Application
   # ---------------------------------------------------------------------------
   frontend:
@@ -77,8 +103,8 @@ services:
       - OPENAI_CHAT_MODEL=${OPENAI_CHAT_MODEL:-gpt-4o-mini}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
       - GEMINI_EMBEDDING_MODEL=${GEMINI_EMBEDDING_MODEL:-text-embedding-004}
-      - LLM_PROVIDER=${LLM_PROVIDER:-lm_studio}
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-local}
+      - LLM_PROVIDER=${LLM_PROVIDER:-azure_foundry}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-none}
       - LOCAL_EMBEDDING_SERVER=${LOCAL_EMBEDDING_SERVER:-lm_studio}
       - LOCAL_EMBEDDING_BASE_URL=${LOCAL_EMBEDDING_BASE_URL:-}
       - VECTOR_STORE_PROVIDER=${VECTOR_STORE_PROVIDER:-pgvector}
@@ -89,14 +115,16 @@ services:
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-changeme_neo4j}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
       - BEDROCK_REGION=${BEDROCK_REGION:-ap-southeast-1}
-      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-global.anthropic.claude-sonnet-4-6}
+      - CLOUD_LLM_TIMEOUT=${CLOUD_LLM_TIMEOUT:-300}
       - BEDROCK_EMBEDDING_MODEL_ID=${BEDROCK_EMBEDDING_MODEL_ID:-amazon.titan-embed-text-v2:0}
       - AZURE_FOUNDRY_ENDPOINT=${AZURE_FOUNDRY_ENDPOINT:-}
       - AZURE_FOUNDRY_API_KEY=${AZURE_FOUNDRY_API_KEY:-}
-      - AZURE_FOUNDRY_DEPLOYMENT=${AZURE_FOUNDRY_DEPLOYMENT:-}
+      - AZURE_FOUNDRY_DEPLOYMENT=${AZURE_FOUNDRY_DEPLOYMENT:-gpt-5.6-luna}
       - AZURE_FOUNDRY_EMBEDDING_DEPLOYMENT=${AZURE_FOUNDRY_EMBEDDING_DEPLOYMENT:-}
-      - AZURE_FOUNDRY_API_VERSION=${AZURE_FOUNDRY_API_VERSION:-2024-10-21}
+      - AZURE_FOUNDRY_API_VERSION=${AZURE_FOUNDRY_API_VERSION:-v1}
       - OPENAI_COMPATIBLE_BASE_URL=${OPENAI_COMPATIBLE_BASE_URL:-}
       - OPENAI_COMPATIBLE_API_KEY=${OPENAI_COMPATIBLE_API_KEY:-}
       - OPENAI_COMPATIBLE_MODEL=${OPENAI_COMPATIBLE_MODEL:-}
@@ -115,16 +143,20 @@ services:
       - SGLANG_EMBEDDING_BASE_URL=${SGLANG_EMBEDDING_BASE_URL:-http://sglang-embed:30001/v1}
       - SGLANG_MODEL=${SGLANG_MODEL:-google/gemma-4-e4b}
       - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
-      - CUSTOM_RAG_ENABLED=${CUSTOM_RAG_ENABLED:-false}
-      - CUSTOM_RAG_BASE_URL=${CUSTOM_RAG_BASE_URL:-}
+      # The TOR app uses Betimes PageIndex RAG as its primary retrieval source.
+      - CUSTOM_RAG_ENABLED=${CUSTOM_RAG_ENABLED:-true}
+      - CUSTOM_RAG_BASE_URL=${CUSTOM_RAG_BASE_URL:-http://pageindex:8000/api/search}
       - CUSTOM_RAG_API_KEY=${CUSTOM_RAG_API_KEY:-}
       - CUSTOM_RAG_TOP_K=${CUSTOM_RAG_TOP_K:-5}
       - CUSTOM_RAG_TIMEOUT_SECONDS=${CUSTOM_RAG_TIMEOUT_SECONDS:-30}
       - CHAT_RAG_TOP_K=${CHAT_RAG_TOP_K:-64}
       - CHAT_MAX_CONTEXT_CHUNKS=${CHAT_MAX_CONTEXT_CHUNKS:-80}
       - DRAFT_RAG_TOP_K=${DRAFT_RAG_TOP_K:-24}
-      - RAG_SOURCES=${RAG_SOURCES:-both}
+      - RAG_SOURCES=${RAG_SOURCES:-custom}
       - KB_SOURCES_ROOT=${KB_SOURCES_ROOT:-/documents/sources}
+      - PAGEINDEX_BASE_URL=${PAGEINDEX_BASE_URL:-http://pageindex:8000}
+      - PAGEINDEX_API_KEY=${PAGEINDEX_API_KEY:-}
+      - PAGEINDEX_INGEST_TIMEOUT_SECONDS=${PAGEINDEX_INGEST_TIMEOUT_SECONDS:-1800}
       - QDRANT_HOST=${QDRANT_HOST:-qdrant}
       - QDRANT_PORT=${QDRANT_PORT:-6333}
     depends_on:
@@ -137,6 +169,8 @@ services:
       mongo:
         condition: service_healthy
       neo4j:
+        condition: service_healthy
+      pageindex:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
@@ -379,6 +413,7 @@ volumes:
   qdrant_data:
   mongo_data:
   neo4j_data:
+  pageindex_data:
   huggingface_cache:
 
 # =============================================================================

@@ -1,6 +1,13 @@
 "use client";
 
-import { Download } from "lucide-react";
+import Link from "next/link";
+import {
+  ChevronDown,
+  Download,
+  LoaderCircle,
+  MessageSquare,
+  RefreshCw,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { UploadArea } from "@/components/brand/upload-area";
 import { Button } from "@/components/ui/button";
@@ -26,6 +33,7 @@ interface CatalogFile {
   category?: string;
   processing_status?: string;
   error_message?: string | null;
+  uploaded_at?: string;
 }
 
 interface CatalogGroup {
@@ -45,8 +53,8 @@ interface CatalogPayload {
   totals?: { files: number; chunks: number };
 }
 
-async function downloadPrivateFile(documentId: string, fileName: string) {
-  const response = await apiClient.get(`/knowledge-base/mine/${documentId}/file`, {
+async function downloadFile(path: string, fileName: string) {
+  const response = await apiClient.get(path, {
     responseType: "blob",
   });
   const url = URL.createObjectURL(response.data as Blob);
@@ -64,12 +72,16 @@ export default function KnowledgeBasePage() {
   const [type, setType] = useState("law");
   const [openGroup, setOpenGroup] = useState<string>("");
   const [openCat, setOpenCat] = useState<string>("");
+  const [openReadyCategory, setOpenReadyCategory] = useState<string>("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     const response = await apiClient.get("/knowledge-base/catalog");
     setCatalog(unwrapData<CatalogPayload>(response));
+    setLastUpdated(new Date());
   }, []);
 
   useEffect(() => {
@@ -77,6 +89,25 @@ export default function KnowledgeBasePage() {
       setError(apiErrorMessage(err, "โหลดคลังความรู้ไม่สำเร็จ"))
     );
   }, [load]);
+
+  const groups = catalog.groups || [];
+  const visibleDocs = uniqueById([
+    ...groups.flatMap((group) => group.items),
+    ...(catalog.userFiles || []),
+  ]);
+  const processingDocs = visibleDocs.filter((doc) =>
+    ["pending", "processing"].includes(doc.processing_status || "")
+  );
+
+  useEffect(() => {
+    if (processingDocs.length === 0) return;
+    const timer = window.setInterval(() => {
+      load().catch(() => {
+        /* keep the last known status if a polling request fails */
+      });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [load, processingDocs.length]);
 
   useEffect(() => {
     function refresh() {
@@ -111,7 +142,7 @@ export default function KnowledgeBasePage() {
       setMessage(
         isAdmin
           ? "อัปโหลดเข้าคลังส่วนกลางแล้ว — กำลังประมวลผล"
-          : "อัปโหลดเฉพาะบัญชีของคุณแล้ว — กำลังแบ่ง chunk และฝังเข้า RAG"
+          : "อัปโหลดเฉพาะบัญชีของคุณแล้ว — กำลังอ่านโครงสร้างเอกสาร"
       );
       await load();
     } catch (err: unknown) {
@@ -132,26 +163,131 @@ export default function KnowledgeBasePage() {
     }
   }
 
+  async function removeCentral(documentId: string, fileName: string) {
+    if (
+      !window.confirm(
+        `ลบเอกสาร «${fileName}»? ระบบจะลบทั้งไฟล์ต้นฉบับและข้อมูล PageIndex และย้อนกลับไม่ได้`
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setMessage(null);
+    try {
+      await apiClient.delete(`/knowledge-base/${documentId}`);
+      setMessage(`ลบ «${fileName}» ออกจากคลังส่วนกลางแล้ว`);
+      await load();
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "ลบเอกสารไม่สำเร็จ"));
+    }
+  }
+
   async function downloadMine(documentId: string, fileName: string) {
     setError(null);
     try {
-      await downloadPrivateFile(documentId, fileName);
+      await downloadFile(`/knowledge-base/mine/${documentId}/file`, fileName);
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "ดาวน์โหลดไม่สำเร็จ"));
+    }
+  }
+
+  async function downloadCentral(documentId: string, fileName: string) {
+    setError(null);
+    try {
+      await downloadFile(`/knowledge-base/${documentId}/file`, fileName);
     } catch (err: unknown) {
       setError(apiErrorMessage(err, "ดาวน์โหลดไม่สำเร็จ"));
     }
   }
 
   const raw = catalog.raw || {};
-  const chunked = catalog.chunked || [];
-  const groups = catalog.groups || [];
   const centralGroups = groups.filter((group) => group.mandatory);
   const mineDocs = uniqueById([
     ...groups.flatMap((group) => (group.mandatory ? [] : group.items)),
     ...(catalog.userFiles || []),
   ]);
+  const readyDocs = visibleDocs.filter(
+    (doc) =>
+      doc.processing_status === "completed" ||
+      (!doc.processing_status && doc.chunk_count > 0)
+  );
+  const readyByCategory = new Map<string, CatalogFile[]>();
+  for (const doc of readyDocs) {
+    const category = doc.category || "other";
+    const rows = readyByCategory.get(category) || [];
+    rows.push(doc);
+    readyByCategory.set(category, rows);
+  }
+  const readyCategoryOrder = [
+    ...KB_CATEGORIES.map((item) => item.id).filter((id) => readyByCategory.has(id)),
+    ...Array.from(readyByCategory.keys()).filter(
+      (id) => !KB_CATEGORIES.some((item) => item.id === id)
+    ),
+  ];
 
   return (
     <div data-testid="knowledge-base-page">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-extrabold text-navy">ฐานความรู้</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            อัปโหลดเอกสาร รอดูสถานะ PageIndex แล้วนำเอกสารที่พร้อมไปถาม-ตอบหรือสร้าง TOR
+          </p>
+        </div>
+        <Button asChild>
+          <Link href="/chat" data-testid="kb-open-chat">
+            <MessageSquare className="mr-2 h-4 w-4" />
+            ถามเอกสารในคลัง
+          </Link>
+        </Button>
+      </div>
+
+      {processingDocs.length > 0 ? (
+        <div
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-50 px-4 py-3 text-amber-950"
+          role="status"
+          aria-live="polite"
+          data-testid="kb-processing-summary"
+        >
+          <div className="flex items-start gap-2.5">
+            <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" />
+            <div>
+              <p className="text-sm font-bold">
+                PageIndex กำลังประมวลผล {processingDocs.length} ไฟล์
+              </p>
+              <p className="mt-0.5 text-xs text-amber-900">
+                ไฟล์หลายหน้าอาจใช้เวลาหลายนาที หน้านี้ตรวจสถานะใหม่อัตโนมัติทุก 5 วินาที
+                {lastUpdated
+                  ? ` · อัปเดตล่าสุด ${lastUpdated.toLocaleTimeString("th-TH")}`
+                  : ""}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={refreshing}
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await load();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+          >
+            <RefreshCw
+              className={cn(
+                "mr-1.5 h-3.5 w-3.5",
+                refreshing && "animate-spin motion-reduce:animate-none"
+              )}
+            />
+            ตรวจสถานะตอนนี้
+          </Button>
+        </div>
+      ) : null}
+
       <div className="gov-card mb-5">
         <h2 className="mb-3 text-[16.5px] font-bold text-navy">
           {isAdmin ? "อัปโหลดเอกสารเข้าคลังความรู้ส่วนกลาง" : "อัปโหลดเอกสารของฉัน"}
@@ -159,7 +295,7 @@ export default function KnowledgeBasePage() {
         <p className="mb-3 text-[12.5px] text-muted-foreground">
           {isAdmin
             ? "ไฟล์ที่อัปโหลดที่นี่เป็นคลังบังคับ/ส่วนกลาง เห็นได้ทุกบัญชี — ไม่มีการแชร์เอกสารส่วนตัวข้ามผู้ใช้"
-            : "ไฟล์ของคุณถูก chunk และฝังเข้า RAG เฉพาะบัญชีนี้ ไม่เผยแพร่ให้เจ้าหน้าที่อื่น"}
+            : "ระบบอ่านสารบัญ หัวข้อ และเนื้อหาเพื่อค้นหาตามบริบท เฉพาะบัญชีของคุณเท่านั้น"}
         </p>
         <div className="mb-3.5 flex flex-wrap gap-2">
           {KB_CATEGORIES.map((item) => (
@@ -179,8 +315,9 @@ export default function KnowledgeBasePage() {
           ))}
         </div>
         <UploadArea
+          accept=".pdf,.docx,.txt"
           label="ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์"
-          hint="รองรับ PDF, Word — ระบบแบ่ง chunk และฝังเข้า Vector Store"
+          hint="รองรับ PDF, Word และ TXT — ระบบอ่านโครงสร้าง หัวข้อ และเนื้อหาของเอกสาร"
           onFiles={upload}
         />
         {error ? (
@@ -237,7 +374,6 @@ export default function KnowledgeBasePage() {
             ) : null}
           </span>
           <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
-            {doc.chunk_count} chunks
             <Button
               type="button"
               size="sm"
@@ -288,10 +424,63 @@ export default function KnowledgeBasePage() {
                 ? group.items.map((doc) => (
                     <div
                       key={doc.id}
-                      className="flex items-center justify-between gap-3 border-t px-4 py-2 text-[12.5px]"
+                      className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-[12.5px]"
+                      data-testid={`kb-central-row-${doc.id}`}
                     >
-                      <span>{doc.name}</span>
-                      <span className="text-muted-foreground">{doc.chunk_count} chunks · ลบไม่ได้</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-navy">{doc.name}</span>
+                          {doc.processing_status ? (
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-[11px]",
+                                kbProcessingBadgeClass(doc.processing_status)
+                              )}
+                              title={doc.error_message || undefined}
+                              data-testid={`kb-central-status-${doc.id}`}
+                            >
+                              {kbProcessingLabel(doc.processing_status)}
+                            </span>
+                          ) : null}
+                        </div>
+                        {doc.processing_status === "completed" && doc.chunk_count > 0 ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            PageIndex อ่านได้ {doc.chunk_count} หัวข้อ
+                          </p>
+                        ) : null}
+                        {doc.error_message ? (
+                          <p className="mt-1 text-xs text-destructive">{doc.error_message}</p>
+                        ) : null}
+                      </div>
+                      {isAdmin ? (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            data-testid={`download-central-${doc.id}`}
+                            onClick={() => {
+                              downloadCentral(doc.id, doc.name).catch(() => undefined);
+                            }}
+                          >
+                            <Download className="mr-1 h-3.5 w-3.5" />
+                            ดาวน์โหลด
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            data-testid={`delete-central-${doc.id}`}
+                            onClick={() => removeCentral(doc.id, doc.name)}
+                          >
+                            ลบ
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          เอกสารส่วนกลาง · จัดการโดยผู้ดูแลระบบ
+                        </span>
+                      )}
                     </div>
                   ))
                 : null}
@@ -310,10 +499,31 @@ export default function KnowledgeBasePage() {
                 ? items.map((doc) => (
                     <div
                       key={doc.id}
-                      className="flex justify-between border-t px-4 py-2 text-[12.5px]"
+                      className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-[12.5px]"
                     >
-                      <span>{doc.name}</span>
-                      <span className="text-muted-foreground">{doc.chunk_count} chunks</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{doc.name}</span>
+                        {doc.processing_status ? (
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[11px]",
+                              kbProcessingBadgeClass(doc.processing_status)
+                            )}
+                          >
+                            {kbProcessingLabel(doc.processing_status)}
+                          </span>
+                        ) : null}
+                      </div>
+                      {isAdmin ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => removeCentral(doc.id, doc.name)}
+                        >
+                          ลบ
+                        </Button>
+                      ) : null}
                     </div>
                   ))
                 : null}
@@ -321,19 +531,82 @@ export default function KnowledgeBasePage() {
           ))}
 
       <div className="mb-3 mt-6 flex items-center gap-2">
-        <h2 className="text-[16.5px] text-navy">คลังความรู้ที่ผ่านการ Chunk เข้า RAG</h2>
+        <h2 className="text-[16.5px] text-navy">ฐานความรู้ที่พร้อมค้นหาด้วย PageIndex</h2>
         <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11.5px] font-bold">
-          {catalog.totals?.chunks || 0} chunks
+          {readyDocs.length} ไฟล์
         </span>
       </div>
-      {chunked.map((row) => (
-        <div key={row.key} className="mb-2 flex justify-between rounded-[10px] bg-white px-4 py-3 shadow-sm">
-          <span className="font-medium text-navy">{kbCategoryLabel(row.name)}</span>
-          <span className="text-[12px] text-muted-foreground">
-            {row.files} ไฟล์ · {row.chunks} chunks
-          </span>
-        </div>
-      ))}
+      <p className="mb-3 text-sm text-muted-foreground">
+        กดแต่ละหมวดเพื่อดูว่าเอกสารใดพร้อมนำไปถาม-ตอบและสร้าง TOR แล้ว
+      </p>
+      {readyCategoryOrder.length === 0 ? (
+        <p className="rounded-lg bg-white px-4 py-3 text-sm text-muted-foreground shadow-sm">
+          ยังไม่มีเอกสารที่ประมวลผลเสร็จ
+        </p>
+      ) : null}
+      {readyCategoryOrder.map((category) => {
+        const items = readyByCategory.get(category) || [];
+        const expanded = openReadyCategory === category;
+        const contentId = `kb-ready-content-${category}`;
+        return (
+          <div
+            key={category}
+            className="mb-2.5 overflow-hidden rounded-[10px] bg-white shadow-sm"
+          >
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              aria-expanded={expanded}
+              aria-controls={contentId}
+              data-testid={`kb-ready-toggle-${category}`}
+              onClick={() => setOpenReadyCategory(expanded ? "" : category)}
+            >
+              <span>
+                <span className="block font-semibold text-navy">
+                  {kbCategoryLabel(category)}
+                </span>
+                <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                  {expanded ? "กดเพื่อซ่อนรายชื่อ" : "กดเพื่อดูรายชื่อเอกสาร"}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2 text-[12px] text-muted-foreground">
+                {items.length} ไฟล์
+                <ChevronDown
+                  aria-hidden="true"
+                  className={cn(
+                    "h-4 w-4 transition-transform duration-200 motion-reduce:transition-none",
+                    expanded && "rotate-180"
+                  )}
+                />
+              </span>
+            </button>
+            {expanded ? (
+              <div id={contentId} data-testid={`kb-ready-list-${category}`}>
+                {items.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3"
+                    data-testid={`kb-ready-document-${doc.id}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-medium text-navy">{doc.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {doc.mandatory ? "เอกสารส่วนกลาง" : "เอกสารของฉัน"}
+                        {doc.chunk_count > 0
+                          ? ` · PageIndex อ่านได้ ${doc.chunk_count} หัวข้อ`
+                          : ""}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-800">
+                      พร้อมใช้งาน
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

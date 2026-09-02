@@ -101,7 +101,7 @@ def test_merge_scope_and_sub_prompt_are_thai():
     assert "ภาษาไทย" in prompt
     assert "ส่งมอบคู่มือ" in prompt
     assert "พ.ร.บ." in prompt
-    assert "6144" in prompt
+    assert "1024" in prompt
     assert "กระชับ" not in prompt
     current = scope_sub_prompt("s4.2", {}, "")
     assert "ระบบงานปัจจุบัน" in current

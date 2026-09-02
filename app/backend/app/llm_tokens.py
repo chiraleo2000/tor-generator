@@ -17,13 +17,15 @@ GEMMA_CONTEXT_WINDOW = 131_072
 # EmbeddingGemma 300M input cap
 EMBEDDING_MAX_TOKENS = 2_048
 
-DRAFT_MAX_TOKENS = GEMMA_CONTEXT_WINDOW
-DRAFT_MIN_TOKENS = 6_144
+# One TOR section should be detailed but bounded. The previous 6k-token floor
+# made a 13-section cloud draft both slow and unnecessarily expensive.
+DRAFT_MAX_TOKENS = 8_192
+DRAFT_MIN_TOKENS = 1_024
 CHAT_MAX_TOKENS = 32_768
 CHAT_MIN_TOKENS = 0
 
 # Review packs a large TOR + พ.ร.บ. + Phase 0 in one user-facing run.
-REVIEW_MAX_TOKENS = GEMMA_CONTEXT_WINDOW
+REVIEW_MAX_TOKENS = 32_768
 REVIEW_CONTEXT_WINDOW = GEMMA_CONTEXT_WINDOW
 # Suggestion JSON must stay short; a huge completion cap makes Gemma leave the schema.
 REVIEW_SUGGESTION_MAX_TOKENS = 8_192

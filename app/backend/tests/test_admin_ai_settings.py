@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.v1.endpoints.admin_ai_settings import (
     AiSettingsTest,
     AiSettingsUpdate,
+    _bedrock_runtime_probe,
     _embedding_changed,
     _local_base_url,
     _mask_key,
@@ -17,6 +18,7 @@ from app.api.v1.endpoints.admin_ai_settings import (
     _merged_settings_dict,
     _overlay_from_merged,
     _probe_bedrock,
+    _probe_external_rag,
     _public_payload,
     _resolved_local_url,
     _sts_caller_identity,
@@ -176,14 +178,24 @@ def test_embedding_changed_vendor_and_model():
     same = dict(existing)
     assert _embedding_changed(existing, same) is False
     assert _embedding_changed(existing, {**existing, "embedding_provider": "gemini"}) is True
-    assert _embedding_changed(
-        existing,
-        {**existing, "lm_studio_embedding_model": "other-embed"},
-    ) is True
-    assert _embedding_changed(
-        {**existing, "embedding_provider": "gemini"},
-        {**existing, "embedding_provider": "gemini", "gemini_embedding_model": "text-embedding-005"},
-    ) is True
+    assert (
+        _embedding_changed(
+            existing,
+            {**existing, "lm_studio_embedding_model": "other-embed"},
+        )
+        is True
+    )
+    assert (
+        _embedding_changed(
+            {**existing, "embedding_provider": "gemini"},
+            {
+                **existing,
+                "embedding_provider": "gemini",
+                "gemini_embedding_model": "text-embedding-005",
+            },
+        )
+        is True
+    )
 
 
 def test_overlay_from_merged_keeps_known_fields_only():
@@ -259,9 +271,22 @@ def test_get_ai_settings_http(admin_client):
 
 
 def test_put_ai_settings_applies_overlay_without_restart(admin_client):
+    row = AiRuntimeSettings(
+        id=1,
+        payload={
+            "deployment_mode": "on_prem",
+            "llm_provider": "lm_studio",
+            "embedding_provider": "local",
+            "rag_sources": "local",
+            "lm_studio_base_url": "http://127.0.0.1:1234/v1",
+            "lm_studio_model": "google/gemma-4-e4b",
+            "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
+            "vector_store_provider": "pgvector",
+        },
+    )
     mock_db = AsyncMock()
     result = MagicMock()
-    result.scalar_one_or_none.return_value = None
+    result.scalar_one_or_none.return_value = row
     mock_db.execute = AsyncMock(return_value=result)
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
@@ -273,6 +298,7 @@ def test_put_ai_settings_applies_overlay_without_restart(admin_client):
             "deployment_mode": "on_prem",
             "llm_provider": "lm_studio",
             "embedding_provider": "local",
+            "rag_sources": "local",
             "lm_studio_base_url": "http://127.0.0.1:1234/v1",
             "lm_studio_model": "overlay-gemma-test",
             "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
@@ -293,6 +319,7 @@ def test_put_ai_settings_sets_reingest_when_embed_model_changes(admin_client):
             "deployment_mode": "on_prem",
             "llm_provider": "lm_studio",
             "embedding_provider": "local",
+            "rag_sources": "local",
             "lm_studio_base_url": "http://127.0.0.1:1234/v1",
             "lm_studio_model": "google/gemma-4-e4b",
             "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
@@ -440,6 +467,20 @@ def test_validate_invalid_mode_and_providers():
     with pytest.raises(ValidationError) as embed_exc:
         _validate_update(unknown_embed, {})
     assert embed_exc.value.field == "embedding_provider"
+
+
+def test_validate_none_embedding_only_for_pageindex_custom_rag():
+    _validate_update(
+        _local_body(embedding_provider="none", rag_sources="custom"),
+        {},
+    )
+
+    with pytest.raises(ValidationError) as exc:
+        _validate_update(
+            _local_body(embedding_provider="none", rag_sources="local"),
+            {},
+        )
+    assert exc.value.field == "embedding_provider"
 
 
 def test_validate_local_requires_chat_and_embed_models():
@@ -666,11 +707,45 @@ async def test_probe_bedrock_calls_sts_off_event_loop():
         aws_access_key_id="AKIATEST",
         aws_secret_access_key="secret-test",
     )
-    with patch(
-        "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity"
-    ) as mock_sts:
+    with (
+        patch.dict("os.environ", {"AWS_BEARER_TOKEN_BEDROCK": ""}),
+        patch("app.api.v1.endpoints.admin_ai_settings._sts_caller_identity") as mock_sts,
+    ):
         await _probe_bedrock(body, {})
     mock_sts.assert_called_once_with("ap-southeast-1", "AKIATEST", "secret-test")
+
+
+@pytest.mark.asyncio
+async def test_probe_bedrock_uses_runtime_with_bearer_token():
+    body = AiSettingsTest(
+        deployment_mode="cloud",
+        llm_provider="bedrock",
+        embedding_provider="none",
+        bedrock_region="ap-southeast-1",
+        bedrock_model_id="global.anthropic.claude-sonnet-4-6",
+    )
+    with (
+        patch.dict("os.environ", {"AWS_BEARER_TOKEN_BEDROCK": "ABSK-test"}),
+        patch("app.api.v1.endpoints.admin_ai_settings._bedrock_runtime_probe") as probe,
+    ):
+        await _probe_bedrock(body, {})
+    probe.assert_called_once_with(
+        "ap-southeast-1", "global.anthropic.claude-sonnet-4-6"
+    )
+
+
+def test_bedrock_runtime_probe_uses_converse():
+    fake_boto3 = MagicMock()
+    with patch.dict("sys.modules", {"boto3": fake_boto3}):
+        _bedrock_runtime_probe(
+            "ap-southeast-1", "global.anthropic.claude-sonnet-4-6"
+        )
+    fake_boto3.client.assert_called_once_with(
+        "bedrock-runtime", region_name="ap-southeast-1"
+    )
+    request = fake_boto3.client.return_value.converse.call_args.kwargs
+    assert request["modelId"] == "global.anthropic.claude-sonnet-4-6"
+    assert request["inferenceConfig"] == {"maxTokens": 1}
 
 
 @pytest.mark.asyncio
@@ -680,9 +755,12 @@ async def test_probe_bedrock_maps_sts_errors():
         llm_provider="bedrock",
         embedding_provider="local",
     )
-    with patch(
-        "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity",
-        side_effect=RuntimeError("denied"),
+    with (
+        patch.dict("os.environ", {"AWS_BEARER_TOKEN_BEDROCK": ""}),
+        patch(
+            "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity",
+            side_effect=RuntimeError("denied"),
+        ),
     ):
         with pytest.raises(ValidationError) as exc:
             await _probe_bedrock(body, {})
@@ -762,3 +840,26 @@ async def test_probe_openai_compatible_hits_models():
         await _probe_cloud_chat(body, {})
     get_ok.assert_awaited()
     assert "/models" in get_ok.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_probe_external_rag_uses_pageindex_adapter_and_saved_key():
+    chunk = MagicMock()
+    chunk.metadata = {"rag_source": "pageindex_rag"}
+    body = AiSettingsTest(
+        custom_rag_enabled=True,
+        custom_rag_base_url="http://knowledge-rag:8000/api/search",
+        custom_rag_api_key="****cret",
+        rag_sources="custom",
+    )
+    with patch(
+        "app.api.v1.endpoints.admin_ai_settings.CustomRagClient.retrieve",
+        new=AsyncMock(return_value=[chunk]),
+    ) as retrieve:
+        message = await _probe_external_rag(
+            body,
+            {"custom_rag_api_key": "saved-secret"},
+        )
+
+    assert message == "PageIndex RAG ได้"
+    retrieve.assert_awaited_once_with("ทดสอบการเชื่อมต่อระบบจัดทำ TOR", top_k=1)

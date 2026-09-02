@@ -38,6 +38,7 @@ VALID_LLM_PROVIDERS = (
     "openai_compatible",
 )
 VALID_EMBEDDING_PROVIDERS = (
+    "none",
     "openai",
     "qwen3",
     "local",
@@ -109,6 +110,12 @@ class ProviderFactory:
                 f"Invalid EMBEDDING_PROVIDER: '{embedding}'. "
                 f"Accepted values are: {', '.join(VALID_EMBEDDING_PROVIDERS)}"
             )
+        rag_sources = _attr(self._settings, "rag_sources", "both")
+        if embedding == "none" and rag_sources != "custom":
+            raise ValueError(
+                "EMBEDDING_PROVIDER='none' requires RAG_SOURCES='custom' "
+                "because only PageIndex-only retrieval can run without embeddings."
+            )
         if store and store not in VALID_VECTOR_STORE_PROVIDERS:
             raise ValueError(
                 f"Invalid VECTOR_STORE_PROVIDER: '{store}'. "
@@ -167,6 +174,8 @@ class ProviderFactory:
 
     def _validate_embedding_credentials(self) -> None:
         embedding = _attr(self._settings, "embedding_provider", "local")
+        if embedding == "none":
+            return
         if embedding in LOCAL_EMBEDDING_PROVIDERS:
             return
         if embedding == "openai":
@@ -229,6 +238,10 @@ class ProviderFactory:
 
     def get_embedding(self) -> EmbeddingProvider:
         provider = _attr(self._settings, "embedding_provider", "local")
+        if provider == "none":
+            raise RuntimeError(
+                "TOR embeddings are disabled; use PageIndex RAG with RAG_SOURCES='custom'."
+            )
         if provider in LOCAL_EMBEDDING_PROVIDERS:
             return self._create_local_embedding_provider()
         return self._create_embedding_by_kind(provider)
@@ -265,7 +278,7 @@ class ProviderFactory:
                 model_id=_attr(self._settings, "bedrock_model_id"),
                 aws_access_key_id=_attr(self._settings, "aws_access_key_id"),
                 aws_secret_access_key=_attr(self._settings, "aws_secret_access_key"),
-                timeout=_attr(self._settings, "lm_studio_timeout", 180.0),
+                timeout=_attr(self._settings, "cloud_llm_timeout", 300.0),
             )
         if kind == "azure_foundry":
             from app.providers.llm.azure_foundry_provider import AzureFoundryLLMProvider
@@ -274,7 +287,7 @@ class ProviderFactory:
                 api_key=_attr(self._settings, "azure_foundry_api_key"),
                 endpoint=_attr(self._settings, "azure_foundry_endpoint"),
                 deployment=_attr(self._settings, "azure_foundry_deployment"),
-                api_version=_attr(self._settings, "azure_foundry_api_version", "2024-10-21"),
+                api_version=_attr(self._settings, "azure_foundry_api_version", "v1"),
             )
         if kind == "openai_compatible":
             from app.providers.llm.openai_provider import OpenAILLMProvider
@@ -323,7 +336,7 @@ class ProviderFactory:
                 api_key=_attr(self._settings, "azure_foundry_api_key"),
                 azure_endpoint=_attr(self._settings, "azure_foundry_endpoint"),
                 api_version=_attr(
-                    self._settings, "azure_foundry_api_version", "2024-10-21"
+                    self._settings, "azure_foundry_api_version", "v1"
                 ),
                 timeout=Timeout(60.0, connect=10.0),
             )

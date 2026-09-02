@@ -166,6 +166,7 @@ documents/sources/
 
 # Runtime officer/agent uploads and local test caches
 app/backend/agent-uploads/
+agent-uploads/
 .hypothesis/
 .ruff_cache/
 
@@ -173,3 +174,8 @@ app/backend/agent-uploads/
 .cursor/
 .github/
 .kiro/
+
+# Embedded PageIndex runtime state (source code lives in services/pageindex)
+services/pageindex/knowledge/
+services/pageindex/config.json
+services/pageindex/sessions.json

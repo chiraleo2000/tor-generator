@@ -474,6 +474,24 @@ class TestRuleGuardrail:
         assert result["retry_count"] == 0  # Not incremented on pass
 
     @pytest.mark.asyncio
+    async def test_partial_tor_does_not_retry_a_valid_single_section(self):
+        state: TORDraftState = {
+            "target_section": "s1",
+            "draft_content": "เนื้อหาความเป็นมาและเหตุผลความจำเป็นของโครงการ " * 8,
+            "user_input": {},
+            "draft_version": 1,
+            "retry_count": 0,
+            "max_retries": 3,
+        }
+
+        result = await rule_guardrail(state)
+
+        assert result["quality_score"] == 100
+        assert result["guardrail_passed"] is True
+        assert result["retry_count"] == 0
+        assert result["validation_findings"] == []
+
+    @pytest.mark.asyncio
     async def test_failing_score_increments_retry(self):
         """Score < 70 sets guardrail_passed=False and increments retry_count."""
         from app.rule_engine.engine import Finding, Severity

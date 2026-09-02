@@ -112,6 +112,6 @@ describe("formatChatTimestamp", () => {
     );
     expect(
       attachIngestFeedback({ document_id: "d1", status: "pending", name: "note.txt" }, "note.txt")
-    ).toContain("ถูกเพิ่มเข้าคลังของฉันแล้ว");
+    ).toContain("PageIndex กำลังอ่านโครงสร้าง");
   });
 });

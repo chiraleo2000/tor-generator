@@ -718,27 +718,18 @@ class TestCatalogGroupingAndAcl:
 
 class TestMineUploads:
     def test_officer_can_upload_private_file(self, client, mock_officer_user):
-        saved = _make_kb_document(
-            name="เงื่อนไขโครงการ.pdf",
-            category="guideline",
-            owner_id=USER_ID,
-            scope="user",
-            corpus_group="user",
-            processing_status="completed",
-            chunk_count=3,
-        )
         mock_db = AsyncMock()
         mock_db.add = MagicMock()
         mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock(side_effect=_apply_doc_defaults)
 
         async def override_db():
             yield mock_db
 
         app.dependency_overrides[get_db] = override_db
         with patch(
-            "app.api.v1.endpoints.knowledge_base.ingest_file_bytes",
+            "app.api.v1.endpoints.knowledge_base._run_pageindex_ingestion",
             new_callable=AsyncMock,
-            return_value=saved,
         ) as ingest:
             response = client.post(
                 "/api/v1/knowledge-base/mine",
@@ -749,32 +740,25 @@ class TestMineUploads:
         assert ingest.await_count == 1
         kwargs = ingest.await_args.kwargs
         assert kwargs["scope"] == "user"
-        assert kwargs["owner_id"] == USER_ID
-        assert kwargs["corpus_group"] == "user"
+        assert kwargs["owner_id"] == str(USER_ID)
+        saved = mock_db.add.call_args.args[0]
+        assert saved.corpus_group == "user"
+        assert saved.processing_status == "pending"
         assert response.json()["data"]["name"] == "เงื่อนไขโครงการ.pdf"
 
     def test_officer_upload_other_category_returns_202(self, client, mock_officer_user):
-        saved = _make_kb_document(
-            name="บันทึกภายใน.pdf",
-            category="other",
-            owner_id=USER_ID,
-            scope="user",
-            corpus_group="user",
-            processing_status="completed",
-            chunk_count=1,
-        )
         mock_db = AsyncMock()
         mock_db.add = MagicMock()
         mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock(side_effect=_apply_doc_defaults)
 
         async def override_db():
             yield mock_db
 
         app.dependency_overrides[get_db] = override_db
         with patch(
-            "app.api.v1.endpoints.knowledge_base.ingest_file_bytes",
+            "app.api.v1.endpoints.knowledge_base._run_pageindex_ingestion",
             new_callable=AsyncMock,
-            return_value=saved,
         ) as ingest:
             response = client.post(
                 "/api/v1/knowledge-base/mine",
@@ -783,6 +767,7 @@ class TestMineUploads:
             )
         assert response.status_code == 202
         assert ingest.await_args.kwargs["category"] == "other"
+        assert mock_db.add.call_args.args[0].category == "other"
         assert response.json()["data"]["category"] == "other"
 
     def test_officer_deletes_own_file(self, client, mock_officer_user):

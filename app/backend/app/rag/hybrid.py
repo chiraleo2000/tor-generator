@@ -166,9 +166,11 @@ async def _retrieve_custom_chunks(
 def _citations_for_chunk(chunk: RetrievedChunk) -> list[dict[str, str]]:
     citations: list[dict[str, str]] = []
     source_kind = (chunk.metadata or {}).get("rag_source")
-    if source_kind == "custom_rag":
-        label = chunk.source_document or "Custom RAG"
-        citations.append({"type": "custom_rag", "label": str(label)})
+    if source_kind in ("custom_rag", "pageindex_rag"):
+        label = chunk.source_document or (
+            "PageIndex RAG" if source_kind == "pageindex_rag" else "Custom RAG"
+        )
+        citations.append({"type": str(source_kind), "label": str(label)})
     if source_kind == "mcp":
         citations.append({"type": "mcp", "label": str(chunk.source_document or "MCP")})
     if chunk.source_document:

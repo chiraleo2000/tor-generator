@@ -115,7 +115,7 @@ export function DraftConversation({
   async function sendIntake(content: string, withLegal: boolean) {
     const controller = new AbortController();
     abortRef.current = controller;
-    // No client watchdog — LM Studio often runs chat sequentially; provider timeout bounds the stream.
+    // The provider timeout bounds the SSE stream; Bedrock tokens arrive incrementally.
     await streamSsePost(
       `${apiBase}/projects/${projectId}/intake/chat`,
       { content, search_scope: "both", attach_legal_reference: withLegal },
@@ -124,11 +124,14 @@ export function DraftConversation({
         if (event === "queued" || event === "started") {
           const label =
             event === "queued"
-              ? "รอคิวตอบ…"
-              : "กำลังประมวลผล…";
+              ? "AI กำลังประมวลผล…"
+              : "AI กำลังสร้างคำตอบ…";
           setMessages((prev) => {
             const last = prev.at(-1);
-            if (last?.role !== "assistant" || last.content) return prev;
+            const isProgress =
+              last?.content === "AI กำลังประมวลผล…" ||
+              last?.content === "AI กำลังสร้างคำตอบ…";
+            if (last?.role !== "assistant" || (last.content && !isProgress)) return prev;
             return [...prev.slice(0, -1), { ...last, content: label }];
           });
           return;
@@ -139,7 +142,8 @@ export function DraftConversation({
             const last = prev.at(-1);
             if (last?.role !== "assistant") return prev;
             const base =
-              last.content === "รอคิวตอบ…" || last.content === "กำลังประมวลผล…"
+              last.content === "AI กำลังประมวลผล…" ||
+              last.content === "AI กำลังสร้างคำตอบ…"
                 ? ""
                 : last.content;
             return [...prev.slice(0, -1), { ...last, content: base + piece }];

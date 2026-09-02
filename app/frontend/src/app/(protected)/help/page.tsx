@@ -138,12 +138,12 @@ function OverviewTab() {
           <tr>
             <td>AI ค่าเริ่มต้น</td>
             <td>
-              LM Studio · แชท <code>google/gemma-4-e4b</code> · ฝังเวกเตอร์ EmbeddingGemma 768-d
+              Amazon Bedrock · Claude Sonnet 4.6 สำหรับร่าง แชท และตรวจทาน
             </td>
           </tr>
           <tr>
-            <td>คลัง</td>
-            <td>PostgreSQL+pgvector · Mongo GridFS · Neo4j · Redis · MinIO</td>
+            <td>ค้นเอกสาร</td>
+            <td>PageIndex อ่านลำดับหัวข้อและโครงสร้างเอกสาร โดยไม่ใช้ embeddings</td>
           </tr>
         </tbody>
       </table>
@@ -442,15 +442,15 @@ function ChatTab() {
   return (
     <GuideBlock title="ถาม-ตอบ">
       <p>
-        เมนู <strong>ถาม-ตอบ</strong> เปิด <code>/chat</code> — ห้องคลังความรู้รายคน (SSE + ชิปอ้างอิง)
-        คนละประวัติกับแชทร่าง Phase 2 ระบบดึงชิ้นข้อความจาก pgvector หลายสิบชิ้นภายในหน้าต่าง 128K
-        ของ Gemma แล้วตอบเป็นย่อหน้าเนื้อหาพร้อมอ้างอิง inline (ไม่ใช่โครงบันทึก 6 หัวข้อ)
+        เมนู <strong>ถาม-ตอบ</strong> เปิด <code>/chat</code> — ห้องคลังความรู้รายคน
+        (SSE + ชิปอ้างอิง) คนละประวัติกับแชทร่าง Phase 2 ระบบใช้ PageIndex หาเนื้อหา
+        ตามโครงสร้างเอกสาร แล้วให้ Claude Sonnet 4.6 ตอบแบบเจ้าหน้าที่พัสดุ
       </p>
       <ol>
         <li>ซ้าย: รายการห้องย่อ (ชื่อ · ข้อความล่าสุด · เวลา) — สร้าง เปลี่ยนชื่อ ลบได้</li>
         <li>
           แนบไฟล์ด้วยไอคอนคลิป — ระบบสร้างห้องถ้ายังไม่มี แล้วแสดงข้อความ ingest เช่น *ถูกเพิ่มเข้าคลังของฉันแล้ว*
-          (หมวดข้อมูลอื่น ๆ) จากนั้นถามด้วย RAG และเปิดดูที่ฐานความรู้ได้
+          (หมวดข้อมูลอื่น ๆ) จากนั้นถามด้วย PageIndex และเปิดดูที่ฐานความรู้ได้
         </li>
         <li>สลับแหล่งค้น: คลังกลาง / ของฉัน / ทั้งคู่</li>
         <li>ระหว่างรอมีจุดพิมพ์ · ข้อความแสดงเวลาเมื่อ API ส่งมา</li>
@@ -496,9 +496,8 @@ function KbTab() {
   return (
     <GuideBlock title="ฐานความรู้">
       <p>
-        คลังกลางใส่จาก PDF ใน <code>documents/sources/</code> ด้วย{" "}
-        <code>python -m app.seed_raw_docs</code> (ฝังเวกเตอร์จริง) —{" "}
-        <strong>ไม่ ingest JSON extracts เก่าเป็นคลังใช้งาน</strong>
+        PageIndex อ่านสารบัญ ลำดับหัวข้อ และเนื้อหาของ PDF เพื่อค้นหาส่วนที่เกี่ยวข้องตามบริบท
+        โดยไม่สร้าง embeddings และไม่ใช้ vector store
       </p>
       <ul className="list-disc space-y-1 pl-5">
         <li>
@@ -506,9 +505,9 @@ function KbTab() {
           (รวม <strong>ข้อมูลอื่น ๆ</strong>) ลบ/ดาวน์โหลดได้เฉพาะของตัวเอง ไม่แชร์ข้ามคน
         </li>
         <li>ผู้ดูแล: อัปโหลดคลังกลางที่หน้าฐานความรู้ (จัดการ)</li>
-        <li>ยังแนบไฟล์เข้าคลังส่วนตัวจากหน้าถาม-ตอบได้</li>
+        <li>ยังแนบไฟล์ส่วนตัวจากหน้าถาม-ตอบได้</li>
       </ul>
-      <Figure src="/help/11-knowledge-base.png" alt="ฐานความรู้" caption="หน้าฐานความรู้ — เอกสารของฉันด้านบน พร้อมสถานะประมวลผลและหมวด" />
+      <Figure src="/help/11-knowledge-base.png" alt="ฐานความรู้" caption="หน้าฐานความรู้ — เอกสารของฉันพร้อมสถานะและหมวด" />
       <Figure src="/help/17-admin-kb.png" alt="คลังผู้ดูแล" caption="ฐานความรู้ฝั่งผู้ดูแล (คลังกลาง)" />
     </GuideBlock>
   );
@@ -549,53 +548,41 @@ function AdminTab() {
       <h3>การตั้งค่า AI</h3>
       <ul className="list-disc space-y-1 pl-5">
         <li>
-          โหมด (<code>on_prem</code> / <code>cloud</code> / <code>hybrid</code>) เป็นป้ายเท่านั้น —{" "}
-          <strong>ไม่สลับคู่</strong> แชทกับฝังเวกเตอร์
+          ค่าเริ่มต้นใช้ Amazon Bedrock และ Claude Sonnet 4.6 สำหรับร่าง แชท และตรวจทาน
         </li>
         <li>
-          ค่าเริ่มต้น: LM Studio <code>google/gemma-4-e4b</code> + EmbeddingGemma · timeout 600s · pgvector
+          การค้นเอกสารใช้ PageIndex โดยตั้ง <code>EMBEDDING_PROVIDER=none</code>
         </li>
         <li>
-          <strong>ทดสอบการเชื่อมต่อ</strong> ยิงทั้งแชทและฝังเวกเตอร์ ·{" "}
+          <strong>ทดสอบการเชื่อมต่อ</strong> ตรวจทั้ง Bedrock และ PageIndex ·{" "}
           <strong>บันทึกมีผลทันที</strong> ไม่ต้องรีสตาร์ท backend
         </li>
       </ul>
-      <h3>สูตรที่ใช้บ่อย</h3>
+      <h3>องค์ประกอบที่ใช้งาน</h3>
       <table>
         <thead>
           <tr>
-            <th>เป้าหมาย</th>
-            <th>แชท</th>
-            <th>ฝังเวกเตอร์</th>
-            <th>ต้อง seed ใหม่?</th>
+            <th>องค์ประกอบ</th>
+            <th>ค่าปัจจุบัน</th>
+            <th>หน้าที่</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>Gemma ในเครื่อง</td>
-            <td>LM Studio</td>
-            <td>EmbeddingGemma</td>
-            <td>ไม่</td>
+            <td>โมเดลภาษา</td>
+            <td>Claude Sonnet 4.6 บน Bedrock</td>
+            <td>ร่าง แชท และตรวจทาน TOR</td>
           </tr>
           <tr>
-            <td>Claude + ฝังเวกเตอร์ในเครื่อง</td>
-            <td>Claude</td>
-            <td>ในเครื่อง</td>
-            <td>ไม่ (ถ้าเคยใช้ EmbeddingGemma)</td>
-          </tr>
-          <tr>
-            <td>Claude + OpenAI embeddings</td>
-            <td>Claude</td>
-            <td>OpenAI</td>
-            <td>
-              <strong>ใช่</strong> — <code>python -m app.seed_raw_docs</code>
-            </td>
+            <td>ค้นเอกสาร</td>
+            <td>PageIndex</td>
+            <td>อ่านโครงสร้างและหาเนื้อหาที่เกี่ยวข้อง</td>
           </tr>
         </tbody>
       </table>
       <Figure src="/help/16-admin-templates.png" alt="แม่แบบ" caption="จัดการแม่แบบ" />
       <Figure src="/help/18-admin-users.png" alt="ผู้ใช้" caption="จัดการผู้ใช้และบทบาท" />
-      <Figure src="/help/09-admin-ai-lm-studio.png" alt="ตั้งค่า AI" caption="การตั้งค่า AI — ทดสอบเชื่อมต่อ LM Studio" />
+      <Figure src="/help/09-admin-ai-lm-studio.png" alt="ตั้งค่า AI" caption="การตั้งค่า AI และการทดสอบการเชื่อมต่อ" />
       <Figure src="/help/09a-admin-ai-local.png" alt="เซิร์ฟเวอร์ในเครื่อง" caption="ฟอร์มเซิร์ฟเวอร์ในเครื่อง" />
       <Figure src="/help/09b-admin-ai-cloud.png" alt="คีย์คลาวด์" caption="เลือก Claude แล้วใส่คีย์คลาวด์" />
     </GuideBlock>
@@ -609,11 +596,10 @@ function FaqTab() {
       <ul className="list-disc space-y-1 pl-5">
         <li>
           คู่มือติดตั้งเต็ม: <code>discussions/14-INSTALLATION.md</code> — Docker compose โปรเจกต์{" "}
-          <code>tor-app</code> + LM Studio ที่ <code>127.0.0.1:1234</code>
+          <code>tor-app</code> + PageIndex backend ที่ <code>127.0.0.1:8000</code>
         </li>
         <li>
-          Dev ค่าเริ่มต้น: แชท <code>google/gemma-4-e4b</code> · ฝังเวกเตอร์{" "}
-          <code>text-embedding-embeddinggemma-300m</code> (768 มิติ)
+          ค่าเริ่มต้น: Claude Sonnet 4.6 บน Amazon Bedrock + PageIndex แบบไม่ใช้ embeddings
         </li>
         <li>
           Production แนะนำ: Amazon Bedrock — คู่มือ <code>discussions/20-AWS_BEDROCK_SETUP.md</code>
@@ -650,7 +636,7 @@ function FaqTab() {
           <tr>
             <td>ร่างด้วย AI ไม่ตอบ</td>
             <td>
-              LM Studio :1234 โหลด Gemma + EmbeddingGemma หรือใส่คีย์คลาวด์ที่การตั้งค่า AI
+              ตรวจ Bedrock API key ใน <code>tor-generator/.env</code> และทดสอบการเชื่อมต่อที่หน้าผู้ดูแล
             </td>
           </tr>
           <tr>
@@ -689,8 +675,8 @@ function FaqTab() {
             <td>1448 ผ่าน</td>
           </tr>
           <tr>
-            <td>pytest live_llm</td>
-            <td>10 ผ่าน (LM Studio)</td>
+            <td>Bedrock live smoke test</td>
+            <td>ผ่าน (Claude Sonnet 4.6)</td>
           </tr>
           <tr>
             <td>Vitest</td>

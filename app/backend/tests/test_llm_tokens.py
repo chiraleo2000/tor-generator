@@ -20,14 +20,14 @@ from app.llm_tokens import (
 def test_draft_and_chat_budgets():
     assert GEMMA_CONTEXT_WINDOW == 131_072
     assert EMBEDDING_MAX_TOKENS == 2_048
-    assert DRAFT_MAX_TOKENS == GEMMA_CONTEXT_WINDOW
-    assert DRAFT_MIN_TOKENS == 6_144
+    assert DRAFT_MAX_TOKENS == 8_192
+    assert DRAFT_MIN_TOKENS == 1_024
     assert CHAT_MAX_TOKENS == 32_768
     assert CHAT_MIN_TOKENS == 0
-    assert REVIEW_MAX_TOKENS == GEMMA_CONTEXT_WINDOW
+    assert REVIEW_MAX_TOKENS == 32_768
     assert REVIEW_SUGGESTION_MAX_TOKENS == 8_192
     assert REVIEW_CONTEXT_WINDOW == GEMMA_CONTEXT_WINDOW
-    assert chars_for_tokens(DRAFT_MIN_TOKENS) == 12_288
+    assert chars_for_tokens(DRAFT_MIN_TOKENS) == 2_048
     assert CHAT_MAX_TOKENS + 4_000 < GEMMA_CONTEXT_WINDOW
     assert DRAFT_MAX_TOKENS <= GEMMA_CONTEXT_WINDOW
     capped = clamp_max_tokens(

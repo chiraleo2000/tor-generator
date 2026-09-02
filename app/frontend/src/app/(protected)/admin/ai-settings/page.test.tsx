@@ -52,7 +52,7 @@ describe("AdminAiSettingsPage", () => {
 
     fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "claude" } });
     expect(screen.getByLabelText("Anthropic API key")).toBeInTheDocument();
-    expect(screen.getByLabelText("ฝังเวกเตอร์")).toHaveValue("local");
+    expect(screen.getByLabelText("Embedding ของ TOR")).toHaveValue("local");
     expect(screen.getByLabelText("LM Studio URL")).toBeInTheDocument();
     expect(screen.getByLabelText("โมเดลแชท").querySelector("option[value='lm_studio']")).not.toBeNull();
     fireEvent.change(screen.getByLabelText("Anthropic API key"), { target: { value: "sk-ant" } });

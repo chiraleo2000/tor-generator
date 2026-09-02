@@ -40,7 +40,15 @@ const catalog = {
       mandatory: true,
       files: 1,
       chunks: 10,
-      items: [{ id: "a", name: "พรบ.pdf", chunk_count: 10 }],
+      items: [
+        {
+          id: "a",
+          name: "พรบ.pdf",
+          chunk_count: 10,
+          category: "law",
+          processing_status: "completed",
+        },
+      ],
     },
     {
       key: "user",
@@ -97,12 +105,29 @@ describe("KnowledgeBasePage", () => {
     expect(screen.getAllByText("ของฉัน.pdf")).toHaveLength(1);
     expect(screen.getByText("ส่วนตัว")).toBeInTheDocument();
     expect(screen.getAllByText("ข้อมูลอื่น ๆ").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("kb-mine-status-b")).toHaveTextContent("ใช้กับ RAG ได้");
+    expect(screen.getByTestId("kb-mine-status-b")).toHaveTextContent("พร้อมค้นหาด้วย PageIndex");
     expect(screen.getByTestId("kb-mine-count")).toHaveTextContent("1 ไฟล์");
     expect(screen.getByTestId("download-mine-b")).toBeInTheDocument();
     expect(screen.queryByText("ประกาศราคากลาง / ระเบียบ")).not.toBeInTheDocument();
     expect(screen.getAllByText("พ.ร.บ. / กฎหมาย").length).toBeGreaterThan(0);
     expect(screen.getByText("หนังสือเวียนกรมบัญชีกลาง")).toBeInTheDocument();
+    expect(screen.getByTestId("kb-open-chat")).toHaveAttribute("href", "/chat");
+  });
+
+  it("expands a ready PageIndex category to show its document names", async () => {
+    render(<KnowledgeBasePage />);
+    const toggle = await screen.findByTestId("kb-ready-toggle-law");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("kb-ready-document-a")).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("kb-ready-document-a")).toHaveTextContent("พรบ.pdf");
+    expect(screen.getByTestId("kb-ready-document-a")).toHaveTextContent(
+      "PageIndex อ่านได้ 10 หัวข้อ"
+    );
+    expect(screen.getByTestId("kb-ready-document-a")).toHaveTextContent("พร้อมใช้งาน");
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("kb-ready-document-a")).not.toBeInTheDocument();
   });
 
   it("shows a failed status badge and download control", async () => {
@@ -177,6 +202,65 @@ describe("KnowledgeBasePage", () => {
     fireEvent.click(screen.getByTestId("upload-trigger"));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
     expect(vi.mocked(apiClient.post).mock.calls[0][0]).toBe("/knowledge-base/upload");
+  });
+
+  it("shows central PageIndex status and lets an admin delete from this page", async () => {
+    useAuthStore.setState({
+      user: {
+        id: "2",
+        name: "Admin",
+        email: "admin@example.go.th",
+        organization: "กรม",
+        role: "admin",
+        createdAt: "",
+        updatedAt: "",
+      },
+    });
+    vi.mocked(apiClient.delete).mockResolvedValue({ data: { ok: true } } as never);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByText("ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)"));
+    expect(screen.getByTestId("kb-central-status-a")).toHaveTextContent(
+      "พร้อมค้นหาด้วย PageIndex"
+    );
+    expect(screen.getByText("PageIndex อ่านได้ 10 หัวข้อ")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("delete-central-a"));
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/knowledge-base/a"));
+    confirmSpy.mockRestore();
+  });
+
+  it("shows active processing feedback for a shared document", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          ...catalog,
+          groups: [
+            {
+              ...catalog.groups[0],
+              items: [
+                {
+                  id: "museum",
+                  name: "มิวเซียมสยาม.pdf",
+                  chunk_count: 0,
+                  category: "law",
+                  processing_status: "processing",
+                },
+              ],
+            },
+          ],
+          userFiles: [],
+        },
+      },
+    } as never);
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByTestId("kb-processing-summary")).toHaveTextContent(
+      "PageIndex กำลังประมวลผล 1 ไฟล์"
+    );
+    fireEvent.click(screen.getByText("ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)"));
+    expect(screen.getByTestId("kb-central-status-museum")).toHaveTextContent(
+      "กำลังอ่านโครงสร้างเอกสาร"
+    );
   });
 
   it("shows an alert when the catalog fails to load", async () => {

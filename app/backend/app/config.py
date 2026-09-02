@@ -20,7 +20,7 @@ from app.providers.constants import (
 
 _runtime_overlay: dict[str, Any] = {}
 
-# Per-section local LLM headroom for 32k-token TOR drafts / KB answers
+# Per-section local LLM headroom for long-form TOR drafts / KB answers
 LOCAL_LLM_TIMEOUT_CAP_SECONDS = 1800
 
 
@@ -107,6 +107,9 @@ class Settings(BaseSettings):
     mcp_rag_config_path: str = ""
     mcp_rag_servers_json: str = ""
     mcp_rag_timeout_seconds: float = 20.0
+    pageindex_base_url: str = "http://pageindex:8000"
+    pageindex_api_key: str = ""
+    pageindex_ingest_timeout_seconds: float = 1800.0
 
     # -------------------------------------------------------------------------
     # Cloud model ids
@@ -116,12 +119,13 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     gemini_embedding_model: str = "text-embedding-004"
     bedrock_region: str = "ap-southeast-1"
-    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    bedrock_model_id: str = "global.anthropic.claude-sonnet-4-6"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
+    cloud_llm_timeout: float = 300.0
     azure_foundry_endpoint: str = ""
     azure_foundry_deployment: str = ""
     azure_foundry_embedding_deployment: str = ""
-    azure_foundry_api_version: str = "2024-10-21"
+    azure_foundry_api_version: str = "v1"
     openai_compatible_base_url: str = ""
     openai_compatible_model: str = ""
     openai_compatible_embedding_model: str = "text-embedding-3-small"
@@ -201,7 +205,7 @@ class Settings(BaseSettings):
         """Per-section LLM timeout. Local Gemma needs more headroom than cloud."""
         if self.llm_provider in LOCAL_LLM_PROVIDERS:
             return max(1, min(LOCAL_LLM_TIMEOUT_CAP_SECONDS, int(self.lm_studio_timeout)))
-        return 60
+        return max(30, min(1800, int(self.cloud_llm_timeout)))
 
     def cache_ttl_seconds(self, hours: int) -> int:
         """Clamp cache TTL hours to 1–168 and convert to seconds."""

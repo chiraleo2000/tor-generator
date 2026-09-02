@@ -47,6 +47,35 @@ docker compose -p tor-app --env-file .env up -d --build
 | MinIO console | http://localhost:9001 |
 | Neo4j browser | http://localhost:7474 |
 
+### เชื่อม Betimes PageIndex RAG (ค่าเริ่มต้นของชุด merge นี้)
+
+เปิด Knowledge-RAG ของเราที่พอร์ต `8000` ก่อน แล้วตั้งค่าใน `.env` ของ TOR:
+
+```env
+CUSTOM_RAG_ENABLED=true
+CUSTOM_RAG_BASE_URL=http://host.docker.internal:8000/api/search
+CUSTOM_RAG_API_KEY=ใส่ค่าเดียวกับ-KNOWLEDGE_RAG_API_KEY-ของระบบเรา
+RAG_SOURCES=custom
+```
+
+`RAG_SOURCES=custom` หมายถึงให้ flow ร่าง/ถามตอบ/ตรวจ TOR ดึงบริบทจาก PageIndex RAG
+แทน pgvector ของแอป TOR ตัว adapter รองรับ payload `{"query": "...", "k": 5}` และแปลง
+`hits` จาก Knowledge-RAG เป็น chunks พร้อมชื่อเอกสาร section และ source metadata ให้ระบบ TOR
+
+ระบบรวมมี UI เพียงตัวเดียวคือ Next.js ของ `tor-generator` ที่พอร์ต 3000 ส่วน
+Knowledge-RAG/PageIndex ที่พอร์ต 8000 ทำงานเป็น backend-only และไม่ serve UI เดิม
+ฝั่ง TOR ตั้ง `EMBEDDING_PROVIDER=none` เพราะ PageIndex เป็นผู้ทำ retrieval ทั้งหมด
+จึงไม่ต้อง deploy embedding model หรือใช้ pgvector/Qdrant ของ TOR
+
+ทดสอบจากเครื่อง host ก่อนเปิด TOR:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/search \
+  -H "X-API-Key: $KNOWLEDGE_RAG_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"หลักประกันสัญญา","k":3}'
+```
+
 รอจนทุกคอนเทนเนอร์ `healthy` แล้วใส่ข้อมูลเริ่มต้น:
 
 ```bash
@@ -55,9 +84,11 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 
 บัญชีทดลอง (รหัส `Passw0rd!`): `officer@example.go.th`, `admin@example.go.th`, `reviewer@example.go.th`
 
-### คลังความรู้ RAG (บังคับ)
+### คลังเวกเตอร์เดิมของ TOR (ไม่บังคับเมื่อใช้ PageIndex-only)
 
-คลังใช้งานมาจาก PDF สองกลุ่ม — **ไม่** ingest JSON ใน `documents/knowledge-base` เป็นคลังหลัก รันจาก **โฮสต์** (bind-mount ชื่อไทยในคอนเทนเนอร์มัก Errno 5):
+ข้ามหัวข้อนี้ได้เมื่อใช้ `RAG_SOURCES=custom` หากต้องการใช้ pgvector/GraphRAG เดิมร่วมด้วย
+ให้เปลี่ยนเป็น `RAG_SOURCES=both` แล้ว seed PDF จาก **โฮสต์** ดังนี้
+(bind-mount ชื่อไทยในคอนเทนเนอร์มัก Errno 5):
 
 ```bash
 cd app/backend
@@ -80,19 +111,23 @@ python -m app.seed_raw_docs
 
 ## โหมด LLM
 
-ค่าเริ่มต้น `DEPLOYMENT_MODE=on_prem` และ `LLM_PROVIDER=lm_studio`
+ค่าเริ่มต้น `DEPLOYMENT_MODE=cloud` และ `LLM_PROVIDER=bedrock` โดยใช้
+Claude Sonnet 4.6 (`global.anthropic.claude-sonnet-4-6`) สำหรับร่าง TOR แชท และตรวจทาน
+ส่วนการค้นเอกสารยังใช้ PageIndex RAG ผ่าน `RAG_SOURCES=custom`
 
 | โหมด | ความหมาย | แชท / embeddings |
 |------|----------|-------------------|
-| `on_prem` | ค่าเริ่มต้นในเครื่อง | เลือกอิสระ เช่น LM Studio แชท + EmbeddingGemma หรือ Claude + EmbeddingGemma |
-| `cloud` | เน้นคีย์ API | เลือกอิสระ เช่น Claude แชท + OpenAI embeddings หรือ Claude + embeddings ในเครื่อง |
+| `on_prem` | โมเดลในเครื่อง (ทางเลือกเดิม) | เลือกอิสระ เช่น LM Studio หรือ SGLang |
+| `cloud` | ค่าเริ่มต้น | AWS Claude Sonnet 4.6; PageIndex-only ไม่เรียก embedding ของ TOR |
 | `hybrid` | ผสมชัดเจน | เหมือนกัน — `LLM_PROVIDER` กับ `EMBEDDING_PROVIDER` ไม่ถูกสลับคู่ |
 
-ตัวอย่าง: `DEPLOYMENT_MODE=hybrid`, `LLM_PROVIDER=claude`, `EMBEDDING_PROVIDER=local`, `ANTHROPIC_API_KEY=...` — แชทใช้ Claude, ฝังเวกเตอร์ใช้ EmbeddingGemma บน LM Studio (`LOCAL_EMBEDDING_SERVER=lm_studio`)
+สำหรับ Bedrock API key ให้ใส่ค่า `ABSK...` ใน `AWS_BEARER_TOKEN_BEDROCK`
+และเว้น `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` ว่าง ระบบใช้ Region
+`ap-southeast-1` กับ global inference profile ของ Sonnet 4.6
 
 ผู้ดูแลสลับผู้ให้บริการได้ที่ **การตั้งค่า AI** — บันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend ถ้าเปลี่ยนโมเดล embeddings ต้อง `seed_raw_docs` ใหม่
 
-### LM Studio (ค่าเริ่มต้น)
+### LM Studio (ทางเลือกเดิม)
 
 1. โหลดแชท **google/gemma-4-e4b** และ embeddings **text-embedding-embeddinggemma-300m**
 2. เปิดเซิร์ฟเวอร์ OpenAI-compatible ที่ `http://127.0.0.1:1234/v1`

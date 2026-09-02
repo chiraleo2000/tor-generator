@@ -255,7 +255,7 @@ export function ChatShell({
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `req-${Date.now()}`;
-    setQueueStatus("รอคิว AI...");
+    setQueueStatus("AI กำลังประมวลผล...");
     try {
       await streamSsePost(
         pathFor(roomId),
@@ -265,11 +265,13 @@ export function ChatShell({
           if (event === "queued") {
             const position = Number(data.position || 0);
             setQueueStatus(
-              position > 0 ? `รอคิว (#${position})...` : "รอคิว AI..."
+              position > 1
+                ? `AI กำลังรอใช้งานโมเดล (คิวที่ ${position})...`
+                : "AI กำลังประมวลผล..."
             );
           }
           if (event === "started") {
-            setQueueStatus(null);
+            setQueueStatus("AI กำลังสร้างคำตอบ...");
           }
           if (event === "token") {
             setQueueStatus(null);

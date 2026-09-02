@@ -8,7 +8,7 @@ GET /knowledge-base/{id}/status — Processing status for a single document
 
 All authenticated users can list shared documents plus their own uploads.
 Admin upload/delete/batch-ingest remain global. Officers use POST /mine
-and DELETE /mine/{id} for private files (chunked and embedded, owner-only).
+and DELETE /mine/{id} for private PageIndex documents (owner-only).
 
 Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5
 """
@@ -39,12 +39,11 @@ from app.domain.corpus import (
 )
 from app.domain.file_magic import require_kb_upload
 from app.exceptions import NotFoundError, ValidationError
-from app.io_temp import unlink_path, write_temp_bytes
 from app.models.kb_chunk import KBChunk
 from app.models.knowledge_base_document import KnowledgeBaseDocument
 from app.models.user import User
-from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.graph_store import GraphRAGStore
+from app.rag.pageindex_client import build_pageindex_client
 from app.rbac import Role, require_role
 from app.schemas.knowledge_base import (
     KBBatchIngestResponse,
@@ -110,6 +109,20 @@ def _kb_original_bytes(document: KnowledgeBaseDocument) -> bytes:
     path = Path(document.storage_path) if document.storage_path else None
     if path is not None and path.is_file():
         return path.read_bytes()
+    if runtime.minio_client is not None and document.storage_path:
+        try:
+            from app.config import get_settings
+
+            response = runtime.minio_client.get_object(
+                get_settings().minio_bucket, document.storage_path
+            )
+            try:
+                return response.read()
+            finally:
+                response.close()
+                response.release_conn()
+        except Exception:
+            logger.warning("MinIO read missed for document %s", document.id)
     raise NotFoundError(message="ไม่พบไฟล์ต้นฉบับ")
 
 
@@ -125,6 +138,15 @@ def _file_download_response(document: KnowledgeBaseDocument) -> Response:
 
 
 async def _purge_aux_stores(document: KnowledgeBaseDocument) -> None:
+    if runtime.minio_client is not None and document.storage_path:
+        try:
+            from app.config import get_settings
+
+            runtime.minio_client.remove_object(
+                get_settings().minio_bucket, document.storage_path
+            )
+        except Exception:
+            logger.warning("MinIO delete missed for document %s", document.id)
     store = store_from_client(runtime.mongo_client)
     if store is not None:
         try:
@@ -136,6 +158,10 @@ async def _purge_aux_stores(document: KnowledgeBaseDocument) -> None:
             await GraphRAGStore(runtime.neo4j_driver).delete_document(str(document.id))
         except Exception:
             logger.warning("Neo4j delete missed for document %s", document.id)
+    try:
+        await build_pageindex_client().delete_document(str(document.id))
+    except Exception:
+        logger.warning("PageIndex delete missed for document %s", document.id)
 
 
 def _build_success_response(
@@ -369,10 +395,10 @@ async def upload_knowledge_base_document(
     current_user: Annotated[User, Depends(require_role([Role.ADMIN]))],
     name: Annotated[str | None, Form(description="Optional display name")] = None,
 ) -> JSONResponse:
-    """Upload a document and trigger async RAG ingestion.
+    """Upload a document and trigger async PageIndex ingestion.
 
-    Req 11.2: When a new document is uploaded, automatically process it
-    (extract text, chunk, embed, store) and report completion status.
+    Req 11.2: When a new document is uploaded, automatically build its
+    PageIndex hierarchy and report completion status.
     Req 11.5: If processing fails, log error and mark as failed.
     """
     file_content = await file.read()
@@ -420,20 +446,21 @@ async def upload_knowledge_base_document(
     db.add(document)
     await db.flush()
     await db.refresh(document)
+    # Starlette starts BackgroundTasks before FastAPI closes this dependency.
+    # Commit first so the task's independent session can see the new row.
+    await db.commit()
 
     # Trigger async ingestion in background
     background_tasks.add_task(
-        _run_ingestion,
+        _run_pageindex_ingestion,
         document_id=str(doc_id),
         document_name=doc_name,
         file_content=file_content,
         mime_type=content_type,
+        category=category.value,
+        owner_id=None,
+        scope="baseline",
         app=request.app,
-        extra_metadata={
-            "corpus_group": corpus_group,
-            "scope": "baseline",
-            "owner_id": None,
-        },
     )
 
     response_data = KBUploadResponse(
@@ -462,12 +489,14 @@ async def upload_knowledge_base_document(
     response_model=SuccessResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload a private knowledge-base document",
-    description="Chunk and embed a file visible only to the uploading user.",
+    description="Build PageIndex for a file visible only to the uploading user.",
 )
 async def upload_my_knowledge_base_document(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File(..., description="Document file (PDF, DOCX, or TXT)")],
     db: Annotated[AsyncSession, Depends(get_db)],
+    minio_client: Annotated[object, Depends(get_minio)],
     current_user: Annotated[User, Depends(get_current_user)],
     category: Annotated[KBCategory | None, Form(description="Optional category")] = None,
     name: Annotated[str | None, Form(description="Optional display name")] = None,
@@ -478,17 +507,56 @@ async def upload_my_knowledge_base_document(
     )
     file_type = ALLOWED_MIME_TYPES[content_type]
     doc_name = name or file.filename or "Untitled Document"
-    factory = getattr(request.app.state, "db_session_factory", None) or runtime.session_factory
-    doc = await ingest_file_bytes(
-        db=db,
-        filename=doc_name,
-        content=file_content,
-        mime_type=content_type,
-        scope="user",
+    doc_id = uuid.uuid4()
+    storage_path = f"knowledge-base/{doc_id}"
+    from app.config import get_settings
+
+    settings = get_settings()
+    try:
+        import io
+
+        minio_client.put_object(
+            settings.minio_bucket,
+            storage_path,
+            io.BytesIO(file_content),
+            length=len(file_content),
+            content_type=content_type,
+        )
+    except Exception as exc:
+        logger.exception("Failed to upload private file to MinIO")
+        raise ValidationError(
+            message="ไม่สามารถอัปโหลดไฟล์ได้ กรุณาลองใหม่อีกครั้ง",
+            details={"error": str(exc)},
+        ) from exc
+
+    resolved_category = category.value if category is not None else "other"
+    doc = KnowledgeBaseDocument(
+        id=doc_id,
+        name=doc_name,
+        category=resolved_category,
+        file_type=file_type,
+        storage_path=storage_path,
+        processing_status="pending",
+        chunk_count=0,
         owner_id=current_user.id,
-        session_factory=factory,
+        scope="user",
         corpus_group=GROUP_USER,
-        category=category.value if category is not None else None,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    await db.commit()
+
+    background_tasks.add_task(
+        _run_pageindex_ingestion,
+        document_id=str(doc_id),
+        document_name=doc_name,
+        file_content=file_content,
+        mime_type=content_type,
+        category=resolved_category,
+        owner_id=str(current_user.id),
+        scope="user",
+        app=request.app,
     )
     response_data = KBUploadResponse(
         id=doc.id,
@@ -496,7 +564,7 @@ async def upload_my_knowledge_base_document(
         category=doc.category,
         file_type=file_type,
         processing_status=doc.processing_status,
-        message="เอกสารถูกอัปโหลดเฉพาะบัญชีของคุณ กำลังประมวลผลเข้า RAG",
+        message="เอกสารถูกอัปโหลดเฉพาะบัญชีของคุณ PageIndex กำลังอ่านโครงสร้าง",
     ).model_dump(mode="json")
     logger.info(
         "Private KB document uploaded: %s (id=%s) by user %s",
@@ -569,7 +637,6 @@ async def delete_knowledge_base_document(
     request: Request,
     document_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    minio_client: Annotated[object, Depends(get_minio)],
     current_user: Annotated[User, Depends(require_role([Role.ADMIN]))],
 ) -> JSONResponse:
     """Delete a KB document and its chunks.
@@ -589,17 +656,6 @@ async def delete_knowledge_base_document(
         delete(KBChunk).where(KBChunk.document_id == document_id)
     )
     await _purge_aux_stores(document)
-
-    # Try to delete file from MinIO (non-blocking on failure)
-    try:
-        from app.config import get_settings
-        settings = get_settings()
-        minio_client.remove_object(settings.minio_bucket, document.storage_path)
-    except Exception as e:
-        logger.warning(
-            "Failed to remove file from MinIO for document %s: %s",
-            document_id, str(e),
-        )
 
     # Delete the document record
     await db.delete(document)
@@ -660,6 +716,7 @@ async def batch_ingest(
         doc.processed_at = None
 
     await db.flush()
+    await db.commit()
 
     # Trigger batch ingestion in background
     doc_ids = [str(doc.id) for doc in documents]
@@ -806,86 +863,73 @@ async def _run_sync_mandatory(*, wipe_baseline: bool, app) -> None:
         logger.exception("Mandatory corpus sync failed")
 
 
-async def _run_ingestion(
+async def _run_pageindex_ingestion(
     document_id: str,
     document_name: str,
     file_content: bytes,
     mime_type: str,
+    category: str,
+    owner_id: str | None,
+    scope: str,
     app,
-    extra_metadata: dict | None = None,
 ) -> None:
-    """Background task: run the full RAG ingestion pipeline for a single document.
-
-    Writes file content to a temp file, then invokes the ingestion pipeline.
-    Updates document status in the database upon completion or failure.
-    """
-    from app.config import get_settings
-    from app.providers.factory import ProviderFactory
-    from app.rag.ingestion import ingest_document
-
-    settings = get_settings()
-    tmp_path = None
-
+    """Build PageIndex and mirror its status into the TOR document record."""
+    session_factory = getattr(app.state, "db_session_factory", None)
+    if session_factory is None:
+        logger.error("DB session factory not available for PageIndex task")
+        return
     try:
-        # Write file to a temp location for the extraction step
-        suffix = f".{ALLOWED_MIME_TYPES.get(mime_type, 'bin')}"
-        tmp_path = await write_temp_bytes(file_content, suffix)
+        async with session_factory() as session:
+            document = await session.get(KnowledgeBaseDocument, uuid.UUID(document_id))
+            if document is None:
+                logger.warning("Document %s disappeared before PageIndex ingestion", document_id)
+                return
+            document.processing_status = "processing"
+            document.error_message = None
+            await session.commit()
 
-        # Get providers
-        factory = ProviderFactory(settings)
-        embedding_provider = factory.get_embedding()
-        vector_store_provider = factory.get_vector_store()
-
-        # Get a fresh DB session for the background task
-        session_factory = app.state.db_session_factory
-        if session_factory is None:
-            logger.error("DB session factory not available for ingestion task")
-            return
+        result = await build_pageindex_client().ingest_document(
+            document_id=document_id,
+            document_name=document_name,
+            content=file_content,
+            mime_type=mime_type,
+            category=category,
+            owner_id=owner_id,
+            scope=scope,
+            replace=True,
+        )
 
         async with session_factory() as session:
-            result = await ingest_document(
-                document_id=document_id,
-                document_name=document_name,
-                file_path=tmp_path,
-                mime_type=mime_type,
-                embedding_provider=embedding_provider,
-                vector_store_provider=vector_store_provider,
-                session=session,
-                extra_metadata=extra_metadata,
-            )
-
-            if result.success:
+            document = await session.get(KnowledgeBaseDocument, uuid.UUID(document_id))
+            if document is None:
+                # The user can delete a document while a long PageIndex build is
+                # still running. Ingestion cannot cancel the remote HTTP request,
+                # so purge the index after it returns to avoid an orphaned result.
+                await build_pageindex_client().delete_document(document_id)
                 logger.info(
-                    "Ingestion completed for document %s: %d/%d chunks embedded",
-                    document_id, result.embedded_chunks, result.total_chunks,
+                    "Discarded PageIndex result for deleted document %s", document_id
                 )
-            else:
-                logger.warning(
-                    "Ingestion failed for document %s: %s",
-                    document_id, result.error_message,
-                )
-
-    except Exception as e:
-        logger.exception(
-            "Unexpected error during ingestion of document %s",
+                return
+            document.processing_status = "completed"
+            document.chunk_count = int(result.get("total_records") or 0)
+            # Column is TIMESTAMP WITHOUT TIME ZONE; keep UTC but remove tzinfo.
+            document.processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            document.error_message = None
+            await session.commit()
+        logger.info(
+            "PageIndex completed for document %s: %d sections",
             document_id,
+            int(result.get("total_records") or 0),
         )
-        # Try to update document status to failed
-        try:
-            session_factory = app.state.db_session_factory
-            if session_factory:
-                async with session_factory() as session:
-                    from app.rag.ingestion import _update_document_status
-                    await _update_document_status(
-                        session, document_id, "failed",
-                        error_message=f"Unexpected error: {type(e).__name__}: {e}",
-                    )
-        except Exception:
-            pass
-
-    finally:
-        if tmp_path:
-            await unlink_path(tmp_path)
+    except Exception as exc:
+        logger.exception("PageIndex ingestion failed for document %s", document_id)
+        async with session_factory() as session:
+            document = await session.get(KnowledgeBaseDocument, uuid.UUID(document_id))
+            if document is not None:
+                document.processing_status = "failed"
+                document.chunk_count = 0
+                document.error_message = f"PageIndex failed: {type(exc).__name__}: {exc}"
+                await session.commit()
 
 
 def _batch_ingest_providers():
@@ -989,26 +1033,63 @@ async def _run_batch_ingestion(
     document_ids: list[str],
     app,
 ) -> None:
-    """Background task: re-ingest all specified documents.
+    """Rebuild PageIndex for all documents sequentially from MinIO originals."""
+    from app.config import get_settings
 
-    Processes documents sequentially through the ingestion pipeline.
-    Downloads each file from MinIO before processing.
-    """
-    settings, embedding_provider, vector_store_provider = _batch_ingest_providers()
-    if embedding_provider is None:
-        return
+    settings = get_settings()
     session_factory = app.state.db_session_factory
     if session_factory is None:
         logger.error("DB session factory not available for batch ingestion task")
         return
     minio_client = app.state.minio
     for doc_id in document_ids:
-        await _ingest_one_batch_document(
-            doc_id,
-            settings,
-            embedding_provider,
-            vector_store_provider,
-            session_factory,
-            minio_client,
-        )
-    logger.info("Batch re-ingestion complete for %d documents", len(document_ids))
+        try:
+            async with session_factory() as session:
+                # Fetch document record
+                doc_uuid = uuid.UUID(doc_id)
+                doc = await session.get(KnowledgeBaseDocument, doc_uuid)
+                if doc is None:
+                    logger.warning("Document %s not found for batch ingestion", doc_id)
+                    continue
+
+                # Download file from MinIO
+                try:
+                    response = minio_client.get_object(
+                        settings.minio_bucket, doc.storage_path
+                    )
+                    file_content = response.read()
+                    response.close()
+                    response.release_conn()
+                except Exception as e:
+                    logger.exception(
+                        "Failed to download %s from MinIO", doc.storage_path
+                    )
+                    doc.processing_status = "failed"
+                    doc.error_message = f"File download failed: {str(e)}"
+                    await session.commit()
+                    continue
+
+                mime_map = {"pdf": MIME_PDF, "docx": MIME_DOCX, "txt": MIME_TXT}
+                mime_type = mime_map.get(doc.file_type, "application/octet-stream")
+                document_name = doc.name
+                category = doc.category
+                owner_id = str(doc.owner_id) if doc.owner_id else None
+                scope = doc.scope
+
+            await _run_pageindex_ingestion(
+                document_id=doc_id,
+                document_name=document_name,
+                file_content=file_content,
+                mime_type=mime_type,
+                category=category,
+                owner_id=owner_id,
+                scope=scope,
+                app=app,
+            )
+
+        except Exception:
+            logger.exception(
+                "Unexpected error in batch ingestion for document %s",
+                doc_id,
+            )
+    logger.info("Batch PageIndex rebuild complete for %d documents", len(document_ids))

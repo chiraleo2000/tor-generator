@@ -35,6 +35,7 @@ describe("ai-settings helpers", () => {
   });
 
   it("lists local and cloud embeddings in every mode", () => {
+    expect(embedOptionsForMode("cloud")[0].value).toBe("none");
     expect(embedOptionsForMode("on_prem").map((item) => item.value)).toContain("local");
     expect(embedOptionsForMode("on_prem").map((item) => item.value)).toContain("openai");
     expect(embedOptionsForMode("cloud").map((item) => item.value)).toContain("gemini");
@@ -62,7 +63,7 @@ describe("ai-settings helpers", () => {
     const next = nextFormOnModeChange(EMPTY_AI_SETTINGS, "cloud");
     expect(next.deployment_mode).toBe("cloud");
     expect(next.llm_provider).toBe("lm_studio");
-    expect(next.embedding_provider).toBe("local");
+    expect(next.embedding_provider).toBe("none");
   });
 
   it("does not swap providers when returning to on_prem", () => {

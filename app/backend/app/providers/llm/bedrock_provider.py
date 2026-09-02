@@ -4,11 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterator
 from typing import Any, AsyncIterator
 
 from app.providers.base import LLMProvider, LLMResponse
 
 logger = logging.getLogger(__name__)
+
+_STREAM_END = object()
+_BEDROCK_STREAM_ERRORS = (
+    "internalServerException",
+    "modelStreamErrorException",
+    "throttlingException",
+    "validationException",
+    "serviceUnavailableException",
+)
+
+
+def _next_stream_event(events: Iterator[dict[str, Any]]) -> dict[str, Any] | object:
+    """Read one blocking boto3 event without leaking StopIteration into asyncio."""
+    try:
+        return next(events)
+    except StopIteration:
+        return _STREAM_END
 
 
 class BedrockLLMProvider(LLMProvider):
@@ -65,15 +83,8 @@ class BedrockLLMProvider(LLMProvider):
     def _converse(self, messages: list[dict], **kwargs: Any) -> dict:
         return self._client.converse(**self._build_request(messages, **kwargs))
 
-    def _collect_stream_tokens(self, messages: list[dict], **kwargs: Any) -> list[str]:
-        response = self._client.converse_stream(**self._build_request(messages, **kwargs))
-        tokens: list[str] = []
-        for event in response.get("stream") or []:
-            delta = (event.get("contentBlockDelta") or {}).get("delta") or {}
-            text = delta.get("text")
-            if text:
-                tokens.append(str(text))
-        return tokens
+    def _open_stream(self, messages: list[dict], **kwargs: Any) -> dict:
+        return self._client.converse_stream(**self._build_request(messages, **kwargs))
 
     async def invoke(
         self,
@@ -106,19 +117,55 @@ class BedrockLLMProvider(LLMProvider):
         )
 
     async def stream(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
+        event_stream: Any = None
+        yielded = False
         try:
-            tokens = await asyncio.wait_for(
-                asyncio.to_thread(self._collect_stream_tokens, messages, **kwargs),
-                timeout=self._timeout,
-            )
-            for token in tokens:
-                yield token
+            async with asyncio.timeout(self._timeout):
+                response = await asyncio.to_thread(self._open_stream, messages, **kwargs)
+                event_stream = response.get("stream")
+                if event_stream is None:
+                    raise ConnectionError("Bedrock returned no response stream")
+                events = iter(event_stream)
+                while True:
+                    event = await asyncio.to_thread(_next_stream_event, events)
+                    if event is _STREAM_END:
+                        break
+                    if not isinstance(event, dict):
+                        continue
+                    for error_key in _BEDROCK_STREAM_ERRORS:
+                        if error_key in event:
+                            raise ConnectionError(
+                                f"Bedrock stream error ({error_key}): {event[error_key]}"
+                            )
+                    delta = (event.get("contentBlockDelta") or {}).get("delta") or {}
+                    text = delta.get("text")
+                    if text:
+                        yielded = True
+                        yield str(text)
             return
-        except Exception as exc:
-            logger.warning(
-                "Bedrock converse_stream failed (%s); falling back to invoke",
-                exc,
+        except TimeoutError as exc:
+            stream_error: Exception = TimeoutError(
+                f"Bedrock did not finish streaming within {self._timeout}s"
             )
+            stream_error.__cause__ = exc
+        except Exception as exc:
+            stream_error = exc
+        finally:
+            close = getattr(event_stream, "close", None)
+            if callable(close):
+                try:
+                    await asyncio.to_thread(close)
+                except Exception:
+                    logger.debug("Bedrock response stream close failed", exc_info=True)
+
+        if yielded:
+            raise ConnectionError(
+                f"Bedrock stream stopped after sending part of the response: {stream_error}"
+            ) from stream_error
+        logger.warning(
+            "Bedrock converse_stream failed before first token (%s); falling back to invoke",
+            stream_error,
+        )
         response = await self.invoke(messages, **kwargs)
         if response.content:
             yield response.content

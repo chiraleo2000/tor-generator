@@ -14,8 +14,8 @@ export type KbCategoryId = (typeof KB_CATEGORIES)[number]["id"];
 
 export const KB_PROCESSING_LABEL: Record<string, string> = {
   pending: "รอประมวลผล",
-  processing: "กำลังแบ่ง chunk",
-  completed: "ใช้กับ RAG ได้",
+  processing: "กำลังอ่านโครงสร้างเอกสาร",
+  completed: "พร้อมค้นหาด้วย PageIndex",
   failed: "ประมวลผลไม่สำเร็จ",
 };
 

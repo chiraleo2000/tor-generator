@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
@@ -34,6 +35,7 @@ from app.providers.factory import (
     VALID_LLM_PROVIDERS,
     VALID_VECTOR_STORE_PROVIDERS,
 )
+from app.rag.custom_rag_client import CustomRagClient
 from app.rbac import require_role
 from app.schemas.responses import MetaInfo, SuccessResponse
 
@@ -194,6 +196,7 @@ class AiSettingsTest(BaseModel):
     custom_rag_enabled: bool | None = None
     custom_rag_base_url: str | None = None
     custom_rag_api_key: str | None = None
+    rag_sources: str | None = None
 
 
 def _require_cloud_key(
@@ -418,6 +421,12 @@ def _validate_update(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
         raise ValidationError(
             message="ผู้ให้บริการ embeddings ไม่ถูกต้อง", field="embedding_provider"
         )
+    rag_sources = str(body.rag_sources or existing.get("rag_sources") or "both")
+    if body.embedding_provider == "none" and rag_sources != "custom":
+        raise ValidationError(
+            message="ปิด embeddings ได้เฉพาะเมื่อใช้ PageIndex RAG เท่านั้น",
+            field="embedding_provider",
+        )
     if (
         body.vector_store_provider
         and body.vector_store_provider not in VALID_VECTOR_STORE_PROVIDERS
@@ -514,7 +523,10 @@ async def put_ai_settings(
         _public_payload(
             merged,
             restart_required=False,
-            reingest_required=_embedding_changed(existing, merged),
+            reingest_required=(
+                str(merged.get("rag_sources") or "both") != "custom"
+                and _embedding_changed(existing, merged)
+            ),
         ),
     )
 
@@ -613,11 +625,16 @@ async def _probe_azure_foundry(body: AiSettingsTest, existing: dict[str, Any]) -
     version = (
         body.azure_foundry_api_version
         or existing.get("azure_foundry_api_version")
-        or "2024-10-21"
+        or "v1"
     )
     if not endpoint or not key:
         raise ValidationError(message=_MSG_AZURE_KEY, field="azure_foundry_api_key")
-    url = f"{str(endpoint).rstrip('/')}/openai/models?api-version={version}"
+    base = str(endpoint).rstrip("/")
+    url = (
+        f"{base}/openai/v1/models"
+        if str(version).lower() == "v1"
+        else f"{base}/openai/models?api-version={version}"
+    )
     await _http_get_ok(url, {"api-key": key})
 
 
@@ -646,8 +663,30 @@ def _sts_caller_identity(region: str, access: str, secret: str) -> None:
     boto3.client("sts", **kwargs).get_caller_identity()
 
 
+def _bedrock_runtime_probe(region: str, model_id: str) -> None:
+    import boto3
+
+    boto3.client("bedrock-runtime", region_name=region).converse(
+        modelId=model_id,
+        messages=[{"role": "user", "content": [{"text": "ping"}]}],
+        inferenceConfig={"maxTokens": 1},
+    )
+
+
 async def _probe_bedrock(body: AiSettingsTest, existing: dict[str, Any]) -> None:
     region = str(body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1")
+    bearer_token = os.getenv("AWS_BEARER_TOKEN_BEDROCK", "").strip()
+    if bearer_token:
+        model_id = str(
+            body.bedrock_model_id
+            or existing.get("bedrock_model_id")
+            or "global.anthropic.claude-sonnet-4-6"
+        )
+        try:
+            await asyncio.to_thread(_bedrock_runtime_probe, region, model_id)
+        except Exception as exc:
+            raise ValidationError(message=f"ทดสอบ Bedrock API key ไม่สำเร็จ: {exc}") from exc
+        return
     access = str(body.aws_access_key_id or existing.get("aws_access_key_id") or "")
     secret = _usable_secret(
         body.aws_secret_access_key or existing.get("aws_secret_access_key")
@@ -681,6 +720,22 @@ async def _probe_cloud_embeddings(body: AiSettingsTest, existing: dict[str, Any]
         return
 
 
+async def _probe_external_rag(body: AiSettingsTest, existing: dict[str, Any]) -> str:
+    base_url = str(body.custom_rag_base_url or existing.get("custom_rag_base_url") or "")
+    if not base_url.strip():
+        raise ValidationError(
+            message="ต้องระบุ URL ของ PageIndex RAG",
+            field="custom_rag_base_url",
+        )
+    incoming_key = _usable_secret(body.custom_rag_api_key)
+    api_key = incoming_key or str(existing.get("custom_rag_api_key") or "")
+    client = CustomRagClient(base_url=base_url, api_key=api_key, top_k=1, timeout=8.0)
+    chunks = await client.retrieve("ทดสอบการเชื่อมต่อระบบจัดทำ TOR", top_k=1)
+    if chunks and chunks[0].metadata.get("rag_source") == "pageindex_rag":
+        return "PageIndex RAG ได้"
+    return "Custom RAG ได้"
+
+
 @router.post("/test")
 async def test_ai_settings(
     request: Request,
@@ -693,21 +748,31 @@ async def test_ai_settings(
         parts: list[str] = []
         chat_url = ""
         embed_url = ""
+        rag_sources = str(body.rag_sources or existing.get("rag_sources") or "both")
+        custom_enabled = (
+            body.custom_rag_enabled
+            if body.custom_rag_enabled is not None
+            else bool(existing.get("custom_rag_enabled"))
+        )
         if body.llm_provider in LOCAL_LLM_PROVIDERS:
             chat_url = await _probe_local_models(_local_base_url(body))
             parts.append("แชทในเครื่องได้")
         else:
             await _probe_cloud_chat(body, existing)
             parts.append("แชทคลาวด์ได้")
-        if body.embedding_provider in LOCAL_EMBEDDING_PROVIDERS:
-            embed_base = _embed_local_base_url(body)
-            embed_url = f"{embed_base.rstrip('/')}/models"
-            if embed_url != chat_url:
-                await _probe_local_models(embed_base)
-            parts.append("embeddings ในเครื่องได้")
-        else:
-            await _probe_cloud_embeddings(body, existing)
-            parts.append("embeddings คลาวด์ได้")
+        # PageIndex-only retrieval does not require the TOR app's embedding server.
+        if rag_sources != "custom":
+            if body.embedding_provider in LOCAL_EMBEDDING_PROVIDERS:
+                embed_base = _embed_local_base_url(body)
+                embed_url = f"{embed_base.rstrip('/')}/models"
+                if embed_url != chat_url:
+                    await _probe_local_models(embed_base)
+                parts.append("embeddings ในเครื่องได้")
+            else:
+                await _probe_cloud_embeddings(body, existing)
+                parts.append("embeddings คลาวด์ได้")
+        if custom_enabled and rag_sources in ("custom", "both"):
+            parts.append(await _probe_external_rag(body, existing))
         return _ok(
             request,
             {

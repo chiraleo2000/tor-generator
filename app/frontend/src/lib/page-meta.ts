@@ -14,7 +14,7 @@ export function pageMeta(pathname: string): { title: string; sub: string } {
   if (pathname.startsWith("/chat")) {
     return {
       title: "ถาม-ตอบ",
-      sub: "ดึงคลังกฎหมายจาก pgvector หลายชิ้น แล้วตอบเป็นย่อหน้าเนื้อหาพร้อมอ้างอิง inline",
+      sub: "ค้นคลังกฎหมายด้วย PageIndex แล้วตอบพร้อมแหล่งที่มา",
     };
   }
   if (pathname.startsWith("/review")) {

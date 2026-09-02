@@ -69,7 +69,7 @@
 
 | สภาพแวดล้อม | วิธี |
 |-------------|------|
-| Dev บนเครื่อง | ใส่ `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` ใน `.env` หรือ Admin → การตั้งค่า AI |
+| Dev บนเครื่อง | ใส่ Bedrock API key ใน `AWS_BEARER_TOKEN_BEDROCK` หรือใช้ `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` |
 | Prod บน EC2/ECS | ผูก **IAM role** กับ instance/task — **เว้นว่าง** key ใน env ให้ boto3 ใช้ default chain |
 
 ---
@@ -80,10 +80,11 @@
 COMPOSE_PROJECT_NAME=tor-app
 DEPLOYMENT_MODE=cloud
 LLM_PROVIDER=bedrock
-EMBEDDING_PROVIDER=bedrock
+EMBEDDING_PROVIDER=none
+RAG_SOURCES=custom
+AWS_BEARER_TOKEN_BEDROCK=
 BEDROCK_REGION=ap-southeast-1
-BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
-BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
+BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 ```

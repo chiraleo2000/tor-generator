@@ -35,6 +35,20 @@ class OpenAILLMProvider(LLMProvider):
             client_kwargs["base_url"] = base_url
         self._client = AsyncOpenAI(**client_kwargs)
 
+    def _prepare_request_kwargs(
+        self,
+        kwargs: dict,
+        *,
+        has_tools: bool = False,
+    ) -> dict:
+        """Return provider-specific request options.
+
+        Cloud providers that inherit the OpenAI chat implementation can
+        normalize model-specific parameters without duplicating invoke/stream.
+        """
+        del has_tools
+        return dict(kwargs)
+
     async def invoke(
         self,
         messages: list[dict],
@@ -45,7 +59,7 @@ class OpenAILLMProvider(LLMProvider):
             request_kwargs: dict = {
                 "model": self._model_name,
                 "messages": messages,
-                **kwargs,
+                **self._prepare_request_kwargs(kwargs, has_tools=bool(tools)),
             }
             if tools:
                 request_kwargs["tools"] = tools
@@ -63,26 +77,26 @@ class OpenAILLMProvider(LLMProvider):
                 finish_reason=choice.finish_reason or "stop",
             )
         except APITimeoutError as exc:
-            raise TimeoutError(
-                f"OpenAI did not respond within {self._timeout}s"
-            ) from exc
+            raise TimeoutError(f"OpenAI did not respond within {self._timeout}s") from exc
         except APIConnectionError as exc:
             raise ConnectionError("OpenAI endpoint unreachable") from exc
 
     async def stream(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
         try:
+            request_kwargs = self._prepare_request_kwargs(
+                kwargs,
+                has_tools=bool(kwargs.get("tools")),
+            )
             stream = await self._client.chat.completions.create(
                 model=self._model_name,
                 messages=messages,
                 stream=True,
-                **kwargs,
+                **request_kwargs,
             )
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except APITimeoutError as exc:
-            raise TimeoutError(
-                f"OpenAI stream did not respond within {self._timeout}s"
-            ) from exc
+            raise TimeoutError(f"OpenAI stream did not respond within {self._timeout}s") from exc
         except APIConnectionError as exc:
             raise ConnectionError("OpenAI endpoint unreachable") from exc
