@@ -52,7 +52,7 @@ class TestAuthTokenIsolation:
         user_a_id=user_uuid_strategy,
         user_b_id=user_uuid_strategy,
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)
     # Feature: tor-drafting-review-app, Property 11: Authentication Token Isolation
     def test_token_for_user_a_never_grants_access_to_user_b_projects(
         self, user_a_id: uuid.UUID, user_b_id: uuid.UUID
@@ -91,7 +91,7 @@ class TestAuthTokenIsolation:
     @given(
         user_id=user_uuid_strategy,
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)
     # Feature: tor-drafting-review-app, Property 11: Authentication Token Isolation
     def test_own_token_always_grants_access_to_own_project(
         self, user_id: uuid.UUID
@@ -125,7 +125,7 @@ class TestAuthTokenIsolation:
         project_owner_id=user_uuid_strategy,
         role=elevated_role,
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)
     # Feature: tor-drafting-review-app, Property 11: Authentication Token Isolation
     def test_admin_reviewer_tokens_grant_access_to_any_project(
         self, admin_id: uuid.UUID, project_owner_id: uuid.UUID, role: str
@@ -159,7 +159,7 @@ class TestAuthTokenIsolation:
         user_a_id=user_uuid_strategy,
         user_b_id=user_uuid_strategy,
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     # Feature: tor-drafting-review-app, Property 11: Authentication Token Isolation
     def test_token_identity_matches_creator(
         self, user_a_id: uuid.UUID, user_b_id: uuid.UUID

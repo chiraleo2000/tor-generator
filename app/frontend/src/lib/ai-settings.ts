@@ -144,7 +144,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   openai_compatible_model: "",
   openai_compatible_embedding_model: "text-embedding-3-small",
   custom_rag_enabled: true,
-  custom_rag_base_url: "http://host.docker.internal:8000/api/search",
+  custom_rag_base_url: "http://pageindex:8000/api/search",
   custom_rag_api_key: "",
   custom_rag_top_k: 24,
   custom_rag_timeout_seconds: 30,

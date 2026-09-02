@@ -15,15 +15,17 @@ from pathlib import Path
 
 import fitz
 import pytest
-
 from app.providers.constants import DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
 from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
 from app.rag.chunking import chunk_text
 from app.rag.extraction import DEFAULT_OCR_TIMEOUT, _ocr_pdf_page, extract_text
 from app.rag.ingestion import ingest_document
 from app.rag.retrieval import RAGRetriever
+
 from tests.test_live_lm_studio import _require_lm_studio
 from tests.test_property_embedding_round_trip import InMemoryVectorStore
+
+pytestmark = pytest.mark.integration
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SOURCES = REPO_ROOT / "documents" / "sources"
@@ -34,7 +36,11 @@ RAW_DIR = SOURCES / "การจัดซื้อจัดจ้าง" / "ข
 
 PROCUREMENT_PDFS = (
     SOURCES / "คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf",
-    RAW_DIR / "กฎกระทรวงกำหนดพัสดุที่รัฐต้องการส่งเสริมหรือสนับสนุนและกำหนดวิธีการจัดซื้อจัดจ้างพัสดุโดยวิธีคัดเลือกและวิธีเฉพาะเจาะจง พ.ศ. 2560.pdf",
+    RAW_DIR
+    / (
+        "กฎกระทรวงกำหนดพัสดุที่รัฐต้องการส่งเสริมหรือสนับสนุน"
+        "และกำหนดวิธีการจัดซื้อจัดจ้างพัสดุโดยวิธีคัดเลือกและวิธีเฉพาะเจาะจง พ.ศ. 2560.pdf"
+    ),
     RAW_DIR / "กฎกระทรวงกำหนดเรื่องการจัดซื้อจัดจ้างกับหน่วยงานของรัฐที่ใช้สิทธิอุทธรณ์ไม่ได้ พ.ศ. 2568.pdf",
     RAW_DIR / "กฎกระทรวงกำหนดเรื่องการจัดซื้อจัดจ้างกับหน่วยงานของรัฐที่ใช้สิทธิอุทธรณ์ไม่ได้ พ.ศ.2560.pdf",
     RAW_DIR / "กฎกระทรวงกำหนดวงเงินการจัดซื้อจัดจ้างพัสดุโดยวิธีเฉพาะเจาะจงวงเงิน.pdf",
@@ -44,7 +50,12 @@ PROCUREMENT_PDFS = (
     RAW_DIR / "กฎกระทรวงกำหนดอัตราค่าจ้างผู้ให้บริการงานจ้างออกแบบหรือควบคุมงานก่อสร้าง พ.ศ.2562.pdf",
     RAW_DIR / "การจัดซื้อจัดจ้างโดยรัฐ.pdf",
     RAW_DIR / "การจัดซื้อจัดจ้างที่ไม่ทำข้อตกลงเป็นหนังสือ และวงเงินการจัดซื้อจัดจ้างในการแต่งตั้งผู้ตรวจรับพัสดุ.pdf",
-    RAW_DIR / "คู่มือการจัดซื้อจัดจ้างตามพระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 และ ระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560.pdf",
+    RAW_DIR
+    / (
+        "คู่มือการจัดซื้อจัดจ้างตามพระราชบัญญัติการจัดซื้อจัดจ้าง"
+        "และการบริหารพัสดุภาครัฐ พ.ศ. 2560 และ ระเบียบกระทรวงการคลัง"
+        "ว่าด้วยการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560.pdf"
+    ),
     RAW_DIR / "คู่มือการปฏิบัติงานการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐสำนักข่าวกรองแห่งชาติ.pdf",
     RAW_DIR / "คู่มือปฏิบัติงานตามระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างและบริหารพัสดุ พ.ศ.2560.pdf",
     RAW_DIR / "จัดซื้อจัดจ้าง_2560.pdf",

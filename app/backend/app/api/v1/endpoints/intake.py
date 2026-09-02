@@ -47,7 +47,6 @@ from app.services.intake_service import (
     coverage_progress,
     coverage_table,
     empty_slot_map,
-    fill_current_slot,
     fill_non_fact_reference_slots,
     fill_reference_slot,
     has_been_analyzed,
@@ -718,41 +717,9 @@ async def intake_chat(
             return
 
 
-        # Instant Phase-2 replies (no LLM hang / no "กำลังพิมพ์..." forever).
-        if chat_path.startswith("fast"):
-            reply = phase2_filled_ack(filled_keys, asking_key) if filled_keys else phase2_template_reply(
-                filled_keys=filled_keys,
-                next_slot=asking_key,
-                all_filled=all_filled_now,
-            )
-            progress = coverage_progress(slot_map)
-            await _persist_intake_assistant(
-                request.app.state.db_session_factory,
-                project.id,
-                room.id,
-                slot_map,
-                reply,
-                [],
-                asking_slot=asking_key,
-            )
-            step = 12
-            for i in range(0, len(reply), step):
-                yield _sse("token", {"text": reply[i : i + step]})
-            yield _sse(
-                "done",
-                {
-                    "content": reply,
-                    "citations": [],
-                    "coverage": coverage_table(slot_map),
-                    "filled_slots": filled_keys,
-                    "current_slot": asking_key,
-                    "next_question": build_slot_question(asking_key) if asking_key else None,
-                    "all_fact_filled": all_filled_now,
-                    "progress": progress,
-                    "fast_path": True,
-                },
-            )
-            return
+        asking_now = analysis.get("current_asking_slot")
+        asking_key = asking_now if isinstance(asking_now, str) else None
+        all_filled_now = not missing_fact_keys(slot_map)
 
         attached = await _attach_legal_to_filled(
             slot_map,
@@ -812,9 +779,8 @@ async def intake_chat(
             try:
                 await event_q.put(("started", {"request_id": request_id}))
                 async with admit(redis, "llm", request_id, on_wait=on_wait):
-                    llm = ProviderFactory().get_llm("chat")  # NOSONAR python:S930 — ProviderFactory.get_llm(task=...)
-                    # No short asyncio.timeout — LM Studio often queues sequentially;
-                    # provider lm_studio_timeout already bounds the HTTP stream.
+                    # NOSONAR python:S930 — task-specific provider selection.
+                    llm = ProviderFactory().get_llm("chat")
                     async for token in llm.stream(
                         [
                             {"role": "system", "content": INTAKE_CHAT_SYSTEM},

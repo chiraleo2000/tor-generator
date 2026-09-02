@@ -5,11 +5,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from app import infra as runtime
 from app.config import Settings
 from app.rag import hybrid
 from app.rag.retrieval import RetrievalFilter
+
+from app import infra as runtime
 
 
 @pytest.mark.asyncio

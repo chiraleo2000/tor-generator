@@ -20,7 +20,17 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -930,103 +940,6 @@ async def _run_pageindex_ingestion(
                 document.chunk_count = 0
                 document.error_message = f"PageIndex failed: {type(exc).__name__}: {exc}"
                 await session.commit()
-
-
-def _batch_ingest_providers():
-    from app.config import get_settings
-    from app.providers.factory import ProviderFactory
-
-    settings = get_settings()
-    try:
-        factory = ProviderFactory(settings)
-        return settings, factory.get_embedding(), factory.get_vector_store()
-    except Exception:
-        logger.exception("Failed to initialize providers for batch ingestion")
-        return None, None, None
-
-
-def _read_minio_object(
-    minio_client, bucket: str, storage_path: str
-) -> tuple[bytes | None, str | None]:
-    try:
-        response = minio_client.get_object(bucket, storage_path)
-        file_content = response.read()
-        response.close()
-        response.release_conn()
-        return file_content, None
-    except Exception as exc:
-        logger.exception("Failed to download %s from MinIO", storage_path)
-        return None, f"File download failed: {str(exc)}"
-
-
-async def _ingest_one_batch_document(
-    doc_id: str,
-    settings,
-    embedding_provider,
-    vector_store_provider,
-    session_factory,
-    minio_client,
-) -> None:
-    from app.rag.ingestion import ingest_document
-
-    tmp_path = None
-    extra_metadata: dict | None = None
-    try:
-        async with session_factory() as session:
-            doc_uuid = uuid.UUID(doc_id)
-            doc = await session.get(KnowledgeBaseDocument, doc_uuid)
-            if doc is None:
-                logger.warning("Document %s not found for batch ingestion", doc_id)
-                return
-            extra_metadata = {
-                "corpus_group": getattr(doc, "corpus_group", None),
-                "scope": getattr(doc, "scope", None),
-                "owner_id": str(doc.owner_id) if doc.owner_id else None,
-            }
-            file_content, err = _read_minio_object(
-                minio_client, settings.minio_bucket, doc.storage_path
-            )
-            if err or file_content is None:
-                doc.processing_status = "failed"
-                doc.error_message = err or "File download failed"
-                await session.commit()
-                return
-            mime_map = {"pdf": MIME_PDF, "docx": MIME_DOCX, "txt": MIME_TXT}
-            mime_type = mime_map.get(doc.file_type, "application/octet-stream")
-            tmp_path = await write_temp_bytes(file_content, f".{doc.file_type}")
-            await session.execute(delete(KBChunk).where(KBChunk.document_id == doc_uuid))
-            await session.commit()
-            document_name = doc.name
-
-        async with session_factory() as session:
-            result = await ingest_document(
-                document_id=doc_id,
-                document_name=document_name,
-                file_path=tmp_path,
-                mime_type=mime_type,
-                embedding_provider=embedding_provider,
-                vector_store_provider=vector_store_provider,
-                session=session,
-                extra_metadata=extra_metadata,
-            )
-            if result.success:
-                logger.info(
-                    "Batch ingestion: document %s completed (%d chunks)",
-                    doc_id, result.embedded_chunks,
-                )
-            else:
-                logger.warning(
-                    "Batch ingestion: document %s failed: %s",
-                    doc_id, result.error_message,
-                )
-    except Exception:
-        logger.exception(
-            "Unexpected error in batch ingestion for document %s",
-            doc_id,
-        )
-    finally:
-        if tmp_path:
-            await unlink_path(tmp_path)
 
 
 async def _run_batch_ingestion(

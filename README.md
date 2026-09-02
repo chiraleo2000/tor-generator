@@ -17,6 +17,7 @@
 | Folder | ใส่ที่นี่ |
 |--------|-----------|
 | **[app/](app/)** | เว็บแอป: Next.js UI, FastAPI, extras ของ Docker image |
+| **[services/pageindex/](services/pageindex/)** | PageIndex backend แบบ vectorless สำหรับ OCR, สร้างดัชนี และค้นเอกสาร |
 | **[discussions/](discussions/)** | สถาปัตยกรรม, API, UX, หลักฐานเทสต์ (ไม่โหลดตอนรัน) |
 | **[documents/](documents/)** | กฎหมาย, PDF ต้นฉบับ, extracts งานวิจัย, แม่แบบ TOR |
 
@@ -26,7 +27,7 @@
 |------|--------|
 | [skills/](skills/) | Skill packs ออฟไลน์ (Claude / ChatGPT / Gemini / Hermes) — ดู [SKILLS.md](SKILLS.md) |
 | `.cursor/` `.github/` `.kiro/` | อยู่บนเครื่องเท่านั้น (อยู่ใน `.gitignore`) — ก๊อป workflow จาก [app/infra/aws/ci/ecs-deploy.yml](app/infra/aws/ci/ecs-deploy.yml) |
-| `docker-compose.yml` | รัน **app/** พร้อม Postgres, Redis, MinIO, Mongo, Neo4j |
+| `docker-compose.yml` | รัน **app/** + PageIndex พร้อม Postgres, Redis, MinIO, Mongo, Neo4j |
 
 คีย์หมวด TOR ตามมาตรฐานคือ `s1`–`s13` — นิยามร่วม: `app/backend/app/domain/tor_sections.py` และ `app/frontend/src/lib/tor-sections.ts`
 
@@ -35,7 +36,7 @@
 โฟลเดอร์รีโปเป็นภาษาไทย ต้องตั้งชื่อโปรเจกต์ Compose เป็น `tor-app`
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 docker compose -p tor-app --env-file .env up -d --build
 ```
 
@@ -44,18 +45,29 @@ docker compose -p tor-app --env-file .env up -d --build
 | UI | http://localhost:3000 |
 | API | http://localhost:4000/api/v1 |
 | Health | http://localhost:4000/health (`postgres` `redis` `minio` `mongo` `neo4j`) |
+| PageIndex health | http://localhost:8100/health |
 | MinIO console | http://localhost:9001 |
 | Neo4j browser | http://localhost:7474 |
 
-### เชื่อม Betimes PageIndex RAG (ค่าเริ่มต้นของชุด merge นี้)
+### PageIndex RAG (ค่าเริ่มต้นของ branch นี้)
 
-เปิด Knowledge-RAG ของเราที่พอร์ต `8000` ก่อน แล้วตั้งค่าใน `.env` ของ TOR:
+PageIndex backend อยู่ใน `services/pageindex` และถูกเปิดโดย Docker Compose
+อัตโนมัติ ไม่ต้อง clone Knowledge-RAG อีก repository หนึ่ง ตั้งค่าใน `.env`:
 
 ```env
 CUSTOM_RAG_ENABLED=true
-CUSTOM_RAG_BASE_URL=http://host.docker.internal:8000/api/search
-CUSTOM_RAG_API_KEY=ใส่ค่าเดียวกับ-KNOWLEDGE_RAG_API_KEY-ของระบบเรา
+CUSTOM_RAG_BASE_URL=http://pageindex:8000/api/search
+CUSTOM_RAG_API_KEY=
 RAG_SOURCES=custom
+PAGEINDEX_BASE_URL=http://pageindex:8000
+PAGEINDEX_API_KEY=
+
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=
+AZURE_DOCUMENT_INTELLIGENCE_KEY=
+AZURE_OPENAI_ENDPOINT=
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_MODEL=gpt-4o-mini
+AZURE_OPENAI_API_VERSION=2024-08-01-preview
 ```
 
 `RAG_SOURCES=custom` หมายถึงให้ flow ร่าง/ถามตอบ/ตรวจ TOR ดึงบริบทจาก PageIndex RAG
@@ -63,15 +75,15 @@ RAG_SOURCES=custom
 `hits` จาก Knowledge-RAG เป็น chunks พร้อมชื่อเอกสาร section และ source metadata ให้ระบบ TOR
 
 ระบบรวมมี UI เพียงตัวเดียวคือ Next.js ของ `tor-generator` ที่พอร์ต 3000 ส่วน
-Knowledge-RAG/PageIndex ที่พอร์ต 8000 ทำงานเป็น backend-only และไม่ serve UI เดิม
+PageIndex ที่พอร์ต 8100 ทำงานเป็น backend-only และไม่ serve UI เดิม
 ฝั่ง TOR ตั้ง `EMBEDDING_PROVIDER=none` เพราะ PageIndex เป็นผู้ทำ retrieval ทั้งหมด
 จึงไม่ต้อง deploy embedding model หรือใช้ pgvector/Qdrant ของ TOR
 
 ทดสอบจากเครื่อง host ก่อนเปิด TOR:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/search \
-  -H "X-API-Key: $KNOWLEDGE_RAG_API_KEY" \
+curl -X POST http://127.0.0.1:8100/api/search \
+  -H "X-API-Key: $PAGEINDEX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"query":"หลักประกันสัญญา","k":3}'
 ```

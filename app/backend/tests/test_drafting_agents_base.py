@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-
 from app.llm_tokens import DRAFT_MAX_TOKENS
 from app.orchestrator.agents.background_agent import BackgroundDraftingAgent
 from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE, BaseDraftingAgent

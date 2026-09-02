@@ -5,8 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.api.v1.endpoints.admin_ai_settings import (
     AiSettingsTest,
     AiSettingsUpdate,
@@ -31,6 +29,7 @@ from app.main import app
 from app.models.ai_runtime_settings import AiRuntimeSettings
 from app.models.user import User
 from app.providers.constants import AI_OVERLAY_FIELDS
+from fastapi.testclient import TestClient
 
 
 def _local_body(**overrides) -> AiSettingsUpdate:

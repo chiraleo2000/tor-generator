@@ -15,7 +15,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from app.orchestrator.agents.registry import get_agent_for_section
 from app.orchestrator.graph import (
     MANDATORY_HUMAN_REVIEW_SECTIONS,

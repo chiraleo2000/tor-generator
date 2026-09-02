@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from app.domain.slots import FACT_REQUIRED_SLOTS
 from app.services.agent_workflow import (
     default_state,

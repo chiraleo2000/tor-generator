@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from app.api.v1.endpoints.draft_chat import _section_done_event, _sse
 from app.services.draft_chat_service import (
     DRAFT_MAX_TOKENS,

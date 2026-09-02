@@ -8,7 +8,6 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from app.domain.slots import FACT_REQUIRED_SLOTS
 from app.rag.graph_extract import parse_json_object
 from app.services.intake_service import coverage_table, empty_slot_map, ready_criteria_met
@@ -42,8 +41,9 @@ def test_owner_filter_dict_scopes():
 
 @pytest.mark.asyncio
 async def test_hybrid_retrieve_degraded_without_session_factory():
-    from app import infra as runtime
     from app.rag import hybrid as hybrid_mod
+
+    from app import infra as runtime
 
     previous = runtime.session_factory
     runtime.set_session_factory(None)
