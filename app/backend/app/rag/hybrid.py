@@ -12,10 +12,29 @@ from app.providers.factory import ProviderFactory
 from app.rag.acl import document_is_visible
 from app.rag.custom_rag_client import build_custom_rag_client
 from app.rag.graph_store import GraphRAGStore, citations_from_graph
-from app.rag.mcp_rag import retrieve_mcp_chunks
+from app.rag.mcp_rag import retrieve_mcp_chunks_with_status
 from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk, coerce_page_number
 
 logger = logging.getLogger(__name__)
+
+_SOURCE_ORDER = {"local": 0, None: 0, "custom_rag": 1, "mcp": 2}
+
+
+def _chunk_sort_key(chunk: RetrievedChunk) -> tuple:
+    src = (chunk.metadata or {}).get("rag_source")
+    rank = _SOURCE_ORDER.get(src, 3)
+    return (-float(chunk.score or 0.0), rank, str(chunk.id or ""))
+
+
+def unpack_hybrid(
+    payload: tuple,
+) -> tuple[RetrievalResult, list[dict[str, str]], bool, bool]:
+    """Accept 3-tuple mocks or 4-tuple (result, citations, graph_degraded, mcp_degraded)."""
+    result = payload[0]
+    citations = payload[1] if len(payload) > 1 else []
+    graph_degraded = bool(payload[2]) if len(payload) > 2 else True
+    mcp_degraded = bool(payload[3]) if len(payload) > 3 else False
+    return result, citations, graph_degraded, mcp_degraded
 
 
 def _meta_source(metadata: dict | None) -> str | None:
@@ -116,16 +135,22 @@ async def _retrieve_local_chunks(
         return []
     factory = ProviderFactory()
     store = factory.get_vector_store(db_factory)
-    query_vector = await factory.get_embedding().embed_query(
-        query_with_section(query, section_relevance)
-    )
     merged_filter = _merged_search_filter(
         user_id=user_id,
         search_scope=search_scope,
         section_relevance=section_relevance,
         extra_filter=extra_filter,
     )
-    search_results = await store.search(query_vector, top_k=top_k, filter=merged_filter)
+    try:
+        query_vector = await factory.get_embedding().embed_query(
+            query_with_section(query, section_relevance)
+        )
+        search_results = await store.search(query_vector, top_k=top_k, filter=merged_filter)
+    except Exception:  # NOSONAR python:S110 — fail-open local embeddings
+        logger.exception(
+            "Local pgvector retrieve failed; continuing with Custom RAG / MCP"
+        )
+        return []
     return [
         mapped
         for mapped in (
@@ -237,19 +262,18 @@ async def hybrid_retrieve(
     top_k: int = 5,
     section_relevance: str | None = None,
     extra_filter: RetrievalFilter | None = None,
-) -> tuple[RetrievalResult, list[dict[str, str]], bool]:
-    """Return local vector chunks, optional custom/MCP RAG, plus graph citations.
+) -> tuple[RetrievalResult, list[dict[str, str]], bool, bool]:
+    """Return local, custom, and MCP chunks plus graph citations.
 
-    The third value is True when Neo4j expansion was skipped (degraded).
+    Third value is True when Neo4j expansion was skipped. Fourth is True when
+    an enabled MCP server failed (fail-open; other sources still returned).
     """
     settings = get_settings()
     rag_sources = str(getattr(settings, "rag_sources", "both") or "both")
     empty = RetrievalResult(chunks=[], query=query, top_k=top_k, actual_count=0)
     chunks: list[RetrievedChunk] = []
 
-    if _use_local_rag(rag_sources):
-        if runtime.session_factory is None and not _use_custom_rag(rag_sources):
-            return empty, [], True
+    if _use_local_rag(rag_sources) and runtime.session_factory is not None:
         chunks.extend(
             await _retrieve_local_chunks(
                 query,
@@ -272,14 +296,17 @@ async def hybrid_retrieve(
             )
         )
 
+    mcp_degraded = False
     try:
-        chunks.extend(
-            await retrieve_mcp_chunks(query, user_id=user_id, search_scope=search_scope)
+        mcp_chunks, mcp_degraded = await retrieve_mcp_chunks_with_status(
+            query, user_id=user_id, search_scope=search_scope
         )
+        chunks.extend(mcp_chunks)
     except Exception:  # NOSONAR python:S110 — fail-open MCP
+        mcp_degraded = True
         logger.exception("MCP RAG retrieve failed; continuing with other sources")
 
-    chunks.sort(key=lambda item: item.score, reverse=True)
+    chunks.sort(key=_chunk_sort_key)
     chunks = chunks[: max(top_k * 2, top_k)]
 
     result = RetrievalResult(
@@ -307,7 +334,10 @@ async def hybrid_retrieve(
         )
     citations.extend(graph_citations)
 
-    return result, _dedupe_citations(citations), graph_degraded
+    if not chunks and runtime.session_factory is None and not _use_custom_rag(rag_sources):
+        return empty, [], True, mcp_degraded
+
+    return result, _dedupe_citations(citations), graph_degraded, mcp_degraded
 
 
 _QA_QUESTION_TAILS = (
@@ -375,19 +405,21 @@ async def hybrid_retrieve_multi(
     top_k: int = 5,
     section_relevance: str | None = None,
     extra_filter: RetrievalFilter | None = None,
-) -> tuple[RetrievalResult, list[dict[str, str]], bool]:
+) -> tuple[RetrievalResult, list[dict[str, str]], bool, bool]:
     """Primary hybrid retrieve plus extra vector hits from query variants."""
-    primary, citations, degraded = await hybrid_retrieve(
-        query,
-        user_id=user_id,
-        search_scope=search_scope,
-        top_k=top_k,
-        section_relevance=section_relevance,
-        extra_filter=extra_filter,
+    primary, citations, graph_degraded, mcp_degraded = unpack_hybrid(
+        await hybrid_retrieve(
+            query,
+            user_id=user_id,
+            search_scope=search_scope,
+            top_k=top_k,
+            section_relevance=section_relevance,
+            extra_filter=extra_filter,
+        )
     )
     variants = expand_qa_queries(query)[1:]
     if not variants:
-        return primary, citations, degraded
+        return primary, citations, graph_degraded, mcp_degraded
 
     merged = list(primary.chunks)
     seen: set[str] = set()
@@ -412,7 +444,7 @@ async def hybrid_retrieve_multi(
             seen.add(key)
             merged.append(chunk)
 
-    merged.sort(key=lambda item: item.score, reverse=True)
+    merged.sort(key=_chunk_sort_key)
     cap = max(top_k * 2, top_k)
     merged = merged[:cap]
     result = RetrievalResult(
@@ -422,4 +454,4 @@ async def hybrid_retrieve_multi(
         actual_count=len(merged),
         filter_applied=extra_filter,
     )
-    return result, citations, degraded
+    return result, citations, graph_degraded, mcp_degraded

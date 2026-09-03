@@ -57,4 +57,25 @@ describe("phase-gate", () => {
     expect(displayPhase(0, 0)).toBe(0);
     expect(canSelectPhase(0, 0, -1)).toBe(false);
   });
+
+  it("treats slot_map keys as analyzed and filled slots as material", () => {
+    expect(
+      intakeUnlockedPhase({
+        analysisJson: { slot_map: { s1: { status: "gap" } } },
+      })
+    ).toBe(2);
+    expect(
+      hasIntakeMaterial({
+        analysisJson: { slot_map: { s1: { status: "filled", content: "มีข้อมูล" } } },
+      })
+    ).toBe(true);
+    expect(
+      hasIntakeMaterial({
+        analysisJson: { intake_files: [] },
+        extractedFields: { intake_texts: ["not-an-object", { text: "  " }] },
+      })
+    ).toBe(false);
+    expect(canSelectPhase(2, 4, 2)).toBe(true);
+    expect(displayPhase(3, 4)).toBe(3);
+  });
 });

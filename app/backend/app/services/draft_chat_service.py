@@ -11,11 +11,13 @@ import logging
 from typing import Any, AsyncIterator
 from uuid import UUID
 
+from app.config import get_settings
 from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_LABELS
 from app.llm_tokens import DRAFT_MAX_TOKENS, GEMMA_CONTEXT_WINDOW, clamp_max_tokens
+from app.providers.constants import LOCAL_LLM_PROVIDERS
 from app.providers.factory import ProviderFactory
 from app.rag.kb_qa import draft_rag_top_k
-from app.rag.hybrid import hybrid_retrieve
+from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.services.intake_service import resolve_draft_section_key, slot_content
 from app.services.staged_prompts import (
     COMPOSE_SECTION_INSTRUCTION,
@@ -123,7 +125,9 @@ async def _stream_llm_prompt(
 ) -> AsyncIterator[str]:
     """Analyze then stream the composed draft from the configured LLM."""
     llm = ProviderFactory().get_llm("draft")  # NOSONAR python:S930
-    notes = await analyze_notes(llm, user_prompt, SECTION_ANALYZE_SYSTEM)
+    notes = ""
+    if get_settings().llm_provider not in LOCAL_LLM_PROVIDERS:
+        notes = await analyze_notes(llm, user_prompt, SECTION_ANALYZE_SYSTEM)
     compose_user = attach_analysis(user_prompt, notes, COMPOSE_SECTION_INSTRUCTION)
     max_out = clamp_max_tokens(
         compose_user,
@@ -152,12 +156,14 @@ async def draft_single_section(
     slot_facts = slot_content(slot_map, section_key).strip()
     query = f"ขอบเขตของงาน {label} {slot_facts[:200]}"
     try:
-        result, _citations, _degraded = await hybrid_retrieve(
-            query,
-            user_id=user_id,
-            search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
-            section_relevance=section_key,
-            top_k=draft_rag_top_k(),
+        result, _citations, _degraded, _mcp = unpack_hybrid(
+            await hybrid_retrieve(
+                query,
+                user_id=user_id,
+                search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
+                section_relevance=section_key,
+                top_k=draft_rag_top_k(),
+            )
         )
         rag_context = "\n".join(c.text[:2000] for c in result.chunks[:16])
     except Exception:
@@ -182,12 +188,14 @@ async def draft_scope_subsection(
     rag_context = ""
     title = SCOPE_SUBSECTIONS.get(sub_key, sub_key)
     try:
-        result, _c, _d = await hybrid_retrieve(
-            f"ขอบเขตงาน {title}",
-            user_id=user_id,
-            search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
-            section_relevance="s4",
-            top_k=max(6, draft_rag_top_k() // 2),
+        result, _c, _d, _mcp = unpack_hybrid(
+            await hybrid_retrieve(
+                f"ขอบเขตงาน {title}",
+                user_id=user_id,
+                search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
+                section_relevance="s4",
+                top_k=max(6, draft_rag_top_k() // 2),
+            )
         )
         rag_context = "\n".join(c.text[:1800] for c in result.chunks[:12])
     except Exception:

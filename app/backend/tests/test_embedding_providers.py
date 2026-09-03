@@ -9,7 +9,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.providers.base import EmbeddingProvider
+from app.providers.constants import EMBEDDING_DIMENSIONS
 from app.providers.embedding import OpenAIEmbeddingProvider, Qwen3LocalEmbeddingProvider
+from app.providers.embedding.qwen3_provider import _fit_dimensions
+
+
+def _padded(vector: list[float]) -> list[float]:
+    return vector + [0.0] * (EMBEDDING_DIMENSIONS - len(vector))
+
+
+def test_local_fit_dimensions_pads_and_truncates() -> None:
+    assert _fit_dimensions([1.0, 2.0], size=4) == [1.0, 2.0, 0.0, 0.0]
+    assert _fit_dimensions([0.0] * 10, size=4) == [0.0, 0.0, 0.0, 0.0]
+    assert _fit_dimensions([0.5] * 4, size=4) == [0.5, 0.5, 0.5, 0.5]
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +237,8 @@ class TestQwen3LocalEmbedQuery:
 
         result = await provider.embed_query("ทดสอบข้อความภาษาไทย")
 
-        assert result == [0.5, 0.6, 0.7]
+        assert result == _padded([0.5, 0.6, 0.7])
+        assert len(result) == EMBEDDING_DIMENSIONS
         provider._client.embeddings.create.assert_called_once_with(
             model="text-embedding-embeddinggemma-300m",
             input="ทดสอบข้อความภาษาไทย",
@@ -280,7 +293,7 @@ class TestQwen3LocalEmbedDocuments:
         )
 
         result = await provider.embed_documents(["doc1", "doc2"])
-        assert result == expected
+        assert result == [_padded(row) for row in expected]
 
     @pytest.mark.asyncio
     async def test_embed_documents_multiple_batches(self, provider):
@@ -297,5 +310,5 @@ class TestQwen3LocalEmbedDocuments:
 
         result = await provider.embed_documents(["d1", "d2", "d3"])
 
-        assert result == batch1 + batch2
+        assert result == [_padded(row) for row in batch1 + batch2]
         assert provider._client.embeddings.create.call_count == 2

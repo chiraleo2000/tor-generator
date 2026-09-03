@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { IntakeChatPanel } from "@/components/draft/intake-chat-panel";
 import { apiClient } from "@/lib/api-client";
@@ -50,6 +50,10 @@ describe("IntakeChatPanel", () => {
     vi.clearAllMocks();
     vi.mocked(apiClient.get).mockResolvedValue(coveragePayload() as never);
     vi.mocked(apiClient.post).mockResolvedValue({ data: { ok: true, data: {} } } as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("does not call analyze on upload", async () => {
@@ -264,5 +268,169 @@ describe("IntakeChatPanel", () => {
     expect(skipBtn).toBeEnabled();
     fireEvent.click(skipBtn);
     await waitFor(() => expect(onEnterQa).toHaveBeenCalled());
+  });
+
+  it("shows upload and confirm-ready errors, and ignores empty files", async () => {
+    vi.mocked(apiClient.post).mockRejectedValue({
+      response: { data: { error: { message: "อัปโหลดไม่สำเร็จ" } } },
+    });
+    render(
+      <IntakeChatPanel
+        projectId="p1"
+        phase={0}
+        onAnalyzed={onAnalyzed}
+        onEnterQa={onEnterQa}
+        onReady={onReady}
+      />
+    );
+    const input = await screen.findByTestId("intake-upload");
+    fireEvent.change(input, { target: { files: null } });
+    expect(apiClient.post).not.toHaveBeenCalled();
+    const file = new File(["pack"], "pack.pdf", { type: "application/pdf" });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("อัปโหลดไม่สำเร็จ");
+
+    fireEvent.change(screen.getByTestId("intake-paste"), {
+      target: { value: "ข้อความยาวพอสำหรับเริ่มวิเคราะห์ขั้นที่ศูนย์" },
+    });
+    fireEvent.blur(screen.getByTestId("intake-paste"));
+    const analyze = screen.getByTestId("intake-start-analyze");
+    await waitFor(() => expect(analyze).toBeEnabled());
+    fireEvent.click(analyze);
+    expect(await screen.findByTestId("confirm-phase-dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("confirm-phase-cancel"));
+    expect(
+      vi.mocked(apiClient.post).mock.calls.some((call) =>
+        String(call[0]).includes("/intake/analyze")
+      )
+    ).toBe(false);
+  });
+
+  it("saves long paste on blur and reports confirm-ready failures", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      coveragePayload({
+        has_material: true,
+        coverage: [
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "filled",
+            filled: true,
+            fact_required: true,
+          },
+        ],
+      }) as never
+    );
+    vi.mocked(apiClient.post)
+      .mockResolvedValueOnce({ data: { ok: true, data: {} } } as never)
+      .mockRejectedValueOnce({
+        response: { data: { error: { message: "ยังไม่ครบช่องข้อเท็จจริงที่บังคับ" } } },
+      });
+    const { rerender } = render(
+      <IntakeChatPanel
+        projectId="p1"
+        phase={0}
+        onAnalyzed={onAnalyzed}
+        onEnterQa={onEnterQa}
+        onReady={onReady}
+      />
+    );
+    const paste = await screen.findByTestId("intake-paste");
+    fireEvent.change(paste, {
+      target: { value: "โครงการทดสอบวงเงินหนึ่งแสนบาท ระยะเวลาหนึ่งปี" },
+    });
+    fireEvent.blur(paste);
+    await waitFor(() =>
+      expect(
+        vi.mocked(apiClient.post).mock.calls.some((call) =>
+          String(call[0]).includes("/intake/text")
+        )
+      ).toBe(true)
+    );
+    rerender(
+      <IntakeChatPanel
+        projectId="p1"
+        phase={2}
+        onAnalyzed={onAnalyzed}
+        onEnterQa={onEnterQa}
+        onReady={onReady}
+      />
+    );
+    fireEvent.click(await screen.findByTestId("intake-confirm-ready"));
+    fireEvent.click(await screen.findByTestId("confirm-phase-ok"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ยังไม่ครบช่องข้อเท็จจริงที่บังคับ"
+    );
+  });
+
+  it("reports incomplete analyze when coverage never maps", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      coveragePayload({ has_material: true, analyzed: true, coverage: [] }) as never
+    );
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { ok: true, data: {} } } as never);
+    render(
+      <IntakeChatPanel
+        projectId="p1"
+        phase={0}
+        onAnalyzed={onAnalyzed}
+        onEnterQa={onEnterQa}
+        onReady={onReady}
+      />
+    );
+    const paste = await screen.findByTestId("intake-paste");
+    fireEvent.change(paste, {
+      target: { value: "โครงการทดสอบวงเงินหนึ่งแสนบาท ระยะเวลาหนึ่งปี" },
+    });
+    fireEvent.click(screen.getByTestId("intake-start-analyze"));
+    fireEvent.click(await screen.findByTestId("confirm-phase-ok"));
+    vi.useFakeTimers();
+    await vi.advanceTimersByTimeAsync(35_000);
+    vi.useRealTimers();
+    expect(await screen.findByRole("alert")).toHaveTextContent("วิเคราะห์ยังไม่ครบ");
+  });
+
+  it("recovers from a failed analyze when coverage later maps", async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce(coveragePayload({ has_material: true }) as never)
+      .mockResolvedValue(
+        coveragePayload({
+          analyzed: true,
+          has_material: true,
+          coverage: [
+            {
+              key: "s1",
+              label: "ชื่อโครงการ",
+              status: "filled",
+              filled: true,
+              fact_required: true,
+            },
+          ],
+        }) as never
+      );
+    vi.mocked(apiClient.post).mockImplementation(async (url: string) => {
+      if (String(url).includes("/analyze")) {
+        throw { response: { data: { error: { message: "วิเคราะห์ไม่สำเร็จ" } } } };
+      }
+      return { data: { ok: true, data: {} } } as never;
+    });
+    render(
+      <IntakeChatPanel
+        projectId="p1"
+        phase={0}
+        onAnalyzed={onAnalyzed}
+        onEnterQa={onEnterQa}
+        onReady={onReady}
+      />
+    );
+    const paste = await screen.findByTestId("intake-paste");
+    fireEvent.change(paste, {
+      target: { value: "โครงการทดสอบวงเงินหนึ่งแสนบาท ระยะเวลาหนึ่งปี" },
+    });
+    fireEvent.click(screen.getByTestId("intake-start-analyze"));
+    fireEvent.click(await screen.findByTestId("confirm-phase-ok"));
+    vi.useFakeTimers();
+    await vi.advanceTimersByTimeAsync(5_000);
+    vi.useRealTimers();
+    await waitFor(() => expect(onAnalyzed).toHaveBeenCalled());
   });
 });

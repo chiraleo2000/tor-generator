@@ -15,7 +15,7 @@ from app.orchestrator.agents.registry import get_agent_for_section
 from app.orchestrator.graph import _create_rule_engine
 from app.orchestrator.state import RAGChunk
 from app.providers.factory import ProviderFactory
-from app.rag.hybrid import hybrid_retrieve
+from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.rag.kb_qa import draft_rag_top_k
 from app.services.session_cache import SessionCacheService
 
@@ -191,12 +191,14 @@ class FullDraftGenerator:
         self, section_key: str, user_id: str | None
     ) -> tuple[list[RAGChunk], str | None]:
         try:
-            result, _citations, degraded = await self._retrieve(
-                INTAKE_SLOT_LABELS.get(section_key, section_key),
-                user_id=user_id,
-                search_scope="global",
-                top_k=draft_rag_top_k(),
-                section_relevance=section_key,
+            result, _citations, degraded, _mcp = unpack_hybrid(
+                await self._retrieve(
+                    INTAKE_SLOT_LABELS.get(section_key, section_key),
+                    user_id=user_id,
+                    search_scope="global",
+                    top_k=draft_rag_top_k(),
+                    section_relevance=section_key,
+                )
             )
         except Exception as exc:
             logger.warning("RAG failed for %s: %s", section_key, exc)

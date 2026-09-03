@@ -111,19 +111,29 @@ services:
       - LLM_MAX_CONCURRENT=${LLM_MAX_CONCURRENT:-8}
       - EMBEDDING_MAX_CONCURRENT=${EMBEDDING_MAX_CONCURRENT:-16}
       - LLM_QUEUE_WAIT_TIMEOUT_SECONDS=${LLM_QUEUE_WAIT_TIMEOUT_SECONDS:-120}
+      - DRAFT_SECTION_TIMEOUT_SECONDS=${DRAFT_SECTION_TIMEOUT_SECONDS:-300}
       - SGLANG_BASE_URL=${SGLANG_BASE_URL:-http://sglang-llm:30000/v1}
       - SGLANG_EMBEDDING_BASE_URL=${SGLANG_EMBEDDING_BASE_URL:-http://sglang-embed:30001/v1}
       - SGLANG_MODEL=${SGLANG_MODEL:-google/gemma-4-e4b}
       - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
       - CUSTOM_RAG_ENABLED=${CUSTOM_RAG_ENABLED:-false}
       - CUSTOM_RAG_BASE_URL=${CUSTOM_RAG_BASE_URL:-}
+      - CUSTOM_RAG_RETRIEVE_PATH=${CUSTOM_RAG_RETRIEVE_PATH:-}
       - CUSTOM_RAG_API_KEY=${CUSTOM_RAG_API_KEY:-}
       - CUSTOM_RAG_TOP_K=${CUSTOM_RAG_TOP_K:-5}
       - CUSTOM_RAG_TIMEOUT_SECONDS=${CUSTOM_RAG_TIMEOUT_SECONDS:-30}
-      - CHAT_RAG_TOP_K=${CHAT_RAG_TOP_K:-64}
-      - CHAT_MAX_CONTEXT_CHUNKS=${CHAT_MAX_CONTEXT_CHUNKS:-80}
-      - DRAFT_RAG_TOP_K=${DRAFT_RAG_TOP_K:-24}
+      - CHAT_RAG_TOP_K=${CHAT_RAG_TOP_K:-96}
+      - CHAT_MAX_CONTEXT_CHUNKS=${CHAT_MAX_CONTEXT_CHUNKS:-96}
+      - DRAFT_RAG_TOP_K=${DRAFT_RAG_TOP_K:-32}
       - RAG_SOURCES=${RAG_SOURCES:-both}
+      - MCP_RAG_ENABLED=${MCP_RAG_ENABLED:-false}
+      - MCP_RAG_CONFIG_PATH=${MCP_RAG_CONFIG_PATH:-/app/infra/mcp/rag-sources.yaml}
+      - MCP_RAG_SERVERS_JSON=${MCP_RAG_SERVERS_JSON:-}
+      - MCP_RAG_TIMEOUT_SECONDS=${MCP_RAG_TIMEOUT_SECONDS:-20}
+      - MCP_RAG_AUTH_HEADER=${MCP_RAG_AUTH_HEADER:-Authorization}
+      - MCP_RAG_AUTH_VALUE=${MCP_RAG_AUTH_VALUE:-}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
+      - CLOUD_LLM_TIMEOUT=${CLOUD_LLM_TIMEOUT:-300}
       - KB_SOURCES_ROOT=${KB_SOURCES_ROOT:-/documents/sources}
       - QDRANT_HOST=${QDRANT_HOST:-qdrant}
       - QDRANT_PORT=${QDRANT_PORT:-6333}
@@ -147,9 +157,89 @@ services:
     volumes:
       - ./documents/knowledge-base:/knowledge-base:ro
       - ./documents/sources:/documents/sources:ro
-      - ./debug-6fb0cb.log:/tmp/debug-6fb0cb.log
+      - ./app/infra/mcp/rag-sources.yaml:/app/infra/mcp/rag-sources.yaml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - tor_network
+
+  # ---------------------------------------------------------------------------
+  # MCP retrieve stub (optional) — docker compose --profile mcp-stub up
+  # From the backend container use url http://mcp-stub:8765 (or host.docker.internal:8765
+  # when the stub runs on the Windows/macOS host).
+  # ---------------------------------------------------------------------------
+  mcp-stub:
+    profiles: [mcp-stub]
+    image: python:3.11-alpine
+    environment:
+      MCP_STUB_HOST: "0.0.0.0"
+    volumes:
+      - ./app/infra/mcp/servers/retrieve_stub.py:/stub.py:ro
+    command: ["python", "/stub.py"]
+    ports:
+      - "8765:8765"
+    networks:
+      - tor_network
+
+  # Amazon Quick remote MCP + OpenAPI REST twin (not QuickSight).
+  # Register http://host.docker.internal:8767/mcp in Amazon Quick Connectors.
+  amazon-quick:
+    profiles: [amazon-quick]
+    image: python:3.11-alpine
+    environment:
+      QUICK_MCP_HOST: "0.0.0.0"
+      QUICK_MCP_PORT: "8767"
+      QUICK_MCP_AUTH_HEADER: ${QUICK_MCP_AUTH_HEADER:-Authorization}
+      QUICK_MCP_AUTH_VALUE: ${QUICK_MCP_AUTH_VALUE:-}
+    volumes:
+      - ./app/infra/quick/mcp_server.py:/stub.py:ro
+    command: ["python", "/stub.py"]
+    ports:
+      - "8767:8767"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - tor_network
+
+  pageindex-adapter:
+    profiles: [pageindex-adapter]
+    image: python:3.11-alpine
+    environment:
+      PAGEINDEX_ADAPTER_HOST: "0.0.0.0"
+      PAGEINDEX_ADAPTER_PORT: "8080"
+      PAGEINDEX_SEARCH_URL: ${PAGEINDEX_BASE_URL:-http://pageindex:8000}/api/search
+    volumes:
+      - ./app/infra/mcp/servers/pageindex_adapter.py:/adapter.py:ro
+    command: ["python", "/adapter.py"]
+    ports:
+      - "8088:8080"
+    networks:
+      - tor_network
+
+  # Custom RAG retrieve stub (optional) — docker compose --profile custom-rag-stub up
+  # From the backend container use http://custom-rag-stub:8089/api/search (or
+  # host.docker.internal:8089 when the stub runs on the Windows/macOS host).
+  custom-rag-stub:
+    profiles: [custom-rag-stub]
+    image: python:3.11-alpine
+    environment:
+      CUSTOM_RAG_STUB_HOST: "0.0.0.0"
+      CUSTOM_RAG_STUB_PORT: "8089"
+    volumes:
+      - ./app/infra/mcp/servers/custom_rag_stub.py:/stub.py:ro
+    command: ["python", "/stub.py"]
+    ports:
+      - "8089:8089"
     networks:
       - tor_network
 

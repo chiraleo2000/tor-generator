@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from typing import Annotated, Any, AsyncIterator
@@ -52,7 +53,18 @@ from app.services.intake_service import is_ready_to_compose, slot_map_of, with_p
 logger = logging.getLogger("tor_app.draft_chat")
 router = APIRouter()
 _DRAFT_JOBS: dict[str, asyncio.Task[int]] = {}
-SECTION_TIMEOUT_SECONDS = 1800
+
+
+def _section_timeout_seconds() -> int:
+    raw = os.environ.get("DRAFT_SECTION_TIMEOUT_SECONDS", "300")
+    try:
+        return max(30, int(raw))
+    except ValueError:
+        return 180
+
+
+# Per-section cap. Local Gemma compose often needs 4–5 minutes; 1800s blocked 13/13 for hours.
+SECTION_TIMEOUT_SECONDS = _section_timeout_seconds()
 
 
 @dataclass
@@ -494,6 +506,13 @@ async def _draft_missing_section(job: _SeqDraft, section_key: str) -> bool:
     return True
 
 
+def section_draft_timeout(section_key: str) -> float:
+    """s4 drafts fourteen subsections and needs a longer cap."""
+    if section_key == "s4":
+        return float(SECTION_TIMEOUT_SECONDS * 5)
+    return float(SECTION_TIMEOUT_SECONDS)
+
+
 async def _try_draft_one_section(job: _SeqDraft, section_key: str) -> bool:
     existing = await _existing_section_text(
         job.session_factory, job.project_id, section_key
@@ -505,7 +524,7 @@ async def _try_draft_one_section(job: _SeqDraft, section_key: str) -> bool:
     try:
         return await asyncio.wait_for(
             _draft_missing_section(job, section_key),
-            timeout=SECTION_TIMEOUT_SECONDS,
+            timeout=section_draft_timeout(section_key),
         )
     except TimeoutError:
         logger.warning("Draft timed out for %s on %s", section_key, job.project_id)

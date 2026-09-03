@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncIterator
 
@@ -28,7 +29,7 @@ from app.models.tor_section import TORSection
 from app.models.user import User
 from app.providers.factory import ProviderFactory
 from app.rag.extraction import extract_text
-from app.rag.hybrid import hybrid_retrieve
+from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
 from app.schemas.responses import MetaInfo, SuccessResponse
@@ -180,6 +181,431 @@ async def _ensure_intake_room(db: AsyncSession, project, user: User) -> ChatRoom
     return room
 
 
+def _flag_analysis(project: Project) -> None:
+    try:
+        flag_modified(project, "analysis_json")
+    except AttributeError:
+        pass
+
+
+def _intake_pack(texts: Any) -> tuple[str, list[str]]:
+    items = texts if isinstance(texts, list) else []
+    pack = "\n\n".join(
+        str(item.get("text") or "").strip()
+        for item in items
+        if isinstance(item, dict) and str(item.get("text") or "").strip()
+    )
+    filenames = [str(item.get("name")) for item in items if isinstance(item, dict)]
+    return pack, filenames
+
+
+def _gap_questions_for(slot_map: dict[str, Any]) -> list[str]:
+    return [
+        f"ขอข้อมูลสำหรับ {INTAKE_SLOT_LABELS.get(key, key)} ({key})"
+        for key in FACT_REQUIRED_SLOTS
+        if (slot_map.get(key) or {}).get("status") != "filled"
+    ]
+
+
+def _apply_analyze_result(project: Project, result: dict[str, Any]) -> dict[str, Any]:
+    analysis = merge_analysis(project.analysis_json or {}, result)
+    analysis["intake_files"] = analysis.get("intake_files") or (project.analysis_json or {}).get(
+        "intake_files", []
+    )
+    analysis["analyzed"] = True
+    analysis["standard_fill_keys"] = []
+    project.analysis_json = analysis
+    _flag_analysis(project)
+    project.current_phase = max(project.current_phase or 0, 1)
+    return analysis
+
+
+async def _persist_heuristic_slot_map(
+    project: Project, db: AsyncSession, slot_map: dict[str, Any]
+) -> None:
+    analysis = merge_analysis(
+        project.analysis_json or {},
+        {
+            "slot_map": slot_map,
+            "gap_questions": _gap_questions_for(slot_map),
+            "ready_to_compose": False,
+            "analyzed": True,
+        },
+    )
+    analysis["intake_files"] = analysis.get("intake_files") or (project.analysis_json or {}).get(
+        "intake_files", []
+    )
+    project.analysis_json = analysis
+    _flag_analysis(project)
+    project.current_phase = max(project.current_phase or 0, 1)
+    await db.flush()
+    await db.commit()
+
+
+def _asking_key(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _chat_done_payload(
+    *,
+    content: str,
+    slot_map: dict[str, Any],
+    filled_keys: list[str],
+    asking_key: str | None,
+    citations: list | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "content": content,
+        "citations": citations or [],
+        "coverage": coverage_table(slot_map),
+        "filled_slots": filled_keys,
+        "current_slot": asking_key,
+        "next_question": build_slot_question(asking_key) if asking_key else None,
+        "all_fact_filled": not missing_fact_keys(slot_map),
+        "progress": coverage_progress(slot_map),
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+async def _stream_reference_fill(
+    *,
+    session_maker,
+    project_id: uuid.UUID,
+    room_id: uuid.UUID,
+    slot_map: dict[str, Any],
+    analysis: dict[str, Any],
+    ref_key: str,
+    filled_keys: list[str],
+    user_id: uuid.UUID,
+) -> AsyncIterator[str]:
+    filled = await fill_reference_slot(ref_key, user_id)
+    action = apply_reference_to_slot(slot_map, ref_key, filled, as_standard=True)
+    label = INTAKE_SLOT_LABELS.get(ref_key, ref_key)
+    if action == "skipped":
+        reply = f"หมวด {label} มีข้อเท็จจริงอยู่แล้ว จึงไม่ทับข้อมูลนั้นครับ"
+    else:
+        reply = f"ใส่มาตรฐานกลางจากคลังให้หมวด {label} แล้วครับ"
+    asking = _asking_key(analysis.get("current_asking_slot"))
+    reply = append_next_slot_question(reply, asking)
+    await _persist_intake_assistant(
+        session_maker, project_id, room_id, slot_map, reply, [], asking_slot=asking
+    )
+    yield _sse(
+        "done",
+        _chat_done_payload(
+            content=reply,
+            slot_map=slot_map,
+            filled_keys=filled_keys,
+            asking_key=asking,
+            extra={"reference_action": action, "reference_slot": ref_key},
+        ),
+    )
+
+
+async def _stream_reference_prompt(
+    *,
+    session_maker,
+    project_id: uuid.UUID,
+    room_id: uuid.UUID,
+    slot_map: dict[str, Any],
+    analysis: dict[str, Any],
+) -> AsyncIterator[str]:
+    asking = _asking_key(analysis.get("current_asking_slot"))
+    reply = append_next_slot_question(
+        "ระบุหมวดที่ต้องการดึงมาตรฐาน เช่น ดึงอ้างอิงกฎหมายให้ s10",
+        asking,
+    )
+    await _persist_intake_assistant(
+        session_maker, project_id, room_id, slot_map, reply, [], asking_slot=asking
+    )
+    yield _sse(
+        "done",
+        _chat_done_payload(
+            content=reply, slot_map=slot_map, filled_keys=[], asking_key=asking
+        ),
+    )
+
+
+async def _stream_filled_ack(
+    *,
+    session_maker,
+    project_id: uuid.UUID,
+    room_id: uuid.UUID,
+    slot_map: dict[str, Any],
+    filled_keys: list[str],
+    asking: Any,
+    user_id: uuid.UUID,
+    attach_legal: bool,
+) -> AsyncIterator[str]:
+    asking_key = _asking_key(asking)
+    reply = phase2_filled_ack(filled_keys, asking_key)
+    if attach_legal and filled_keys:
+        extra = await _attach_legal_to_filled(slot_map, filled_keys, user_id, True)
+        if extra:
+            reply = extra + reply
+    await _persist_intake_assistant(
+        session_maker, project_id, room_id, slot_map, reply, [], asking_slot=asking_key
+    )
+    yield _sse(
+        "done",
+        _chat_done_payload(
+            content=reply,
+            slot_map=slot_map,
+            filled_keys=filled_keys,
+            asking_key=asking_key,
+        ),
+    )
+
+
+async def _retrieve_legal_context(
+    content: str,
+    user_id: uuid.UUID,
+    search_scope: str,
+    attach: bool,
+) -> tuple[str, list, bool]:
+    if not attach:
+        return "", [], False
+    scope = search_scope if search_scope in {"global", "mine", "both"} else "both"
+    result, citations, degraded, _mcp = unpack_hybrid(
+        await hybrid_retrieve(content, user_id=user_id, search_scope=scope, top_k=3)
+    )
+    context = "\n\n".join(
+        f"[{c.source_document or 'คลัง'}] {c.text}" for c in result.chunks[:3]
+    )
+    return context, citations, degraded
+
+
+def _intake_llm_user_prompt(
+    analysis: dict[str, Any], slot_map: dict[str, Any], content: str, context: str
+) -> str:
+    current_slot = analysis.get("current_asking_slot")
+    slot_label = INTAKE_SLOT_LABELS.get(current_slot or "", "")
+    missing = missing_fact_keys(slot_map)
+    missing_labels = ", ".join(
+        INTAKE_SLOT_LABELS.get(key, key) for key in missing[:6]
+    ) or "(ไม่มี)"
+    return (
+        f"ช่องที่กำลังถาม: {slot_label or '-'} ({current_slot or '-'})\n"
+        f"ช่องข้อเท็จจริงที่ยังขาด: {missing_labels}\n"
+        f"บริบทกฎหมาย:\n{(context or '(ไม่มี)')[:1200]}\n\n"
+        f"ข้อความผู้ใช้:\n{(content or '')[:2000]}\n\n"
+        "ตอบสั้นเป็นภาษาพูด ไม่เกิน 4 ประโยค แล้วถามเฉพาะช่องที่ยังขาด (ถ้ามี)"
+    )
+
+
+@dataclass
+class _IntakeLlmWork:
+    request: Request
+    project: Project
+    room: ChatRoom
+    analysis: dict[str, Any]
+    slot_map: dict[str, Any]
+    filled_keys: list[str]
+    asking_key: str | None
+    all_filled_now: bool
+    request_id: str
+    attached: str
+    citations: list
+    degraded: bool
+    user_prompt: str
+
+
+async def _persist_llm_reply(work: _IntakeLlmWork, content: str, asking: str | None) -> None:
+    await _persist_intake_assistant(
+        work.request.app.state.db_session_factory,
+        work.project.id,
+        work.room.id,
+        work.slot_map,
+        content,
+        work.citations,
+        asking_slot=asking,
+    )
+
+
+async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
+    parts_local: list[str] = []
+    redis = getattr(work.request.app.state, "redis", None)
+
+    async def on_wait(position: int, waiting_ms: int) -> None:
+        await event_q.put(
+            (
+                "queued",
+                {
+                    "request_id": work.request_id,
+                    "position": position,
+                    "waiting_ms": waiting_ms,
+                },
+            )
+        )
+
+    try:
+        await event_q.put(("started", {"request_id": work.request_id}))
+        async with admit(redis, "llm", work.request_id, on_wait=on_wait):
+            llm = ProviderFactory().get_llm("chat")  # NOSONAR python:S930
+            async for token in llm.stream(
+                [
+                    {"role": "system", "content": INTAKE_CHAT_SYSTEM},
+                    {"role": "user", "content": work.user_prompt},
+                ],
+                temperature=0.2,
+                max_tokens=384,
+            ):
+                parts_local.append(token)
+                await event_q.put(("token", {"text": token}))
+        asking = _asking_key(work.analysis.get("current_asking_slot"))
+        full_text = append_next_slot_question(work.attached + "".join(parts_local), asking)
+        if not str(full_text or "").strip():
+            full_text = phase2_template_reply(
+                filled_keys=work.filled_keys,
+                next_slot=work.asking_key,
+                all_filled=work.all_filled_now,
+            )
+        await _persist_llm_reply(work, full_text, asking)
+        await event_q.put(
+            (
+                "done",
+                _chat_done_payload(
+                    content=full_text,
+                    slot_map=work.slot_map,
+                    filled_keys=work.filled_keys,
+                    asking_key=asking,
+                    citations=work.citations,
+                    extra={"graph_degraded": work.degraded},
+                ),
+            )
+        )
+    except TimeoutError:
+        fallback = phase2_template_reply(
+            filled_keys=work.filled_keys,
+            next_slot=work.asking_key,
+            all_filled=work.all_filled_now,
+        )
+        logger.warning("intake chat LLM timed out; using template fallback")
+        await _persist_llm_reply(work, fallback, work.asking_key)
+        await event_q.put(("token", {"text": fallback}))
+        await event_q.put(
+            (
+                "done",
+                _chat_done_payload(
+                    content=fallback,
+                    slot_map=work.slot_map,
+                    filled_keys=work.filled_keys,
+                    asking_key=work.asking_key,
+                    citations=work.citations,
+                    extra={"fast_path": True},
+                ),
+            )
+        )
+    except AdmissionTimeoutError as exc:
+        await event_q.put(("error", {"message": str(exc)}))
+    except Exception as exc:
+        logger.exception("intake chat failed")
+        await event_q.put(("error", {"message": str(exc)}))
+    finally:
+        await event_q.put(None)
+
+
+async def _stream_intake_llm(work: _IntakeLlmWork) -> AsyncIterator[str]:
+    import asyncio
+
+    event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
+    task = asyncio.create_task(_run_intake_llm_job(work, event_q))
+    try:
+        while True:
+            item = await event_q.get()
+            if item is None:
+                break
+            event_name, payload = item
+            yield _sse(event_name, payload)
+    finally:
+        await task
+
+
+async def _iter_intake_chat_sse(
+    *,
+    request: Request,
+    project: Project,
+    room: ChatRoom,
+    body: IntakeChatBody,
+    user_id: uuid.UUID,
+    analysis: dict[str, Any],
+    slot_map: dict[str, Any],
+    filled_keys: list[str],
+    asking: Any,
+    ref_key: str | None,
+    request_id: str,
+) -> AsyncIterator[str]:
+    session_maker = request.app.state.db_session_factory
+    asking_key = _asking_key(asking)
+    all_filled_now = not missing_fact_keys(slot_map)
+
+    if ref_key:
+        async for event in _stream_reference_fill(
+            session_maker=session_maker,
+            project_id=project.id,
+            room_id=room.id,
+            slot_map=slot_map,
+            analysis=analysis,
+            ref_key=ref_key,
+            filled_keys=filled_keys,
+            user_id=user_id,
+        ):
+            yield event
+        return
+
+    if is_fill_reference_request(body.content):
+        async for event in _stream_reference_prompt(
+            session_maker=session_maker,
+            project_id=project.id,
+            room_id=room.id,
+            slot_map=slot_map,
+            analysis=analysis,
+        ):
+            yield event
+        return
+
+    if filled_keys or all_filled_now:
+        async for event in _stream_filled_ack(
+            session_maker=session_maker,
+            project_id=project.id,
+            room_id=room.id,
+            slot_map=slot_map,
+            filled_keys=filled_keys,
+            asking=asking,
+            user_id=user_id,
+            attach_legal=body.attach_legal_reference,
+        ):
+            yield event
+        return
+
+    attached = await _attach_legal_to_filled(
+        slot_map, filled_keys, user_id, body.attach_legal_reference
+    )
+    context, citations, degraded = await _retrieve_legal_context(
+        body.content, user_id, body.search_scope, body.attach_legal_reference
+    )
+    work = _IntakeLlmWork(
+        request=request,
+        project=project,
+        room=room,
+        analysis=analysis,
+        slot_map=slot_map,
+        filled_keys=filled_keys,
+        asking_key=asking_key,
+        all_filled_now=all_filled_now,
+        request_id=request_id,
+        attached=attached,
+        citations=citations,
+        degraded=degraded,
+        user_prompt=_intake_llm_user_prompt(analysis, slot_map, body.content, context),
+    )
+    async for event in _stream_intake_llm(work):
+        yield event
+
+
 @router.post("/{project_id}/intake/upload")
 async def intake_upload(
     request: Request,
@@ -244,55 +670,17 @@ async def intake_analyze(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
-    texts = (project.extracted_fields or {}).get("intake_texts") or []
-    pack = "\n\n".join(
-        str(item.get("text") or "").strip()
-        for item in texts
-        if isinstance(item, dict) and str(item.get("text") or "").strip()
-    )
-    filenames = [str(item.get("name")) for item in texts if isinstance(item, dict)]
+    pack, filenames = _intake_pack((project.extracted_fields or {}).get("intake_texts") or [])
     if not pack.strip():
         raise ValidationError(message="ยังไม่มีเอกสารให้วิเคราะห์", field="files")
 
-    async def persist_heuristic(slot_map: dict[str, Any]) -> None:
-        analysis = merge_analysis(
-            project.analysis_json or {},
-            {
-                "slot_map": slot_map,
-                "gap_questions": [
-                    f"ขอข้อมูลสำหรับ {INTAKE_SLOT_LABELS.get(key, key)} ({key})"
-                    for key in FACT_REQUIRED_SLOTS
-                    if (slot_map.get(key) or {}).get("status") != "filled"
-                ],
-                "ready_to_compose": False,
-                "analyzed": True,
-            },
-        )
-        analysis["intake_files"] = analysis.get("intake_files") or (
-            project.analysis_json or {}
-        ).get("intake_files", [])
-        project.analysis_json = analysis
-        try:
-            flag_modified(project, "analysis_json")
-        except AttributeError:
-            pass
-        project.current_phase = max(project.current_phase or 0, 1)
-        await db.flush()
-        await db.commit()
-
-    result = await analyze_pack(project, pack, filenames, persist_heuristic=persist_heuristic)
-    analysis = merge_analysis(project.analysis_json or {}, result)
-    analysis["intake_files"] = analysis.get("intake_files") or (project.analysis_json or {}).get(
-        "intake_files", []
+    result = await analyze_pack(
+        project,
+        pack,
+        filenames,
+        persist_heuristic=lambda slot_map: _persist_heuristic_slot_map(project, db, slot_map),
     )
-    analysis["analyzed"] = True
-    analysis["standard_fill_keys"] = []
-    project.analysis_json = analysis
-    try:
-        flag_modified(project, "analysis_json")
-    except AttributeError:
-        pass
-    project.current_phase = max(project.current_phase or 0, 1)
+    analysis = _apply_analyze_result(project, result)
     await db.flush()
     return _ok(
         request,
@@ -613,313 +1001,19 @@ async def intake_chat(
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()
-
-    async def generate() -> AsyncIterator[str]:
-        import asyncio
-
-        if ref_key:
-            filled = await fill_reference_slot(ref_key, current_user.id)
-            action = apply_reference_to_slot(slot_map, ref_key, filled, as_standard=True)
-            label = INTAKE_SLOT_LABELS.get(ref_key, ref_key)
-            if action == "skipped":
-                reply = f"หมวด {label} มีข้อเท็จจริงอยู่แล้ว จึงไม่ทับข้อมูลนั้นครับ"
-            else:
-                reply = f"ใส่มาตรฐานกลางจากคลังให้หมวด {label} แล้วครับ"
-            asking_now = analysis.get("current_asking_slot")
-            asking_key = asking_now if isinstance(asking_now, str) else None
-            reply = append_next_slot_question(reply, asking_key)
-            await _persist_intake_assistant(
-                request.app.state.db_session_factory,
-                project.id,
-                room.id,
-                slot_map,
-                reply,
-                [],
-                asking_slot=asking_key,
-            )
-            yield _sse(
-                "done",
-                {
-                    "content": reply,
-                    "citations": [],
-                    "coverage": coverage_table(slot_map),
-                    "filled_slots": filled_keys,
-                    "current_slot": asking_key,
-                    "next_question": build_slot_question(asking_key) if asking_key else None,
-                    "all_fact_filled": not missing_fact_keys(slot_map),
-                    "reference_action": action,
-                    "reference_slot": ref_key,
-                },
-            )
-            return
-
-        if is_fill_reference_request(body.content):
-            asking_now = analysis.get("current_asking_slot")
-            asking_key = asking_now if isinstance(asking_now, str) else None
-            reply = append_next_slot_question(
-                "ระบุหมวดที่ต้องการดึงมาตรฐาน เช่น ดึงอ้างอิงกฎหมายให้ s10",
-                asking_key,
-            )
-            await _persist_intake_assistant(
-                request.app.state.db_session_factory,
-                project.id,
-                room.id,
-                slot_map,
-                reply,
-                [],
-                asking_slot=asking_key,
-            )
-            yield _sse(
-                "done",
-                {
-                    "content": reply,
-                    "citations": [],
-                    "coverage": coverage_table(slot_map),
-                    "filled_slots": [],
-                    "current_slot": asking_key,
-                    "next_question": build_slot_question(asking_key) if asking_key else None,
-                    "all_fact_filled": not missing_fact_keys(slot_map),
-                },
-            )
-            return
-
-        # Fast deterministic ack when slots were filled — no LLM wait.
-        if filled_keys or not missing_fact_keys(slot_map):
-            asking_key = asking if isinstance(asking, str) else None
-            reply = phase2_filled_ack(filled_keys, asking_key)
-            if body.attach_legal_reference and filled_keys:
-                extra = await _attach_legal_to_filled(
-                    slot_map, filled_keys, current_user.id, True
-                )
-                if extra:
-                    reply = extra + reply
-            await _persist_intake_assistant(
-                request.app.state.db_session_factory,
-                project.id,
-                room.id,
-                slot_map,
-                reply,
-                [],
-                asking_slot=asking_key,
-            )
-            yield _sse(
-                "done",
-                {
-                    "content": reply,
-                    "citations": [],
-                    "coverage": coverage_table(slot_map),
-                    "filled_slots": filled_keys,
-                    "current_slot": asking_key,
-                    "next_question": build_slot_question(asking_key) if asking_key else None,
-                    "all_fact_filled": not missing_fact_keys(slot_map),
-                    "progress": coverage_progress(slot_map),
-                },
-            )
-            return
-
-
-        # Instant Phase-2 replies (no LLM hang / no "กำลังพิมพ์..." forever).
-        if chat_path.startswith("fast"):
-            reply = phase2_filled_ack(filled_keys, asking_key) if filled_keys else phase2_template_reply(
-                filled_keys=filled_keys,
-                next_slot=asking_key,
-                all_filled=all_filled_now,
-            )
-            progress = coverage_progress(slot_map)
-            await _persist_intake_assistant(
-                request.app.state.db_session_factory,
-                project.id,
-                room.id,
-                slot_map,
-                reply,
-                [],
-                asking_slot=asking_key,
-            )
-            step = 12
-            for i in range(0, len(reply), step):
-                yield _sse("token", {"text": reply[i : i + step]})
-            yield _sse(
-                "done",
-                {
-                    "content": reply,
-                    "citations": [],
-                    "coverage": coverage_table(slot_map),
-                    "filled_slots": filled_keys,
-                    "current_slot": asking_key,
-                    "next_question": build_slot_question(asking_key) if asking_key else None,
-                    "all_fact_filled": all_filled_now,
-                    "progress": progress,
-                    "fast_path": True,
-                },
-            )
-            return
-
-        attached = await _attach_legal_to_filled(
-            slot_map,
-            filled_keys,
-            current_user.id,
-            body.attach_legal_reference,
-        )
-
-        context = ""
-        citations: list = []
-        degraded = False
-        # Only hit embed/RAG when the officer asked for legal attach (H-D).
-        if body.attach_legal_reference:
-            result, citations, degraded = await hybrid_retrieve(
-                body.content,
-                user_id=current_user.id,
-                search_scope=(
-                    body.search_scope
-                    if body.search_scope in {"global", "mine", "both"}
-                    else "both"
-                ),
-                top_k=3,
-            )
-            context = "\n\n".join(
-                f"[{c.source_document or 'คลัง'}] {c.text}" for c in result.chunks[:3]
-            )
-        current_slot = analysis.get("current_asking_slot")
-        slot_label = INTAKE_SLOT_LABELS.get(current_slot or "", "")
-        missing = missing_fact_keys(slot_map)
-        missing_labels = ", ".join(
-            INTAKE_SLOT_LABELS.get(key, key) for key in missing[:6]
-        ) or "(ไม่มี)"
-        user = (
-            f"ช่องที่กำลังถาม: {slot_label or '-'} ({current_slot or '-'})\n"
-            f"ช่องข้อเท็จจริงที่ยังขาด: {missing_labels}\n"
-            f"บริบทกฎหมาย:\n{(context or '(ไม่มี)')[:1200]}\n\n"
-            f"ข้อความผู้ใช้:\n{(body.content or '')[:2000]}\n\n"
-            "ตอบสั้นเป็นภาษาพูด ไม่เกิน 4 ประโยค แล้วถามเฉพาะช่องที่ยังขาด (ถ้ามี)"
-        )
-        redis = getattr(request.app.state, "redis", None)
-        event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
-
-        async def on_wait(position: int, waiting_ms: int) -> None:
-            await event_q.put(
-                (
-                    "queued",
-                    {
-                        "request_id": request_id,
-                        "position": position,
-                        "waiting_ms": waiting_ms,
-                    },
-                )
-            )
-
-        async def run_llm() -> None:
-            parts_local: list[str] = []
-            try:
-                await event_q.put(("started", {"request_id": request_id}))
-                async with admit(redis, "llm", request_id, on_wait=on_wait):
-                    llm = ProviderFactory().get_llm("chat")  # NOSONAR python:S930 — ProviderFactory.get_llm(task=...)
-                    # No short asyncio.timeout — LM Studio often queues sequentially;
-                    # provider lm_studio_timeout already bounds the HTTP stream.
-                    async for token in llm.stream(
-                        [
-                            {"role": "system", "content": INTAKE_CHAT_SYSTEM},
-                            {"role": "user", "content": user},
-                        ],
-                        temperature=0.2,
-                        max_tokens=384,
-                    ):
-                        parts_local.append(token)
-                        await event_q.put(("token", {"text": token}))
-                full_text = append_next_slot_question(
-                    attached + "".join(parts_local),
-                    analysis.get("current_asking_slot")
-                    if isinstance(analysis.get("current_asking_slot"), str)
-                    else None,
-                )
-                if not str(full_text or "").strip():
-                    full_text = phase2_template_reply(
-                        filled_keys=filled_keys,
-                        next_slot=asking_key,
-                        all_filled=all_filled_now,
-                    )
-                await _persist_intake_assistant(
-                    request.app.state.db_session_factory,
-                    project.id,
-                    room.id,
-                    slot_map,
-                    full_text,
-                    citations,
-                    asking_slot=analysis.get("current_asking_slot")
-                    if isinstance(analysis.get("current_asking_slot"), str)
-                    else None,
-                )
-                await event_q.put(
-                    (
-                        "done",
-                        {
-                            "content": full_text,
-                            "citations": citations,
-                            "coverage": coverage_table(slot_map),
-                            "graph_degraded": degraded,
-                            "filled_slots": filled_keys,
-                            "current_slot": analysis.get("current_asking_slot"),
-                            "next_question": (
-                                build_slot_question(analysis["current_asking_slot"])
-                                if analysis.get("current_asking_slot")
-                                else None
-                            ),
-                            "all_fact_filled": not missing_fact_keys(slot_map),
-                            "progress": coverage_progress(slot_map),
-                        },
-                    )
-                )
-            except TimeoutError:
-                fallback = phase2_template_reply(
-                    filled_keys=filled_keys,
-                    next_slot=asking_key,
-                    all_filled=all_filled_now,
-                )
-                logger.warning("intake chat LLM timed out; using template fallback")
-                await _persist_intake_assistant(
-                    request.app.state.db_session_factory,
-                    project.id,
-                    room.id,
-                    slot_map,
-                    fallback,
-                    citations,
-                    asking_slot=asking_key,
-                )
-                await event_q.put(("token", {"text": fallback}))
-                await event_q.put(
-                    (
-                        "done",
-                        {
-                            "content": fallback,
-                            "citations": citations,
-                            "coverage": coverage_table(slot_map),
-                            "filled_slots": filled_keys,
-                            "current_slot": asking_key,
-                            "next_question": (
-                                build_slot_question(asking_key) if asking_key else None
-                            ),
-                            "all_fact_filled": all_filled_now,
-                            "progress": coverage_progress(slot_map),
-                            "fast_path": True,
-                        },
-                    )
-                )
-            except AdmissionTimeoutError as exc:
-                await event_q.put(("error", {"message": str(exc)}))
-            except Exception as exc:
-                logger.exception("intake chat failed")
-                await event_q.put(("error", {"message": str(exc)}))
-            finally:
-                await event_q.put(None)
-
-        task = asyncio.create_task(run_llm())
-        try:
-            while True:
-                item = await event_q.get()
-                if item is None:
-                    break
-                event_name, payload = item
-                yield _sse(event_name, payload)
-        finally:
-            await task
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        _iter_intake_chat_sse(
+            request=request,
+            project=project,
+            room=room,
+            body=body,
+            user_id=current_user.id,
+            analysis=analysis,
+            slot_map=slot_map,
+            filled_keys=filled_keys,
+            asking=asking,
+            ref_key=ref_key,
+            request_id=request_id,
+        ),
+        media_type="text/event-stream",
+    )

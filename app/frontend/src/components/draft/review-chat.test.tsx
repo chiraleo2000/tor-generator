@@ -55,4 +55,42 @@ describe("ReviewChat", () => {
       "กำลังตรวจด้วยกฎระเบียบ พ.ร.บ. และเอกสารขั้นที่ ๐ ของโครงการนี้"
     );
   });
+
+  it("handles ask failures, empty replies, Enter, and a default prompt", async () => {
+    const onAsk = vi.fn()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValueOnce("");
+    render(
+      <ReviewChat
+        score={70}
+        findings={[]}
+        busy={false}
+        onReview={vi.fn().mockResolvedValue(undefined)}
+        onAsk={onAsk}
+      />
+    );
+    fireEvent.change(screen.getByTestId("review-chat-input"), { target: { value: "   " } });
+    fireEvent.click(screen.getByTestId("review-chat-send"));
+    expect(onAsk).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId("review-chat-input"), { target: { value: "ถาม" } });
+    fireEvent.keyDown(screen.getByTestId("review-chat-input"), { key: "Enter" });
+    expect(await screen.findByText("ถามความเห็นไม่สำเร็จ กรุณาลองใหม่")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("review-chat-input"), { target: { value: "อีกครั้ง" } });
+    fireEvent.click(screen.getByTestId("review-chat-send"));
+    expect(await screen.findByText("ยังให้ความเห็นไม่ได้ กรุณาลองใหม่")).toBeInTheDocument();
+  });
+
+  it("prompts to re-check when onAsk is omitted", async () => {
+    render(
+      <ReviewChat
+        score={90}
+        findings={[]}
+        busy={false}
+        onReview={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    fireEvent.change(screen.getByTestId("review-chat-input"), { target: { value: "ความเห็น" } });
+    fireEvent.click(screen.getByTestId("review-chat-send"));
+    expect(await screen.findByText(/พิมพ์ ตรวจอีกครั้ง/)).toBeInTheDocument();
+  });
 });

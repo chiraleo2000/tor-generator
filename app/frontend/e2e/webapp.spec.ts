@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import {
   headedRun,
+  LIVE_INTAKE_TEXT,
   login,
   pauseLikeUser,
   saveEvidence,
@@ -86,6 +87,26 @@ test.describe("Help and standalone review", () => {
     if (!headedRun) {
       await saveEvidence(page, "12-standalone-review");
     }
+  });
+
+  test("standalone review live run shows a rule score", async ({ page }) => {
+    test.setTimeout(360_000);
+    await login(page);
+    await page.getByTestId("nav-review").click();
+    await expect(page.getByTestId("review-page")).toBeVisible();
+    await page.locator("[data-testid=review-page] input[type=file]").first().setInputFiles({
+      name: "tor-e2e.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from(LIVE_INTAKE_TEXT, "utf-8"),
+    });
+    await page.getByTestId("review-extract").click();
+    await expect(page.getByTestId("review-extract-preview")).toBeVisible({ timeout: 120_000 });
+    await page.getByTestId("review-confirm-run").click();
+    await expect(page.getByTestId("review-error")).toHaveCount(0);
+    await expect(page.getByTestId("review-score")).toContainText(/[0-9]{1,3}\/100/, {
+      timeout: 180_000,
+    });
+    await saveEvidence(page, "12c-review-score");
   });
 
   test("standalone review extract then confirm run", async ({ page }) => {

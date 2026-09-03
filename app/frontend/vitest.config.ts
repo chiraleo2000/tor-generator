@@ -31,10 +31,17 @@ export default defineConfig({
         "src/app/**/admin/ai-settings/page.tsx",
         "src/app/**/knowledge-base/page.tsx",
         "src/components/wizard/inline-validation-feedback.tsx",
+        "src/components/chat/chat-shell.tsx",
+        "src/components/chat/mini-room-list.tsx",
       ],
+      thresholds: {
+        statements: 90,
+        lines: 90,
+      },
       exclude: [
         "src/app/**/admin/knowledge-base/page.tsx",
         "src/components/draft/draft-workspace.tsx",
+        "src/stores/index.ts",
       ],
     },
   },

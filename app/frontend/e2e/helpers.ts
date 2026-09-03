@@ -16,7 +16,7 @@ export const skipMockedInHeadedReason =
 
 export const evidenceDir = path.resolve(
   __dirname,
-  "../../../discussions/test-evidence"
+  "../../../Discussions/test-evidence"
 );
 
 /** Per-keystroke delay so headed runs look like a person typing. */
@@ -76,9 +76,20 @@ export async function saveEvidence(page: Page, name: string) {
 }
 
 export async function waitForLiveAssistant(page: Page, timeout = 180_000) {
-  await expect(page.getByTestId("chat-msg-assistant").last()).toContainText(/\S.{15,}/, {
-    timeout,
-  });
+  const last = page.getByTestId("chat-msg-assistant").last();
+  await expect(last).toBeVisible({ timeout });
+  await expect
+    .poll(
+      async () => {
+        const paragraph = last.locator("p").first();
+        if ((await paragraph.count()) > 0) {
+          return (await paragraph.innerText()).trim();
+        }
+        return (await last.innerText()).trim();
+      },
+      { timeout }
+    )
+    .toMatch(/\S.{15,}/);
 }
 
 export async function login(

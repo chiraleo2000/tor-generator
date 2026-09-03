@@ -54,7 +54,7 @@ function sseFieldText(value: unknown, fallback = ""): string {
 
 function withPatchedLastAssistant(
   prev: ChatMessageItem[],
-  patch: Partial<Pick<ChatMessageItem, "content" | "citations">>
+  patch: Partial<Pick<ChatMessageItem, "content" | "citations" | "mcp_degraded">>
 ): ChatMessageItem[] {
   const last = prev.at(-1);
   if (last?.role !== "assistant") {
@@ -287,10 +287,12 @@ export function ChatShell({
           if (event === "done") {
             setQueueStatus(null);
             const citations = (data.citations as ChatCitation[]) || [];
+            const mcpDegraded = Boolean(data.mcp_degraded);
             setMessages((prev) =>
               withPatchedLastAssistant(prev, {
                 content: sseFieldText(data.content) || prev.at(-1)?.content || "",
                 citations,
+                mcp_degraded: mcpDegraded,
               })
             );
             onReady?.();
@@ -543,6 +545,14 @@ export function ChatShell({
                 >
                   {formatChatTimestamp(item.created_at)}
                 </time>
+              ) : null}
+              {item.mcp_degraded ? (
+                <p
+                  className="mt-2 text-[11px] opacity-80"
+                  data-testid="mcp-unavailable"
+                >
+                  แหล่ง MCP ไม่พร้อม — แสดงผลจากคลังในเครื่องและ Custom RAG
+                </p>
               ) : null}
               {item.citations?.length ? (
                 <div className="mt-2 flex flex-wrap gap-1">

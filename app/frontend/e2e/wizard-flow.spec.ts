@@ -25,6 +25,8 @@ test.describe("TOR 5-phase draft", () => {
     await expect(page.getByTestId("phase3-heading")).toBeVisible();
     await expect(page.getByTestId("hitl-confirm-s3")).toHaveCount(0);
     await expect(page.getByText("ต้องให้เจ้าหน้าที่ยืนยัน")).toHaveCount(0);
+    // Auto-draft starts on enter. Wait so the next test does not share the GPU.
+    await expect(page.getByTestId("phase3-all-drafted")).toBeVisible({ timeout: 3_600_000 });
     await saveEvidence(page, "resume-phase3-fields");
   });
 

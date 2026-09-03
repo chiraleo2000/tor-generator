@@ -948,6 +948,127 @@ async def test_purge_aux_stores_swallows_backend_errors():
     store.delete_file.assert_called_once()
 
 
+def test_kb_original_bytes_from_gridfs_and_fallback(tmp_path):
+    from app.api.v1.endpoints.knowledge_base import _file_download_response, _kb_original_bytes
+    from app.exceptions import NotFoundError
+
+    store = MagicMock()
+    store.get_bytes.return_value = b"%PDF-grid"
+    doc = MagicMock()
+    doc.id = DOC_ID
+    doc.mongo_gridfs_id = "grid-1"
+    doc.storage_path = None
+    doc.name = "law.pdf"
+    doc.file_type = "pdf"
+    with patch(
+        "app.api.v1.endpoints.knowledge_base.store_from_client",
+        return_value=store,
+    ):
+        assert _kb_original_bytes(doc) == b"%PDF-grid"
+        response = _file_download_response(doc)
+        assert "pdf" in response.media_type
+
+    path = tmp_path / "fallback.txt"
+    path.write_bytes(b"from-disk")
+    store.get_bytes.side_effect = RuntimeError("grid miss")
+    doc.storage_path = str(path)
+    doc.file_type = "txt"
+    doc.name = "fallback.txt"
+    with patch(
+        "app.api.v1.endpoints.knowledge_base.store_from_client",
+        return_value=store,
+    ):
+        assert _kb_original_bytes(doc) == b"from-disk"
+
+    doc.storage_path = str(tmp_path / "missing.bin")
+    with patch(
+        "app.api.v1.endpoints.knowledge_base.store_from_client",
+        return_value=store,
+    ):
+        try:
+            _kb_original_bytes(doc)
+            raise AssertionError("expected NotFoundError")
+        except NotFoundError:
+            pass
+
+
+def test_catalog_includes_extra_group_keys():
+    from app.api.v1.endpoints.knowledge_base import _catalog_payload
+
+    extra = _make_kb_document(
+        name="วิจัย.pdf",
+        category="other",
+        corpus_group="research_extra",
+        owner_id=None,
+        scope="baseline",
+    )
+    payload = _catalog_payload([extra], viewer_id=USER_ID)
+    keys = [row["key"] for row in payload["groups"]]
+    assert "research_extra" in keys
+
+
+def test_upload_minio_failure_returns_400(client, mock_admin_user):
+    mock_minio = MagicMock()
+    mock_minio.put_object = MagicMock(side_effect=RuntimeError("MinIO down"))
+    app.dependency_overrides[get_minio] = lambda: mock_minio
+    response = client.post(
+        "/api/v1/knowledge-base/upload",
+        files={"file": ("test_law.pdf", io.BytesIO(b"%PDF-1.4 content"), "application/pdf")},
+        data={"category": "law", "name": "พ.ร.บ."},
+    )
+    assert response.status_code == 400
+    assert "อัปโหลดไฟล์" in response.json()["error"]["message"]
+
+
+def test_sync_mandatory_success_and_empty_sources(client, mock_admin_user):
+    with patch(
+        "app.api.v1.endpoints.knowledge_base.list_mandatory_sources",
+        return_value=[],
+    ):
+        empty = client.post("/api/v1/knowledge-base/sync-mandatory")
+    assert empty.status_code == 400
+
+    with patch(
+        "app.api.v1.endpoints.knowledge_base.list_mandatory_sources",
+        return_value=[object(), object()],
+    ):
+        ok = client.post("/api/v1/knowledge-base/sync-mandatory?wipe_baseline=true")
+    assert ok.status_code == 202
+    body = ok.json()["data"]
+    assert body["scanned"] == 2
+    assert body["wipe_baseline"] is True
+
+
+def test_officer_cannot_sync_mandatory(client, mock_officer_user):
+    response = client.post("/api/v1/knowledge-base/sync-mandatory")
+    assert response.status_code == 403
+
+
+def test_officer_mine_upload_unsupported_type(client, mock_officer_user):
+    response = client.post(
+        "/api/v1/knowledge-base/mine",
+        files={"file": ("image.png", io.BytesIO(b"fake-png"), "image/png")},
+        data={"category": "other"},
+    )
+    assert response.status_code == 400
+
+
+def test_catalog_item_uses_filename_group_when_corpus_missing():
+    from app.api.v1.endpoints.knowledge_base import _catalog_item, _doc_group
+    from app.domain.corpus import GROUP_MANDATORY_HANDBOOK, GROUP_MANDATORY_RAW
+
+    handbook = _make_kb_document(
+        name="คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf",
+        corpus_group=None,
+        owner_id=None,
+    )
+    raw = _make_kb_document(name="พรบ.pdf", corpus_group=None, owner_id=None)
+    assert _doc_group(handbook) == GROUP_MANDATORY_HANDBOOK
+    assert _doc_group(raw) == GROUP_MANDATORY_RAW
+    item = _catalog_item(handbook)
+    assert item["mandatory"] is True
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

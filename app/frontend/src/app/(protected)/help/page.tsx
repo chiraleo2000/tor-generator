@@ -136,9 +136,15 @@ function OverviewTab() {
             <td>FastAPI · พอร์ต 4000 · <code>/api/v1</code></td>
           </tr>
           <tr>
-            <td>AI ค่าเริ่มต้น</td>
+            <td>AI ค่าเริ่มต้น (ทดสอบในเครื่อง)</td>
             <td>
               LM Studio · แชท <code>google/gemma-4-e4b</code> · ฝังเวกเตอร์ EmbeddingGemma 768-d
+            </td>
+          </tr>
+          <tr>
+            <td>Amazon Quick</td>
+            <td>
+              ผู้ช่วยในที่ทำงานของ AWS — ต่อ MCP/OpenAPI ที่พอร์ต 8767 ไม่ใช่ QuickSight และไม่ใช่โหมด Bedrock ของแอป
             </td>
           </tr>
           <tr>
@@ -616,7 +622,13 @@ function FaqTab() {
           <code>text-embedding-embeddinggemma-300m</code> (768 มิติ)
         </li>
         <li>
-          Production แนะนำ: Amazon Bedrock — คู่มือ <code>discussions/20-AWS_BEDROCK_SETUP.md</code>
+          Production บน AWS ของแอปนี้: Amazon Bedrock — คู่มือ{" "}
+          <code>discussions/20-AWS_BEDROCK_SETUP.md</code> และ{" "}
+          <code>discussions/31-MCP-RAG-AWS-QUICKSTART.md</code>
+        </li>
+        <li>
+          Amazon Quick (ผู้ช่วยในที่ทำงาน ไม่ใช่ QuickSight): MCP/OpenAPI ที่{" "}
+          <code>app/infra/quick/</code> — <code>discussions/32-AMAZON-QUICK.md</code>
         </li>
         <li>
           ตรวจสุขภาพ: <code>http://localhost:4000/health</code> ต้อง healthy (postgres redis minio mongo neo4j)

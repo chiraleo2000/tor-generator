@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.kb_chat_session import KBChatSession
 from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
+from app.rag.hybrid import unpack_hybrid
 from app.rag.kb_qa import CHAT_MAX_TOKENS, build_kb_qa_messages, chat_rag_top_k
 from app.services.session_cache import SessionCacheService
 
@@ -24,6 +25,21 @@ MAX_MESSAGE_LENGTH = 1000
 SESSION_TIMEOUT_MINUTES = 30
 RELEVANCE_THRESHOLD = 0.25
 NO_RESULTS = "ไม่พบข้อมูลที่เกี่ยวข้อง"
+LOW_SCORE_KEEP = 12
+
+
+def _chunks_for_answer(chunks: list) -> list:
+    scored = list(chunks or [])
+    if not scored:
+        return []
+    strong = [
+        chunk
+        for chunk in scored
+        if float(getattr(chunk, "score", 0) or 0) >= RELEVANCE_THRESHOLD
+    ]
+    if strong:
+        return strong
+    return scored[: min(LOW_SCORE_KEEP, len(scored))]
 
 
 @dataclass
@@ -81,17 +97,15 @@ class KnowledgeChatService:
         text = (message or "").strip()
         if len(text) > MAX_MESSAGE_LENGTH:
             text = text[:MAX_MESSAGE_LENGTH]
-        result, _, _degraded = await hybrid_retrieve(
-            text,
-            user_id=user_id,
-            search_scope="both",
-            top_k=chat_rag_top_k(),
+        result, _, _degraded, _mcp = unpack_hybrid(
+            await hybrid_retrieve(
+                text,
+                user_id=user_id,
+                search_scope="both",
+                top_k=chat_rag_top_k(),
+            )
         )
-        relevant = [
-            chunk
-            for chunk in (result.chunks or [])
-            if float(getattr(chunk, "score", 0) or 0) >= RELEVANCE_THRESHOLD
-        ]
+        relevant = _chunks_for_answer(result.chunks)
         if not relevant:
             response = ChatResponse(answer=NO_RESULTS, citations=[], no_results=True)
             await self._append(session_id, user_id, text, response, history, db)

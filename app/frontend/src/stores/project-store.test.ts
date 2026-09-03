@@ -125,4 +125,17 @@ describe("project-store", () => {
     await expect(useProjectStore.getState().fetchProjects()).rejects.toThrow("offline");
     expect(useProjectStore.getState().isLoading).toBe(false);
   });
+
+  it("clears loading when createProject fails", async () => {
+    vi.mocked(apiClient.post).mockRejectedValue(new Error("create-fail"));
+    await expect(
+      useProjectStore.getState().createProject({
+        name: "ล้ม",
+        ministry: "กระทรวง",
+        budget: 1,
+        projectType: "it",
+      })
+    ).rejects.toThrow("create-fail");
+    expect(useProjectStore.getState().isLoading).toBe(false);
+  });
 });

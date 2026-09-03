@@ -134,4 +134,26 @@ describe("Phase1Coverage", () => {
     );
     expect(onEnterQa).not.toHaveBeenCalled();
   });
+
+  it("shows an error alert and gap list", () => {
+    render(
+      <Phase1Coverage
+        {...emptyHandlers}
+        coverage={[
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "gap",
+            filled: false,
+            fact_required: true,
+          },
+        ]}
+        gaps={["ยังขาดวงเงิน"]}
+        message="วิเคราะห์ไม่สำเร็จ"
+        isError
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("วิเคราะห์ไม่สำเร็จ");
+    expect(screen.getByText("ยังขาดวงเงิน")).toBeInTheDocument();
+  });
 });

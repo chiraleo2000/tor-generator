@@ -7,6 +7,12 @@ data "aws_caller_identity" "current" {}
 locals {
   name = "${var.project}-${var.environment}"
   azs  = slice(data.aws_availability_zones.available.names, 0, 2)
+  app_buckets = {
+    exports   = aws_s3_bucket.exports.id
+    originals = aws_s3_bucket.originals.id
+    kb_source = aws_s3_bucket.kb_source.id
+    logs      = aws_s3_bucket.logs.id
+  }
 }
 
 data "aws_iam_policy_document" "kms" {
@@ -158,12 +164,12 @@ resource "aws_s3_bucket" "kb_source" {
   bucket = "${var.bucket_prefix}-kb-source"
 }
 
+resource "aws_s3_bucket" "logs" {
+  bucket = "${var.bucket_prefix}-logs"
+}
+
 resource "aws_s3_bucket_public_access_block" "all" {
-  for_each = {
-    exports   = aws_s3_bucket.exports.id
-    originals = aws_s3_bucket.originals.id
-    kb_source = aws_s3_bucket.kb_source.id
-  }
+  for_each                = local.app_buckets
   bucket                  = each.value
   block_public_acls       = true
   block_public_policy     = true
@@ -172,12 +178,8 @@ resource "aws_s3_bucket_public_access_block" "all" {
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "all" {
-  for_each = {
-    exports   = aws_s3_bucket.exports.id
-    originals = aws_s3_bucket.originals.id
-    kb_source = aws_s3_bucket.kb_source.id
-  }
-  bucket = each.value
+  for_each = local.app_buckets
+  bucket   = each.value
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = "aws:kms"
@@ -188,15 +190,179 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "all" {
 }
 
 resource "aws_s3_bucket_versioning" "all" {
-  for_each = {
-    exports   = aws_s3_bucket.exports.id
-    originals = aws_s3_bucket.originals.id
-    kb_source = aws_s3_bucket.kb_source.id
-  }
-  bucket = each.value
+  for_each = local.app_buckets
+  bucket   = each.value
   versioning_configuration {
     status = "Enabled"
   }
+}
+
+resource "aws_s3_bucket_logging" "exports" {
+  bucket        = aws_s3_bucket.exports.id
+  target_bucket = aws_s3_bucket.logs.id
+  target_prefix = "exports/"
+}
+
+resource "aws_s3_bucket_logging" "originals" {
+  bucket        = aws_s3_bucket.originals.id
+  target_bucket = aws_s3_bucket.logs.id
+  target_prefix = "originals/"
+}
+
+resource "aws_s3_bucket_logging" "kb_source" {
+  bucket        = aws_s3_bucket.kb_source.id
+  target_bucket = aws_s3_bucket.logs.id
+  target_prefix = "kb_source/"
+}
+
+resource "aws_s3_bucket_logging" "logs" {
+  bucket        = aws_s3_bucket.logs.id
+  target_bucket = aws_s3_bucket.logs.id
+  target_prefix = "logs-access/"
+}
+
+data "aws_iam_policy_document" "exports_https" {
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.exports.arn,
+      "${aws_s3_bucket.exports.arn}/*",
+    ]
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "originals_https" {
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.originals.arn,
+      "${aws_s3_bucket.originals.arn}/*",
+    ]
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "kb_source_https" {
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.kb_source.arn,
+      "${aws_s3_bucket.kb_source.arn}/*",
+    ]
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+data "aws_elb_service_account" "current" {}
+
+data "aws_iam_policy_document" "logs_bucket" {
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.logs.arn,
+      "${aws_s3_bucket.logs.arn}/*",
+    ]
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+
+  statement {
+    sid    = "AWSLogDeliveryWrite"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = [data.aws_elb_service_account.current.arn]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.logs.arn}/alb/AWSLogs/*"]
+  }
+
+  statement {
+    sid    = "AWSLogDeliveryAclCheck"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = [data.aws_elb_service_account.current.arn]
+    }
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.logs.arn]
+  }
+
+  statement {
+    sid    = "S3ServerAccessLogsPolicy"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logging.s3.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.logs.arn}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "exports_https" {
+  bucket = aws_s3_bucket.exports.id
+  policy = data.aws_iam_policy_document.exports_https.json
+}
+
+resource "aws_s3_bucket_policy" "originals_https" {
+  bucket = aws_s3_bucket.originals.id
+  policy = data.aws_iam_policy_document.originals_https.json
+}
+
+resource "aws_s3_bucket_policy" "kb_source_https" {
+  bucket = aws_s3_bucket.kb_source.id
+  policy = data.aws_iam_policy_document.kb_source_https.json
+}
+
+resource "aws_s3_bucket_policy" "logs" {
+  bucket = aws_s3_bucket.logs.id
+  policy = data.aws_iam_policy_document.logs_bucket.json
 }
 
 resource "aws_ecr_repository" "backend" {
@@ -242,6 +408,24 @@ resource "aws_secretsmanager_secret" "jwt" {
   kms_key_id = aws_kms_key.tor.arn
 }
 
+# Empty servers JSON so the task starts if MCP is not yet wired (Kiro R10.2).
+# Replace MCP_RAG_SERVERS_JSON with the partner payload; do not commit live URLs.
+resource "aws_secretsmanager_secret" "mcp" {
+  name       = "${var.project}/${var.environment}/mcp"
+  kms_key_id = aws_kms_key.tor.arn
+}
+
+resource "aws_secretsmanager_secret_version" "mcp" {
+  secret_id = aws_secretsmanager_secret.mcp.id
+  secret_string = jsonencode({
+    MCP_RAG_SERVERS_JSON = "{\"servers\":[]}"
+    MCP_RAG_AUTH_VALUE   = ""
+  })
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
 data "aws_iam_policy_document" "ecs_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -275,6 +459,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
           aws_secretsmanager_secret.rds.arn,
           aws_secretsmanager_secret.redis.arn,
           aws_secretsmanager_secret.jwt.arn,
+          aws_secretsmanager_secret.mcp.arn,
         ]
       },
       {

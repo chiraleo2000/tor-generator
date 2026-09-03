@@ -1,5 +1,9 @@
 # Fargate task skeleton — AWS Cloud only (no hybrid LLM).
 # Replace ACCOUNT_ID. Keep MCP_RAG_ENABLED=false until a VPC MCP endpoint exists.
+# When enabling MCP: set MCP_RAG_ENABLED=true and add Secrets Manager entries
+# MCP_RAG_SERVERS_JSON / MCP_RAG_AUTH_VALUE from secret tor/prod/mcp.
+# Do not set MCP_RAG_CONFIG_PATH (backend image has no app/infra/mcp).
+# ECS tasks need outbound egress to the partner MCP URL and port.
 
 family: tor-backend
 networkMode: awsvpc
@@ -40,10 +44,12 @@ containerDefinitions:
         value: "true"
       - name: MCP_RAG_ENABLED
         value: "false"
-      - name: MCP_RAG_SERVERS_JSON
-        value: ""
+      - name: MCP_RAG_TIMEOUT_SECONDS
+        value: "20"
       - name: CUSTOM_RAG_ENABLED
         value: "false"
+      - name: CLOUD_LLM_TIMEOUT
+        value: "300"
     secrets:
       - name: POSTGRES_HOST
         valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/rds:host::"
@@ -59,6 +65,10 @@ containerDefinitions:
         valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/redis:auth_token::"
       - name: JWT_SECRET
         valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/jwt:jwt_secret::"
+      - name: MCP_RAG_SERVERS_JSON
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/mcp:MCP_RAG_SERVERS_JSON::"
+      - name: MCP_RAG_AUTH_VALUE
+        valueFrom: "arn:aws:secretsmanager:ap-southeast-1:ACCOUNT_ID:secret:tor/prod/mcp:MCP_RAG_AUTH_VALUE::"
     logConfiguration:
       logDriver: awslogs
       options:

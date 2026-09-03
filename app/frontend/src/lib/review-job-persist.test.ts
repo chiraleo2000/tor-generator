@@ -49,4 +49,9 @@ describe("review-job-persist", () => {
     expect(restored?.step).toBe(2);
     expect(restored?.extractedText).toBe("ร่าง TOR");
   });
+
+  it("returns null when the payload has no usable id", () => {
+    expect(restoredReviewFromPayload({ quality_score: 80 })).toBeNull();
+    expect(restoredReviewFromPayload({ id: "x" })).toBeNull();
+  });
 });

@@ -143,6 +143,7 @@ $RECYCLE.BIN/
 # Logs
 logs/
 *.log
+debug-*.log
 
 # Temporary files
 tmp/
@@ -160,6 +161,16 @@ playwright-report/
 test-results/
 blob-report/
 app/frontend/coverage/
+app/frontend/.playwright-browsers/
+app/frontend/.chrome-test-profile/
+app/frontend/.cov-tmp/
+app/frontend/coverage-out/
+app/frontend/coverage-run/
+app/frontend/coverage-v8/
+app/frontend/vitest-output.txt
+app/backend/.cache/
+app/backend/.local/
+app/backend/coverage.xml
 
 # Original PDF/DOCX source packs — too large for GitHub and not required to run the app
 documents/sources/

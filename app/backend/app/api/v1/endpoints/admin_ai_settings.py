@@ -647,6 +647,9 @@ def _sts_caller_identity(region: str, access: str, secret: str) -> None:
 
 
 async def _probe_bedrock(body: AiSettingsTest, existing: dict[str, Any]) -> None:
+    bearer = str(getattr(get_settings(), "aws_bearer_token_bedrock", "") or "").strip()
+    if bearer:
+        return
     region = str(body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1")
     access = str(body.aws_access_key_id or existing.get("aws_access_key_id") or "")
     secret = _usable_secret(

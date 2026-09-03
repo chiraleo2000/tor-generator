@@ -25,7 +25,7 @@ from app.models.tor_section import TORSection
 from app.providers.factory import ProviderFactory
 from app.providers.structured_invoke import invoke_with_schema
 from app.schemas.llm_structured import IntakeAnalyzeResult, json_schema_for
-from app.rag.hybrid import hybrid_retrieve
+from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.services.intake_heuristic import (
     extract_slot_contents,
     facts_are_complete,
@@ -841,12 +841,14 @@ async def fill_reference_slot(
     from app.rag.kb_qa import draft_rag_top_k
 
     query = INTAKE_SLOT_LABELS.get(slot_key, slot_key)
-    result, citations, degraded = await hybrid_retrieve(
-        query,
-        user_id=user_id,
-        search_scope="global",
-        section_relevance=slot_key if slot_key.startswith("s") else None,
-        top_k=draft_rag_top_k(),
+    result, citations, degraded, _mcp = unpack_hybrid(
+        await hybrid_retrieve(
+            query,
+            user_id=user_id,
+            search_scope="global",
+            section_relevance=slot_key if slot_key.startswith("s") else None,
+            top_k=draft_rag_top_k(),
+        )
     )
     texts = [chunk.text for chunk in result.chunks[:8]]
     sources = [c.get("label") for c in citations if c.get("label")]

@@ -94,4 +94,148 @@ describe("AdminAiSettingsPage", () => {
     fireEvent.click(screen.getByTestId("ai-settings-test"));
     expect(await screen.findByTestId("ai-settings-error")).toBeInTheDocument();
   });
+
+  it("shows a load error when GET fails", async () => {
+    vi.mocked(apiClient.get).mockRejectedValue(new Error("down"));
+    render(<AdminAiSettingsPage />);
+    expect(await screen.findByTestId("ai-settings-error")).toHaveTextContent(
+      "โหลดการตั้งค่า AI ไม่สำเร็จ"
+    );
+  });
+
+  it("mentions re-ingest when save reports it", async () => {
+    vi.mocked(apiClient.put).mockResolvedValue({
+      data: { ok: true, data: { ...loaded, reingest_required: true } },
+    });
+    render(<AdminAiSettingsPage />);
+    await screen.findByTestId("ai-settings-save");
+    fireEvent.click(screen.getByTestId("ai-settings-save"));
+    expect(await screen.findByTestId("ai-settings-status")).toHaveTextContent("ฝังเวกเตอร์ใหม่");
+  });
+
+  it("reveals Gemini, Bedrock, and Azure fields from the selected providers", async () => {
+    render(<AdminAiSettingsPage />);
+    await screen.findByTestId("admin-ai-settings-page");
+    fireEvent.change(screen.getByLabelText("โหมด"), { target: { value: "cloud" } });
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "gemini" } });
+    fireEvent.change(screen.getByLabelText("ฝังเวกเตอร์"), { target: { value: "gemini" } });
+    expect(screen.getByLabelText("Gemini API key")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Gemini API key"), { target: { value: "gem-key" } });
+    fireEvent.change(screen.getByLabelText("โมเดล Gemini"), { target: { value: "gemini-2.0-flash" } });
+
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "bedrock" } });
+    fireEvent.change(screen.getByLabelText("ฝังเวกเตอร์"), { target: { value: "bedrock" } });
+    expect(screen.getByLabelText("ภูมิภาค")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("ภูมิภาค"), { target: { value: "ap-southeast-1" } });
+    fireEvent.change(screen.getByLabelText("รหัสโมเดลแชท"), {
+      target: { value: "anthropic.claude-sonnet" },
+    });
+
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "azure_foundry" } });
+    fireEvent.change(screen.getByLabelText("ฝังเวกเตอร์"), { target: { value: "azure_foundry" } });
+    expect(screen.getByLabelText("Endpoint")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Endpoint"), {
+      target: { value: "https://example.openai.azure.com" },
+    });
+    fireEvent.change(document.getElementById("azure-key") as HTMLInputElement, {
+      target: { value: "az-key" },
+    });
+
+    fireEvent.change(screen.getByLabelText("โหมด"), { target: { value: "hybrid" } });
+    expect(screen.getByLabelText("โหมด")).toHaveValue("hybrid");
+    fireEvent.change(screen.getByLabelText("แหล่งดึงความรู้"), { target: { value: "local" } });
+    fireEvent.change(screen.getByLabelText("top_k"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("ถาม-ตอบ top_k"), { target: { value: "32" } });
+    fireEvent.change(screen.getByLabelText("ชิ้นบริบทสูงสุด"), { target: { value: "48" } });
+    fireEvent.change(screen.getByLabelText("ร่าง/ตรวจ TOR top_k"), { target: { value: "16" } });
+  });
+
+  it("fills SGLang, OpenAI-compatible, Custom RAG, and empty numeric fallbacks", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: { ok: true, data: {} },
+    });
+    render(<AdminAiSettingsPage />);
+    await screen.findByTestId("admin-ai-settings-page");
+
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "sglang" } });
+    fireEvent.change(screen.getByLabelText("เซิร์ฟเวอร์ฝังเวกเตอร์ในเครื่อง"), {
+      target: { value: "sglang" },
+    });
+    fireEvent.change(screen.getByLabelText("URL ฝังเวกเตอร์ (เว้นว่างใช้ URL ของเซิร์ฟเวอร์ด้านบน)"), {
+      target: { value: "http://127.0.0.1:30001/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("SGLang แชท URL"), {
+      target: { value: "http://127.0.0.1:30000/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("SGLang embedding URL"), {
+      target: { value: "http://127.0.0.1:30001/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("โมเดลแชท SGLang"), { target: { value: "gemma" } });
+    fireEvent.change(screen.getByLabelText("โมเดลฝังเวกเตอร์ SGLang"), {
+      target: { value: "embed" },
+    });
+    fireEvent.change(screen.getByLabelText("ชื่อโมเดลฝังเวกเตอร์"), {
+      target: { value: "nomic" },
+    });
+    fireEvent.change(screen.getByLabelText("หมดเวลารอ (วินาที)"), { target: { value: "" } });
+
+    fireEvent.change(screen.getByLabelText("โหมด"), { target: { value: "cloud" } });
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "openai" } });
+    fireEvent.change(screen.getByLabelText("ฝังเวกเตอร์"), { target: { value: "openai" } });
+    fireEvent.change(screen.getByLabelText("OpenAI API key"), { target: { value: "sk-oai" } });
+    fireEvent.change(screen.getByLabelText("โมเดล OpenAI แชท"), { target: { value: "gpt-4o" } });
+    fireEvent.change(screen.getByLabelText("โมเดลฝังเวกเตอร์ OpenAI"), {
+      target: { value: "text-embedding-3-large" },
+    });
+    fireEvent.change(screen.getByLabelText("โมเดลฝังเวกเตอร์ Gemini"), {
+      target: { value: "text-embedding-004" },
+    });
+
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "bedrock" } });
+    fireEvent.change(screen.getByLabelText("ฝังเวกเตอร์"), { target: { value: "bedrock" } });
+    fireEvent.change(screen.getByLabelText("รหัสโมเดลฝังเวกเตอร์"), {
+      target: { value: "amazon.titan-embed" },
+    });
+    fireEvent.change(screen.getByLabelText("AWS access key (เว้นว่างได้ถ้าใช้ IAM role)"), {
+      target: { value: "AKIA" },
+    });
+    fireEvent.change(screen.getByLabelText("AWS secret"), { target: { value: "secret" } });
+
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "azure_foundry" } });
+    fireEvent.change(screen.getByLabelText("ฝังเวกเตอร์"), { target: { value: "azure_foundry" } });
+    fireEvent.change(screen.getByLabelText("Deployment (แชท)"), { target: { value: "chat-dep" } });
+    fireEvent.change(screen.getByLabelText("ชื่อดีพลอยเมนต์ฝังเวกเตอร์"), {
+      target: { value: "embed-dep" },
+    });
+
+    fireEvent.change(screen.getByLabelText("โมเดลแชท"), { target: { value: "openai_compatible" } });
+    fireEvent.change(screen.getByLabelText("ฝังเวกเตอร์"), { target: { value: "openai_compatible" } });
+    fireEvent.change(document.getElementById("compat-url") as HTMLInputElement, {
+      target: { value: "https://compat.example/v1" },
+    });
+    fireEvent.change(document.getElementById("compat-key") as HTMLInputElement, {
+      target: { value: "compat-key" },
+    });
+    fireEvent.change(document.getElementById("compat-model") as HTMLInputElement, {
+      target: { value: "local-chat" },
+    });
+    fireEvent.change(document.getElementById("compat-embed-model") as HTMLInputElement, {
+      target: { value: "local-embed" },
+    });
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(document.getElementById("custom-rag-url") as HTMLInputElement, {
+      target: { value: "https://rag.example.com" },
+    });
+    fireEvent.change(document.getElementById("custom-rag-key") as HTMLInputElement, {
+      target: { value: "rag-key" },
+    });
+    fireEvent.change(screen.getByLabelText("top_k"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("ถาม-ตอบ top_k"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("ชิ้นบริบทสูงสุด"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("ร่าง/ตรวจ TOR top_k"), { target: { value: "" } });
+
+    fireEvent.click(screen.getByTestId("ai-settings-test"));
+    expect(await screen.findByTestId("ai-settings-status")).toHaveTextContent("เชื่อมต่อได้");
+  });
 });

@@ -1,9 +1,27 @@
 """Local Gemma needs a longer per-section timeout than cloud Claude."""
 
+import pytest
+
 from app.config import Settings
 
 
-def test_on_prem_lm_studio_timeout_is_180():
+def test_mcp_rag_defaults_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MCP_RAG_ENABLED", raising=False)
+    monkeypatch.delenv("MCP_RAG_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("MCP_RAG_AUTH_VALUE", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.mcp_rag_enabled is False
+    assert settings.mcp_rag_auth_header == "Authorization"
+    assert settings.mcp_rag_auth_value == ""
+    assert settings.mcp_rag_timeout_seconds == 20.0
+
+
+def test_mcp_rag_env_maps_case_insensitively(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MCP_RAG_ENABLED", "true")
+    monkeypatch.setenv("MCP_RAG_TIMEOUT_SECONDS", "15")
+    settings = Settings(_env_file=None)
+    assert settings.mcp_rag_enabled is True
+    assert settings.mcp_rag_timeout_seconds == 15.0
     settings = Settings(
         llm_provider="lm_studio",
         deployment_mode="on_prem",
@@ -38,6 +56,15 @@ def test_ollama_on_prem_uses_local_timeout():
         lm_studio_timeout=180.0,
     )
     assert settings.drafting_agent_timeout_seconds() == 180
+
+
+def test_bedrock_uses_cloud_llm_timeout():
+    settings = Settings(
+        llm_provider="bedrock",
+        deployment_mode="cloud",
+        cloud_llm_timeout=300.0,
+    )
+    assert settings.drafting_agent_timeout_seconds() == 300
 
 
 def test_runtime_overlay_changes_model_after_apply():

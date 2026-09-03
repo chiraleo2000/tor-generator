@@ -20,3 +20,10 @@ servers:
     tool: retrieve
     timeout_seconds: 20
     top_k: 8
+  - id: retrieve-stub
+    enabled: false
+    transport: http
+    url: http://host.docker.internal:8765
+    tool: retrieve
+    timeout_seconds: 20
+    top_k: 8

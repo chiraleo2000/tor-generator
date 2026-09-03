@@ -25,9 +25,11 @@ from app.rag.retrieval import RAGRetriever
 from tests.test_live_lm_studio import _require_lm_studio
 from tests.test_property_embedding_round_trip import InMemoryVectorStore
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+from tests.repo_paths import knowledge_base_dir, repo_root
+
+REPO_ROOT = repo_root()
 SOURCES = REPO_ROOT / "documents" / "sources"
-KB_DIR = REPO_ROOT / "documents" / "knowledge-base"
+KB_DIR = knowledge_base_dir(REPO_ROOT)
 RAW_TEXT_DIR = REPO_ROOT / "documents" / "research" / "raw_text"
 STRUCTURE_DIR = REPO_ROOT / "documents" / "research" / "analysis"
 RAW_DIR = SOURCES / "การจัดซื้อจัดจ้าง" / "ข้อมูลดิบ"

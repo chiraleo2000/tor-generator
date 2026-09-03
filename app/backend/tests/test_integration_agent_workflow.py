@@ -206,8 +206,17 @@ async def test_kb_chat_acl_and_threshold():
         del query
         seen["user_id"] = kwargs.get("user_id")
         seen["scope"] = kwargs.get("search_scope")
-        if kwargs.get("user_id") == other:
-            return SimpleNamespace(chunks=[]), [], False
+        return SimpleNamespace(chunks=[]), [], False
+
+    with patch("app.services.kb_chat_service.hybrid_retrieve", new=retrieve):
+        service = KnowledgeChatService(llm=FakeLLM("ไม่ควรถูกเรียก"))
+        response = await service.answer(SESSION_ID, user_id, "ถาม", [])
+        assert response.no_results is True
+        assert seen["scope"] == "both"
+        assert seen["user_id"] == user_id
+
+    async def retrieve_low(query, **kwargs):
+        del query, kwargs
         chunk = SimpleNamespace(
             text="กฎหมาย",
             score=0.1,
@@ -218,12 +227,12 @@ async def test_kb_chat_acl_and_threshold():
         )
         return SimpleNamespace(chunks=[chunk]), [], False
 
-    with patch("app.services.kb_chat_service.hybrid_retrieve", new=retrieve):
-        service = KnowledgeChatService(llm=FakeLLM("ไม่ควรถูกเรียก"))
-        response = await service.answer(SESSION_ID, user_id, "ถาม", [])
-        assert response.no_results is True
-        assert seen["scope"] == "both"
-        assert seen["user_id"] == user_id
+    with patch("app.services.kb_chat_service.hybrid_retrieve", new=retrieve_low):
+        low = await KnowledgeChatService(llm=FakeLLM("ใช้ชิ้นคะแนนต่ำ")).answer(
+            SESSION_ID, user_id, "ถาม", []
+        )
+        assert low.no_results is False
+        assert "คะแนนต่ำ" in low.answer
 
     async def retrieve_hit(query, **kwargs):
         del query, kwargs

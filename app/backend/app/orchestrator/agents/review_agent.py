@@ -16,6 +16,7 @@ Requirements: 10.2, 12.4
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -768,13 +769,17 @@ class ReviewAgent:
             {"role": "user", "content": compose_user},
         ]
         try:
-            payload = await invoke_with_schema(
-                llm,
-                messages,
-                json_schema_for(ReviewSuggestionsResult),
-                "review_suggestions",
-                temperature=0.2,
-                max_tokens=max_out,
+            payload = await asyncio.wait_for(
+                invoke_with_schema(
+                    llm,
+                    messages,
+                    json_schema_for(ReviewSuggestionsResult),
+                    "review_suggestions",
+                    attempts=1,
+                    temperature=0.2,
+                    max_tokens=max_out,
+                ),
+                timeout=45.0,
             )
             import json
 

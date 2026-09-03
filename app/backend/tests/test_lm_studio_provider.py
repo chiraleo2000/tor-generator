@@ -269,6 +269,32 @@ class TestInvoke:
             )
 
     @pytest.mark.asyncio
+    async def test_connection_error_retries_then_succeeds(self):
+        from openai import APIConnectionError
+
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 1
+        mock_usage.completion_tokens = 1
+        mock_usage.total_tokens = 2
+        mock_message = MagicMock()
+        mock_message.content = "ok"
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        self.provider._client.chat.completions.create = AsyncMock(
+            side_effect=[APIConnectionError(request=MagicMock()), mock_response]
+        )
+        result = await self.provider.invoke(
+            messages=[{"role": "user", "content": "test"}]
+        )
+        assert result.content == "ok"
+        assert self.provider._client.chat.completions.create.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_other_exceptions_propagate(self):
         """Test that unexpected exceptions are re-raised."""
         self.provider._client.chat.completions.create = AsyncMock(

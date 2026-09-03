@@ -1,0 +1,105 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "TOR Amazon Quick connector",
+    "description": "Read-only health and knowledge retrieve for Amazon Quick OpenAPI integration. Import this JSON in Amazon Quick Connectors. Not QuickSight. Local sidecar default is http://host.docker.internal:8767.",
+    "version": "0.3.0"
+  },
+  "servers": [
+    {
+      "url": "http://host.docker.internal:8767",
+      "description": "Local Amazon Quick sidecar on the Docker host"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getConnectorHealth",
+        "summary": "Connector health",
+        "description": "Return whether the Amazon Quick sidecar is reachable. Use this before retrieveKnowledge when an action fails. No authentication on the local stub.",
+        "x-amzn-operation-type": "read",
+        "responses": {
+          "200": {
+            "description": "Sidecar is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "description": "ok when the process is serving requests."
+                    },
+                    "service": {
+                      "type": "string",
+                      "description": "Connector identifier."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/retrieve": {
+      "post": {
+        "operationId": "retrieveKnowledge",
+        "summary": "Retrieve one knowledge snippet",
+        "description": "Search Thai public-procurement knowledge for TOR drafting. Returns a single flattened snippet because Amazon Quick OpenAPI schemas cannot use array types. Prefer this for automations; use the MCP retrieve tool when the assistant needs JSON-RPC.",
+        "x-amzn-operation-type": "read",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Natural-language question in Thai or English."
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "description": "Optional hint for snippet count. The stub still returns one object."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One grounded snippet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "Snippet body to show the user."
+                    },
+                    "score": {
+                      "type": "number",
+                      "description": "Relevance score between 0 and 1."
+                    },
+                    "source_document": {
+                      "type": "string",
+                      "description": "Document or stub identifier."
+                    },
+                    "rag_source": {
+                      "type": "string",
+                      "description": "Always mcp for this connector."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

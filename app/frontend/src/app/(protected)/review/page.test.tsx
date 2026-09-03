@@ -143,4 +143,117 @@ describe("StandaloneReviewPage", () => {
     );
     expect(apiClient.get).toHaveBeenCalledWith("/review/job-restore");
   });
+
+  it("restores an extract-only job, then fails confirm with a comparison row", async () => {
+    sessionStorage.setItem("tor-standalone-review-job", "job-extract");
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: { id: "job-extract", extracted_text: "ร่างสกัด", status: "extracted" },
+      },
+    } as never);
+    vi.mocked(extractCompareFiles).mockRejectedValue({
+      response: { data: { error: { message: "ตรวจสอบไม่สำเร็จ" } } },
+    });
+    render(<StandaloneReviewPage />);
+    expect(await screen.findByTestId("review-extract-preview")).toHaveTextContent("ร่างสกัด");
+    fireEvent.click(screen.getByTestId("review-confirm-run"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ตรวจสอบไม่สำเร็จ");
+  });
+
+  it("shows a passing score, assessment, and optional compare project controls", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "cmp-1" });
+    vi.mocked(extractReviewFile).mockResolvedValue({
+      id: "job-pass",
+      extracted_text: "",
+    });
+    vi.mocked(extractCompareFiles).mockResolvedValue([
+      { id: "c1", filename: "คู่.docx", extracted_text: "คู่เทียบ" },
+    ]);
+    vi.mocked(compareExtractJobs).mockResolvedValue({
+      comparisons: [{ left: "หลัก", right: "คู่", jaccard: 0.8 }],
+    });
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          quality_score: 88,
+          overall_assessment: "ผ่านเกณฑ์เบื้องต้น",
+          findings: [],
+        },
+      },
+    } as never);
+    render(<StandaloneReviewPage />);
+    fireEvent.click(screen.getByRole("button", { name: "+ เพิ่มโครงการเปรียบเทียบ" }));
+    fireEvent.change(screen.getByPlaceholderText("ชื่อโครงการเปรียบเทียบ"), {
+      target: { value: "โครงการคู่" },
+    });
+    fireEvent.click(screen.getAllByTestId("review-upload")[1]);
+    expect(screen.getByText("tor.txt")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ลบ #1" }));
+    fireEvent.click(screen.getAllByTestId("review-upload")[0]);
+    fireEvent.click(screen.getByTestId("review-extract"));
+    expect(await screen.findByTestId("review-extract-preview")).toHaveTextContent(
+      "(ไม่มีข้อความ)"
+    );
+    fireEvent.click(screen.getByTestId("review-confirm-run"));
+    expect(await screen.findByTestId("review-score")).toHaveTextContent(
+      "คะแนนความพร้อม 88/100"
+    );
+    expect(screen.getByTestId("review-assessment")).toHaveTextContent("ผ่านเกณฑ์เบื้องต้น");
+    expect(screen.getByText("เทียบเคียง หลัก กับ คู่")).toBeInTheDocument();
+    expect(screen.getByText("ตรวจเสร็จ — ผ่านเกณฑ์เบื้องต้น (88/100)")).toBeInTheDocument();
+  });
+
+  it("restores findings from a completed job and ignores a late response after unmount", async () => {
+    sessionStorage.setItem("tor-standalone-review-job", "job-findings");
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          id: "job-findings",
+          quality_score: 55,
+          extracted_text: "ร่างพร้อมผล",
+          findings: [null, { message: "วงเงินไม่ตรง", severity: "warning", rule: "budget", section: "s6" }],
+          status: "completed",
+        },
+      },
+    } as never);
+    render(<StandaloneReviewPage />);
+    expect(await screen.findByTestId("review-score")).toHaveTextContent("คะแนนความพร้อม 55/100");
+    expect(screen.getByTestId("review-legal-findings")).toHaveTextContent("วงเงินไม่ตรง");
+
+    let resolveGet: ((value: unknown) => void) | undefined;
+    vi.mocked(apiClient.get).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGet = resolve;
+        })
+    );
+    sessionStorage.setItem("tor-standalone-review-job", "job-late");
+    const { unmount } = render(<StandaloneReviewPage />);
+    unmount();
+    resolveGet?.({
+      data: { ok: true, data: { id: "job-late", extracted_text: "ช้า", status: "extracted" } },
+    });
+  });
+
+  it("shows a low Jaccard comparison as a warning", async () => {
+    vi.mocked(extractReviewFile).mockResolvedValue({
+      id: "job-jac",
+      extracted_text: "ร่าง",
+    });
+    vi.mocked(extractCompareFiles).mockResolvedValue([]);
+    vi.mocked(compareExtractJobs).mockResolvedValue({
+      comparisons: [{ left: "ก", right: "ข", jaccard: 0.1 }],
+    });
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: { ok: true, data: { quality_score: 40, findings: [] } },
+    } as never);
+    render(<StandaloneReviewPage />);
+    fireEvent.click(screen.getAllByTestId("review-upload")[0]);
+    fireEvent.click(screen.getByTestId("review-extract"));
+    fireEvent.click(await screen.findByTestId("review-confirm-run"));
+    expect(await screen.findByText("เทียบเคียง ก กับ ข")).toBeInTheDocument();
+  });
 });

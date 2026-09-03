@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.rag.hybrid import hybrid_retrieve
+from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.rag.kb_qa import draft_rag_top_k
 from app.rag.retrieval import RetrievedChunk
 
@@ -30,10 +30,12 @@ async def collect_law_review_chunks() -> list[RetrievedChunk]:
     out: list[RetrievedChunk] = []
     for query in LAW_REVIEW_QUERIES:
         try:
-            result, _, _ = await hybrid_retrieve(
-                query,
-                search_scope="global",
-                top_k=per_query,
+            result, _, _, _ = unpack_hybrid(
+                await hybrid_retrieve(
+                    query,
+                    search_scope="global",
+                    top_k=per_query,
+                )
             )
         except Exception:
             continue

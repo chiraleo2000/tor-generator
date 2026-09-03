@@ -108,4 +108,23 @@ describe("auth-store", () => {
     );
     expect(useAuthStore.getState().isLoading).toBe(false);
   });
+
+  it("logout posts then clears credentials", () => {
+    vi.mocked(apiClient.post).mockRejectedValue(new Error("offline"));
+    const assign = vi.fn();
+    vi.stubGlobal("window", {
+      ...window,
+      location: { ...window.location, assign },
+    });
+    useAuthStore.setState({
+      token: "jwt",
+      isAuthenticated: true,
+      isLoading: false,
+      user: null,
+    });
+    useAuthStore.getState().logout();
+    expect(useAuthStore.getState().token).toBeNull();
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(assign).toHaveBeenCalledWith("/login");
+  });
 });

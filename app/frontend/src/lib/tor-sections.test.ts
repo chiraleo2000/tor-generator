@@ -6,7 +6,10 @@ import {
   SCOPE_SUBSECTIONS,
   TOR_SECTION_LABELS,
   TOR_SECTION_ORDER,
+  isSectionFilled,
+  labeledSectionBlocks,
   parseSectionDraft,
+  previewSectionDraft,
   scopeSubsectionTitle,
   serializeSectionDraft,
 } from "./tor-sections";
@@ -61,5 +64,26 @@ describe("canonical TOR sections", () => {
   it("ignores stale As-Is titles from older payloads", () => {
     expect(scopeSubsectionTitle("s4.2", "ระบบงานปัจจุบัน (As-Is)")).toBe("ระบบงานปัจจุบัน");
     expect(scopeSubsectionTitle("s4.2")).not.toMatch(/As-Is/);
+  });
+
+  it("fills from paragraphs, previews, and labeled blocks", () => {
+    const paras = parseSectionDraft("s7", "ย่อหน้าหนึ่ง\n\nย่อหน้าสองยาว");
+    expect(paras.location).toContain("ย่อหน้าหนึ่ง");
+    expect(isSectionFilled({ filled: true })).toBe(true);
+    expect(isSectionFilled({ filled: false, subs: [{ filled: true }] })).toBe(true);
+    expect(isSectionFilled({ filled: false, subs: [] })).toBe(false);
+    expect(previewSectionDraft("s7", "สถานที่กรุงเทพ")).toContain("สถานที่กรุงเทพ");
+    expect(labeledSectionBlocks("s7", "สถานที่กรุงเทพ")[0].text).toContain("สถานที่กรุงเทพ");
+    expect(labeledSectionBlocks("s99", "อิสระ")).toEqual([{ label: "", text: "อิสระ" }]);
+    expect(labeledSectionBlocks("s99", "")).toEqual([]);
+    expect(serializeSectionDraft({ body: "  ร่าง  " })).toBe("ร่าง");
+    const hashed = parseSectionDraft(
+      "s1",
+      "# history\nระบบเดิม\n# ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม\nซ้ำ"
+    );
+    expect(hashed.history).toBeTruthy();
+    expect(parseSectionDraft("s1", "{not-json")).toEqual({ history: "{not-json" });
+    expect(parseSectionDraft("s1", "")).toEqual({});
+    expect(scopeSubsectionTitle("s4.99", "หัวข้ออื่น")).toBe("หัวข้ออื่น");
   });
 });

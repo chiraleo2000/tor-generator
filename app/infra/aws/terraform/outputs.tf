@@ -47,6 +47,7 @@ output "secret_arns" {
     rds   = aws_secretsmanager_secret.rds.arn
     redis = aws_secretsmanager_secret.redis.arn
     jwt   = aws_secretsmanager_secret.jwt.arn
+    mcp   = aws_secretsmanager_secret.mcp.arn
   }
 }
 

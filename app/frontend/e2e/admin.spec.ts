@@ -43,37 +43,55 @@ test.describe("Admin pages", () => {
     await expect(
       page.getByTestId("admin-ai-settings-page").getByRole("heading", { name: "การตั้งค่า AI" })
     ).toBeVisible();
-    await expect(page.locator("#ai-mode")).toHaveValue("on_prem");
-    await expect(page.locator("#chat-model")).toHaveValue("google/gemma-4-e4b");
-    await expect(page.locator("#embed-model")).toHaveValue(
-      "text-embedding-embeddinggemma-300m"
-    );
     await expect(page.locator("#vector-store")).toHaveValue("pgvector");
-    await saveEvidence(page, "09a-admin-ai-local");
+    await expect(page.locator("#custom-rag-url")).toBeVisible();
+    await expect(page.getByText("เปิดใช้ Custom RAG")).toBeVisible();
+    await expect(page.locator("#rag-sources")).toBeVisible();
 
-    await page.locator("#ai-mode").selectOption("cloud");
-    await expect(page.locator("#ai-llm")).toHaveValue("lm_studio");
-    await expect(page.locator("#ai-embed")).toHaveValue("local");
+    const mode = await page.locator("#ai-mode").inputValue();
+    if (mode === "on_prem") {
+      await expect(page.locator("#chat-model")).toBeVisible();
+      await expect(page.locator("#embed-model")).toBeVisible();
+      await saveEvidence(page, "09a-admin-ai-local");
+      await page.locator("#ai-mode").selectOption("cloud");
+    } else {
+      await expect(page.locator("#ai-mode")).toHaveValue("cloud");
+      await expect(page.locator("#ai-llm option[value='bedrock']")).toHaveCount(1);
+      if ((await page.locator("#ai-llm").inputValue()) === "bedrock") {
+        await expect(page.locator("#bedrock-model")).toBeVisible();
+      }
+      await saveEvidence(page, "09a-admin-ai-local");
+    }
+
     await expect(page.locator("#ai-llm option[value='claude']")).toHaveCount(1);
     await expect(page.locator("#ai-llm option[value='openai']")).toHaveCount(1);
     await expect(page.locator("#ai-llm option[value='gemini']")).toHaveCount(1);
-    await expect(page.locator("#ai-llm option[value='lm_studio']")).toHaveCount(1);
+    await expect(page.locator("#ai-llm option[value='bedrock']")).toHaveCount(1);
 
     await page.locator("#ai-llm").selectOption("claude");
     await expect(page.locator("#anthropic-key")).toBeVisible();
-    await expect(page.locator("#embed-model")).toBeVisible();
     await saveEvidence(page, "09b-admin-ai-cloud");
 
-    await page.locator("#ai-llm").selectOption("lm_studio");
-    await page.locator("#ai-mode").selectOption("on_prem");
-    await expect(page.locator("#ai-llm")).toHaveValue("lm_studio");
-    await expect(page.locator("#chat-model")).toBeVisible();
-
-    await page.getByTestId("ai-settings-test").click();
-    await expect(page.getByTestId("ai-settings-status")).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(page.getByTestId("ai-settings-status")).toContainText(/เชื่อมต่อ/);
-    await saveEvidence(page, "09-admin-ai-lm-studio");
+    if (mode === "on_prem") {
+      await page.locator("#ai-llm").selectOption("lm_studio");
+      await page.locator("#ai-mode").selectOption("on_prem");
+      await expect(page.locator("#ai-llm")).toHaveValue("lm_studio");
+      await expect(page.locator("#chat-model")).toBeVisible();
+      await page.getByTestId("ai-settings-test").click();
+      await expect(page.getByTestId("ai-settings-status")).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(page.getByTestId("ai-settings-status")).toContainText(/เชื่อมต่อ/);
+      await saveEvidence(page, "09-admin-ai-lm-studio");
+    } else {
+      await page.locator("#ai-llm").selectOption("bedrock");
+      await expect(page.locator("#bedrock-model")).toBeVisible();
+      await page.getByTestId("ai-settings-test").click();
+      await expect(page.getByTestId("ai-settings-status")).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(page.getByTestId("ai-settings-status")).toContainText(/เชื่อมต่อ/);
+      await saveEvidence(page, "09-admin-ai-lm-studio");
+    }
   });
 });

@@ -83,4 +83,27 @@ describe("useAutoSave", () => {
     expect(restoreBackup("p1", 2)).toEqual({ description: "ค้างไว้" });
     expect(useWizardStore.getState().autoSaveError).toContain("บันทึกไม่สำเร็จ");
   });
+
+  it("restores a backup on mount and skips save without a project", async () => {
+    vi.mocked(apiClient.put).mockResolvedValue({ data: { ok: true } });
+    localStorage.setItem(
+      getBackupKey("p-restore", 2),
+      JSON.stringify({ description: "จากเครื่อง" })
+    );
+    useWizardStore.setState({
+      projectId: "p-restore",
+      currentStep: 2,
+      formData: {},
+    });
+    const { result } = renderHook(() => useAutoSave());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(useWizardStore.getState().formData[2]).toEqual({ description: "จากเครื่อง" });
+    useWizardStore.setState({ projectId: null });
+    act(() => {
+      result.current.triggerAutoSave(2, { description: "noop" });
+      result.current.retrySave();
+    });
+  });
 });

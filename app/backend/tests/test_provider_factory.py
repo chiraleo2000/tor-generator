@@ -612,3 +612,63 @@ class TestConstants:
         """Factory should recognize pgvector and qdrant vector store providers."""
         assert "pgvector" in VALID_VECTOR_STORE_PROVIDERS
         assert "qdrant" in VALID_VECTOR_STORE_PROVIDERS
+
+
+class TestAzureAndBedrockFactory:
+    def test_azure_llm_requires_endpoint(self):
+        settings = make_settings(
+            deployment_mode="cloud",
+            llm_provider="azure_foundry",
+            embedding_provider="local",
+            azure_foundry_api_key="key",
+            azure_foundry_endpoint="",
+            azure_foundry_deployment="gpt",
+        )
+        with pytest.raises(ValueError, match="AZURE_FOUNDRY_ENDPOINT"):
+            ProviderFactory(settings=settings)
+
+    def test_azure_embedding_requires_endpoint(self):
+        settings = make_settings(
+            deployment_mode="cloud",
+            llm_provider="lm_studio",
+            embedding_provider="azure_foundry",
+            azure_foundry_api_key="key",
+            azure_foundry_endpoint="",
+        )
+        with pytest.raises(ValueError, match="AZURE_FOUNDRY_ENDPOINT"):
+            ProviderFactory(settings=settings)
+
+    def test_creates_azure_and_bedrock_clients(self):
+        azure_settings = make_settings(
+            deployment_mode="cloud",
+            llm_provider="azure_foundry",
+            embedding_provider="azure_foundry",
+            azure_foundry_api_key="key",
+            azure_foundry_endpoint="https://e.openai.azure.com",
+            azure_foundry_deployment="gpt",
+            azure_foundry_embedding_deployment="embed",
+        )
+        with patch("app.providers.llm.azure_foundry_provider.AsyncAzureOpenAI"), patch(
+            "openai.AsyncAzureOpenAI"
+        ):
+            factory = ProviderFactory(settings=azure_settings)
+            llm = factory.get_llm("chat")
+            embedding = factory.get_embedding()
+        assert llm.__class__.__name__ == "AzureFoundryLLMProvider"
+        assert embedding is not None
+
+        bedrock_settings = make_settings(
+            deployment_mode="cloud",
+            llm_provider="bedrock",
+            embedding_provider="bedrock",
+            bedrock_region="ap-southeast-1",
+            bedrock_model_id="model",
+            bedrock_embedding_model_id="titan",
+        )
+        client = MagicMock()
+        with patch(
+            "app.providers.bedrock_client.bedrock_runtime_client", return_value=client
+        ):
+            factory = ProviderFactory(settings=bedrock_settings)
+            assert factory.get_llm("chat").__class__.__name__ == "BedrockLLMProvider"
+            assert factory.get_embedding().__class__.__name__ == "BedrockEmbeddingProvider"

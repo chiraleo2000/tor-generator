@@ -25,14 +25,16 @@ class BedrockLLMProvider(LLMProvider):
         aws_access_key_id: str = "",
         aws_secret_access_key: str = "",
         timeout: float = 60.0,
+        aws_bearer_token_bedrock: str = "",
     ) -> None:
-        import boto3
+        from app.providers.bedrock_client import bedrock_runtime_client
 
-        kwargs: dict[str, Any] = {"region_name": region}
-        if aws_access_key_id and aws_secret_access_key:
-            kwargs["aws_access_key_id"] = aws_access_key_id
-            kwargs["aws_secret_access_key"] = aws_secret_access_key
-        self._client = boto3.client("bedrock-runtime", **kwargs)
+        self._client = bedrock_runtime_client(
+            region=region,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            bearer_token=aws_bearer_token_bedrock,
+        )
         self._model_id = model_id
         self._timeout = timeout
 

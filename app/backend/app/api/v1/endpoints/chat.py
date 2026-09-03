@@ -29,6 +29,7 @@ from app.models.chat_room import ChatRoom
 from app.models.user import User
 from app.providers.factory import ProviderFactory
 from app.rag.document_pipeline import ingest_file_bytes
+from app.rag.hybrid import unpack_hybrid
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.rag.kb_qa import (
     CHAT_MAX_TOKENS,
@@ -391,6 +392,7 @@ async def _run_chat_llm(
     room_id: uuid.UUID,
     citations: Any,
     degraded: bool,
+    mcp_degraded: bool = False,
 ) -> None:
     parts_local: list[str] = []
     try:
@@ -413,6 +415,7 @@ async def _run_chat_llm(
                     "content": full_text,
                     "citations": citations,
                     "graph_degraded": degraded,
+                    "mcp_degraded": mcp_degraded,
                 },
             )
         )
@@ -440,11 +443,13 @@ async def _iter_chat_sse(
 ) -> AsyncIterator[str]:
     import asyncio
 
-    result, citations, degraded = await hybrid_retrieve(
-        question,
-        user_id=user.id,
-        search_scope=scope,
-        top_k=top_k,
+    result, citations, degraded, mcp_degraded = unpack_hybrid(
+        await hybrid_retrieve(
+            question,
+            user_id=user.id,
+            search_scope=scope,
+            top_k=top_k,
+        )
     )
     messages = _room_llm_messages(
         is_kb=is_kb,
@@ -465,6 +470,7 @@ async def _iter_chat_sse(
             room_id=room.id,
             citations=citations,
             degraded=degraded,
+            mcp_degraded=mcp_degraded,
         )
     )
     try:

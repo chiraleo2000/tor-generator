@@ -380,6 +380,53 @@ class TestRunReview:
         assert "การตรวจสอบล้มเหลว" in body["error"]["message"]
         assert "engine boom" in str(body["error"].get("details", ""))
 
+    def test_review_suggestion_failure_still_returns_engine_result(
+        self, client, mock_officer_user
+    ):
+        project = _make_project()
+        section = _make_section("s1", "ความเป็นมาของโครงการ")
+        mock_db = AsyncMock()
+        project_result = MagicMock()
+        project_result.scalar_one_or_none.return_value = project
+        sections_result = MagicMock()
+        sections_result.scalars.return_value.all.return_value = [section]
+        mock_db.execute = AsyncMock(side_effect=[project_result, sections_result])
+        mock_db.flush = AsyncMock()
+        mock_db.commit = AsyncMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+
+        from app.rule_engine.engine import ValidationResult
+
+        mock_engine = MagicMock()
+        mock_engine.validate.return_value = ValidationResult(
+            quality_score=70,
+            categories=[],
+            findings=[],
+            is_valid=True,
+        )
+
+        async def boom(*_args, **_kwargs):
+            raise RuntimeError("review agent down")
+
+        with patch(
+            "app.orchestrator.graph._create_rule_engine",
+            return_value=mock_engine,
+        ), patch(
+            "app.api.v1.endpoints.review._generate_suggestions",
+            new=boom,
+        ), patch(
+            "app.api.v1.endpoints.review._law_review_context",
+            new=AsyncMock(return_value=""),
+        ):
+            response = client.post(f"/api/v1/projects/{PROJECT_ID}/review")
+        assert response.status_code == 200
+        assert response.json()["data"]["quality_score"] == 70
+        assert response.json()["data"]["suggestions_generated"] == 0
+
 
 # ---------------------------------------------------------------------------
 # GET /projects/{id}/suggestions
@@ -724,3 +771,335 @@ class TestValidate:
         data = response.json()
         assert data["ok"] is True
         assert data["data"]["quality_score"] == 70
+
+
+def test_review_requirements_get_upload_delete(client, mock_officer_user):
+    project = _make_project()
+    project.custom_requirements_text = None
+    project.owner_id = mock_officer_user.id
+    mock_db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=result)
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+    empty = client.get(f"/api/v1/projects/{PROJECT_ID}/review/requirements")
+    assert empty.status_code == 200
+    assert empty.json()["data"]["has_requirements"] is False
+
+    from app.rag.extraction import ExtractionResult
+
+    with patch(
+        "app.rag.extraction.extract_text",
+        return_value=ExtractionResult(
+            text="ข้อกำหนดเฉพาะของโครงการนี้ต้องมีอย่างน้อย",
+            page_count=1,
+            method="direct",
+            warnings=[],
+        ),
+    ):
+        uploaded = client.post(
+            f"/api/v1/projects/{PROJECT_ID}/review/requirements",
+            files={"file": ("req.txt", "ข้อกำหนดเฉพาะของโครงการนี้ต้องมีอย่างน้อย".encode("utf-8"), "text/plain")},
+        )
+    assert uploaded.status_code == 200
+    project.custom_requirements_text = "ข้อกำหนดเฉพาะของโครงการนี้ต้องมีอย่างน้อย"
+    filled = client.get(f"/api/v1/projects/{PROJECT_ID}/review/requirements")
+    assert filled.json()["data"]["has_requirements"] is True
+    cleared = client.delete(f"/api/v1/projects/{PROJECT_ID}/review/requirements")
+    assert cleared.status_code == 200
+    assert project.custom_requirements_text is None
+
+    too_short = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/review/requirements",
+        files={"file": ("req.txt", b"", "text/plain")},
+    )
+    assert too_short.status_code == 400
+
+
+def test_slot_map_snippets_skips_non_dict():
+    from app.api.v1.endpoints.review import _slot_map_snippets
+
+    assert _slot_map_snippets({"slot_map": "nope"}) == []
+    parts = _slot_map_snippets(
+        {
+            "slot_map": {
+                "_meta": {"content": "ignore"},
+                "s1": {"content": "ความเป็นมา"},
+                "bad": "x",
+            }
+        }
+    )
+    assert parts == ["s1: ความเป็นมา"]
+
+
+@pytest.mark.asyncio
+async def test_law_review_context_swallows_errors():
+    from app.api.v1.endpoints.review import _law_review_context
+
+    with patch(
+        "app.rag.law_review.law_review_context",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("rag down"),
+    ):
+        assert await _law_review_context() == ""
+
+
+class TestReviewComment:
+    def test_comment_project_not_found(self, client, mock_officer_user):
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        response = client.post(
+            f"/api/v1/projects/{PROJECT_ID}/review/comment",
+            json={"content": "หมวด 1 ครบไหม"},
+        )
+        assert response.status_code == 404
+
+    def test_comment_success(self, client, mock_officer_user):
+        from contextlib import asynccontextmanager
+
+        project = _make_project()
+        project.analysis_json = {
+            "review_findings": [{"message": "ขาดอ้างอิงกฎหมาย"}]
+        }
+        section = _make_section("s1", "ความเป็นมา")
+        mock_db = AsyncMock()
+        project_result = MagicMock()
+        project_result.scalar_one_or_none.return_value = project
+        sections_result = MagicMock()
+        sections_result.scalars.return_value.all.return_value = [section]
+        mock_db.execute = AsyncMock(side_effect=[project_result, sections_result])
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+
+        @asynccontextmanager
+        async def admit_ok(*_args, **_kwargs):
+            yield "rid"
+
+        with (
+            patch("app.api.v1.endpoints.review.admit", admit_ok),
+            patch("app.providers.factory.ProviderFactory") as factory,
+            patch("app.orchestrator.agents.review_agent.ReviewAgent") as agent_cls,
+            patch(
+                "app.api.v1.endpoints.review._law_review_context",
+                new=AsyncMock(return_value="พ.ร.บ."),
+            ),
+        ):
+            factory.return_value.get_llm.return_value = MagicMock()
+            agent_cls.return_value.comment_on_draft = AsyncMock(
+                return_value="ควรอ้างอิงมาตรา 8"
+            )
+            response = client.post(
+                f"/api/v1/projects/{PROJECT_ID}/review/comment",
+                json={"content": "หมวด 1 ครบไหม"},
+            )
+        assert response.status_code == 200
+        assert "มาตรา 8" in response.json()["data"]["reply"]
+
+
+def test_suggestions_include_dismissed_and_valid_category(client, mock_officer_user):
+    project = _make_project(quality_score=70)
+    suggestion = _make_suggestion(status="dismissed", category="clarity")
+    mock_db = AsyncMock()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    suggestions_result = MagicMock()
+    suggestions_result.scalars.return_value.all.return_value = [suggestion]
+    mock_db.execute = AsyncMock(side_effect=[project_result, suggestions_result])
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+    response = client.get(
+        f"/api/v1/projects/{PROJECT_ID}/suggestions",
+        params={"include_dismissed": True, "category": "clarity"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["total"] == 1
+
+
+def test_update_suggestion_accept_replaces_when_text_missing(
+    client, mock_officer_user
+):
+    project = _make_project()
+    suggestion = _make_suggestion(status="pending")
+    suggestion.current_text = "ไม่มีในเอกสาร"
+    suggestion.suggested_text = "ข้อความใหม่ทั้งก้อน"
+    section = _make_section("s3", "เนื้อหาอื่นที่ไม่ตรง")
+    mock_db = AsyncMock()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    suggestion_result = MagicMock()
+    suggestion_result.scalar_one_or_none.return_value = suggestion
+    section_result = MagicMock()
+    section_result.scalar_one_or_none.return_value = section
+    mock_db.execute = AsyncMock(
+        side_effect=[project_result, suggestion_result, section_result]
+    )
+    mock_db.flush = AsyncMock()
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+    response = client.put(
+        f"/api/v1/projects/{PROJECT_ID}/suggestions/{SUGGESTION_ID}",
+        json={"status": "accepted"},
+    )
+    assert response.status_code == 200
+    assert section.content == "ข้อความใหม่ทั้งก้อน"
+
+
+def test_update_suggestion_accept_without_section(client, mock_officer_user):
+    project = _make_project()
+    suggestion = _make_suggestion(status="pending")
+    mock_db = AsyncMock()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    suggestion_result = MagicMock()
+    suggestion_result.scalar_one_or_none.return_value = suggestion
+    section_result = MagicMock()
+    section_result.scalar_one_or_none.return_value = None
+    mock_db.execute = AsyncMock(
+        side_effect=[project_result, suggestion_result, section_result]
+    )
+    mock_db.flush = AsyncMock()
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+    response = client.put(
+        f"/api/v1/projects/{PROJECT_ID}/suggestions/{SUGGESTION_ID}",
+        json={"status": "accepted"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "accepted"
+
+
+def test_validate_rule_engine_failure(client, mock_officer_user):
+    project = _make_project()
+    section = _make_section("s1", "เนื้อหา")
+    mock_db = AsyncMock()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    sections_result = MagicMock()
+    sections_result.scalars.return_value.all.return_value = [section]
+    mock_db.execute = AsyncMock(side_effect=[project_result, sections_result])
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+    with patch(
+        "app.orchestrator.graph._create_rule_engine",
+        side_effect=RuntimeError("engine boom"),
+    ):
+        response = client.post(f"/api/v1/projects/{PROJECT_ID}/validate")
+    assert response.status_code == 400
+    assert "การตรวจสอบล้มเหลว" in response.json()["error"]["message"]
+
+
+def test_validate_filters_findings_to_section(client, mock_officer_user):
+    from app.rule_engine.engine import Finding, Severity, ValidationResult
+
+    project = _make_project()
+    section = _make_section("s1", "เนื้อหา")
+    mock_db = AsyncMock()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    sections_result = MagicMock()
+    sections_result.scalars.return_value.all.return_value = [section]
+    mock_db.execute = AsyncMock(side_effect=[project_result, sections_result])
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+    mock_engine = MagicMock()
+    mock_engine.validate.return_value = ValidationResult(
+        quality_score=60,
+        categories=[],
+        findings=[
+            Finding(Severity.WARNING, "R1", "s1", "ปัญหาหมวด 1", None),
+            Finding(Severity.WARNING, "R2", "s2", "ปัญหาหมวด 2", None),
+        ],
+        is_valid=False,
+    )
+    with patch(
+        "app.orchestrator.graph._create_rule_engine",
+        return_value=mock_engine,
+    ), patch(
+        "app.api.v1.endpoints.review._law_review_context",
+        new=AsyncMock(return_value=""),
+    ):
+        response = client.post(
+            f"/api/v1/projects/{PROJECT_ID}/validate",
+            json={"section_key": "s1"},
+        )
+    assert response.status_code == 200
+    findings = response.json()["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["affected_section"] == "s1"
+
+
+def test_upload_requirements_extraction_errors(client, mock_officer_user):
+    from app.rag.extraction import ExtractionResult
+
+    project = _make_project()
+    project.owner_id = mock_officer_user.id
+    mock_db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=result)
+
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
+
+    huge = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/review/requirements",
+        files={"file": ("big.txt", b"x" * (20 * 1024 * 1024 + 1), "text/plain")},
+    )
+    assert huge.status_code == 400
+
+    with patch(
+        "app.rag.extraction.extract_text",
+        side_effect=RuntimeError("cannot parse"),
+    ):
+        failed = client.post(
+            f"/api/v1/projects/{PROJECT_ID}/review/requirements",
+            files={"file": ("req.txt", "เนื้อหาพอ".encode("utf-8"), "text/plain")},
+        )
+    assert failed.status_code == 400
+    assert "แกะข้อความ" in failed.json()["error"]["message"]
+
+    with patch(
+        "app.rag.extraction.extract_text",
+        return_value=ExtractionResult(
+            text="สั้น",
+            page_count=1,
+            method="direct",
+            warnings=[],
+        ),
+    ):
+        short = client.post(
+            f"/api/v1/projects/{PROJECT_ID}/review/requirements",
+            files={"file": ("req.txt", b"hello-file", "text/plain")},
+        )
+    assert short.status_code == 400

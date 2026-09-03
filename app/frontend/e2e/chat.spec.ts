@@ -95,8 +95,64 @@ test.describe("Chat Q&A and draft intake", () => {
     await waitForLiveAssistant(page, 600_000);
     await saveEvidence(page, "13c-chat-attach-ask");
     const citation = page.getByTestId("chat-citation");
-    if (await citation.count()) {
+    if ((await citation.count()) > 0) {
       await expect(citation.first()).toBeVisible();
     }
+  });
+
+  test("chat shows citation chips from merged RAG sources", async ({ page }) => {
+    test.setTimeout(720_000);
+    await login(page);
+    await page.getByTestId("nav-chat").click();
+    await expect(page.getByTestId("chat-new-room")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("chat-new-room").click();
+    await expect(page.getByTestId("chat-input")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("chat-scope-both").click();
+    await typeLikeUser(
+      page.getByTestId("chat-input"),
+      "วิธีเฉพาะเจาะจงใช้งบประมาณวงเงินเท่าใด ตามระเบียบพัสดุ"
+    );
+    await pauseLikeUser(page, 400);
+    await page.getByTestId("chat-send").click();
+    await waitForLiveAssistant(page, 600_000);
+    await expect(page.getByTestId("chat-msg-assistant").last().locator("p").first()).toBeVisible();
+    await expect.poll(
+      async () =>
+        (await page.getByTestId("chat-msg-assistant").last().locator("p").first().innerText())
+          .length,
+      { timeout: 120_000 }
+    ).toBeGreaterThan(20);
+    const chips = page.getByTestId("chat-citation");
+    await expect(chips.first()).toBeVisible({ timeout: 30_000 });
+    const texts = await chips.allInnerTexts();
+    const joined = texts.join(" | ");
+    expect(joined).toMatch(/mcp:/i);
+    expect(joined).toMatch(/custom_rag:/i);
+    await expect(page.getByTestId("mcp-unavailable")).toHaveCount(0);
+    await saveEvidence(page, "mcp-rag-chat-citations");
+  });
+
+  test("MCP fail-open banner when retrieve stub is down", async ({ page }) => {
+    test.skip(
+      process.env.E2E_MCP_DOWN !== "1",
+      "Point MCP at a dead URL (or stop :8765) and set E2E_MCP_DOWN=1"
+    );
+    test.setTimeout(720_000);
+    await login(page);
+    await page.getByTestId("nav-chat").click();
+    await expect(page.getByTestId("chat-new-room")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("chat-new-room").click();
+    await expect(page.getByTestId("chat-input")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("chat-scope-both").click();
+    await typeLikeUser(
+      page.getByTestId("chat-input"),
+      "วิธีเฉพาะเจาะจงใช้งบประมาณวงเงินเท่าใด ตามระเบียบพัสดุ"
+    );
+    await pauseLikeUser(page, 400);
+    await page.getByTestId("chat-send").click();
+    await waitForLiveAssistant(page, 600_000);
+    await expect(page.getByTestId("mcp-unavailable")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("mcp-unavailable")).toContainText("แหล่ง MCP ไม่พร้อม");
+    await saveEvidence(page, "_docker-mcp-fail-open");
   });
 });

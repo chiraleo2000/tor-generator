@@ -65,4 +65,19 @@ describe("toWizardApiPayload", () => {
     expect(payload.penalty_rate).toBe(0.1);
     expect(payload.warranty).toBe("1 ปี");
   });
+
+  it("returns the source object for unknown steps and empty step-1 aliases", () => {
+    expect(toWizardApiPayload(9, { extra: 1 })).toEqual({ extra: 1 });
+    expect(toWizardApiPayload(1, {})).toMatchObject({
+      location: "",
+      duration_days: null,
+    });
+    const step4 = toWizardApiPayload(4, {
+      scope_items: Array.from({ length: 20 }, (_, index) => ({
+        title: `t${index}`,
+        details: "d",
+      })),
+    });
+    expect(step4["s4.20"]).toBe("t19\nd");
+  });
 });

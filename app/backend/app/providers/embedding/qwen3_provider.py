@@ -12,12 +12,20 @@ from openai import AsyncOpenAI
 
 from app.llm_tokens import truncate_for_embedding
 from app.providers.base import EmbeddingProvider
-from app.providers.constants import DEFAULT_EMBEDDING_MODEL
+from app.providers.constants import DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
 
 logger = logging.getLogger(__name__)
 
 # Local servers may have lower batch limits; default conservatively
 _DEFAULT_MAX_BATCH_SIZE = 512
+
+
+def _fit_dimensions(vector: list[float], size: int = EMBEDDING_DIMENSIONS) -> list[float]:
+    if len(vector) == size:
+        return vector
+    if len(vector) > size:
+        return vector[:size]
+    return vector + [0.0] * (size - len(vector))
 
 
 class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
@@ -83,7 +91,7 @@ class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
             model=self.model,
             input=truncate_for_embedding(text),
         )
-        return response.data[0].embedding
+        return _fit_dimensions(list(response.data[0].embedding))
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple document texts, chunking into batches if needed.
@@ -121,6 +129,8 @@ class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
             )
             # Ensure ordering matches input
             batch_embeddings = sorted(response.data, key=lambda x: x.index)
-            all_embeddings.extend([item.embedding for item in batch_embeddings])
+            all_embeddings.extend(
+                [_fit_dimensions(list(item.embedding)) for item in batch_embeddings]
+            )
 
         return all_embeddings

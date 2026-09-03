@@ -67,6 +67,8 @@ async def test_retrieve_mcp_chunks_fail_open_on_http_error() -> None:
     settings.mcp_rag_servers_json = ""
     settings.mcp_rag_config_path = ""
     settings.mcp_rag_timeout_seconds = 5.0
+    settings.mcp_rag_auth_value = ""
+    settings.mcp_rag_auth_header = "Authorization"
     yaml_text = """
 servers:
   - id: down
@@ -116,3 +118,195 @@ def test_coerce_page_number_rejects_bool_and_junk() -> None:
     assert coerce_page_number("x") is None
     assert coerce_page_number("3") == 3
     assert coerce_page_number(None) is None
+
+
+@pytest.mark.asyncio
+async def test_retrieve_mcp_sends_auth_header_when_configured() -> None:
+    from app.rag.mcp_rag import _call_server
+
+    settings = MagicMock()
+    settings.mcp_rag_auth_value = "secret-token"
+    settings.mcp_rag_auth_header = "Authorization"
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {"chunks": []}
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    server = {
+        "id": "agency",
+        "url": "http://mcp.test/rag",
+        "tool": "retrieve",
+        "top_k": 2,
+        "timeout_seconds": 5,
+    }
+    with (
+        patch("app.rag.mcp_rag.get_settings", return_value=settings),
+        patch("app.rag.mcp_rag.httpx.AsyncClient", return_value=mock_client),
+    ):
+        await _call_server(
+            server, "ถาม", user_id=None, search_scope="both", default_timeout=5.0
+        )
+    headers = mock_client.post.await_args.kwargs["headers"]
+    assert headers["Authorization"] == "secret-token"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_mcp_omits_auth_header_when_blank() -> None:
+    from app.rag.mcp_rag import _call_server
+
+    settings = MagicMock()
+    settings.mcp_rag_auth_value = "   "
+    settings.mcp_rag_auth_header = "Authorization"
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {"chunks": []}
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    server = {"id": "agency", "url": "http://mcp.test/rag", "tool": "retrieve"}
+    with (
+        patch("app.rag.mcp_rag.get_settings", return_value=settings),
+        patch("app.rag.mcp_rag.httpx.AsyncClient", return_value=mock_client),
+    ):
+        await _call_server(
+            server, "ถาม", user_id=None, search_scope="both", default_timeout=5.0
+        )
+    assert mock_client.post.await_args.kwargs["headers"] is None
+
+
+@pytest.mark.asyncio
+async def test_retrieve_mcp_omits_auth_header_when_empty() -> None:
+    from app.rag.mcp_rag import _call_server
+
+    settings = MagicMock()
+    settings.mcp_rag_auth_value = ""
+    settings.mcp_rag_auth_header = "Authorization"
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {"chunks": []}
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    server = {"id": "agency", "url": "http://mcp.test/rag", "tool": "retrieve"}
+    with (
+        patch("app.rag.mcp_rag.get_settings", return_value=settings),
+        patch("app.rag.mcp_rag.httpx.AsyncClient", return_value=mock_client),
+    ):
+        await _call_server(
+            server, "ถาม", user_id=None, search_scope="both", default_timeout=5.0
+        )
+    assert mock_client.post.await_args.kwargs["headers"] is None
+
+
+@pytest.mark.asyncio
+async def test_retrieve_mcp_auth_value_not_logged(caplog: pytest.LogCaptureFixture) -> None:
+    from app.rag.mcp_rag import _call_server, retrieve_mcp_chunks_with_status
+
+    secret = "mcp-auth-secret-NEVER-LOG-9f3a"
+    caplog.set_level("DEBUG")
+
+    settings = MagicMock()
+    settings.mcp_rag_enabled = True
+    settings.mcp_rag_timeout_seconds = 1.0
+    settings.mcp_rag_auth_value = secret
+    settings.mcp_rag_auth_header = "Authorization"
+    settings.mcp_rag_servers_json = ""
+    settings.mcp_rag_config_path = ""
+
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {"chunks": []}
+    mock_ok = AsyncMock()
+    mock_ok.post = AsyncMock(return_value=response)
+    mock_ok.__aenter__ = AsyncMock(return_value=mock_ok)
+    mock_ok.__aexit__ = AsyncMock(return_value=None)
+    server = {
+        "id": "agency",
+        "url": "http://mcp.test/rag",
+        "tool": "retrieve",
+        "timeout_seconds": 1,
+        "top_k": 2,
+    }
+    with (
+        patch("app.rag.mcp_rag.get_settings", return_value=settings),
+        patch("app.rag.mcp_rag.httpx.AsyncClient", return_value=mock_ok),
+    ):
+        await _call_server(
+            server, "ถาม", user_id=None, search_scope="both", default_timeout=1.0
+        )
+
+    mock_err = AsyncMock()
+    mock_err.post = AsyncMock(side_effect=OSError("down"))
+    mock_err.__aenter__ = AsyncMock(return_value=mock_err)
+    mock_err.__aexit__ = AsyncMock(return_value=None)
+    yaml_text = """
+servers:
+  - id: down
+    enabled: true
+    transport: http
+    url: http://127.0.0.1:9/rag
+    tool: retrieve
+"""
+    with (
+        patch("app.rag.mcp_rag.get_settings", return_value=settings),
+        patch(
+            "app.rag.mcp_rag.load_mcp_servers",
+            return_value=parse_rag_sources_yaml(yaml_text),
+        ),
+        patch("app.rag.mcp_rag.httpx.AsyncClient", return_value=mock_err),
+    ):
+        await retrieve_mcp_chunks_with_status("ถาม")
+
+    blob = caplog.text
+    for record in caplog.records:
+        blob += record.getMessage()
+        if record.exc_text:
+            blob += record.exc_text
+    assert secret not in blob
+
+
+def test_load_mcp_servers_rejects_duplicate_ids() -> None:
+    settings = MagicMock(
+        mcp_rag_servers_json='{"servers":[{"id":"a"},{"id":"a"}]}',
+        mcp_rag_config_path="",
+    )
+    with patch("app.rag.mcp_rag.get_settings", return_value=settings):
+        assert load_mcp_servers() == []
+
+
+@pytest.mark.asyncio
+async def test_retrieve_mcp_with_status_marks_degraded_on_error() -> None:
+    from app.rag.mcp_rag import retrieve_mcp_chunks_with_status
+
+    settings = MagicMock()
+    settings.mcp_rag_enabled = True
+    settings.mcp_rag_timeout_seconds = 1.0
+    yaml_text = """
+servers:
+  - id: down
+    enabled: true
+    transport: http
+    url: http://127.0.0.1:9/rag
+    tool: retrieve
+"""
+    with (
+        patch("app.rag.mcp_rag.get_settings", return_value=settings),
+        patch(
+            "app.rag.mcp_rag.load_mcp_servers",
+            return_value=parse_rag_sources_yaml(yaml_text),
+        ),
+        patch("app.rag.mcp_rag.httpx.AsyncClient") as client_cls,
+    ):
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=OSError("down"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+        chunks, degraded = await retrieve_mcp_chunks_with_status("ถาม")
+    assert chunks == []
+    assert degraded is True
+

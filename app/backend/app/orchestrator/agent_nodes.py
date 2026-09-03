@@ -11,7 +11,6 @@ from app.domain.tor_sections import MANDATORY_HUMAN_REVIEW_SECTIONS, TOR_SECTION
 from app.orchestrator.agent_state import AgentWorkflowState
 from app.services.agent_intake_service import IntakeIngestionService
 from app.services.coverage import build_coverage_map, compute_readiness_score, compute_ready
-from app.services.full_draft_generator import FullDraftGenerator, mean_quality
 from app.services.gap_detector import GapDetector
 from app.services.section_mapper import SectionMapper
 from app.services.session_cache import SessionCacheService
@@ -178,6 +177,8 @@ def confirm_node(state: AgentWorkflowState) -> dict[str, Any]:
 
 
 async def draft_all_node(state: AgentWorkflowState) -> dict[str, Any]:
+    from app.services.full_draft_generator import FullDraftGenerator
+
     generator = FullDraftGenerator()
     result = await generator.generate_all(
         state.get("slot_map") or {},
@@ -199,6 +200,8 @@ async def draft_all_node(state: AgentWorkflowState) -> dict[str, Any]:
 
 
 async def validate_draft_node(state: AgentWorkflowState) -> dict[str, Any]:
+    from app.services.full_draft_generator import FullDraftGenerator, mean_quality
+
     generator = FullDraftGenerator()
     drafts = dict(state.get("section_drafts") or {})
     attempts = dict(state.get("correction_attempts") or {})

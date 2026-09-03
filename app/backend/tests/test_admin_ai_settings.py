@@ -667,10 +667,32 @@ async def test_probe_bedrock_calls_sts_off_event_loop():
         aws_secret_access_key="secret-test",
     )
     with patch(
+        "app.api.v1.endpoints.admin_ai_settings.get_settings",
+        return_value=MagicMock(aws_bearer_token_bedrock=""),
+    ), patch(
         "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity"
     ) as mock_sts:
         await _probe_bedrock(body, {})
     mock_sts.assert_called_once_with("ap-southeast-1", "AKIATEST", "secret-test")
+
+
+@pytest.mark.asyncio
+async def test_probe_bedrock_skips_sts_when_bearer_token_set():
+    body = AiSettingsTest(
+        deployment_mode="cloud",
+        llm_provider="bedrock",
+        embedding_provider="bedrock",
+    )
+    fake = MagicMock()
+    fake.aws_bearer_token_bedrock = "token"
+    with patch(
+        "app.api.v1.endpoints.admin_ai_settings.get_settings", return_value=fake
+    ):
+        with patch(
+            "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity"
+        ) as mock_sts:
+            await _probe_bedrock(body, {})
+    mock_sts.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -681,6 +703,9 @@ async def test_probe_bedrock_maps_sts_errors():
         embedding_provider="local",
     )
     with patch(
+        "app.api.v1.endpoints.admin_ai_settings.get_settings",
+        return_value=MagicMock(aws_bearer_token_bedrock=""),
+    ), patch(
         "app.api.v1.endpoints.admin_ai_settings._sts_caller_identity",
         side_effect=RuntimeError("denied"),
     ):

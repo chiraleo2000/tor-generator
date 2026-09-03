@@ -79,6 +79,81 @@ describe("streamSsePost", () => {
     });
     expect(events).toEqual([{ event: "token", data: { text: "not-json" } }]);
   });
+
+  it("flushes a trailing SSE block without a blank line", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: done\ndata: {"content":"จบ"}'));
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body }));
+    const events: string[] = [];
+    await streamSsePost("/chat", { content: "hi" }, null, (event) => {
+      events.push(event);
+    });
+    expect(events).toEqual(["done"]);
+  });
+
+  it("parses mcp_degraded and citations on done", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'event: done\ndata: {"content":"ตอบ","mcp_degraded":true,"citations":[{"type":"mcp","label":"stub"}]}\n\n'
+          )
+        );
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body }));
+    const payloads: Array<{ event: string; data: Record<string, unknown> }> = [];
+    await streamSsePost("/chat", { content: "hi" }, null, (event, data) => {
+      payloads.push({ event, data });
+    });
+    expect(payloads[0]?.data.mcp_degraded).toBe(true);
+    expect(payloads[0]?.data.citations).toEqual([{ type: "mcp", label: "stub" }]);
+  });
+
+  it("maps fetch network failures to Thai", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))
+    );
+    await expect(
+      streamSsePost("/chat", { content: "hi" }, null, () => undefined)
+    ).rejects.toThrow(/เชื่อมต่อเซิร์ฟเวอร์ไม่ได้/);
+  });
+
+  it("skips empty SSE data lines and forwards extra headers", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("event: ping\n\n"));
+        controller.enqueue(encoder.encode('event: done\ndata: {"content":"จบ"}\n\n'));
+        controller.close();
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, body });
+    vi.stubGlobal("fetch", fetchMock);
+    const events: string[] = [];
+    await streamSsePost(
+      "/chat",
+      { content: "hi" },
+      "tok",
+      (event) => {
+        events.push(event);
+      },
+      undefined,
+      { "X-Extra": "1" }
+    );
+    expect(events).toEqual(["done"]);
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer tok");
+    expect(headers["X-Extra"]).toBe("1");
+  });
 });
 
 describe("formatChatTimestamp", () => {

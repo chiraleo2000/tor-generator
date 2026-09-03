@@ -15,7 +15,9 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -216,6 +218,123 @@ def _resolve_ingest_path(storage_path: str, kb_dir: Path) -> Path | None:
 KB_DIR = _knowledge_base_dir()
 
 
+def _requeue_existing(existing: KnowledgeBaseDocument, name: str) -> None:
+    stuck = existing.processing_status == "failed" or (
+        existing.processing_status == "processing" and existing.chunk_count == 0
+    )
+    if stuck:
+        existing.processing_status = "pending"
+        existing.error_message = None
+        _safe_print(f"re-queue stuck: {name}")
+        return
+    if existing.processing_status == "completed":
+        _safe_print(f"skip existing: {name}")
+        return
+    _safe_print(f"already queued: {name}")
+
+
+def _queue_new_document(db: AsyncSession, path: Path, name: str) -> None:
+    suffix = path.suffix.lower().lstrip(".")
+    file_type = "txt" if suffix in {"md", "json", "txt"} else suffix
+    db.add(
+        KnowledgeBaseDocument(
+            name=name,
+            category=_category_for(name),
+            file_type=file_type if file_type in {"pdf", "docx", "txt"} else "txt",
+            storage_path=str(path),
+            processing_status="pending",
+            chunk_count=0,
+        )
+    )
+    _safe_print(f"queued: {name}")
+
+
+async def _enqueue_seed_files(db: AsyncSession, files: list[Path]) -> None:
+    for path in files:
+        name = _document_name(path)
+        existing = (
+            await db.execute(
+                select(KnowledgeBaseDocument).where(KnowledgeBaseDocument.name == name)
+            )
+        ).scalar_one_or_none()
+        if existing:
+            _requeue_existing(existing, name)
+            continue
+        _queue_new_document(db, path, name)
+    await db.commit()
+
+
+async def _pending_documents(db: AsyncSession) -> list[KnowledgeBaseDocument]:
+    result = await db.execute(
+        select(KnowledgeBaseDocument).where(
+            KnowledgeBaseDocument.processing_status.in_(("pending", "processing"))
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def _ingest_one(
+    doc: KnowledgeBaseDocument,
+    kb_dir: Path,
+    embedding: object,
+    vector_store: object,
+    db: AsyncSession,
+    ingest_document: Callable[..., Awaitable[Any]],
+) -> None:
+    doc_name = doc.name
+    resolved = _resolve_ingest_path(doc.storage_path, kb_dir)
+    if resolved is None:
+        doc.processing_status = "failed"
+        doc.error_message = "file missing"
+        _safe_print(f"missing file: {doc_name}")
+        return
+    if not _should_seed(resolved):
+        doc.processing_status = "completed"
+        doc.chunk_count = 0
+        _safe_print(f"skip internal: {doc_name}")
+        return
+    try:
+        result = await ingest_document(
+            document_id=str(doc.id),
+            document_name=doc_name,
+            file_path=str(resolved),
+            mime_type=_mime_for(resolved, doc.file_type),
+            embedding_provider=embedding,
+            vector_store_provider=vector_store,
+            session=db,
+        )
+        _safe_print(
+            f"{'ok' if result.success else 'fail'}: {doc_name} chunks={result.total_chunks}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        doc.processing_status = "failed"
+        doc.error_message = str(exc)[:1000]
+        _safe_print(f"ingest error {doc_name}: {exc}")
+
+
+async def _ingest_pending(
+    db: AsyncSession, kb_dir: Path, settings: object, session_factory: object
+) -> None:
+    pending = await _pending_documents(db)
+    try:
+        from app.providers.factory import ProviderFactory
+        from app.rag.ingestion import ingest_document
+
+        factory_ai = ProviderFactory(settings)
+        embedding = factory_ai.get_embedding()
+        vector_store = factory_ai.get_vector_store(session_factory)
+        for doc in pending:
+            await _ingest_one(
+                doc, kb_dir, embedding, vector_store, db, ingest_document
+            )
+    except Exception as exc:  # noqa: BLE001
+        _safe_print(
+            "embedding/vector providers unavailable, leaving documents "
+            f"pending: {exc}"
+        )
+    await db.commit()
+
+
 async def seed() -> None:
     kb_dir = _knowledge_base_dir()
     if not _is_listable_dir(kb_dir):
@@ -226,99 +345,11 @@ async def seed() -> None:
     settings = get_settings()
     engine = create_async_engine(settings.database_url, pool_size=5)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
     files = list_seed_files(kb_dir)
     _safe_print(f"found {len(files)} knowledge-base files under {kb_dir}")
     async with factory() as db:
-        for path in files:
-            name = _document_name(path)
-            existing = (
-                await db.execute(
-                    select(KnowledgeBaseDocument).where(KnowledgeBaseDocument.name == name)
-                )
-            ).scalar_one_or_none()
-            if existing:
-                if existing.processing_status == "processing" and existing.chunk_count == 0:
-                    existing.processing_status = "pending"
-                    existing.error_message = None
-                    _safe_print(f"re-queue stuck: {name}")
-                elif existing.processing_status in {"completed", "failed"}:
-                    _safe_print(f"skip existing: {name}")
-                else:
-                    _safe_print(f"already queued: {name}")
-                continue
-            suffix = path.suffix.lower().lstrip(".")
-            file_type = "txt" if suffix in {"md", "json", "txt"} else suffix
-            doc = KnowledgeBaseDocument(
-                name=name,
-                category=_category_for(name),
-                file_type=file_type if file_type in {"pdf", "docx", "txt"} else "txt",
-                storage_path=str(path),
-                processing_status="pending",
-                chunk_count=0,
-            )
-            db.add(doc)
-            _safe_print(f"queued: {name}")
-        await db.commit()
-
-        pending = (
-            (
-                await db.execute(
-                    select(KnowledgeBaseDocument).where(
-                        KnowledgeBaseDocument.processing_status.in_(
-                            ("pending", "processing")
-                        )
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-        try:
-            from app.providers.factory import ProviderFactory
-            from app.rag.ingestion import ingest_document
-
-            factory_ai = ProviderFactory(settings)
-            embedding = factory_ai.get_embedding()
-            vector_store = factory_ai.get_vector_store(factory)
-            for doc in pending:
-                doc_name = doc.name
-                resolved = _resolve_ingest_path(doc.storage_path, kb_dir)
-                if resolved is None:
-                    doc.processing_status = "failed"
-                    doc.error_message = "file missing"
-                    _safe_print(f"missing file: {doc_name}")
-                    continue
-                if not _should_seed(resolved):
-                    doc.processing_status = "completed"
-                    doc.chunk_count = 0
-                    _safe_print(f"skip internal: {doc_name}")
-                    continue
-                try:
-                    result = await ingest_document(
-                        document_id=str(doc.id),
-                        document_name=doc_name,
-                        file_path=str(resolved),
-                        mime_type=_mime_for(resolved, doc.file_type),
-                        embedding_provider=embedding,
-                        vector_store_provider=vector_store,
-                        session=db,
-                    )
-                    _safe_print(
-                        f"{'ok' if result.success else 'fail'}: {doc_name} "
-                        f"chunks={result.total_chunks}"
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    doc.processing_status = "failed"
-                    doc.error_message = str(exc)[:1000]
-                    _safe_print(f"ingest error {doc_name}: {exc}")
-        except Exception as exc:  # noqa: BLE001
-            _safe_print(
-                "embedding/vector providers unavailable, leaving documents "
-                f"pending: {exc}"
-            )
-        await db.commit()
+        await _enqueue_seed_files(db, files)
+        await _ingest_pending(db, kb_dir, settings, factory)
     await engine.dispose()
     _safe_print("seed_kb complete")
 

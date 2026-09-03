@@ -4,13 +4,25 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.api.v1.endpoints.draft_chat import _section_done_event, _sse
+from app.api.v1.endpoints.draft_chat import (
+    SECTION_TIMEOUT_SECONDS,
+    _section_done_event,
+    _sse,
+    section_draft_timeout,
+)
 from app.services.draft_chat_service import (
     DRAFT_MAX_TOKENS,
     _section_prompt_context,
     edit_section_draft,
     parse_draft_message_intent,
 )
+
+
+def test_section_timeout_is_capped_for_local_testing():
+    assert SECTION_TIMEOUT_SECONDS >= 30
+    assert SECTION_TIMEOUT_SECONDS <= 1800
+    assert section_draft_timeout("s1") == float(SECTION_TIMEOUT_SECONDS)
+    assert section_draft_timeout("s4") == float(SECTION_TIMEOUT_SECONDS * 5)
 
 
 def test_parse_accept():

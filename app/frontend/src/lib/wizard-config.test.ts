@@ -34,5 +34,7 @@ describe("wizard-config", () => {
     expect(getStepStatus(1, 2, formData, {})).toBe("completed");
     expect(getStepStatus(3, 2, {}, { 3: ["missing"] })).toBe("error");
     expect(getStepStatus(3, 2, {}, {})).toBe("upcoming");
+    expect(isStepValid(99, {}, {})).toBe(false);
+    expect(getStepStatus(4, 5, { 4: null }, {})).toBe("upcoming");
   });
 });

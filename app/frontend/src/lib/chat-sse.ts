@@ -1,3 +1,5 @@
+import { networkFailureMessage } from "@/lib/api-error";
+
 export type ChatKind = "kb" | "draft_intake";
 export type SearchScope = "global" | "mine" | "both";
 
@@ -22,6 +24,7 @@ export interface ChatMessageItem {
   content: string;
   citations: ChatCitation[];
   created_at?: string | null;
+  mcp_degraded?: boolean;
 }
 
 export interface ChatPrompt {
@@ -107,13 +110,18 @@ export async function streamSsePost(
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  const response = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    throw new Error(networkFailureMessage(err) || "สตรีมแชทไม่สำเร็จ");
+  }
   if (!response.ok || !response.body) {
     let detail = "สตรีมแชทไม่สำเร็จ";
     try {
@@ -144,5 +152,8 @@ export async function streamSsePost(
     for (const block of parts) {
       eventName = dispatchSseBlock(block, eventName, onEvent);
     }
+  }
+  if (buffer.trim()) {
+    dispatchSseBlock(buffer, eventName, onEvent);
   }
 }

@@ -376,3 +376,307 @@ def test_empty_attachment_rejected(client, mock_officer_user):
         files={"file": ("empty.txt", b"", "text/plain")},
     )
     assert response.status_code == 400
+
+
+def test_room_card_and_intake_messages_helpers():
+    from types import SimpleNamespace
+
+    from app.api.v1.endpoints import chat as chat_ep
+
+    room = SimpleNamespace(
+        id=ROOM_ID,
+        kind="kb",
+        project_id=None,
+        title="ห้อง",
+        updated_at=datetime(2026, 8, 18, 10, 0, 0, tzinfo=timezone.utc),
+        messages=[
+            SimpleNamespace(
+                content="สวัสดีจากผู้ใช้ยาวเกินแปดสิบตัวอักษร" * 3,
+                role="user",
+            )
+        ],
+    )
+    card = chat_ep._room_card(room)
+    assert card["id"] == str(ROOM_ID)
+    assert card["last_role"] == "user"
+    assert len(card["last_message"]) <= 80
+
+    chunk = SimpleNamespace(source_document="ด", text="เนื้อหา")
+    messages = chat_ep._intake_messages("ถาม", [chunk], True)
+    assert messages[0]["role"] == "system"
+    assert "Neo4j" in messages[0]["content"]
+    kb = chat_ep._room_llm_messages(
+        is_kb=True,
+        question="ถาม",
+        chunks=[chunk],
+        history=[],
+        degraded=False,
+    )
+    assert kb
+    sse = chat_ep._sse("done", {"mcp_degraded": True})
+    assert "mcp_degraded" in sse
+
+
+def test_last_loaded_message_skips_unloaded_and_inspect_error():
+    from app.api.v1.endpoints import chat as chat_ep
+    from sqlalchemy.exc import NoInspectionAvailable
+
+    room = MagicMock()
+    insp = MagicMock()
+    insp.unloaded = {"messages"}
+    with patch("app.api.v1.endpoints.chat.sa_inspect", return_value=insp):
+        assert chat_ep._last_loaded_message(room) is None
+
+    with patch(
+        "app.api.v1.endpoints.chat.sa_inspect",
+        side_effect=NoInspectionAvailable(),
+    ):
+        room.messages = []
+        assert chat_ep._last_loaded_message(room) is None
+
+
+@pytest.mark.asyncio
+async def test_queued_event_puts_position():
+    import asyncio
+
+    from app.api.v1.endpoints.chat import _queued_event
+
+    event_q: asyncio.Queue = asyncio.Queue()
+    on_wait = _queued_event(event_q, "req-1")
+    await on_wait(3, 1500)
+    name, payload = await event_q.get()
+    assert name == "queued"
+    assert payload["position"] == 3
+    assert payload["waiting_ms"] == 1500
+
+
+def test_create_room_rejects_invalid_kind(client, mock_officer_user):
+    response = client.post("/api/v1/chat/rooms", json={"kind": "other", "title": "x"})
+    assert response.status_code == 400
+
+
+def test_list_prompts_rejects_invalid_kind(client, mock_officer_user):
+    response = client.get("/api/v1/chat/prompts", params={"kind": "other"})
+    assert response.status_code == 400
+
+
+def test_list_rooms_filters_by_project_id(client, mock_officer_user):
+    room = _make_room(kind="draft_intake", project_id=PROJECT_ID)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [room]
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    response = client.get(
+        "/api/v1/chat/rooms",
+        params={"kind": "draft_intake", "project_id": str(PROJECT_ID)},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["rooms"][0]["project_id"] == str(PROJECT_ID)
+
+
+def test_chat_sse_unpacks_mcp_degraded(client, mock_officer_user, monkeypatch):
+    room = _make_room(title="ห้องใหม่")
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    persist = AsyncMock()
+    persist.add = MagicMock()
+    persist.commit = AsyncMock()
+
+    class _CM:
+        async def __aenter__(self):
+            return persist
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(app.state, "db_session_factory", lambda: _CM(), raising=False)
+
+    empty = RetrievalResult(chunks=[], query="งวดจ่าย", top_k=chat_rag_top_k(), actual_count=0)
+    captured: dict = {}
+
+    async def fake_stream(messages, **kwargs):
+        captured["messages"] = messages
+        yield "ตอบ"
+
+    mock_llm = MagicMock()
+    mock_llm.stream = fake_stream
+    mock_factory = MagicMock()
+    mock_factory.get_llm.return_value = mock_llm
+
+    with (
+        patch("app.api.v1.endpoints.chat.hybrid_retrieve", new_callable=AsyncMock) as retrieve,
+        patch("app.api.v1.endpoints.chat.ProviderFactory", return_value=mock_factory),
+    ):
+        retrieve.return_value = (
+            empty,
+            [{"type": "article", "label": "ข้อ 85"}],
+            True,
+            True,
+        )
+        with client.stream(
+            "POST",
+            f"/api/v1/chat/rooms/{ROOM_ID}/messages",
+            json={"content": "งวดจ่ายตามระเบียบข้อใด", "search_scope": "nope"},
+        ) as response:
+            body = b"".join(response.iter_bytes()).decode("utf-8")
+
+    assert response.status_code == 200
+    assert "event: done" in body
+    assert '"mcp_degraded": true' in body
+    assert '"graph_degraded": true' in body
+    assert retrieve.await_args.kwargs["search_scope"] == "both"
+    assert room.title == "งวดจ่ายตามระเบียบข้อใด"
+
+
+def test_chat_sse_admission_timeout_and_llm_error(client, mock_officer_user, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from app.llm_admission import AdmissionTimeoutError
+
+    room = _make_room()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    persist = AsyncMock()
+    persist.add = MagicMock()
+    persist.commit = AsyncMock()
+
+    class _CM:
+        async def __aenter__(self):
+            return persist
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(app.state, "db_session_factory", lambda: _CM(), raising=False)
+    empty = RetrievalResult(chunks=[], query="q", top_k=1, actual_count=0)
+
+    @asynccontextmanager
+    async def timeout_admit(*_args, **_kwargs):
+        raise AdmissionTimeoutError("คิวเต็ม")
+        yield "rid"
+
+    with (
+        patch("app.api.v1.endpoints.chat.hybrid_retrieve", new_callable=AsyncMock) as retrieve,
+        patch("app.api.v1.endpoints.chat.admit", timeout_admit),
+    ):
+        retrieve.return_value = (empty, [], False, False)
+        with client.stream(
+            "POST",
+            f"/api/v1/chat/rooms/{ROOM_ID}/messages",
+            json={"content": "ถามกฎหมาย"},
+        ) as response:
+            timeout_body = b"".join(response.iter_bytes()).decode("utf-8")
+    assert "event: error" in timeout_body
+    assert "คิวเต็ม" in timeout_body
+
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("llm down")
+        yield "x"
+
+    mock_llm = MagicMock()
+    mock_llm.stream = boom
+    mock_factory = MagicMock()
+    mock_factory.get_llm.return_value = mock_llm
+    with (
+        patch("app.api.v1.endpoints.chat.hybrid_retrieve", new_callable=AsyncMock) as retrieve,
+        patch("app.api.v1.endpoints.chat.ProviderFactory", return_value=mock_factory),
+    ):
+        retrieve.return_value = (empty, [], False)
+        with client.stream(
+            "POST",
+            f"/api/v1/chat/rooms/{ROOM_ID}/messages",
+            json={"content": "ถามกฎหมาย"},
+        ) as response:
+            err_body = b"".join(response.iter_bytes()).decode("utf-8")
+    assert "event: error" in err_body
+    assert "llm down" in err_body
+
+
+def test_draft_intake_sse_uses_intake_system(client, mock_officer_user, monkeypatch):
+    room = _make_room(kind="draft_intake", project_id=PROJECT_ID)
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    persist = AsyncMock()
+    persist.add = MagicMock()
+    persist.commit = AsyncMock()
+
+    class _CM:
+        async def __aenter__(self):
+            return persist
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(app.state, "db_session_factory", lambda: _CM(), raising=False)
+    chunk = MagicMock()
+    chunk.source_document = "คลัง"
+    chunk.text = "อ้างอิง"
+    result = RetrievalResult(chunks=[chunk], query="q", top_k=5, actual_count=1)
+    captured: dict = {}
+
+    async def fake_stream(messages, **kwargs):
+        captured["messages"] = messages
+        yield "ร่าง"
+
+    mock_llm = MagicMock()
+    mock_llm.stream = fake_stream
+    mock_factory = MagicMock()
+    mock_factory.get_llm.return_value = mock_llm
+
+    with (
+        patch("app.api.v1.endpoints.chat.hybrid_retrieve", new_callable=AsyncMock) as retrieve,
+        patch("app.api.v1.endpoints.chat.ProviderFactory", return_value=mock_factory),
+    ):
+        retrieve.return_value = (result, [], True, False)
+        with client.stream(
+            "POST",
+            f"/api/v1/chat/rooms/{ROOM_ID}/messages",
+            json={"content": "ช่วยสรุปคุณสมบัติ", "search_scope": "mine"},
+        ) as response:
+            body = b"".join(response.iter_bytes()).decode("utf-8")
+
+    assert response.status_code == 200
+    assert "event: done" in body
+    assert "Neo4j" in captured["messages"][0]["content"]
+    assert retrieve.await_args.kwargs["search_scope"] == "mine"
+
+
+def test_attachment_validation_error(client, mock_officer_user):
+    from app.exceptions import ValidationError
+
+    room = _make_room()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = room
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    _override_db(mock_db)
+
+    with patch(
+        "app.api.v1.endpoints.chat._validate_kb_bytes",
+        side_effect=ValidationError(message="ไฟล์มีขนาดใหญ่เกินไป", field="file"),
+    ):
+        response = client.post(
+            f"/api/v1/chat/rooms/{ROOM_ID}/attachments",
+            files={"file": ("reg.pdf", b"%PDF-1.4 content", "application/pdf")},
+        )
+    assert response.status_code == 400

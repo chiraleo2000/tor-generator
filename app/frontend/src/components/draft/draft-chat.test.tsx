@@ -189,4 +189,185 @@ describe("DraftChat", () => {
     expect(messageCall?.[1]).toMatchObject({ content: "ยอมรับ", section_key: "s1" });
     expect(await screen.findByText("ยอมรับแล้ว ✓")).toBeInTheDocument();
   });
+
+  it("redrafts a section and sends freeform edits", async () => {
+    mockStream((url, onEvent) => {
+      if (url.includes("/message")) {
+        onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+        onEvent("token", { text: "ใหม่" });
+        onEvent("section_done", { section_key: "s1", content: "ร่างใหม่แล้ว" });
+        return;
+      }
+      onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+      onEvent("section_done", {
+        section_key: "s1",
+        content: "กรมบัญชีกลางจัดซื้อระบบ",
+        drafted_count: 1,
+      });
+    });
+    render(<DraftChat projectId="p-redraft" onAllDrafted={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("draft-redraft-s1"));
+    await waitFor(() =>
+      expect(vi.mocked(streamSsePost).mock.calls.some((call) => sseCallUrl(call).includes("/message"))).toBe(
+        true
+      )
+    );
+    fireEvent.change(screen.getByTestId("draft-chat-input"), {
+      target: { value: "แก้ไข หมวด 1: เพิ่มรายละเอียด" },
+    });
+    fireEvent.keyDown(screen.getByTestId("draft-chat-input"), { key: "Enter", shiftKey: false });
+  });
+
+  it("shows section badges, send errors, and message stream errors", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          sections: [
+            {
+              section_key: "s1",
+              title: "ความเป็นมา",
+              has_content: true,
+              content_preview: "ร่าง",
+              human_confirmed: false,
+            },
+            {
+              section_key: "s2",
+              title: "วัตถุประสงค์",
+              has_content: false,
+              content_preview: "",
+              human_confirmed: false,
+            },
+          ],
+          drafted_count: 1,
+          total: 13,
+          all_drafted: false,
+        },
+      },
+    } as never);
+    mockStream((url, onEvent) => {
+      if (url.includes("/message")) {
+        onEvent("error", { message: "ส่งข้อความไม่สำเร็จจากเซิร์ฟเวอร์" });
+        return;
+      }
+      onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+      onEvent("section_done", {
+        section_key: "s1",
+        content: "กรมบัญชีกลางจัดซื้อระบบ",
+        drafted_count: 1,
+      });
+    });
+    render(<DraftChat projectId="p-badges" onAllDrafted={vi.fn()} />);
+    expect(await screen.findByTestId("draft-section-badge-s1")).toBeInTheDocument();
+    expect(screen.getByTestId("draft-section-badge-s2")).toHaveTextContent("○");
+    fireEvent.click((await screen.findAllByTestId("draft-accept-s1"))[0]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("ส่งข้อความไม่สำเร็จจากเซิร์ฟเวอร์");
+  });
+
+  it("treats a token without text and a section_error without a message", async () => {
+    mockStream((_url, onEvent) => {
+      onEvent("section_start", { section_key: "s99", title: undefined });
+      onEvent("token", {});
+      onEvent("section_error", { section_key: "s99" });
+    });
+    render(<DraftChat projectId="p-empty-err" onAllDrafted={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("ร่างไม่สำเร็จ");
+  });
+
+  it("surfaces a thrown send failure and ignores empty Enter", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          sections: [
+            {
+              section_key: "s1",
+              title: "ความเป็นมา",
+              has_content: true,
+              content_preview: "ร่าง",
+              human_confirmed: false,
+            },
+          ],
+          drafted_count: 13,
+          total: 13,
+          all_drafted: true,
+        },
+      },
+    } as never);
+    mockStream(() => {
+      throw new Error("ตัดการเชื่อมต่อตอนส่ง");
+    });
+    render(<DraftChat projectId="p-send-fail" onAllDrafted={vi.fn()} />);
+    const input = await screen.findByTestId("draft-chat-input");
+    await waitFor(() => expect(input).not.toBeDisabled());
+    fireEvent.change(input, { target: { value: "แก้หมวด" } });
+    fireEvent.click(screen.getByTestId("draft-chat-send"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ส่งข้อความไม่สำเร็จ");
+    fireEvent.change(screen.getByTestId("draft-chat-input"), { target: { value: "   " } });
+    fireEvent.keyDown(screen.getByTestId("draft-chat-input"), { key: "Enter", shiftKey: false });
+  });
+
+  it("streams tokens with a section key and inserts section_done without a start", async () => {
+    mockStream((_url, onEvent) => {
+      onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+      onEvent("token", { section_key: "s1", text: "กรม" });
+      onEvent("token", { section_key: "s1" });
+      onEvent("token", { section_key: "missing", text: "ข้าม" });
+      onEvent("section_done", { section_key: "s8", content: "เงื่อนไขเพิ่มเติม" });
+    });
+    render(<DraftChat projectId="p-orphan-done" onAllDrafted={vi.fn()} />);
+    expect(await screen.findByText("เงื่อนไขเพิ่มเติม")).toBeInTheDocument();
+    expect(screen.getAllByText("กรม").length).toBeGreaterThan(0);
+  });
+
+  it("does not start streaming when status becomes complete during start", async () => {
+    let calls = 0;
+    vi.mocked(apiClient.get).mockImplementation(async () => {
+      calls += 1;
+      return {
+        data: {
+          ok: true,
+          data: {
+            sections: [],
+            drafted_count: calls > 1 ? 13 : 0,
+            total: 13,
+            all_drafted: calls > 1,
+          },
+        },
+      } as never;
+    });
+    render(<DraftChat projectId="p-already-done" onAllDrafted={vi.fn()} />);
+    await waitFor(() => expect(calls).toBeGreaterThan(1));
+    expect(streamSsePost).not.toHaveBeenCalled();
+  });
+
+  it("keeps going after a status refresh failure and a double start-stream failure", async () => {
+    vi.mocked(apiClient.get).mockRejectedValue(new Error("status down"));
+    mockStream(async () => {
+      throw new Error("ตัดการเชื่อมต่อ");
+    });
+    render(<DraftChat projectId="p-refresh-fail" onAllDrafted={vi.fn()} />);
+    await waitFor(() => expect(streamSsePost).toHaveBeenCalled());
+    expect(await screen.findByTestId("draft-chat")).toBeInTheDocument();
+  });
+
+  it("marks an accepted section from the message stream", async () => {
+    mockStream((url, onEvent) => {
+      if (url.includes("/message")) {
+        onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+        onEvent("accepted", { section_key: "s1", message: "ยอมรับแล้ว" });
+        return;
+      }
+      onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+      onEvent("section_done", {
+        section_key: "s1",
+        content: "กรมบัญชีกลางจัดซื้อระบบ",
+        drafted_count: 1,
+      });
+    });
+    render(<DraftChat projectId="p-accept-badge" onAllDrafted={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("draft-accept-s1"));
+    expect(await screen.findByText("ยอมรับแล้ว ✓")).toBeInTheDocument();
+  });
 });

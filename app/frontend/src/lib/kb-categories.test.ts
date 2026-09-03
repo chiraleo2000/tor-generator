@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { kbProcessingBadgeClass, uniqueById } from "@/lib/kb-categories";
+import {
+  kbCategoryLabel,
+  kbProcessingBadgeClass,
+  kbProcessingLabel,
+  uniqueById,
+} from "@/lib/kb-categories";
 
 describe("uniqueById", () => {
   it("keeps a single row when the same id appears twice", () => {
@@ -21,5 +26,11 @@ describe("kbProcessingBadgeClass", () => {
     expect(kbProcessingBadgeClass("completed")).toContain("text-green-800");
     expect(kbProcessingBadgeClass("processing")).toContain("text-amber-800");
     expect(kbProcessingBadgeClass("pending")).toContain("text-gray-700");
+    expect(kbProcessingBadgeClass(undefined)).toContain("text-gray-700");
+    expect(kbProcessingLabel("failed")).toBe("ประมวลผลไม่สำเร็จ");
+    expect(kbProcessingLabel("custom")).toBe("custom");
+    expect(kbProcessingLabel(undefined)).toBe("");
+    expect(kbCategoryLabel("law")).toBe("พ.ร.บ. / กฎหมาย");
+    expect(kbCategoryLabel("nope")).toBe("nope");
   });
 });

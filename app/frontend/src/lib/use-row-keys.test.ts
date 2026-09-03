@@ -33,4 +33,14 @@ describe("useRowKeys", () => {
     rerender({ length: 2 });
     expect(result.current.keys).toHaveLength(2);
   });
+
+  it("falls back to sequential keys when randomUUID is missing", () => {
+    const cryptoObj = globalThis.crypto as Crypto & { randomUUID?: () => string };
+    const original = cryptoObj.randomUUID;
+    // @ts-expect-error coverage for the Date.now fallback
+    cryptoObj.randomUUID = undefined;
+    const { result } = renderHook(() => useRowKeys(1));
+    expect(result.current.keys[0]).toMatch(/^row-/);
+    cryptoObj.randomUUID = original;
+  });
 });

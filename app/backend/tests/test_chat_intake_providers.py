@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -46,10 +46,22 @@ async def test_hybrid_retrieve_degraded_without_session_factory():
     previous = runtime.session_factory
     runtime.set_session_factory(None)
     try:
-        result, citations, degraded = await hybrid_mod.hybrid_retrieve("งวดจ่าย")
+        with patch(
+            "app.rag.hybrid.retrieve_mcp_chunks_with_status",
+            new_callable=AsyncMock,
+            return_value=([], False),
+        ), patch(
+            "app.rag.hybrid._retrieve_custom_chunks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result, citations, degraded, mcp_degraded = await hybrid_mod.hybrid_retrieve(
+                "งวดจ่าย"
+            )
     finally:
         runtime.set_session_factory(previous)
     assert degraded is True
+    assert mcp_degraded is False
     assert result.actual_count == 0
     assert citations == []
 
@@ -151,6 +163,33 @@ async def test_bedrock_llm_uses_converse():
     assert response.content == "สวัสดี"
 
 
+@pytest.mark.asyncio
+async def test_bedrock_llm_registers_bearer_token():
+    from app.providers.llm.bedrock_provider import BedrockLLMProvider
+
+    fake_client = MagicMock()
+    fake_client.converse.return_value = {
+        "output": {"message": {"content": [{"text": "ok"}]}},
+        "usage": {},
+        "stopReason": "end_turn",
+    }
+    fake_client.meta.events.register = MagicMock()
+    fake_boto3 = MagicMock()
+    fake_boto3.client.return_value = fake_client
+    with patch.dict("sys.modules", {"boto3": fake_boto3}):
+        with patch.dict("os.environ", {"AWS_BEARER_TOKEN_BEDROCK": ""}, clear=False):
+            provider = BedrockLLMProvider(
+                region="ap-southeast-1",
+                model_id="demo-model",
+                aws_bearer_token_bedrock="bedrock-api-key",
+            )
+            await provider.invoke([{"role": "user", "content": "hi"}])
+    fake_client.meta.events.register.assert_called()
+    assert fake_client.meta.events.register.call_args.args[0] == (
+        "before-sign.bedrock-runtime.*"
+    )
+
+
 def test_persist_keys_for_section_maps_scope_subkeys():
     from app.api.v1.endpoints.drafting import _persist_keys_for_section
 
@@ -167,3 +206,28 @@ def test_fit_bedrock_embedding_dimensions():
     assert len(short) == 4
     long = _fit_dimensions([0.0] * 1024)
     assert len(long) == EMBEDDING_DIMENSIONS
+
+
+def test_unpack_hybrid_one_three_and_four_tuple():
+    from app.rag.hybrid import unpack_hybrid
+    from app.rag.retrieval import RetrievalResult
+
+    empty = RetrievalResult(chunks=[], query="งวดจ่าย", top_k=1, actual_count=0)
+    result, citations, graph_degraded, mcp_degraded = unpack_hybrid((empty,))
+    assert result is empty
+    assert citations == []
+    assert graph_degraded is True
+    assert mcp_degraded is False
+
+    result, citations, graph_degraded, mcp_degraded = unpack_hybrid(
+        (empty, [{"label": "ข้อ 85"}], True)
+    )
+    assert citations[0]["label"] == "ข้อ 85"
+    assert graph_degraded is True
+    assert mcp_degraded is False
+
+    result, citations, graph_degraded, mcp_degraded = unpack_hybrid(
+        (empty, [], False, True)
+    )
+    assert graph_degraded is False
+    assert mcp_degraded is True

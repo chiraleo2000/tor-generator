@@ -573,15 +573,17 @@ async def retrieve_context(state: TORDraftState) -> TORDraftState:
     logger.info("Retrieving RAG context for section=%s", target_section)
 
     try:
-        from app.rag.hybrid import hybrid_retrieve
+        from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
         from app.rag.kb_qa import draft_rag_top_k
 
         query = _build_rag_query(target_section, user_input)
-        result, citations, degraded = await hybrid_retrieve(
-            query,
-            search_scope="global",
-            top_k=draft_rag_top_k(),
-            section_relevance=target_section if target_section.startswith("s") else None,
+        result, citations, degraded, _mcp = unpack_hybrid(
+            await hybrid_retrieve(
+                query,
+                search_scope="global",
+                top_k=draft_rag_top_k(),
+                section_relevance=target_section if target_section.startswith("s") else None,
+            )
         )
 
         rag_chunks = [

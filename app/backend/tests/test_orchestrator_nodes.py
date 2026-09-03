@@ -871,3 +871,98 @@ class TestCreateRuleEngine:
         """Format rules are registered in the engine."""
         engine = _create_rule_engine()
         assert len(engine._rules["format"]) > 0
+
+
+class TestBuildRagQueryExtra:
+    """Remaining _build_rag_query / template / retrieve branches."""
+
+    def test_includes_project_type_description_and_s6_budget(self):
+        query = _build_rag_query(
+            "s6",
+            {"project_type": "it", "description": "ระบบจัดซื้อ", "budget": 100},
+        )
+        assert "it" in query
+        assert "ระบบจัดซื้อ" in query
+        assert "100" in query
+
+    def test_llm_messages_include_template_guidance(self):
+        messages = _build_llm_messages(
+            target_section="s1",
+            user_input={"project_name": "test", "empty": ""},
+            template={
+                "placeholder_guidance": {"s1": "แนวทางหมวดหนึ่ง"},
+                "section_structure": {"s1": "โครงหมวดหนึ่ง"},
+            },
+            rag_chunks=[],
+        )
+        user_msg = messages[1]["content"]
+        assert "แนวทางหมวดหนึ่ง" in user_msg
+        assert "โครงหมวดหนึ่ง" in user_msg
+        assert "empty:" not in user_msg
+
+
+class TestRetrieveContextCitations:
+    @pytest.mark.asyncio
+    async def test_appends_graph_citations_to_first_chunk(self):
+        mock_chunks = [
+            MagicMock(
+                id="chunk-1",
+                text="Legal reference text",
+                score=0.9,
+                source_document="พ.ร.บ. 2560",
+                section_label="§3",
+                page_number=10,
+                document_type="law",
+                legal_reference="พ.ร.บ. 2560",
+            )
+        ]
+        mock_result = MagicMock(chunks=mock_chunks)
+        with patch(
+            "app.rag.hybrid.hybrid_retrieve", new_callable=AsyncMock
+        ) as mock_hybrid:
+            mock_hybrid.return_value = (
+                mock_result,
+                [{"type": "article", "label": "ข้อ 29"}],
+                False,
+                False,
+            )
+            result = await retrieve_context(
+                {"target_section": "s3", "user_input": {"project_name": "Test"}}
+            )
+        assert "[กราฟ]" in result["rag_chunks"][0]["text"]
+        assert "ข้อ 29" in result["rag_chunks"][0]["text"]
+        call_kwargs = mock_hybrid.await_args.kwargs
+        assert call_kwargs["section_relevance"] == "s3"
+
+    @pytest.mark.asyncio
+    async def test_section_relevance_none_when_not_s_prefix(self):
+        mock_result = MagicMock(chunks=[])
+        with patch(
+            "app.rag.hybrid.hybrid_retrieve", new_callable=AsyncMock
+        ) as mock_hybrid:
+            mock_hybrid.return_value = (mock_result, [{"type": "slot", "label": "s1"}], False)
+            result = await retrieve_context(
+                {"target_section": "other", "user_input": {}}
+            )
+        assert result["rag_chunks"] == []
+        assert mock_hybrid.await_args.kwargs["section_relevance"] is None
+
+
+class TestLlmDraftGenericFailure:
+    @pytest.mark.asyncio
+    async def test_generic_exception_sets_error(self):
+        with patch("app.providers.factory.ProviderFactory") as mock_factory_cls:
+            mock_factory_cls.side_effect = RuntimeError("factory down")
+            result = await llm_draft(
+                {
+                    "target_section": "s1",
+                    "user_input": {"project_name": "Test"},
+                    "template": {},
+                    "rag_chunks": [],
+                    "retry_count": 0,
+                    "draft_version": 0,
+                    "draft_content": "previous",
+                }
+            )
+        assert "failed" in result["error"].lower()
+        assert result["draft_content"] == "previous"

@@ -1,0 +1,12 @@
+# Dev-only overlay: production backend image omits tests/ (.dockerignore).
+# Usage:
+#   docker compose -p tor-app --env-file .env -f docker-compose.yml -f docker-compose.test.yml exec backend python -m pytest ...
+services:
+  backend:
+    volumes:
+      - ./app/backend/tests:/app/tests:ro
+      - ./app/backend/pyproject.toml:/app/pyproject.toml:ro
+      - ./app/infra/mcp:/app/infra/mcp:ro
+      - ./app/infra/quick:/app/infra/quick:ro
+      - ./documents/research:/documents/research:ro
+      - ./documents/sources:/documents/sources:ro

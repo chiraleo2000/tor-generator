@@ -90,6 +90,17 @@ def _servers_from_json(data: Any) -> list[dict[str, Any]]:
     return data if isinstance(data, list) else []
 
 
+def _validated_servers(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    for row in rows:
+        server_id = str(row.get("id") or "").strip()
+        if not server_id or server_id in seen:
+            logger.error("MCP RAG server config has invalid or duplicate identifier")
+            return []
+        seen.add(server_id)
+    return rows
+
+
 def load_mcp_servers() -> list[dict[str, Any]]:
     settings = get_settings()
     inline = str(getattr(settings, "mcp_rag_servers_json", "") or "").strip()
@@ -99,7 +110,7 @@ def load_mcp_servers() -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             logger.warning("MCP_RAG_SERVERS_JSON is not valid JSON")
             return []
-        return _servers_from_json(data)
+        return _validated_servers(_servers_from_json(data))
     path_value = str(getattr(settings, "mcp_rag_config_path", "") or "").strip()
     if not path_value:
         return []
@@ -107,7 +118,7 @@ def load_mcp_servers() -> list[dict[str, Any]]:
     if not path.is_file():
         logger.warning("MCP_RAG_CONFIG not found: %s", path)
         return []
-    return parse_rag_sources_yaml(path.read_text(encoding="utf-8"))
+    return _validated_servers(parse_rag_sources_yaml(path.read_text(encoding="utf-8")))
 
 
 def _tool_result_body(payload: Any) -> Any:
@@ -185,12 +196,18 @@ def _visible_chunks(
     search_scope: str,
 ) -> list[RetrievedChunk]:
     visible: list[RetrievedChunk] = []
+    scope = str(search_scope or "").strip()
     for chunk in chunks:
         owner = (chunk.metadata or {}).get("owner_id")
-        if owner is None or document_is_visible(
+        if owner is None:
+            visible.append(chunk)
+            continue
+        if not scope or user_id is None:
+            continue
+        if document_is_visible(
             document_owner_id=owner,
             viewer_id=user_id,
-            search_scope=search_scope,
+            search_scope=scope,
         ):
             visible.append(chunk)
     return visible
@@ -219,6 +236,17 @@ def _tools_call_payload(
     }
 
 
+def _auth_headers() -> dict[str, str]:
+    settings = get_settings()
+    value = str(getattr(settings, "mcp_rag_auth_value", "") or "").strip()
+    if not value:
+        return {}
+    header = str(getattr(settings, "mcp_rag_auth_header", "") or "Authorization").strip()
+    if not header:
+        header = "Authorization"
+    return {header: value}
+
+
 async def _call_server(
     server: dict[str, Any],
     query: str,
@@ -229,14 +257,16 @@ async def _call_server(
 ) -> list[RetrievedChunk]:
     url = str(server.get("url") or "").strip()
     if not url:
+        logger.warning("Skipping MCP server %s: invalid URL", server.get("id"))
         return []
     timeout = float(server.get("timeout_seconds") or default_timeout)
     server_id = str(server.get("id") or "mcp")
     payload = _tools_call_payload(
         server, query, user_id=user_id, search_scope=search_scope
     )
+    headers = _auth_headers()
     async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(url, json=payload)
+        response = await client.post(url, json=payload, headers=headers or None)
         response.raise_for_status()
         data = response.json()
     return _visible_chunks(
@@ -246,23 +276,29 @@ async def _call_server(
     )
 
 
-async def retrieve_mcp_chunks(
+async def retrieve_mcp_chunks_with_status(
     query: str,
     *,
     user_id: UUID | str | None = None,
     search_scope: str = "both",
-) -> list[RetrievedChunk]:
-    """Fetch chunks from enabled MCP servers. Empty list when disabled or on error."""
+) -> tuple[list[RetrievedChunk], bool]:
+    """Fetch MCP chunks and whether any enabled server failed (fail-open)."""
     settings = get_settings()
     if not getattr(settings, "mcp_rag_enabled", False):
-        return []
+        return [], False
     default_timeout = float(getattr(settings, "mcp_rag_timeout_seconds", 20.0) or 20.0)
     collected: list[RetrievedChunk] = []
+    degraded = False
     for server in load_mcp_servers():
         if not server.get("enabled"):
             continue
         if str(server.get("transport") or "http") != "http":
             logger.warning("Skipping MCP server %s: transport not http", server.get("id"))
+            continue
+        url = str(server.get("url") or "").strip()
+        if not url:
+            logger.warning("Skipping MCP server %s: invalid URL", server.get("id"))
+            degraded = True
             continue
         try:
             collected.extend(
@@ -275,9 +311,23 @@ async def retrieve_mcp_chunks(
                 )
             )
         except (httpx.HTTPError, OSError, json.JSONDecodeError):
+            degraded = True
             logger.warning(
                 "MCP RAG server %s failed; continuing",
                 server.get("id"),
                 exc_info=True,
             )
-    return collected
+    return collected, degraded
+
+
+async def retrieve_mcp_chunks(
+    query: str,
+    *,
+    user_id: UUID | str | None = None,
+    search_scope: str = "both",
+) -> list[RetrievedChunk]:
+    """Fetch chunks from enabled MCP servers. Empty list when disabled or on error."""
+    chunks, _degraded = await retrieve_mcp_chunks_with_status(
+        query, user_id=user_id, search_scope=search_scope
+    )
+    return chunks

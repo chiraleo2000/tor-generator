@@ -154,7 +154,9 @@ async def test_live_gemma_uses_retrieved_regulation_chunk():
     from app.rag.retrieval import RAGRetriever
     from tests.test_property_embedding_round_trip import InMemoryVectorStore
 
-    repo = Path(__file__).resolve().parents[3]
+    from tests.repo_paths import repo_root
+
+    repo = repo_root()
     pdf = (
         repo
         / "documents"

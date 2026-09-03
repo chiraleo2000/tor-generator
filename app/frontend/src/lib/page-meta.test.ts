@@ -11,5 +11,8 @@ describe("pageMeta", () => {
     expect(pageMeta("/admin/users").title).toBe("ผู้ใช้");
     expect(pageMeta("/admin/templates").title).toBe("แม่แบบ");
     expect(pageMeta("/projects").title).toBe("แดชบอร์ด");
+    expect(pageMeta("/review").title).toBe("ตรวจสอบ TOR");
+    expect(pageMeta("/admin/knowledge-base").title).toBe("ฐานความรู้");
+    expect(pageMeta("/projects/abc/wizard").title).toBe("ร่าง TOR");
   });
 });

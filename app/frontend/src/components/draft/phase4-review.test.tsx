@@ -173,6 +173,62 @@ describe("Phase4Review", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("โหลดข้อกำหนดไม่สำเร็จ");
   });
 
+  it("ignores a missing requirements route and surfaces upload or delete errors", async () => {
+    vi.mocked(apiClient.get).mockRejectedValue({ response: { status: 404 } });
+    const { container } = render(
+      <Phase4Review
+        projectId="p1"
+        filledCount={13}
+        total={13}
+        score={70}
+        findings={[]}
+        suggestions={[]}
+        busy={false}
+        error={null}
+        onBack={vi.fn()}
+        onReview={vi.fn().mockResolvedValue(undefined)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    await waitFor(() =>
+      expect(container.querySelector('input[type="file"]')).toBeTruthy()
+    );
+    vi.mocked(apiClient.post).mockRejectedValue({
+      response: { data: { error: { message: "อัปโหลดข้อกำหนดไม่สำเร็จ" } } },
+    });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(["spec"], "reqs.txt", { type: "text/plain" })] },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("อัปโหลดข้อกำหนดไม่สำเร็จ");
+  });
+
+  it("surfaces a requirements delete error", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: { ok: true, data: { has_requirements: true, preview: "ข้อกำหนดเดิม" } },
+    } as never);
+    vi.mocked(apiClient.delete).mockRejectedValue({
+      response: { data: { error: { message: "ลบข้อกำหนดไม่สำเร็จ" } } },
+    });
+    render(
+      <Phase4Review
+        projectId="p1"
+        filledCount={13}
+        total={13}
+        score={70}
+        findings={[]}
+        suggestions={[]}
+        busy={false}
+        error={null}
+        onBack={vi.fn()}
+        onReview={vi.fn().mockResolvedValue(undefined)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    fireEvent.click(await screen.findByText("ลบข้อกำหนด"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ลบข้อกำหนดไม่สำเร็จ");
+  });
+
   it("assembles parent sections and 4.n subsections with tables", async () => {
     const table = [
       "| รายการ | รายละเอียด |",

@@ -8,6 +8,7 @@
 | ไฟล์ | ใช้ |
 |------|-----|
 | `env.cloud.example` | ค่า ECS / Secrets (คัดลอก ไม่ commit รหัส) |
+| `ecs/task-backend.yml` | MCP ปิดโดยค่าเริ่มต้น; เปิดด้วย Secrets `MCP_RAG_SERVERS_JSON` (ห้าม mount YAML) |
 | `iam/*.json` | นโยบาย execution / task / GitHub OIDC |
 | `ecs/*.json` | ตัวอย่าง task definition (ชื่อ role ตรง Terraform `tor-prod-ecs-*`) |
 | `terraform/` | รอบ 1: VPC/ECR/S3/IAM — รอบ 2–3: RDS/Redis/ECS เมื่อเปิดแฟล็กใน tfvars |
@@ -20,3 +21,6 @@
 | `../mcp/` | โครง MCP RAG (`rag-sources.yaml` สำหรับ bind-mount, `servers.example.json` สำหรับ ECS JSON) |
 
 อย่ารัน `terraform apply` ในบัญชีจริงโดยไม่ `plan` และไม่ตั้งงบเตือน Bedrock
+
+คู่มือ MCP บนคลาวด์: [Discussions/31-MCP-RAG-AWS-QUICKSTART.md](../../../Discussions/31-MCP-RAG-AWS-QUICKSTART.md)
+

@@ -318,7 +318,7 @@ export default function StandaloneReviewPage() {
           </output>
         ) : null}
         {error ? (
-          <p className="mt-2 text-sm text-destructive" role="alert">
+          <p className="mt-2 text-sm text-destructive" role="alert" data-testid="review-error">
             {error}
           </p>
         ) : null}

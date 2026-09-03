@@ -92,4 +92,13 @@ describe("splitReviewFindings", () => {
     expect(split.legal).toHaveLength(1);
     expect(split.risk).toHaveLength(1);
   });
+
+  it("honours an explicit finding_kind", () => {
+    const finding = toReviewFinding({
+      finding_kind: "legal_violation",
+      rule: "RISK_VAGUE_LANGUAGE",
+      message: "ผิดกฎ",
+    });
+    expect(finding.findingKind).toBe("legal_violation");
+  });
 });

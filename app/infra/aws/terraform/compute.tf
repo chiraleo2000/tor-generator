@@ -50,6 +50,12 @@ resource "aws_lb" "tor" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
   idle_timeout       = 900
+
+  access_logs {
+    bucket  = aws_s3_bucket.logs.id
+    prefix  = "alb"
+    enabled = true
+  }
 }
 
 resource "aws_lb_target_group" "frontend" {
@@ -164,6 +170,8 @@ resource "aws_ecs_task_definition" "backend" {
         { name = "COOKIE_SECURE", value = "true" },
         { name = "MCP_RAG_ENABLED", value = "false" },
         { name = "CUSTOM_RAG_ENABLED", value = "false" },
+        { name = "RAG_SOURCES", value = "both" },
+        { name = "CLOUD_LLM_TIMEOUT", value = "300" },
         { name = "CORS_ORIGINS", value = "https://${var.app_domain}" },
         { name = "POSTGRES_PORT", value = "5432" },
         { name = "REDIS_PORT", value = "6379" },
@@ -176,6 +184,8 @@ resource "aws_ecs_task_definition" "backend" {
         { name = "REDIS_HOST", valueFrom = "${aws_secretsmanager_secret.redis.arn}:host::" },
         { name = "REDIS_PASSWORD", valueFrom = "${aws_secretsmanager_secret.redis.arn}:auth_token::" },
         { name = "JWT_SECRET", valueFrom = "${aws_secretsmanager_secret.jwt.arn}:jwt_secret::" },
+        { name = "MCP_RAG_SERVERS_JSON", valueFrom = "${aws_secretsmanager_secret.mcp.arn}:MCP_RAG_SERVERS_JSON::" },
+        { name = "MCP_RAG_AUTH_VALUE", valueFrom = "${aws_secretsmanager_secret.mcp.arn}:MCP_RAG_AUTH_VALUE::" },
       ]
       logConfiguration = {
         logDriver = "awslogs"

@@ -103,4 +103,14 @@ describe("review compare helpers", () => {
     ).resolves.toEqual({ comparisons: [] });
     expect(apiClient.post).not.toHaveBeenCalled();
   });
+
+  it("rethrows compare-projects failures that are not a missing endpoint", async () => {
+    vi.mocked(apiClient.post).mockRejectedValue({ response: { status: 500 } });
+    await expect(
+      compareExtractJobs(
+        { id: "p1", extracted_text: "x" },
+        [{ id: "c1", extracted_text: "y" }]
+      )
+    ).rejects.toMatchObject({ response: { status: 500 } });
+  });
 });

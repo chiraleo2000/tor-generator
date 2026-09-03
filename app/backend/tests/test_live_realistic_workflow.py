@@ -121,8 +121,10 @@ def _parse_sse_done(raw: str) -> dict:
 
 
 def _procurement_pdf() -> Path | None:
+    from tests.repo_paths import repo_root
+
     pdf = (
-        Path(__file__).resolve().parents[3]
+        repo_root()
         / "documents"
         / "sources"
         / "การจัดซื้อจัดจ้าง"

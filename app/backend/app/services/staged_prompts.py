@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -10,6 +11,7 @@ from app.llm_tokens import GEMMA_CONTEXT_WINDOW, clamp_max_tokens
 logger = logging.getLogger("tor_app.staged_prompts")
 
 ANALYZE_MAX_TOKENS = 8_192
+ANALYZE_TIMEOUT_SECONDS = 45.0
 
 SECTION_ANALYZE_SYSTEM = (
     "คุณเป็นนักวิเคราะห์เอกสารกำหนดขอบเขตงานภาครัฐไทย "
@@ -60,13 +62,16 @@ async def analyze_notes(llm: Any, user_message: str, system: str) -> str:
         system=system,
     )
     try:
-        response = await invoke(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0.1,
-            max_tokens=max_out,
+        response = await asyncio.wait_for(
+            invoke(
+                [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.1,
+                max_tokens=max_out,
+            ),
+            timeout=ANALYZE_TIMEOUT_SECONDS,
         )
     except Exception:
         logger.warning("analyze pass skipped; composing without notes")

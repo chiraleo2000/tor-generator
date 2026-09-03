@@ -37,6 +37,8 @@ RAG **อนุญาตสองแหล่งข้อมูล** (คลั�
 | `28-VERIFICATION-AND-MIGRATION.md` | Combined_Report: ตรวจ Local LLM + เกต + แผนย้าย AWS + เสถียรภาพ (31 ส.ค. 2026) |
 | `29-TBD-AWS-CLOUD-ONLY.md` | **TBD** AWS Cloud ล้วน (ห้าม hybrid) + RAG สองแหล่ง + งานค้าง + รีวิวความพร้อมโครง |
 | `30-DEV-ASSIGNMENT-MCP-AND-AWS.md` | มอบหมายทีม DEV: สปรินต์ MCP RAG + YAML deploy AWS |
+| `31-MCP-RAG-AWS-QUICKSTART.md` | MCP + Custom RAG บน Amazon (Secrets JSON, egress, fail-open) |
+| `32-AMAZON-QUICK.md` | Amazon Quick workplace AI connectors (MCP Draft 7 + OpenAPI), not QuickSight |
 
 ชุด `01`–`12` เป็นบันทึกออกแบบก่อนหน้า (รวม PoC HTML) — อย่าใช้ `10`/`11` เป็นคู่มือติดตั้งของแอป Docker ปัจจุบัน
 

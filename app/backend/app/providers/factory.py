@@ -265,7 +265,12 @@ class ProviderFactory:
                 model_id=_attr(self._settings, "bedrock_model_id"),
                 aws_access_key_id=_attr(self._settings, "aws_access_key_id"),
                 aws_secret_access_key=_attr(self._settings, "aws_secret_access_key"),
-                timeout=_attr(self._settings, "lm_studio_timeout", 180.0),
+                aws_bearer_token_bedrock=_attr(
+                    self._settings, "aws_bearer_token_bedrock"
+                ),
+                timeout=float(
+                    _attr(self._settings, "cloud_llm_timeout", 300.0) or 300.0
+                ),
             )
         if kind == "azure_foundry":
             from app.providers.llm.azure_foundry_provider import AzureFoundryLLMProvider
@@ -305,6 +310,9 @@ class ProviderFactory:
                 ),
                 aws_access_key_id=_attr(self._settings, "aws_access_key_id"),
                 aws_secret_access_key=_attr(self._settings, "aws_secret_access_key"),
+                aws_bearer_token_bedrock=_attr(
+                    self._settings, "aws_bearer_token_bedrock"
+                ),
             )
         if kind == "azure_foundry":
             from httpx import Timeout
@@ -396,7 +404,14 @@ class ProviderFactory:
                     DEFAULT_EMBEDDING_MODEL,
                 )
             )
-        return Qwen3LocalEmbeddingProvider(base_url=base_url, model=model)
+        from httpx import Timeout
+
+        return Qwen3LocalEmbeddingProvider(
+            base_url=base_url,
+            model=model,
+            timeout=Timeout(60.0, connect=20.0),
+            max_retries=2,
+        )
 
     def _create_gemini_embedding_provider(self) -> EmbeddingProvider:
         from app.providers.embedding.gemini_provider import GeminiEmbeddingProvider

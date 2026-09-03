@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    aws_bearer_token_bedrock: str = ""
     azure_foundry_api_key: str = ""
     openai_compatible_api_key: str = ""
 
@@ -96,6 +97,7 @@ class Settings(BaseSettings):
     # Custom RAG HTTP (optional extra retrieval source)
     custom_rag_enabled: bool = False
     custom_rag_base_url: str = ""
+    custom_rag_retrieve_path: str = ""
     custom_rag_api_key: str = ""
     custom_rag_top_k: int = 24
     custom_rag_timeout_seconds: float = 30.0
@@ -107,6 +109,8 @@ class Settings(BaseSettings):
     mcp_rag_config_path: str = ""
     mcp_rag_servers_json: str = ""
     mcp_rag_timeout_seconds: float = 20.0
+    mcp_rag_auth_header: str = "Authorization"
+    mcp_rag_auth_value: str = ""
 
     # -------------------------------------------------------------------------
     # Cloud model ids
@@ -118,6 +122,7 @@ class Settings(BaseSettings):
     bedrock_region: str = "ap-southeast-1"
     bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
+    cloud_llm_timeout: float = 300.0
     azure_foundry_endpoint: str = ""
     azure_foundry_deployment: str = ""
     azure_foundry_embedding_deployment: str = ""
@@ -201,6 +206,8 @@ class Settings(BaseSettings):
         """Per-section LLM timeout. Local Gemma needs more headroom than cloud."""
         if self.llm_provider in LOCAL_LLM_PROVIDERS:
             return max(1, min(LOCAL_LLM_TIMEOUT_CAP_SECONDS, int(self.lm_studio_timeout)))
+        if self.llm_provider == "bedrock":
+            return max(1, int(self.cloud_llm_timeout or 300))
         return 60
 
     def cache_ttl_seconds(self, hours: int) -> int:

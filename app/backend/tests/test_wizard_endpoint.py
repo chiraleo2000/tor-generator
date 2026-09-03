@@ -165,6 +165,146 @@ class TestSaveStepData:
         assert data["data"]["version_number"] == 1
         assert data["data"]["message"] == "บันทึกข้อมูลเรียบร้อยแล้ว"
 
+    def test_save_step_updates_project_metadata_and_existing_section(
+        self, client, mock_user, mock_project
+    ):
+        existing = MagicMock(spec=TORSection)
+        existing.content = "เก่า"
+        existing.version = 1
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+        mock_section_result = MagicMock()
+        mock_section_result.scalar_one_or_none.return_value = existing
+        mock_location_result = MagicMock()
+        mock_location_result.scalar_one_or_none.return_value = None
+        mock_all_sections_result = MagicMock()
+        mock_all_sections_result.scalars.return_value.all.return_value = [existing]
+        mock_version_result = MagicMock()
+        mock_version_result.scalar_one_or_none.return_value = 50
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                mock_project_result,
+                mock_section_result,
+                mock_location_result,
+                mock_all_sections_result,
+                mock_version_result,
+            ]
+        )
+        mock_db.flush = AsyncMock()
+        mock_db.add = MagicMock()
+        _setup_overrides(mock_user, mock_db)
+
+        template_id = uuid4()
+        response = client.put(
+            f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/1",
+            json={
+                "data": {
+                    "project_name": "ชื่อใหม่",
+                    "ministry": "กระทรวงใหม่",
+                    "budget": "1500000",
+                    "project_type": "construction",
+                    "template_id": str(template_id),
+                    "duration_days": 180,
+                    "location": "กรุงเทพมหานคร",
+                }
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["version_number"] == 50
+        assert mock_project.name == "ชื่อใหม่"
+        assert mock_project.ministry == "กระทรวงใหม่"
+        assert mock_project.budget == 1500000
+        assert mock_project.project_type == "construction"
+        assert mock_project.template_id == template_id
+        assert existing.version == 2
+
+    def test_save_step_ignores_bad_budget_and_template_id(
+        self, client, mock_user, mock_project
+    ):
+        mock_project.budget = 5000000
+        mock_project.template_id = None
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+        mock_section_result = MagicMock()
+        mock_section_result.scalar_one_or_none.return_value = None
+        mock_all_sections_result = MagicMock()
+        mock_all_sections_result.scalars.return_value.all.return_value = []
+        mock_version_result = MagicMock()
+        mock_version_result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                mock_project_result,
+                mock_section_result,
+                mock_all_sections_result,
+                mock_version_result,
+            ]
+        )
+        mock_db.flush = AsyncMock()
+        mock_db.add = MagicMock()
+        _setup_overrides(mock_user, mock_db)
+
+        response = client.put(
+            f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/1",
+            json={
+                "data": {
+                    "s1": "ความเป็นมาของโครงการ",
+                    "budget": "not-a-number",
+                    "template_id": "not-a-uuid",
+                }
+            },
+        )
+        assert response.status_code == 200
+        assert mock_project.budget == 5000000
+        assert mock_project.template_id is None
+
+    def test_save_step_persists_scope_subkeys(self, client, mock_user, mock_project):
+        existing_sub = MagicMock(spec=TORSection)
+        existing_sub.content = "เก่า"
+        existing_sub.version = 1
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+        mock_s4_result = MagicMock()
+        mock_s4_result.scalar_one_or_none.return_value = None
+        mock_sub_existing = MagicMock()
+        mock_sub_existing.scalar_one_or_none.return_value = existing_sub
+        mock_sub_new = MagicMock()
+        mock_sub_new.scalar_one_or_none.return_value = None
+        mock_all_sections_result = MagicMock()
+        mock_all_sections_result.scalars.return_value.all.return_value = []
+        mock_version_result = MagicMock()
+        mock_version_result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                mock_project_result,
+                mock_s4_result,
+                mock_sub_existing,
+                mock_sub_new,
+                mock_all_sections_result,
+                mock_version_result,
+            ]
+        )
+        mock_db.flush = AsyncMock()
+        mock_db.add = MagicMock()
+        _setup_overrides(mock_user, mock_db)
+
+        response = client.put(
+            f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/4",
+            json={
+                "data": {
+                    "s4": {"title": "ขอบเขต"},
+                    "s4.1": "ขอบเขตงานหลัก",
+                    "s4.2": "วิธีดำเนินการ",
+                }
+            },
+        )
+        assert response.status_code == 200
+        assert existing_sub.version == 2
+        assert existing_sub.content == "ขอบเขตงานหลัก"
+        assert mock_db.add.call_count >= 2
+
     def test_save_step_invalid_step_number(self, client, mock_user):
         """Step number outside 1-8 returns error."""
         mock_db = AsyncMock()
@@ -550,6 +690,135 @@ class TestTriggerDraft:
         assert data["ok"] is True
         assert data["data"]["rag_retrieval_failed"] is True
         assert data["data"]["draft_content"] == "ร่างเนื้อหาโดยไม่มีข้อมูล RAG"
+
+    @patch("app.orchestrator.compile_tor_drafting_graph")
+    def test_draft_uses_best_draft_and_existing_section(
+        self, mock_compile, client, mock_user, mock_project, mock_tor_section
+    ):
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+        mock_sections_result = MagicMock()
+        mock_sections_result.scalars.return_value.all.return_value = [mock_tor_section]
+        mock_draft_section_result = MagicMock()
+        mock_draft_section_result.scalar_one_or_none.return_value = mock_tor_section
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                mock_project_result,
+                mock_sections_result,
+                mock_draft_section_result,
+            ]
+        )
+        mock_db.flush = AsyncMock()
+        _setup_overrides(mock_user, mock_db)
+
+        mock_graph = AsyncMock()
+        mock_graph.ainvoke = AsyncMock(
+            return_value={
+                "draft_content": "",
+                "quality_score": None,
+                "validation_findings": [],
+                "rag_retrieval_failed": False,
+                "error": None,
+                "best_draft_content": "ร่างสำรองจากรอบก่อน",
+                "best_draft_score": 72.0,
+                "best_draft_findings": [{"severity": "warning"}],
+            }
+        )
+        mock_compile.return_value = mock_graph
+        mock_project.template = MagicMock()
+        mock_project.template.section_structure = {"s5": {}}
+        mock_project.template.placeholder_guidance = {"s5": "แนะนำ"}
+
+        response = client.post(
+            f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/1/draft",
+            json={"additional_context": {"note": "เพิ่มบริบท"}, "target_section": "s5"},
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["draft_content"] == "ร่างสำรองจากรอบก่อน"
+        assert data["quality_score"] == 72.0
+        assert mock_tor_section.ai_draft == "ร่างสำรองจากรอบก่อน"
+
+    @patch("app.orchestrator.compile_tor_drafting_graph")
+    def test_draft_error_without_content_returns_400(
+        self, mock_compile, client, mock_user, mock_project
+    ):
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+        mock_sections_result = MagicMock()
+        mock_sections_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_sections_result]
+        )
+        _setup_overrides(mock_user, mock_db)
+        mock_graph = AsyncMock()
+        mock_graph.ainvoke = AsyncMock(
+            return_value={
+                "draft_content": "",
+                "quality_score": None,
+                "validation_findings": [],
+                "rag_retrieval_failed": False,
+                "error": "โมเดลล่ม",
+                "best_draft_content": None,
+                "best_draft_score": -1.0,
+                "best_draft_findings": [],
+            }
+        )
+        mock_compile.return_value = mock_graph
+        response = client.post(
+            f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/1/draft",
+            json={},
+        )
+        assert response.status_code == 400
+        assert "การสร้างร่างล้มเหลว" in response.json()["error"]["message"]
+
+    @patch(
+        "app.orchestrator.compile_tor_drafting_graph",
+        side_effect=ImportError("orchestrator missing"),
+    )
+    def test_draft_import_error_returns_400(
+        self, _mock_compile, client, mock_user, mock_project
+    ):
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+        mock_sections_result = MagicMock()
+        mock_sections_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_sections_result]
+        )
+        _setup_overrides(mock_user, mock_db)
+        response = client.post(
+            f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/1/draft",
+            json={},
+        )
+        assert response.status_code == 400
+        assert "ระบบ AI ไม่พร้อม" in response.json()["error"]["message"]
+
+    @patch(
+        "app.orchestrator.compile_tor_drafting_graph",
+        side_effect=RuntimeError("graph boom"),
+    )
+    def test_draft_unexpected_error_returns_400(
+        self, _mock_compile, client, mock_user, mock_project
+    ):
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+        mock_sections_result = MagicMock()
+        mock_sections_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_sections_result]
+        )
+        _setup_overrides(mock_user, mock_db)
+        response = client.post(
+            f"/api/v1/projects/{SAMPLE_PROJECT_ID}/steps/1/draft",
+            json={},
+        )
+        assert response.status_code == 400
+        assert "การสร้างร่างล้มเหลว" in response.json()["error"]["message"]
 
     def test_draft_requires_auth(self, client):
         """Unauthenticated request returns 401."""

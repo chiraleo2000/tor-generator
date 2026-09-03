@@ -6,7 +6,7 @@ No data leaves the organization — all inference runs on-premise.
 
 import asyncio
 import logging
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from httpx import Timeout
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
@@ -89,6 +89,15 @@ def _transient_unload(exc: BaseException) -> bool:
     return "unloaded" in message or "model is not loaded" in message
 
 
+def _connect_attempts(timeout: float) -> int:
+    """Retry DNS/connect flakes on long-running local servers, not fail-fast probes."""
+    return 3 if float(timeout) >= 30 else 1
+
+
+def _connect_seconds(timeout: float) -> float:
+    return min(20.0, max(3.0, float(timeout)))
+
+
 class LMStudioLocalProvider(LLMProvider):
     """OpenAI-compatible client targeting a local LM Studio endpoint.
 
@@ -118,9 +127,73 @@ class LMStudioLocalProvider(LLMProvider):
         self._client = AsyncOpenAI(
             base_url=self._base_url,
             api_key="not-needed",
-            timeout=Timeout(self._timeout, connect=10.0),
+            timeout=Timeout(self._timeout, connect=_connect_seconds(self._timeout)),
             max_retries=0,
         )
+
+    async def _create_with_connect_retry(self, request_kwargs: dict) -> Any:
+        attempts = _connect_attempts(self._timeout)
+        last_error: BaseException | None = None
+        for attempt in range(attempts):
+            try:
+                return await self._client.chat.completions.create(**request_kwargs)
+            except APITimeoutError as exc:
+                logger.exception(
+                    "LM Studio request timed out after %.1fs",
+                    self._timeout,
+                )
+                raise TimeoutError(
+                    f"LM Studio did not respond within {self._timeout}s"
+                ) from exc
+            except APIConnectionError as exc:
+                last_error = exc
+                if attempt + 1 < attempts:
+                    await asyncio.sleep(0.25 * (attempt + 1))
+                    continue
+                logger.exception(
+                    "Cannot connect to LM Studio at %s",
+                    self._base_url,
+                )
+                raise ConnectionError(
+                    f"LM Studio endpoint unreachable at {self._base_url}"
+                ) from exc
+        raise ConnectionError(
+            f"LM Studio endpoint unreachable at {self._base_url}"
+        ) from last_error
+
+    def _timeout_from(self) -> TimeoutError:
+        logger.exception(
+            "LM Studio stream timed out after %.1fs",
+            self._timeout,
+        )
+        return TimeoutError(f"LM Studio did not respond within {self._timeout}s")
+
+    def _unreachable_from(self) -> ConnectionError:
+        logger.exception(
+            "Cannot connect to LM Studio at %s",
+            self._base_url,
+        )
+        return ConnectionError(
+            f"LM Studio endpoint unreachable at {self._base_url}"
+        )
+
+    async def _retry_stream_connect(self, attempt: int, exc: APIConnectionError) -> bool:
+        if _timeout_error(exc):
+            raise self._timeout_from() from exc
+        if attempt + 1 < _connect_attempts(self._timeout):
+            await asyncio.sleep(0.25 * (attempt + 1))
+            return True
+        raise self._unreachable_from() from exc
+
+    async def _retry_stream_generic(self, attempt: int, exc: BaseException) -> bool:
+        if _timeout_error(exc):
+            raise self._timeout_from() from exc
+        if _transient_unload(exc) and attempt < 2:
+            logger.warning("LM Studio model unloaded; retry %s/2", attempt + 1)
+            await asyncio.sleep(2 * (attempt + 1))
+            return True
+        logger.exception("LM Studio stream failed")
+        return False
 
     async def invoke(
         self,
@@ -158,7 +231,7 @@ class LMStudioLocalProvider(LLMProvider):
             if tools:
                 request_kwargs["tools"] = tools
 
-            response = await self._client.chat.completions.create(**request_kwargs)
+            response = await self._create_with_connect_retry(request_kwargs)
 
             choice = response.choices[0]
             usage = response.usage
@@ -174,24 +247,8 @@ class LMStudioLocalProvider(LLMProvider):
                 finish_reason=choice.finish_reason or "stop",
             )
 
-        except APITimeoutError as exc:
-            logger.exception(
-                "LM Studio request timed out after %.1fs",
-                self._timeout,
-            )
-            raise TimeoutError(
-                f"LM Studio did not respond within {self._timeout}s"
-            ) from exc
-
-        except APIConnectionError as exc:
-            logger.exception(
-                "Cannot connect to LM Studio at %s",
-                self._base_url,
-            )
-            raise ConnectionError(
-                f"LM Studio endpoint unreachable at {self._base_url}"
-            ) from exc
-
+        except (TimeoutError, ConnectionError):
+            raise
         except Exception:
             logger.exception("LM Studio invocation failed")
             raise
@@ -223,38 +280,12 @@ class LMStudioLocalProvider(LLMProvider):
                 return
             except APIConnectionError as exc:
                 last_error = exc
-                if _timeout_error(exc):
-                    logger.exception(
-                        "LM Studio stream timed out after %.1fs",
-                        self._timeout,
-                    )
-                    raise TimeoutError(
-                        f"LM Studio did not respond within {self._timeout}s"
-                    ) from exc
-                logger.exception(
-                    "Cannot connect to LM Studio at %s",
-                    self._base_url,
-                )
-                raise ConnectionError(
-                    f"LM Studio endpoint unreachable at {self._base_url}"
-                ) from exc
+                if await self._retry_stream_connect(attempt, exc):
+                    continue
             except Exception as exc:
                 last_error = exc
-                if _timeout_error(exc):
-                    logger.exception(
-                        "LM Studio stream timed out after %.1fs",
-                        self._timeout,
-                    )
-                    raise TimeoutError(
-                        f"LM Studio did not respond within {self._timeout}s"
-                    ) from exc
-                if _transient_unload(exc) and attempt < 2:
-                    logger.warning(
-                        "LM Studio model unloaded; retry %s/2", attempt + 1
-                    )
-                    await asyncio.sleep(2 * (attempt + 1))
+                if await self._retry_stream_generic(attempt, exc):
                     continue
-                logger.exception("LM Studio stream failed")
                 raise
         if last_error is not None:
             raise last_error
@@ -272,7 +303,7 @@ class LMStudioLocalProvider(LLMProvider):
             messages=messages_with_output_contract(messages),
             stream=True,
             timeout=Timeout(
-                connect=10.0,
+                connect=_connect_seconds(self._timeout),
                 read=self._timeout,
                 write=30.0,
                 pool=10.0,

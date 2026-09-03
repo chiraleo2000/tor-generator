@@ -32,4 +32,12 @@ describe("drafting-guard", () => {
     confirmFn.mockReturnValue(true);
     expect(decideArchiveProject("p2", "อื่น", confirmFn)).toBe("proceed");
   });
+
+  it("ignores an empty project id and a mismatched clear", () => {
+    markDraftingProject("");
+    expect(isCurrentlyDrafting("")).toBe(false);
+    markDraftingProject("p-live");
+    clearDraftingProject();
+    expect(isCurrentlyDrafting("p-live")).toBe(false);
+  });
 });

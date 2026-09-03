@@ -29,5 +29,7 @@ describe("phase-handoff", () => {
     expect(coverageStatusLabel("filled")).toBe("ครบ");
     expect(coverageStatusLabel("gap")).toBe("ยังขาด");
     expect(coverageStatusLabel("reference_only")).toBe("อ้างอิง");
+    expect(coverageStatusLabel("unknown")).toBe("unknown");
+    expect(canSubmitPhase4(1, 0)).toBe(false);
   });
 });

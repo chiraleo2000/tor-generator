@@ -196,4 +196,108 @@ describe("KnowledgeBasePage", () => {
     fireEvent.click(screen.getByTestId("upload-trigger"));
     expect(await screen.findByRole("alert")).toHaveTextContent("ไฟล์ไม่รองรับ");
   });
+
+  it("expands a mandatory group and changes the upload category chip", async () => {
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByText("ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)"));
+    expect(screen.getByText("พรบ.pdf")).toBeInTheDocument();
+    expect(screen.getByText(/10 chunks · ลบไม่ได้/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "กฎกระทรวง" }));
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { ok: true } } as never);
+    fireEvent.click(screen.getByTestId("upload-trigger"));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    const body = vi.mocked(apiClient.post).mock.calls[0][1] as FormData;
+    expect(body.get("category")).toBe("regulation");
+  });
+
+  it("shows a download error for a private file", async () => {
+    vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
+      if (String(url).includes("/file")) {
+        throw { response: { data: { error: { message: "ดาวน์โหลดไม่สำเร็จ" } } } };
+      }
+      return { data: { ok: true, data: catalog } } as never;
+    });
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByTestId("download-mine-b"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ดาวน์โหลดไม่สำเร็จ");
+  });
+
+  it("keeps the file when delete is cancelled", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByTestId("delete-user-file-b"));
+    expect(apiClient.delete).not.toHaveBeenCalled();
+  });
+
+  it("shows a delete error and falls back to raw catalog groups", async () => {
+    vi.mocked(apiClient.delete).mockRejectedValue({
+      response: { data: { error: { message: "ลบเอกสารไม่สำเร็จ" } } },
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByTestId("delete-user-file-b"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ลบเอกสารไม่สำเร็จ");
+  });
+
+  it("expands a raw category when grouped catalog is empty", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          groups: [],
+          userFiles: [],
+          totals: { files: 1, chunks: 3 },
+          raw: {
+            law: [{ id: "raw-1", name: "พรบ-raw.pdf", chunk_count: 3 }],
+          },
+          chunked: [],
+        },
+      },
+    } as never);
+    render(<KnowledgeBasePage />);
+    fireEvent.click(
+      await screen.findByText((text, el) =>
+        Boolean(el?.classList.contains("font-semibold") && text === "พ.ร.บ. / กฎหมาย")
+      )
+    );
+    expect(await screen.findByText("พรบ-raw.pdf")).toBeInTheDocument();
+    expect(screen.getAllByText(/3 chunks/).length).toBeGreaterThan(0);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    fireEvent(window, new Event("focus"));
+    fireEvent(document, new Event("visibilitychange"));
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+  });
+
+  it("downloads a private file through a blob link", async () => {
+    const click = vi.fn();
+    const createObjectURL = vi.fn(() => "blob:kb-file");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const realCreate = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      const el = realCreate(tag);
+      if (tag === "a") {
+        el.click = click;
+      }
+      return el;
+    });
+    vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
+      if (String(url).includes("/file")) {
+        return { data: new Blob(["pdf"]) } as never;
+      }
+      return { data: { ok: true, data: catalog } } as never;
+    });
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByTestId("download-mine-b"));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:kb-file");
+  });
 });

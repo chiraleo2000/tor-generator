@@ -73,6 +73,8 @@ resource "aws_security_group" "ecs_be" {
     security_groups = [aws_security_group.ecs_fe.id]
   }
 
+  # Default: all egress via NAT (Bedrock, S3, partner MCP HTTPS).
+  # Tighten to partner MCP URL:port plus AWS prefix lists when the endpoint is known.
   egress {
     from_port   = 0
     to_port     = 0

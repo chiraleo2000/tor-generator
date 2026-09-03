@@ -25,4 +25,21 @@ describe("apiErrorMessage", () => {
       /หมดเวลารอโมเดล/
     );
   });
+
+  it("explains browser and Axios network failures in Thai", () => {
+    expect(apiErrorMessage({ message: "Failed to fetch" }, "fallback")).toMatch(
+      /เชื่อมต่อเซิร์ฟเวอร์ไม่ได้/
+    );
+    expect(apiErrorMessage({ code: "ERR_NETWORK" }, "fallback")).toMatch(
+      /เชื่อมต่อเซิร์ฟเวอร์ไม่ได้/
+    );
+  });
+
+  it("maps AbortError from DOMException and plain objects", () => {
+    expect(apiErrorMessage(new DOMException("stop", "AbortError"), "fallback")).toMatch(
+      /ยกเลิกการสตรีมแล้ว/
+    );
+    expect(apiErrorMessage({ name: "AbortError" }, "fallback")).toMatch(/ยกเลิกการสตรีมแล้ว/);
+    expect(apiErrorMessage("string", "fallback")).toBe("fallback");
+  });
 });
