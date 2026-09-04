@@ -1,6 +1,18 @@
-﻿pytest -m "not live_llm and not integration"
+﻿Latest full coverage (Docker test overlay, 2026-09-03)
+1971 passed, 1 skipped, 15 deselected, 3 warnings in 213.01s (0:03:33)
+Coverage TOTAL 95% (13958 stmts, 759 miss)
+Required 90.0% reached: 94.56%
+platform linux, python 3.11.16
+Log: _docker-pytest-coverage.txt
+
+MCP unit tests re-checked 2026-09-04 (mounted current app/ + tests/):
+test_mcp_retrieve_server.py + test_mcp_rag.py + test_config_timeout.py
++ test_apply_mcp_hits_tags_matching_local_and_keeps_extras
+33 passed in 1.25s
+
+Previous host run 2026-08-31
+pytest -m "not live_llm and not integration"
 1642 passed, 3 skipped, 25 deselected, 2 warnings in 186.24s
 Coverage TOTAL 84% (12745 stmts, 2087 miss)
 htmlcov: app/backend/htmlcov
 platform linux, python 3.11.16
-Date: 2026-08-31

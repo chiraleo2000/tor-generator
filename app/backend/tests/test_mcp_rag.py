@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -33,21 +34,31 @@ servers:
     assert rows[0]["top_k"] == 8
 
 
-def test_repo_rag_sources_yaml_has_no_enabled_servers() -> None:
-    from pathlib import Path
+def _rag_sources_yaml_path() -> Path:
+    """Host layout is app/backend/tests; the test image mounts tests at /app/tests."""
+    here = Path(__file__).resolve()
+    candidates = [here.parents[1] / "infra" / "mcp" / "rag-sources.yaml"]
+    if len(here.parents) > 3:
+        candidates.append(
+            here.parents[3] / "app" / "infra" / "mcp" / "rag-sources.yaml"
+        )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError("app/infra/mcp/rag-sources.yaml")
 
+
+def test_repo_rag_sources_yaml_enables_local_pgvector_only() -> None:
     from app.rag.mcp_rag import parse_rag_sources_yaml
 
-    path = (
-        Path(__file__).resolve().parents[3]
-        / "app"
-        / "infra"
-        / "mcp"
-        / "rag-sources.yaml"
-    )
+    path = _rag_sources_yaml_path()
     rows = parse_rag_sources_yaml(path.read_text(encoding="utf-8"))
-    assert rows
-    assert all(not row.get("enabled") for row in rows)
+    by_id = {str(row.get("id")): row for row in rows}
+    assert by_id["local-pgvector-mcp"].get("enabled") is True
+    assert by_id["local-pgvector-mcp"].get("url") == "http://mcp-rag:8765"
+    assert by_id["agency-legal-mcp"].get("enabled") is False
+    assert by_id["partner-kb-mcp"].get("enabled") is False
+    assert by_id["retrieve-stub"].get("enabled") is False
 
 
 def test_chunks_from_tool_result_reads_mcp_content_text() -> None:

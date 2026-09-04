@@ -1,16 +1,22 @@
-# MCP RAG sources (optional extra retrieve — not the local LLM)
+# MCP RAG sources (extra retrieve — not the chat LLM)
 
-# Local Compose does **not** call these servers. Chat/embeddings use LM Studio
-# and pgvector from documents/sources (see list_mandatory_sources).
+# Local Compose: MCP_RAG_ENABLED=true and local-pgvector-mcp enabled.
+# The mcp-rag service retrieves from the same pgvector corpus as local RAG
+# (documents/sources). Chat/embeddings stay on LM Studio.
 #
-# MCP_RAG_ENABLED=false in .env. Even if set true, every server below stays
-# enabled: false until a real agency URL exists.
-# retrieve-stub returns fake mcp-retrieve-stub chunks — never enable it for
-# legal answers.
+# agency-legal-mcp / partner-kb-mcp stay off until a real agency URL exists.
+# retrieve-stub returns fake mcp-retrieve-stub chunks — keep it disabled.
 #
 # ECS: use MCP_RAG_SERVERS_JSON (this YAML is not in the backend image).
 
 servers:
+  - id: local-pgvector-mcp
+    enabled: true
+    transport: http
+    url: http://mcp-rag:8765
+    tool: retrieve
+    timeout_seconds: 20
+    top_k: 8
   - id: agency-legal-mcp
     enabled: false
     transport: http
@@ -25,7 +31,7 @@ servers:
     tool: retrieve
     timeout_seconds: 20
     top_k: 8
-  # Compose: docker compose --profile mcp-stub up
+  # Fake JSON-RPC stub: docker compose --profile mcp-stub up (host port 8766)
   - id: retrieve-stub
     enabled: false
     transport: http

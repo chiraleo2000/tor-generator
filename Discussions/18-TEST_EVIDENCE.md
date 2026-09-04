@@ -1,7 +1,49 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-> **รอบตรวจรวมล่าสุด (31 สิงหาคม 2026):** [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md) — pytest 1642 + live ECT 3 ผ่าน (คะแนนโครงการ 95) + Vitest 209 + Playwright headed KB  
-> ไฟล์นี้เก็บวงจรและภาพรอบ **25–27 ส.ค. 2026** เป็น baseline — ตัวเลขในตารางด้านล่างอาจต่างจากรอบ 28
+> **รอบตรวจรวมล่าสุด (4 กันยายน 2026 · แอป v0.3.1):** [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)  
+> pytest coverage **1971 ผ่าน** / บรรทัด **95%** (3 ก.ย.) · Vitest **209 ผ่าน** (31 ส.ค.) · UI สามเครื่องมือ **3/3 ผ่าน** (ถาม-ตอบ + ร่าง 13/13 + ตรวจสอบ)  
+> ไฟล์นี้เก็บภาพรอบ **25–27 ส.ค. 2026** เป็น baseline — ตัวเลขในตารางเก่าด้านล่างอาจต่างจากรอบนี้
+
+---
+
+## รอบ 4 กันยายน 2026 — coverage เต็ม + สามเครื่องมือบนหน้าเว็บ (ผ่านทั้งหมด)
+
+สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio + **mcp-rag :8765**) + LM Studio `http://127.0.0.1:1234`  
+`MCP_RAG_ENABLED=true` · YAML `local-pgvector-mcp` ชี้คลัง pgvector เดียวกับ `documents/sources` (ไม่ใช่ retrieve-stub)  
+บัญชีทดลอง `officer@example.go.th` ล็อกอินได้ (ต้องไม่ส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ Compose)
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest `-m "not live_llm and not integration"` + cov (Docker 3 ก.ย.) | **1971 ผ่าน** / 1 ข้าม / 15 ตัด live·integration · **95%** (13958 stmts, เกต 90% ถึง 94.56%) | `test-evidence/_docker-pytest-coverage.txt` · `_pytest-coverage.txt` |
+| Vitest `test:coverage` (31 ส.ค. — รอบล่าสุดที่มีล็อก) | **209 ผ่าน** / 48 ไฟล์ · statements **80.5%** · lines **82.88%** | `test-evidence/_vitest-coverage.txt` |
+| MCP unit (4 ก.ย. เทียบซอร์สปัจจุบัน) | **33 ผ่าน** (`test_mcp_*` + pin + `_apply_mcp_hits`) | คอนเทนเนอร์ one-off ติดตั้ง pytest |
+| UI ตามลำดับ: ถาม-ตอบ → ร่าง TOR → ตรวจสอบ TOR | **3/3 ผ่าน** | `test-evidence/_serial-three-tools-2026-09-04.txt` |
+
+ฮาร์เนสหน้าเว็บ: `app/frontend/scripts/serial_three_tools.py` (Playwright Python + Chrome) เพราะโฮสต์นี้ไม่มี `npm` ใน PATH — สเปก TypeScript คู่กันอยู่ที่ `app/frontend/e2e/three-tools-ui.spec.ts`
+
+| ขั้น | ผล | เวลาโดยประมาณ | หมายเหตุ |
+|------|-----|----------------|----------|
+| 1 ถาม-ตอบ `/chat` | **CHAT_OK** | ~2 นาที | อ้าง `mcp:` และ `document:` จาก PDF จริง ไม่มีข้อความสตับ |
+| 2 ร่าง TOR ห้าขั้น | **DRAFT_OK** | ~27 นาที | **13/13 หมวด** แล้วไปขั้นทบทวน/อนุมัติ |
+| 3 ตรวจสอบ TOR `/review` | **REVIEW_OK** | ~99 วินาที | ไฟล์ตัวอย่างสั้น `tor-draft.txt` ได้ **0/100** เพราะขาดช่องบังคับ — คะแนนตรงเนื้อหา ไม่ใช่ระบบค้าง |
+
+![แดชบอร์ดหลังล็อกอิน](test-evidence/serial-00-dashboard.png)
+
+![ถาม-ตอบ มี citation MCP/เอกสาร](test-evidence/serial-01-chat.png)
+
+![ร่างครบ 13 หมวด](test-evidence/serial-02-draft-13.png)
+
+![ร่างเสร็จ กลับรายการโครงการ](test-evidence/serial-02-draft-done.png)
+
+![เริ่มตรวจสอบ TOR](test-evidence/serial-03-review-start.png)
+
+![สกัดข้อความ](test-evidence/serial-04-review-extract.png)
+
+![คะแนนความพร้อม (ไฟล์ตัวอย่างสั้น)](test-evidence/serial-05-review-score.png)
+
+พอร์ต **8765** ในรอบนี้เป็นเซิร์ฟเวอร์ MCP retrieve (`mcp-rag`) ไม่ใช่เซิร์ฟเวอร์ HTML coverage
+
+---
 
 วันที่ **27 สิงหาคม 2026** (อัปเดตรอบ ECT AI Chatbot full coverage 26–27 ส.ค.) · ฐานเดิม v0.2.4 **25 สิงหาคม 2026**  
 สแตก Docker `tor-app` (postgres + mongo + neo4j + redis + minio) + LM Studio ที่ `http://127.0.0.1:1234` (fallback เมื่อ SGLang `:30000` ยังไม่ขึ้น)  
@@ -358,13 +400,16 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 ## Coverage HTML
 
-เสิร์ฟ `app/backend/htmlcov` ที่พอร์ต **8765**, `app/frontend/coverage` ที่ **8766**, `app/frontend/playwright-report` ที่ **8767** แล้วรัน `npm run test:e2e:reports`
+รอบ 4 ก.ย. 2026 พอร์ต **8765** เป็น `mcp-rag` (JSON-RPC retrieve) — อย่าเสิร์ฟ `htmlcov` ทับพอร์ตนี้  
+รายงาน coverage ล่าสุดอยู่ใน `test-evidence/_docker-pytest-coverage.txt` (TOTAL **95%**, **1971 ผ่าน**)
 
-Backend `coverage.py` v7.13.4: **83%** (9826/11800 บรรทัด) จาก `pytest -m "not live_llm and not integration" --cov=app` — **1596 ผ่าน** / 22 ข้าม
+เสิร์ฟ `app/backend/htmlcov` ที่พอร์ตอื่น (เช่น 88765) หรือเปิดไฟล์ในเครื่อง แล้วค่อยรัน `npm run test:e2e:reports` ถ้าต้องการภาพ
+
+Backend `coverage.py` (Docker 3 ก.ย. 2026): **95%** (13958 stmts / 759 miss) จาก `pytest -m "not live_llm and not integration" --cov=app` — **1971 ผ่าน** / 1 ข้าม
 
 ![Coverage backend 83%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8: statements **79.81%** (1514/1897) · lines **82.22%** (1397/1699) — **205 ผ่าน** / 48 ไฟล์ · include ชุด `src/lib` + stores + draft Phase0–4 + `/review` + KB + AI settings
+Frontend Istanbul/v8 (31 ส.ค. 2026): statements **80.5%** · lines **82.88%** — **209 ผ่าน** / 48 ไฟล์
 
 ![Coverage frontend 82.22%](test-evidence/14-frontend-coverage.png)
 
@@ -391,6 +436,8 @@ Frontend Istanbul/v8: statements **79.81%** (1514/1897) · lines **82.22%** (139
 ---
 
 ## คำสั่งที่รันในรอบนี้
+
+รอบ **4 ก.ย. 2026** ใช้ `serial_three_tools.py` + ล็อก pytest Docker ใน `_docker-pytest-coverage.txt` (**1971 ผ่าน / 95%**) — คำสั่งด้านล่างเป็น baseline 25–27 ส.ค.
 
 จาก `app/backend`:
 

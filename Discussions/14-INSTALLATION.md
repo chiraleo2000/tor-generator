@@ -242,7 +242,7 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**25 ส.ค. 2026** · v0.2.4) กับสแตก Docker (`tor-app` + Mongo + Neo4j) — headed เดิน live Phase 0–4 (๑๓ หมวด + หัวข้อย่อย ๔.๑–๔.๑๔ + ตาราง) + แชท + ตรวจ TOR; mock specs ถูกข้ามเมื่อ `HEADED=1` — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายทีละขั้นใน `13-USER_GUIDELINE.md` และจับคู่เคสเทสต์ใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**4 ก.ย. 2026** · v0.3.1) กับสแตก Docker (`tor-app` + Mongo + Neo4j + **mcp-rag**) — UI ตามลำดับถาม-ตอบ + ร่าง 13/13 + ตรวจสอบ TOR ผ่านทั้งหมด; pytest coverage **1971 ผ่าน / 95%** — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายใน `13-USER_GUIDELINE.md` และจับคู่เคสใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
@@ -250,9 +250,9 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest ไม่รวม `live_llm`/`integration` | **1596 ผ่าน** / **22 ข้าม** / ครอบคลุม **83%** ของ `app/` |
-| Vitest coverage | **205 ผ่าน** / 48 ไฟล์ · statements **79.81%** · lines **82.22%** |
-| Playwright headed (แอป) | ชุดเต็ม **15 ผ่าน / 3 ข้าม** แล้ว wizard เส้นเดียว **1 ผ่าน (~19.9 นาที · 0→4 + หัวข้อย่อย + ตาราง)** |
+| pytest ไม่รวม `live_llm`/`integration` | **1971 ผ่าน** / **1 ข้าม** / ครอบคลุม **95%** ของ `app/` (Docker 3 ก.ย. 2026) |
+| Vitest coverage | **209 ผ่าน** / 48 ไฟล์ · statements **80.5%** · lines **82.88%** |
+| UI สามเครื่องมือ headed | **3 ผ่าน** (ถาม-ตอบ + ร่าง **13/13** + ตรวจสอบ · 4 ก.ย. 2026) |
 | Guide screenshots | **3 ผ่าน** (`test:e2e:guide` headed · รีเฟรช PNG ใน `test-evidence/`) |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 

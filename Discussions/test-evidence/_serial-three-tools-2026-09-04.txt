@@ -1,0 +1,14 @@
+Serial headed UI — three tools in order (not parallel)
+Date: 2026-09-04
+Stack: Docker tor-app (postgres mongo neo4j redis minio + mcp-rag :8765) + LM Studio :1234
+Harness: app/frontend/scripts/serial_three_tools.py (Python Playwright, Chrome)
+Login: officer@example.go.th — HTTP 200 after POSTGRES_HOST=postgres in Compose
+
+1 chat   CHAT_OK   ~2 min    citations mcp: and document: (real PDFs, not retrieve-stub)
+2 draft  DRAFT_OK  ~27 min   13/13 sections then phase 4 review/approve
+3 review REVIEW_OK ~99 s     extract + score; sample tor-draft.txt scored 0/100
+                             (short stub missing mandatory slots — expected, not a hang)
+
+PASS 3/3
+Evidence: serial-00-dashboard.png serial-01-chat.png serial-02-draft-*.png
+          serial-03-review-start.png serial-04-review-extract.png serial-05-review-score.png

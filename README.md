@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.3.0**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ (ต่อยอด MCP + โครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md))  
+แอปที่รันจริงคือ **v0.3.1**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)  
 **Production แนะนำ:** Amazon Bedrock (ดู [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md))  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
 
@@ -149,16 +149,16 @@ npm run test:e2e
 npm run test:e2e:headed
 ```
 
-ชุดล่าสุดบนโฮสต์ (**24 ส.ค. 2026**):
+ชุดล่าสุดที่ผ่านทั้งหมด (**4 ก.ย. 2026** · รายละเอียด [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)):
 
-`npm run test:e2e:headed` เปิด Chromium ให้เห็นจริง (slowMo 400ms) ทั้ง **21 เคส** บน Docker `:3000` + LM Studio — รวมล็อกอิน แดชบอร์ด แอดมิน คู่มือทุกแท็บ ฐานความรู้ ตรวจ TOR ถาม-ตอบ แนบไฟล์คลัง วิซาร์ด Phase 0–4 และร่าง Gemma
+pytest coverage รันใน Docker (3 ก.ย.) · UI สามเครื่องมือรันตามลำดับบน Chrome (4 ก.ย.) · Vitest ใช้ล็อกล่าสุดที่ผ่านครบ (31 ส.ค.)
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm"` | **1533 ผ่าน** · cov **85%** |
-| pytest `-m live_llm` | **14 ผ่าน** |
-| Vitest `npm run test:coverage` | **177 ผ่าน** / 42 ไฟล์ · lines **82.36%** |
-| Playwright `test:e2e:headed` | **21 ผ่าน** / 0 ล้ม (~4.7 นาที · เบราว์เซอร์โชว์บนจอ) |
+| pytest `-m "not live_llm and not integration"` | **1971 ผ่าน** · cov **95%** |
+| MCP unit (ซอร์สปัจจุบัน) | **33 ผ่าน** |
+| Vitest `npm run test:coverage` | **209 ผ่าน** / 48 ไฟล์ · lines **82.88%** |
+| UI ตามลำดับ ถาม-ตอบ → ร่าง TOR → ตรวจสอบ TOR | **3 ผ่าน** / 0 ล้ม (ร่าง **13/13 หมวด**) |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
 

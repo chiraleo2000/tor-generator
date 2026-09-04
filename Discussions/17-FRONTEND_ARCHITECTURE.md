@@ -79,7 +79,7 @@ docker compose -p tor-app --env-file .env up -d --build frontend
 
 Problems that name `frontend/...` or `backend/...` at the repo root are stale. Those folders are not on disk. Live sources are `app/frontend` and `app/backend`. Close leftover tabs, then **Developer: Reload Window**. SonarLint excludes only `frontend/**` and `backend/**` at the repo root — not `**/frontend/**`, which would skip this app tree. The root `tsconfig.json` lists `.vscode/tsconfig-placeholder.ts` so TypeScript does not raise TS18002 (`files` empty) and does not infer a project over leftover root paths.
 
-Last headed run (**24 ส.ค. 2026**): `npm run test:e2e:headed` **21 ผ่าน** / 0 ล้ม (~4.7 นาที) — Chromium เปิดบนจอ. Vitest coverage **177 ผ่าน**, lines **82.36%**. Screenshots: `discussions/18-TEST_EVIDENCE.md`.
+Last headed live run (**4 ก.ย. 2026**): Python Playwright `serial_three_tools.py` **3 ผ่าน** / 0 ล้ม (chat → draft **13/13** → review) on Docker `:3000` + LM Studio + `mcp-rag`. Pytest coverage **1971 ผ่าน**, lines **95%**. Vitest **209 ผ่าน**, lines **82.88%**. Screenshots: `discussions/18-TEST_EVIDENCE.md`.
 
 `e2e/reports.spec.ts` and `e2e/guide-shots.spec.ts` stay out of `npm run test:e2e` unless `CAPTURE_REPORTS=1` / `CAPTURE_GUIDE=1`.
 

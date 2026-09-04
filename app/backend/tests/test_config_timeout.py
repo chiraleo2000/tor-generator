@@ -110,6 +110,24 @@ def test_on_prem_pin_rewrites_bedrock_overlay(monkeypatch: pytest.MonkeyPatch) -
         clear_runtime_overlay()
 
 
+def test_on_prem_pin_enables_mcp_when_env_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import apply_on_prem_llm_pin, Settings as PinSettings
+
+    monkeypatch.setenv("PIN_ON_PREM_LLM", "true")
+    monkeypatch.setenv("DEPLOYMENT_MODE", "on_prem")
+    monkeypatch.setenv("MCP_RAG_ENABLED", "true")
+    pinned = apply_on_prem_llm_pin(
+        PinSettings(
+            _env_file=None,
+            llm_provider="lm_studio",
+            deployment_mode="on_prem",
+            embedding_provider="local",
+            mcp_rag_enabled=False,
+        )
+    )
+    assert pinned.mcp_rag_enabled is True
+
+
 def test_on_prem_pin_off_keeps_bedrock_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import apply_runtime_overlay, clear_runtime_overlay, get_settings
 

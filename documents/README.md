@@ -2,7 +2,7 @@
 
 โฟลเดอร์นี้เก็บ **ข้อมูลและเอกสารอ้างอิงภาษาไทย** ไม่ใช่ซอร์สแอป อย่าคัดลอกต้นไม้นี้ไปไว้ใน `app/frontend` หรือ `app/backend`
 
-แอปที่รันจริงอ้างอิง: TOR Generator **v0.3.0** — คู่มือติดตั้ง [Discussions/14](../Discussions/14-INSTALLATION.md) · คำอธิบายแอป [15](../Discussions/15-APPLICATION_DESCRIPTION.md) · AWS Cloud ล้วน [29](../Discussions/29-TBD-AWS-CLOUD-ONLY.md) · มอบหมายทีม [30](../Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)
+แอปที่รันจริงอ้างอิง: TOR Generator **v0.3.1** — คู่มือติดตั้ง [Discussions/14](../Discussions/14-INSTALLATION.md) · คำอธิบายแอป [15](../Discussions/15-APPLICATION_DESCRIPTION.md) · หลักฐานเทสต์ล่าสุด [18](../Discussions/18-TEST_EVIDENCE.md) · AWS Cloud ล้วน [29](../Discussions/29-TBD-AWS-CLOUD-ONLY.md) · มอบหมายทีม [30](../Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)
 
 ## คลังที่แอปใช้จริง กับ คลังงานวิจัย
 

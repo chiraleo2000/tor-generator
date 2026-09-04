@@ -143,6 +143,40 @@ async def test_hybrid_sort_is_deterministic_on_tied_scores():
     assert [item.id for item in rows] == ["b-local", "a-custom", "c-mcp"]
 
 
+def test_apply_mcp_hits_tags_matching_local_and_keeps_extras():
+    from app.rag.hybrid import _apply_mcp_hits
+    from app.rag.retrieval import RetrievedChunk
+
+    local = RetrievedChunk(
+        id="local-1",
+        text="วิธีเฉพาะเจาะจง",
+        score=0.9,
+        source_document="ระเบียบ.pdf",
+        metadata={"rag_source": "local"},
+    )
+    other = RetrievedChunk(id="local-2", text="อื่น", score=0.4)
+    mcp_same = RetrievedChunk(
+        id="mcp-1",
+        text="วิธีเฉพาะเจาะจง",
+        score=0.88,
+        source_document="ระเบียบ.pdf",
+        metadata={"rag_source": "mcp", "mcp_server": "local-pgvector-mcp"},
+    )
+    mcp_extra = RetrievedChunk(
+        id="mcp-2",
+        text="ชิ้นจากหน่วยงาน",
+        score=0.5,
+        source_document="agency",
+        metadata={"rag_source": "mcp", "mcp_server": "agency-legal-mcp"},
+    )
+    merged = _apply_mcp_hits([local, other], [mcp_same, mcp_extra])
+    assert merged[0].metadata.get("rag_source") == "mcp"
+    assert merged[0].metadata.get("mcp_server") == "local-pgvector-mcp"
+    assert merged[0].id == "local-1"
+    assert merged[1].id == "local-2"
+    assert merged[2].id == "mcp-2"
+
+
 @pytest.mark.asyncio
 async def test_hybrid_retrieve_fail_open_when_local_embedding_raises():
     from app.rag.retrieval import RetrievedChunk

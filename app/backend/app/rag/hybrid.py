@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from uuid import UUID
 
 from app import infra as runtime
@@ -24,6 +25,36 @@ def _chunk_sort_key(chunk: RetrievedChunk) -> tuple:
     src = (chunk.metadata or {}).get("rag_source")
     rank = _SOURCE_ORDER.get(src, 3)
     return (-float(chunk.score or 0.0), rank, str(chunk.id or ""))
+
+
+def _text_key(chunk: RetrievedChunk) -> str:
+    return (chunk.text or "").strip()[:240]
+
+
+def _apply_mcp_hits(
+    chunks: list[RetrievedChunk], mcp_chunks: list[RetrievedChunk]
+) -> list[RetrievedChunk]:
+    """Tag local hits that MCP also returned; append MCP-only snippets."""
+    if not mcp_chunks:
+        return chunks
+    mcp_by_text = {_text_key(item): item for item in mcp_chunks if _text_key(item)}
+    used: set[str] = set()
+    tagged: list[RetrievedChunk] = []
+    for chunk in chunks:
+        key = _text_key(chunk)
+        hit = mcp_by_text.get(key)
+        if hit is None:
+            tagged.append(chunk)
+            continue
+        used.add(key)
+        meta = dict(chunk.metadata or {})
+        meta["rag_source"] = "mcp"
+        server = (hit.metadata or {}).get("mcp_server")
+        if server:
+            meta["mcp_server"] = server
+        tagged.append(replace(chunk, metadata=meta))
+    extras = [item for item in mcp_chunks if _text_key(item) not in used]
+    return tagged + extras
 
 
 def unpack_hybrid(
@@ -301,7 +332,7 @@ async def hybrid_retrieve(
         mcp_chunks, mcp_degraded = await retrieve_mcp_chunks_with_status(
             query, user_id=user_id, search_scope=search_scope
         )
-        chunks.extend(mcp_chunks)
+        chunks = _apply_mcp_hits(chunks, mcp_chunks)
     except Exception:  # NOSONAR python:S110 — fail-open MCP
         mcp_degraded = True
         logger.exception("MCP RAG retrieve failed; continuing with other sources")

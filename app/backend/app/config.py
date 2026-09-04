@@ -265,8 +265,9 @@ def apply_on_prem_llm_pin(settings: Settings) -> Settings:
         updates["deployment_mode"] = "on_prem"
     if settings.embedding_provider in CLOUD_EMBEDDING_PROVIDERS:
         updates["embedding_provider"] = env_embed
-    if settings.mcp_rag_enabled and not env_flag("MCP_RAG_ENABLED", default=False):
-        updates["mcp_rag_enabled"] = False
+    env_mcp = env_flag("MCP_RAG_ENABLED", default=False)
+    if bool(settings.mcp_rag_enabled) != env_mcp:
+        updates["mcp_rag_enabled"] = env_mcp
     if not updates:
         return settings
     logger.warning("PIN_ON_PREM_LLM remapped %s", sorted(updates))

@@ -127,7 +127,7 @@ services:
       - CHAT_MAX_CONTEXT_CHUNKS=${CHAT_MAX_CONTEXT_CHUNKS:-96}
       - DRAFT_RAG_TOP_K=${DRAFT_RAG_TOP_K:-8}
       - RAG_SOURCES=${RAG_SOURCES:-local}
-      - MCP_RAG_ENABLED=${MCP_RAG_ENABLED:-false}
+      - MCP_RAG_ENABLED=${MCP_RAG_ENABLED:-true}
       - MCP_RAG_CONFIG_PATH=${MCP_RAG_CONFIG_PATH:-/app/infra/mcp/rag-sources.yaml}
       - MCP_RAG_SERVERS_JSON=${MCP_RAG_SERVERS_JSON:-}
       - MCP_RAG_TIMEOUT_SECONDS=${MCP_RAG_TIMEOUT_SECONDS:-20}
@@ -151,6 +151,8 @@ services:
         condition: service_healthy
       pageindex:
         condition: service_started
+      mcp-rag:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 30s
@@ -167,10 +169,49 @@ services:
       - tor_network
 
   # ---------------------------------------------------------------------------
-  # MCP retrieve stub (optional) — docker compose --profile mcp-stub up
-  # From the backend container use url http://mcp-stub:8765 (or host.docker.internal:8765
-  # when the stub runs on the Windows/macOS host).
+  # MCP retrieve (pgvector JSON-RPC). Backend calls http://mcp-rag:8765
   # ---------------------------------------------------------------------------
+  mcp-rag:
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.mcp_retrieve_server"]
+    ports:
+      - "8765:8765"
+    environment:
+      - MCP_RAG_SERVER_HOST=0.0.0.0
+      - MCP_RAG_SERVER_PORT=8765
+      - MCP_RAG_ENABLED=false
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-tor_app}
+      - POSTGRES_USER=${POSTGRES_USER:-tor_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-300m}
+      - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-1800}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-local}
+      - LOCAL_EMBEDDING_SERVER=${LOCAL_EMBEDDING_SERVER:-lm_studio}
+      - LOCAL_EMBEDDING_BASE_URL=${LOCAL_EMBEDDING_BASE_URL:-}
+      - VECTOR_STORE_PROVIDER=${VECTOR_STORE_PROVIDER:-pgvector}
+      - SGLANG_EMBEDDING_BASE_URL=${SGLANG_EMBEDDING_BASE_URL:-http://sglang-embed:30001/v1}
+      - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    networks:
+      - tor_network
+
+  # Fake retrieve stub (optional) — docker compose --profile mcp-stub up
+  # Host port 8766 so it does not clash with mcp-rag on 8765.
   mcp-stub:
     profiles: [mcp-stub]
     image: python:3.11-alpine
@@ -180,7 +221,7 @@ services:
       - ./app/infra/mcp/servers/retrieve_stub.py:/stub.py:ro
     command: ["python", "/stub.py"]
     ports:
-      - "8765:8765"
+      - "8766:8765"
     networks:
       - tor_network
 
