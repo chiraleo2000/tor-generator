@@ -787,3 +787,14 @@ async def test_probe_openai_compatible_hits_models():
         await _probe_cloud_chat(body, {})
     get_ok.assert_awaited()
     assert "/models" in get_ok.await_args.args[0]
+
+
+def test_pinned_on_prem_rejects_bedrock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PIN_ON_PREM_LLM", "true")
+    monkeypatch.setenv("DEPLOYMENT_MODE", "on_prem")
+    with pytest.raises(ValidationError) as cloud_mode:
+        _validate_update(_local_body(deployment_mode="cloud"), {})
+    assert cloud_mode.value.field == "deployment_mode"
+    with pytest.raises(ValidationError) as cloud_llm:
+        _validate_update(_local_body(llm_provider="bedrock"), {})
+    assert cloud_llm.value.field == "llm_provider"

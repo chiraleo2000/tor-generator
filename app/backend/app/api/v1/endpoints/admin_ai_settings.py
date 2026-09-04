@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
@@ -14,13 +15,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import apply_runtime_overlay, get_settings
+from app.config import apply_runtime_overlay, env_flag, get_settings
 from app.deps import get_db
 from app.exceptions import ValidationError
 from app.models.ai_runtime_settings import AiRuntimeSettings
 from app.models.user import User
 from app.providers.constants import (
     AI_OVERLAY_FIELDS,
+    CLOUD_LLM_PROVIDERS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_EMBEDDING_MODEL,
     LOCAL_EMBEDDING_PROVIDERS,
@@ -409,7 +411,23 @@ def _validate_selected_cloud_keys(body: AiSettingsUpdate, existing: dict[str, An
     )
 
 
+def _on_prem_llm_is_pinned() -> bool:
+    mode = (os.environ.get("DEPLOYMENT_MODE") or "on_prem").strip().lower()
+    return env_flag("PIN_ON_PREM_LLM", default=False) and mode == "on_prem"
+
+
 def _validate_update(body: AiSettingsUpdate, existing: dict[str, Any]) -> None:
+    if _on_prem_llm_is_pinned():
+        if body.deployment_mode == "cloud":
+            raise ValidationError(
+                message="โหมดในเครื่องถูกปักหมุดให้ใช้ LM Studio — ไม่สลับเป็น cloud/Bedrock",
+                field="deployment_mode",
+            )
+        if body.llm_provider in CLOUD_LLM_PROVIDERS:
+            raise ValidationError(
+                message="โหมดในเครื่องถูกปักหมุดให้ใช้ LM Studio — ไม่เรียก Bedrock หรือแชทคลาวด์",
+                field="llm_provider",
+            )
     if body.deployment_mode not in ("on_prem", "cloud", "hybrid"):
         raise ValidationError(message="โหมดการทำงานไม่ถูกต้อง", field="deployment_mode")
     if body.llm_provider not in VALID_LLM_PROVIDERS:

@@ -12,6 +12,11 @@ GROUP_USER = "user"
 
 HANDBOOK_FILENAME = "คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf"
 RAW_FOLDER = ("การจัดซื้อจัดจ้าง", "ข้อมูลดิบ")
+# Extra local folders (not MCP). PDFs here join the pgvector baseline corpus.
+LOCAL_EXTRA_FOLDERS = (
+    ("การจัดจ้างทำของ",),
+    ("ตัวอย่าง",),
+)
 
 GROUP_LABELS = {
     GROUP_MANDATORY_HANDBOOK: "คู่มือแนวปฏิบัติ (บังคับ)",
@@ -108,13 +113,15 @@ def _add_raw_docs_env(files: list[CorpusFile], seen: set[Path]) -> None:
 
 
 def list_mandatory_sources(root: Path | None = None) -> list[CorpusFile]:
-    """Handbook PDF + PDFs under การจัดซื้อจัดจ้าง/ข้อมูลดิบ, tagged by group."""
+    """Handbook PDF + local source-tree PDFs tagged for pgvector (not MCP)."""
     files: list[CorpusFile] = []
     seen: set[Path] = set()
     base = sources_root(root)
     if base is not None:
         _add_corpus_file(files, seen, base / HANDBOOK_FILENAME, GROUP_MANDATORY_HANDBOOK)
         _collect_pdfs(files, seen, base.joinpath(*RAW_FOLDER), GROUP_MANDATORY_RAW)
+        for parts in LOCAL_EXTRA_FOLDERS:
+            _collect_pdfs(files, seen, base.joinpath(*parts), GROUP_MANDATORY_RAW)
     _add_raw_docs_env(files, seen)
     return files
 

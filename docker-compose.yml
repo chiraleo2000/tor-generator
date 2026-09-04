@@ -53,6 +53,7 @@ services:
       - "${BACKEND_PORT:-4000}:4000"
     environment:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-on_prem}
+      - PIN_ON_PREM_LLM=${PIN_ON_PREM_LLM:-true}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-tor_app}
@@ -108,7 +109,7 @@ services:
       - RATE_LIMIT_REQUESTS_PER_MINUTE=${RATE_LIMIT_REQUESTS_PER_MINUTE:-100}
       - RATE_LIMIT_UPLOADS_PER_MINUTE=${RATE_LIMIT_UPLOADS_PER_MINUTE:-10}
       - RATE_LIMIT_AI_PER_MINUTE=${RATE_LIMIT_AI_PER_MINUTE:-30}
-      - LLM_MAX_CONCURRENT=${LLM_MAX_CONCURRENT:-8}
+      - LLM_MAX_CONCURRENT=${LLM_MAX_CONCURRENT:-1}
       - EMBEDDING_MAX_CONCURRENT=${EMBEDDING_MAX_CONCURRENT:-16}
       - LLM_QUEUE_WAIT_TIMEOUT_SECONDS=${LLM_QUEUE_WAIT_TIMEOUT_SECONDS:-120}
       - DRAFT_SECTION_TIMEOUT_SECONDS=${DRAFT_SECTION_TIMEOUT_SECONDS:-300}
@@ -124,8 +125,8 @@ services:
       - CUSTOM_RAG_TIMEOUT_SECONDS=${CUSTOM_RAG_TIMEOUT_SECONDS:-30}
       - CHAT_RAG_TOP_K=${CHAT_RAG_TOP_K:-96}
       - CHAT_MAX_CONTEXT_CHUNKS=${CHAT_MAX_CONTEXT_CHUNKS:-96}
-      - DRAFT_RAG_TOP_K=${DRAFT_RAG_TOP_K:-32}
-      - RAG_SOURCES=${RAG_SOURCES:-both}
+      - DRAFT_RAG_TOP_K=${DRAFT_RAG_TOP_K:-8}
+      - RAG_SOURCES=${RAG_SOURCES:-local}
       - MCP_RAG_ENABLED=${MCP_RAG_ENABLED:-false}
       - MCP_RAG_CONFIG_PATH=${MCP_RAG_CONFIG_PATH:-/app/infra/mcp/rag-sources.yaml}
       - MCP_RAG_SERVERS_JSON=${MCP_RAG_SERVERS_JSON:-}
@@ -148,6 +149,8 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+      pageindex:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 30s
@@ -223,6 +226,23 @@ services:
     command: ["python", "/adapter.py"]
     ports:
       - "8088:8080"
+    networks:
+      - tor_network
+
+  # DEV stub (custom_rag_stub.py), not a real PageIndex legal index.
+  # Keep CUSTOM_RAG_ENABLED=false unless CUSTOM_RAG_BASE_URL is a real PageIndex.
+  # Host-run PageIndex instead: do not start this service; set
+  # CUSTOM_RAG_BASE_URL=http://host.docker.internal:<host-port>/api/search
+  pageindex:
+    image: python:3.11-alpine
+    environment:
+      CUSTOM_RAG_STUB_HOST: "0.0.0.0"
+      CUSTOM_RAG_STUB_PORT: "8000"
+    volumes:
+      - ./app/infra/mcp/servers/custom_rag_stub.py:/stub.py:ro
+    command: ["python", "/stub.py"]
+    ports:
+      - "${PAGEINDEX_PORT:-8100}:8000"
     networks:
       - tor_network
 

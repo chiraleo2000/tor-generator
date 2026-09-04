@@ -1,9 +1,14 @@
-# MCP RAG sources (skeleton)
+# MCP RAG sources (optional extra retrieve — not the local LLM)
 
-# Production remains AWS Cloud-only (Bedrock). These servers are extra **data** sources, not a hybrid LLM.
-
-# Local/dev: set MCP_RAG_ENABLED=true and MCP_RAG_CONFIG_PATH to this file.
-# ECS: the backend image does not include this path — use MCP_RAG_SERVERS_JSON (see servers.example.json).
+# Local Compose does **not** call these servers. Chat/embeddings use LM Studio
+# and pgvector from documents/sources (see list_mandatory_sources).
+#
+# MCP_RAG_ENABLED=false in .env. Even if set true, every server below stays
+# enabled: false until a real agency URL exists.
+# retrieve-stub returns fake mcp-retrieve-stub chunks — never enable it for
+# legal answers.
+#
+# ECS: use MCP_RAG_SERVERS_JSON (this YAML is not in the backend image).
 
 servers:
   - id: agency-legal-mcp
@@ -20,10 +25,11 @@ servers:
     tool: retrieve
     timeout_seconds: 20
     top_k: 8
+  # Compose: docker compose --profile mcp-stub up
   - id: retrieve-stub
     enabled: false
     transport: http
-    url: http://host.docker.internal:8765
+    url: http://mcp-stub:8765
     tool: retrieve
     timeout_seconds: 20
     top_k: 8

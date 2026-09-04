@@ -33,6 +33,23 @@ servers:
     assert rows[0]["top_k"] == 8
 
 
+def test_repo_rag_sources_yaml_has_no_enabled_servers() -> None:
+    from pathlib import Path
+
+    from app.rag.mcp_rag import parse_rag_sources_yaml
+
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "app"
+        / "infra"
+        / "mcp"
+        / "rag-sources.yaml"
+    )
+    rows = parse_rag_sources_yaml(path.read_text(encoding="utf-8"))
+    assert rows
+    assert all(not row.get("enabled") for row in rows)
+
+
 def test_chunks_from_tool_result_reads_mcp_content_text() -> None:
     payload = {
         "jsonrpc": "2.0",

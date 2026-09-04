@@ -36,14 +36,22 @@ def test_list_mandatory_sources_groups_tmp_tree(tmp_path: Path, monkeypatch):
     (nested / "หนังสือเวียน.pdf").write_bytes(b"%PDF-1.4 nested")
     (raw / "ระเบียบ.pdf").write_bytes(b"%PDF-1.4 rule")
     (raw / "notes.txt").write_text("skip me", encoding="utf-8")
+    extra = tmp_path.joinpath("การจัดจ้างทำของ")
+    extra.mkdir()
+    (extra / "แบบแปลน.pdf").write_bytes(b"%PDF-1.4 extra")
+    samples = tmp_path.joinpath("ตัวอย่าง")
+    samples.mkdir()
+    (samples / "TOR-ตัวอย่าง.pdf").write_bytes(b"%PDF-1.4 sample")
 
     files = list_mandatory_sources(tmp_path)
     counts = group_counts(files)
     assert counts[GROUP_MANDATORY_HANDBOOK] == 1
-    assert counts[GROUP_MANDATORY_RAW] == 3
+    assert counts[GROUP_MANDATORY_RAW] == 5
     names = {item.path.name for item in files}
     assert HANDBOOK_FILENAME in names
     assert "หนังสือเวียน.pdf" in names
+    assert "แบบแปลน.pdf" in names
+    assert "TOR-ตัวอย่าง.pdf" in names
     assert "notes.txt" not in names
 
 

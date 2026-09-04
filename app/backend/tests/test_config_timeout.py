@@ -67,7 +67,62 @@ def test_bedrock_uses_cloud_llm_timeout():
     assert settings.drafting_agent_timeout_seconds() == 300
 
 
-def test_runtime_overlay_changes_model_after_apply():
+def test_on_prem_pin_rewrites_bedrock_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import (
+        apply_on_prem_llm_pin,
+        apply_runtime_overlay,
+        clear_runtime_overlay,
+        get_settings,
+    )
+
+    monkeypatch.setenv("PIN_ON_PREM_LLM", "true")
+    monkeypatch.setenv("DEPLOYMENT_MODE", "on_prem")
+    monkeypatch.setenv("LLM_PROVIDER", "lm_studio")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "local")
+    monkeypatch.setenv("MCP_RAG_ENABLED", "false")
+    clear_runtime_overlay()
+    apply_runtime_overlay(
+        {
+            "llm_provider": "bedrock",
+            "deployment_mode": "cloud",
+            "embedding_provider": "bedrock",
+            "mcp_rag_enabled": True,
+        }
+    )
+    try:
+        pinned = apply_on_prem_llm_pin(
+            Settings(
+                _env_file=None,
+                llm_provider="bedrock",
+                deployment_mode="cloud",
+                embedding_provider="bedrock",
+                mcp_rag_enabled=True,
+            )
+        )
+        assert pinned.llm_provider == "lm_studio"
+        assert pinned.deployment_mode == "on_prem"
+        assert pinned.embedding_provider == "local"
+        assert pinned.mcp_rag_enabled is False
+        settings = get_settings()
+        assert settings.llm_provider == "lm_studio"
+        assert settings.deployment_mode == "on_prem"
+    finally:
+        clear_runtime_overlay()
+
+
+def test_on_prem_pin_off_keeps_bedrock_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import apply_runtime_overlay, clear_runtime_overlay, get_settings
+
+    monkeypatch.setenv("PIN_ON_PREM_LLM", "false")
+    monkeypatch.setenv("DEPLOYMENT_MODE", "on_prem")
+    clear_runtime_overlay()
+    apply_runtime_overlay({"llm_provider": "bedrock", "deployment_mode": "cloud"})
+    try:
+        settings = get_settings()
+        assert settings.llm_provider == "bedrock"
+        assert settings.deployment_mode == "cloud"
+    finally:
+        clear_runtime_overlay()
     from app.config import apply_runtime_overlay, clear_runtime_overlay, get_settings
 
     clear_runtime_overlay()

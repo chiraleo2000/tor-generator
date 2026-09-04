@@ -3,25 +3,41 @@
 Loads all configuration from environment variables with sensible defaults
 for local development. Supports three deployment modes: on_prem, cloud, hybrid.
 Runtime admin settings overlay env defaults at startup and immediately after PUT /admin/ai-settings.
+Local Compose sets PIN_ON_PREM_LLM=true so a leftover Admin Bedrock overlay cannot
+call AWS Converse.
 """
 
 from functools import cached_property
+import logging
+import os
 from typing import Any, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.providers.constants import (
+    CLOUD_EMBEDDING_PROVIDERS,
+    CLOUD_LLM_PROVIDERS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_EMBEDDING_MODEL,
+    LOCAL_EMBEDDING_PROVIDERS,
     LOCAL_LLM_DEFAULT_URLS,
     LOCAL_LLM_PROVIDERS,
     SGLANG_DEFAULT_EMBEDDING_URL,
 )
 
 _runtime_overlay: dict[str, Any] = {}
+_TRUE_FLAGS = frozenset({"1", "true", "yes", "on"})
+logger = logging.getLogger("tor_app.config")
 
 # Per-section local LLM headroom for 32k-token TOR drafts / KB answers
 LOCAL_LLM_TIMEOUT_CAP_SECONDS = 1800
+
+
+def env_flag(name: str, *, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in _TRUE_FLAGS
 
 
 class Settings(BaseSettings):
@@ -38,6 +54,8 @@ class Settings(BaseSettings):
     # Deployment Mode
     # -------------------------------------------------------------------------
     deployment_mode: Literal["on_prem", "cloud", "hybrid"] = "on_prem"
+    # Compose local: ignore Admin overlay that selected Bedrock/cloud chat.
+    pin_on_prem_llm: bool = False
 
     # -------------------------------------------------------------------------
     # PostgreSQL
@@ -103,7 +121,7 @@ class Settings(BaseSettings):
     custom_rag_timeout_seconds: float = 30.0
     chat_rag_top_k: int = 96
     chat_max_context_chunks: int = 96
-    draft_rag_top_k: int = 32
+    draft_rag_top_k: int = 8
     rag_sources: Literal["local", "custom", "both"] = "both"
     mcp_rag_enabled: bool = False
     mcp_rag_config_path: str = ""
@@ -227,6 +245,34 @@ def clear_runtime_overlay() -> None:
     _runtime_overlay = {}
 
 
+def apply_on_prem_llm_pin(settings: Settings) -> Settings:
+    """Keep Compose on-prem chat on LM Studio when Admin overlay still says Bedrock."""
+    if not env_flag("PIN_ON_PREM_LLM", default=False):
+        return settings
+    env_mode = (os.environ.get("DEPLOYMENT_MODE") or "on_prem").strip().lower()
+    if env_mode != "on_prem":
+        return settings
+    env_llm = (os.environ.get("LLM_PROVIDER") or "lm_studio").strip() or "lm_studio"
+    if env_llm not in LOCAL_LLM_PROVIDERS:
+        env_llm = "lm_studio"
+    env_embed = (os.environ.get("EMBEDDING_PROVIDER") or "local").strip() or "local"
+    if env_embed not in LOCAL_EMBEDDING_PROVIDERS and env_embed != "none":
+        env_embed = "local"
+    updates: dict[str, Any] = {}
+    if settings.llm_provider in CLOUD_LLM_PROVIDERS:
+        updates["llm_provider"] = env_llm
+    if settings.deployment_mode != "on_prem":
+        updates["deployment_mode"] = "on_prem"
+    if settings.embedding_provider in CLOUD_EMBEDDING_PROVIDERS:
+        updates["embedding_provider"] = env_embed
+    if settings.mcp_rag_enabled and not env_flag("MCP_RAG_ENABLED", default=False):
+        updates["mcp_rag_enabled"] = False
+    if not updates:
+        return settings
+    logger.warning("PIN_ON_PREM_LLM remapped %s", sorted(updates))
+    return settings.model_copy(update=updates)
+
+
 def get_runtime_overlay() -> dict[str, Any]:
     """Return the current overlay dict."""
     return dict(_runtime_overlay)
@@ -236,5 +282,5 @@ def get_settings() -> Settings:
     """Settings from environment, with optional DB overlay applied in-process."""
     settings = Settings()
     if _runtime_overlay:
-        return settings.model_copy(update=_runtime_overlay)
-    return settings
+        settings = settings.model_copy(update=_runtime_overlay)
+    return apply_on_prem_llm_pin(settings)
