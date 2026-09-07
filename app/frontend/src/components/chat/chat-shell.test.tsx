@@ -64,6 +64,7 @@ describe("ChatShell MCP degraded banner", () => {
       })
     );
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    sessionStorage.clear();
     useAuthStore.setState({
       token: "t",
       user: null,
@@ -266,7 +267,7 @@ describe("ChatShell MCP degraded banner", () => {
     );
   });
 
-  it("creates a kb room when none exist", async () => {
+  it("does not auto-create a kb room when none exist", async () => {
     vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
       if (url === "/chat/rooms") {
         return envelope({ rooms: [] });
@@ -280,7 +281,11 @@ describe("ChatShell MCP degraded banner", () => {
       return envelope({ messages: [] });
     });
     render(<ChatShell kind="kb" />);
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    await screen.findByTestId("chat-input");
+    expect(
+      vi.mocked(apiClient.post).mock.calls.some((call) => call[0] === "/chat/rooms")
+    ).toBe(false);
+    expect(screen.getByTestId("chat-empty").textContent).toMatch(/ประวัติ/);
   });
 
   it("shows an intake empty state and a load-messages error when switching rooms", async () => {
@@ -317,6 +322,122 @@ describe("ChatShell MCP degraded banner", () => {
       expect(screen.getByTestId("chat-error").textContent).toMatch(/โหลดข้อความไม่สำเร็จ/)
     );
     fireEvent.click(screen.getByTitle("ยุบแถบ"));
+  });
+
+  it("loads history when switching room tabs", async () => {
+    const older = {
+      ...ROOM,
+      id: "r-old",
+      title: "ห้องเก่า",
+      last_message: "คุณสมบัติผู้ยื่น",
+      updated_at: "2020-01-01T00:00:00.000Z",
+    };
+    vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
+      if (url === "/chat/rooms") {
+        return envelope({ rooms: [ROOM, older] });
+      }
+      if (url === "/chat/rooms/r-old/messages") {
+        return envelope({
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "คุณสมบัติผู้ยื่น",
+              citations: [],
+              created_at: "2020-01-01T00:00:00.000Z",
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "ตามมาตรา 64 ผู้ประกอบการต้องมีคุณสมบัติ",
+              citations: [],
+              created_at: "2020-01-01T00:00:01.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/chat/rooms/r1/messages") {
+        return envelope({ messages: [] });
+      }
+      if (url === "/chat/prompts") {
+        return envelope({ prompts: [] });
+      }
+      if (url === "/knowledge-base/catalog") {
+        return envelope({ userFiles: [] });
+      }
+      return envelope({});
+    });
+    render(<ChatShell kind="kb" />);
+    await waitFor(() =>
+      expect(
+        vi.mocked(apiClient.get).mock.calls.some((call) => call[0] === "/chat/rooms/r1/messages")
+      ).toBe(true)
+    );
+    const items = screen.getAllByTestId("chat-room-item");
+    fireEvent.click(items[items.length - 1]);
+    expect(await screen.findByText("ตามมาตรา 64 ผู้ประกอบการต้องมีคุณสมบัติ")).toBeInTheDocument();
+  });
+
+  it("keeps clicked-tab history when the first room load is still in flight", async () => {
+    let releaseFirst = () => undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const older = {
+      ...ROOM,
+      id: "r-old",
+      title: "ห้องเก่า",
+      last_message: "คุณสมบัติผู้ยื่น",
+      updated_at: "2020-01-01T00:00:00.000Z",
+    };
+    vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
+      if (url === "/chat/rooms") {
+        return envelope({ rooms: [ROOM, older] });
+      }
+      if (url === "/chat/rooms/r-old/messages") {
+        return envelope({
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "คำตอบห้องเก่าที่ต้องโผล่ในหน้าแชท",
+              citations: [],
+              created_at: "2020-01-01T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/chat/rooms/r1/messages") {
+        await firstGate;
+        return envelope({
+          messages: [
+            {
+              id: "boot",
+              role: "user",
+              content: "ข้อความห้องแรก",
+              citations: [],
+              created_at: ROOM.updated_at,
+            },
+          ],
+        });
+      }
+      if (url === "/chat/prompts") {
+        return envelope({ prompts: [] });
+      }
+      if (url === "/knowledge-base/catalog") {
+        return envelope({ userFiles: [] });
+      }
+      return envelope({});
+    });
+    render(<ChatShell kind="kb" />);
+    const items = await screen.findAllByTestId("chat-room-item");
+    fireEvent.click(items[items.length - 1]);
+    expect(await screen.findByText("คำตอบห้องเก่าที่ต้องโผล่ในหน้าแชท")).toBeInTheDocument();
+    releaseFirst();
+    await waitFor(() => {
+      expect(screen.queryByText("ข้อความห้องแรก")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("คำตอบห้องเก่าที่ต้องโผล่ในหน้าแชท")).toBeInTheDocument();
   });
 
   it("shows a mine-file delete error and ignores empty attachments", async () => {

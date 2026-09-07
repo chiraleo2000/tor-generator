@@ -53,6 +53,8 @@ VALID_KINDS = frozenset({KIND_KB, KIND_DRAFT_INTAKE})
 VALID_SCOPES = frozenset({"global", "mine", "both"})
 INVALID_KIND_MESSAGE = "ชนิดห้องไม่ถูกต้อง"
 DEFAULT_ROOM_TITLE = "ห้องใหม่"
+KB_ROOM_TITLE = "ถาม-ตอบคลังความรู้"
+PLACEHOLDER_TITLES = frozenset({DEFAULT_ROOM_TITLE, KB_ROOM_TITLE})
 
 
 class RoomCreate(BaseModel):
@@ -82,20 +84,41 @@ def _ok(request: Request, data: Any, status_code: int = 200) -> JSONResponse:
     return JSONResponse(status_code=status_code, content=payload.model_dump(mode="json"))
 
 
-def _last_loaded_message(room: ChatRoom) -> ChatMessage | None:
+def _is_placeholder_title(title: str | None) -> bool:
+    return (title or "").strip() in PLACEHOLDER_TITLES
+
+
+def _title_from_user_text(content: str) -> str:
+    compact = " ".join((content or "").split())
+    return (compact[:60] or DEFAULT_ROOM_TITLE).strip()
+
+
+def _loaded_messages(room: ChatRoom) -> list[ChatMessage]:
     try:
         unloaded = sa_inspect(room).unloaded
     except NoInspectionAvailable:
-        messages = list(getattr(room, "messages", None) or [])
-        return messages[-1] if messages else None
+        return list(getattr(room, "messages", None) or [])
     if "messages" in unloaded:
-        return None
-    messages = room.messages
+        return []
+    return list(room.messages or [])
+
+
+def _last_loaded_message(room: ChatRoom) -> ChatMessage | None:
+    messages = _loaded_messages(room)
     return messages[-1] if messages else None
 
 
-def _room_card(room: ChatRoom) -> dict[str, Any]:
-    last = _last_loaded_message(room)
+def _preview_message(room: ChatRoom) -> ChatMessage | None:
+    messages = _loaded_messages(room)
+    for item in reversed(messages):
+        if item.role == "user" and str(item.content or "").strip():
+            return item
+    return messages[-1] if messages else None
+
+
+def _room_card(room: ChatRoom, last: ChatMessage | None = None) -> dict[str, Any]:
+    if last is None:
+        last = _preview_message(room)
     preview = (last.content[:80] if last else "")
     return {
         "id": str(room.id),
@@ -105,6 +128,78 @@ def _room_card(room: ChatRoom) -> dict[str, Any]:
         "updated_at": room.updated_at.isoformat() if room.updated_at else None,
         "last_message": preview,
         "last_role": last.role if last else None,
+    }
+
+
+def _as_message_list(rows: object) -> list[ChatMessage]:
+    if isinstance(rows, list):
+        return rows
+    if isinstance(rows, tuple):
+        return list(rows)
+    return []
+
+
+async def _message_rows(db: AsyncSession, room_id: uuid.UUID) -> list[ChatMessage]:
+    """Load history from chat_messages. Room.messages is lazy=noload."""
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.room_id == room_id)
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+    )
+    return _as_message_list(result.scalars().all())
+
+
+async def _latest_messages(
+    db: AsyncSession, room_ids: list[uuid.UUID], *, user_only: bool
+) -> dict[uuid.UUID, ChatMessage]:
+    if not room_ids:
+        return {}
+    stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.room_id.in_(room_ids))
+        .distinct(ChatMessage.room_id)
+        .order_by(
+            ChatMessage.room_id.asc(),
+            ChatMessage.created_at.desc(),
+            ChatMessage.id.desc(),
+        )
+    )
+    if user_only:
+        stmt = stmt.where(ChatMessage.role == "user")
+    rows = _as_message_list((await db.execute(stmt)).scalars().all())
+    latest: dict[uuid.UUID, ChatMessage] = {}
+    for item in rows:
+        rid = getattr(item, "room_id", None)
+        if rid is None or rid in latest:
+            continue
+        latest[rid] = item
+    return latest
+
+
+async def _previews_for_rooms(
+    db: AsyncSession, room_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, ChatMessage]:
+    users = await _latest_messages(db, room_ids, user_only=True)
+    missing = [rid for rid in room_ids if rid not in users]
+    if not missing:
+        return users
+    return {**(await _latest_messages(db, missing, user_only=False)), **users}
+
+
+def _preview_from_rows(rows: list[ChatMessage]) -> ChatMessage | None:
+    for item in reversed(rows):
+        if item.role == "user" and str(item.content or "").strip():
+            return item
+    return rows[-1] if rows else None
+
+
+def _message_payload(item: ChatMessage) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "role": item.role,
+        "content": item.content,
+        "citations": item.citations or [],
+        "created_at": item.created_at.isoformat() if item.created_at else None,
     }
 
 
@@ -146,10 +241,12 @@ async def list_rooms(
     )
     if project_id is not None:
         stmt = stmt.where(ChatRoom.project_id == project_id)
-    rows = (
+    rows = _as_message_list(
         (await db.execute(stmt.order_by(ChatRoom.updated_at.desc()))).scalars().all()
     )
-    return _ok(request, {"rooms": [_room_card(item) for item in rows]})
+    previews = await _previews_for_rooms(db, [item.id for item in rows])
+    cards = [_room_card(item, previews.get(item.id)) for item in rows]
+    return _ok(request, {"rooms": cards})
 
 
 @router.post("/rooms")
@@ -175,7 +272,8 @@ async def create_room(
         ).scalar_one_or_none()
         if existing:
             loaded = await _owned_room(db, existing.id, current_user)
-            return _ok(request, _room_card(loaded))
+            preview = (await _previews_for_rooms(db, [loaded.id])).get(loaded.id)
+            return _ok(request, _room_card(loaded, preview))
     room = ChatRoom(
         user_id=current_user.id,
         kind=body.kind,
@@ -198,7 +296,8 @@ async def rename_room(
     room = await _owned_room(db, room_id, current_user)
     room.title = body.title.strip()[:255]
     await db.flush()
-    return _ok(request, _room_card(room))
+    preview = (await _previews_for_rooms(db, [room.id])).get(room.id)
+    return _ok(request, _room_card(room, preview))
 
 
 @router.delete("/rooms/{room_id}")
@@ -222,17 +321,14 @@ async def list_messages(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     room = await _owned_room(db, room_id, current_user)
-    messages = [
+    rows = await _message_rows(db, room.id)
+    return _ok(
+        request,
         {
-            "id": str(item.id),
-            "role": item.role,
-            "content": item.content,
-            "citations": item.citations or [],
-            "created_at": item.created_at.isoformat() if item.created_at else None,
-        }
-        for item in room.messages
-    ]
-    return _ok(request, {"room": _room_card(room), "messages": messages})
+            "room": _room_card(room, _preview_from_rows(rows)),
+            "messages": [_message_payload(item) for item in rows],
+        },
+    )
 
 
 @router.get("/prompts")
@@ -403,6 +499,7 @@ async def _run_chat_llm(
                 messages,
                 temperature=0.2,
                 max_tokens=max_tokens,
+                disable_thinking=True,
             ):
                 parts_local.append(token)
                 await event_q.put(("token", {"text": token}))
@@ -497,15 +594,16 @@ async def send_message(
     user_msg = ChatMessage(room_id=room.id, role="user", content=body.content, citations=[])
     db.add(user_msg)
     await db.flush()
-    if room.title == DEFAULT_ROOM_TITLE:
-        room.title = body.content[:60]
+    if _is_placeholder_title(room.title):
+        room.title = _title_from_user_text(body.content)
     room.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
+    history = await _message_rows(db, room.id)
     prior = trim_history(
         [
             {"role": item.role, "content": item.content}
-            for item in room.messages
-            if getattr(item, "id", None) != user_msg.id
+            for item in history
+            if item.id != user_msg.id
         ]
     )
     is_kb = room.kind == KIND_KB

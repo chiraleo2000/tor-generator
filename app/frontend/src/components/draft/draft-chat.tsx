@@ -180,10 +180,12 @@ export function DraftChat({
   projectId,
   onAllDrafted,
   onSectionDone,
+  onDraftingChange,
 }: Readonly<{
   projectId: string;
   onAllDrafted: () => void;
   onSectionDone?: () => void;
+  onDraftingChange?: (busy: boolean) => void;
 }>) {
   const token = useAuthStore((state) => state.token);
   const [messages, setMessages] = useState<DraftMessage[]>([]);
@@ -208,6 +210,10 @@ export function DraftChat({
 
   useEffect(scrollToEnd, [messages, scrollToEnd]);
 
+  useEffect(() => {
+    onDraftingChange?.(busy || phase === "drafting");
+  }, [busy, phase, onDraftingChange]);
+
   const refreshStatus = useCallback(async () => {
     try {
       const response = await apiClient.get(
@@ -218,11 +224,16 @@ export function DraftChat({
         drafted_count: number;
         total: number;
         all_drafted: boolean;
+        job_status?: string;
       }>(response);
       const rows = Array.isArray(data.sections) ? data.sections : [];
       setSections(rows);
       sectionsRef.current = rows;
       setDraftedCount(Number(data.drafted_count) || 0);
+      const running = data.job_status === "running" || data.job_status === "queued";
+      if (running) {
+        setPhase((prev) => (prev === "complete" ? prev : "drafting"));
+      }
       if (data.all_drafted) {
         setPhase("complete");
         onAllDrafted();
@@ -249,13 +260,9 @@ export function DraftChat({
     refreshStatus()
       .then((done) => {
         if (done) return;
-        if (startedProjects.has(projectId)) return;
-        startedProjects.add(projectId);
         startDrafting();
       })
       .catch(() => {
-        if (startedProjects.has(projectId)) return;
-        startedProjects.add(projectId);
         startDrafting();
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps

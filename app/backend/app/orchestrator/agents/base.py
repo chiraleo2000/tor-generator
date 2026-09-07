@@ -134,9 +134,10 @@ class BaseDraftingAgent(ABC):
         # Section: RAG context (if available)
         if rag_chunks:
             parts.append("\n=== บริบทจากฐานความรู้กฎหมาย ===")
-            for i, chunk in enumerate(rag_chunks, 1):
+            # Limit to top-8 chunks and 1500 chars each to keep prompt under context window
+            for i, chunk in enumerate(rag_chunks[:8], 1):
                 source = chunk.get("source_document", "ไม่ระบุแหล่งที่มา")
-                text = chunk.get("text", "")
+                text = (chunk.get("text", "") or "")[:1500]
                 parts.append(f"\n[อ้างอิง {i}] แหล่งที่มา: {source}")
                 parts.append(text)
 
@@ -251,6 +252,7 @@ class BaseDraftingAgent(ABC):
         llm_kwargs = {
             "temperature": 0.3,
             "max_tokens": DRAFT_MAX_TOKENS,
+            "disable_thinking": True,
         }
         llm_kwargs.update(kwargs)
         llm_kwargs["max_tokens"] = clamp_max_tokens(

@@ -104,6 +104,25 @@ def strip_thinking(text: str | None) -> str:
     return cleaned.strip()
 
 
+def visible_answer(text: str | None) -> str:
+    """Prefer a stripped final answer; fall back to Thai or JSON in the raw blob."""
+    if not text:
+        return ""
+    cleaned = strip_thinking(text)
+    if cleaned:
+        return cleaned
+    if looks_like_json(text):
+        return text.strip()
+    thai = _thai_suffix(text) or ""
+    if not thai:
+        return ""
+    thai = _THINK_BLOCK_RE.sub("", thai)
+    thai = _REASONING_BLOCK_RE.sub("", thai)
+    thai = re.sub(r"</think(?:ing)?>", "", thai, flags=re.IGNORECASE)
+    thai = re.sub(r"</reasoning>", "", thai, flags=re.IGNORECASE)
+    return thai.strip()
+
+
 def _thai_count(text: str) -> int:
     return sum(1 for char in text if "\u0e00" <= char <= "\u0e7f")
 

@@ -81,6 +81,7 @@ export const LOCAL_EMBEDS = [
 ];
 
 export const CLOUD_EMBEDS = [
+  { value: "none", label: "ไม่ใช้ฝังเวกเตอร์ (PageIndex / Custom RAG)" },
   { value: "bedrock", label: "ฝังเวกเตอร์ Bedrock (Titan)" },
   { value: "openai", label: "ฝังเวกเตอร์ OpenAI" },
   { value: "gemini", label: "ฝังเวกเตอร์ Gemini" },

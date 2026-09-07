@@ -358,10 +358,9 @@ class TestStream:
             collected.append(token)
 
         assert "".join(collected) == "Hello world"
-        assert (
-            self.provider._client.chat.completions.create.call_args[1]["max_tokens"]
-            == DEFAULT_MAX_TOKENS
-        )
+        sent = self.provider._client.chat.completions.create.call_args.kwargs
+        assert sent["max_tokens"] == DEFAULT_MAX_TOKENS
+        assert sent["extra_body"]["enable_thinking"] is False
 
     @pytest.mark.asyncio
     async def test_stream_skips_empty_deltas(self):
@@ -562,6 +561,7 @@ class TestStream:
         assert call_kwargs["temperature"] == 0.5
         assert call_kwargs["max_tokens"] == 500
         assert call_kwargs["stream"] is True
+        assert call_kwargs["extra_body"]["enable_thinking"] is False
 
     @pytest.mark.asyncio
     async def test_stream_retries_after_model_unload(self, monkeypatch):
@@ -740,6 +740,34 @@ class TestStream:
             messages=[{"role": "user", "content": "json"}]
         )
         assert result.content == ""
+
+    @pytest.mark.asyncio
+    async def test_uses_thai_reasoning_when_message_empty(self):
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 1
+        mock_usage.completion_tokens = 40
+        mock_usage.total_tokens = 41
+        mock_message = MagicMock()
+        mock_message.content = ""
+        mock_message.reasoning_content = (
+            "ตามระเบียบการจัดซื้อจัดจ้างภาครัฐ ความเป็นมาของโครงการต้องระบุปัญหา "
+            "นโยบายที่เกี่ยวข้อง และประเภทงานที่จัดจ้างให้ชัดเจน"
+        )
+        mock_message.reasoning = None
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.model = "test-model"
+        mock_response.usage = mock_usage
+        self.provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+        result = await self.provider.invoke(
+            messages=[{"role": "user", "content": "ร่าง s1"}]
+        )
+        assert "ความเป็นมาของโครงการต้องระบุปัญหา" in result.content
 
     @pytest.mark.asyncio
     async def test_invoke_injects_output_contract_and_allows_thinking(self):

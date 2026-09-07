@@ -1,6 +1,6 @@
-"""Realistic live workflows against Docker FastAPI + LM Studio.
+"""Realistic live workflows against Docker FastAPI + Bedrock/PageIndex.
 
-These tests fail clearly when the stack or LM Studio is down. They do not skip.
+These tests fail clearly when the Compose stack is down. They do not skip.
 """
 
 from __future__ import annotations
@@ -13,8 +13,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-
-from tests.test_live_lm_studio import _require_lm_studio
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -131,14 +129,16 @@ def _procurement_pdf() -> Path | None:
         / "ข้อมูลดิบ"
         / "กฎกระทรวงกำหนดวงเงินการจัดซื้อจัดจ้างพัสดุโดยวิธีเฉพาะเจาะจงวงเงิน.pdf"
     )
-    return pdf if pdf.is_file() else None
+    try:
+        return pdf if pdf.is_file() else None
+    except OSError:
+        return None
 
 
 @pytest.fixture(scope="module")
 def live_client():
-    _require_lm_studio()
     _require_api()
-    with httpx.Client(base_url=API_BASE, timeout=900.0) as client:
+    with httpx.Client(base_url=API_BASE, timeout=1800.0) as client:
         _login(client)
         yield client
 
@@ -174,7 +174,7 @@ def test_live_full_drafting_workflow(live_client: httpx.Client):
     _step("Step 3: analyze with LM Studio")
     analyzed = live_client.post(
         f"/api/v1/projects/{project_id}/intake/analyze",
-        timeout=180.0,
+        timeout=600.0,
     )
     assert analyzed.status_code == 200, analyzed.text[:1200]
     analysis = _data(analyzed)
@@ -187,7 +187,7 @@ def test_live_full_drafting_workflow(live_client: httpx.Client):
     _step("Step 4: fill-references")
     refs = live_client.post(
         f"/api/v1/projects/{project_id}/intake/fill-references",
-        timeout=180.0,
+        timeout=600.0,
     )
     assert refs.status_code == 200, refs.text[:1200]
     _pause(2)
@@ -196,10 +196,11 @@ def test_live_full_drafting_workflow(live_client: httpx.Client):
     drafted = live_client.post(
         f"/api/v1/projects/{project_id}/draft-section",
         json={"section_key": "s1"},
-        timeout=300.0,
+        timeout=1800.0,
     )
+    draft = str(_data(drafted).get("draft_content") or "") if drafted.status_code == 200 else ""
+    _step(f"draft-section status={drafted.status_code} chars={len(draft)}")
     assert drafted.status_code == 200, drafted.text[:1200]
-    draft = str(_data(drafted).get("draft_content") or "")
     assert len(draft) >= 50, f"draft too short: {draft!r}"
     assert _thai_count(draft) >= 8, f"Expected Thai draft, got: {draft[:200]!r}"
     assert "โครงการ" in draft or "จัดซื้อ" in draft, draft[:300]
@@ -209,7 +210,7 @@ def test_live_full_drafting_workflow(live_client: httpx.Client):
     reviewed = live_client.post(
         f"/api/v1/projects/{project_id}/review",
         json={},
-        timeout=180.0,
+        timeout=600.0,
     )
     assert reviewed.status_code == 200, reviewed.text[:1200]
     score = _data(reviewed).get("quality_score")

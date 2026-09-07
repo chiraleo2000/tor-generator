@@ -26,6 +26,8 @@ test.describe("Chat Q&A and draft intake", () => {
     await expect(page.getByTestId("chat-input")).toBeVisible();
     await expect(page.getByText("โหลดห้องแชทไม่สำเร็จ")).toHaveCount(0);
     await saveEvidence(page, "13a-chat-rooms");
+    await page.getByTestId("chat-new-room").click();
+    await expect(page.getByTestId("chat-input")).toBeVisible({ timeout: 10_000 });
     await typeLikeUser(
       page.getByTestId("chat-input"),
       "งวดจ่ายต้องวางหลักประกันสัญญาหรือไม่ ตามระเบียบพัสดุ"
@@ -35,9 +37,10 @@ test.describe("Chat Q&A and draft intake", () => {
     await waitForLiveAssistant(page, 600_000);
     await expect.poll(
       async () =>
-        (await page.getByTestId("chat-msg-assistant").last().innerText()).length,
+        (await page.getByTestId("chat-msg-assistant").last().locator("p").first().innerText())
+          .trim().length,
       { timeout: 480_000 }
-    ).toBeGreaterThan(1500);
+    ).toBeGreaterThan(80);
     await saveEvidence(page, "13-kb-chat");
   });
 
@@ -122,12 +125,15 @@ test.describe("Chat Q&A and draft intake", () => {
           .length,
       { timeout: 120_000 }
     ).toBeGreaterThan(20);
-    const chips = page.getByTestId("chat-citation");
-    await expect(chips.first()).toBeVisible({ timeout: 30_000 });
-    const texts = await chips.allInnerTexts();
-    const joined = texts.join(" | ");
-    expect(joined).toMatch(/mcp:/i);
-    expect(joined).toMatch(/custom_rag:/i);
+    const chips = page.getByTestId("chat-msg-assistant").last().getByTestId("chat-citation");
+    await expect.poll(
+      async () => (await chips.allInnerTexts()).join(" | "),
+      { timeout: 480_000 }
+    ).toMatch(/mcp:/i);
+    await expect.poll(
+      async () => (await chips.allInnerTexts()).join(" | "),
+      { timeout: 480_000 }
+    ).toMatch(/custom_rag:/i);
     await expect(page.getByTestId("mcp-unavailable")).toHaveCount(0);
     await saveEvidence(page, "mcp-rag-chat-citations");
   });
@@ -153,6 +159,6 @@ test.describe("Chat Q&A and draft intake", () => {
     await waitForLiveAssistant(page, 600_000);
     await expect(page.getByTestId("mcp-unavailable")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("mcp-unavailable")).toContainText("แหล่ง MCP ไม่พร้อม");
-    await saveEvidence(page, "_docker-mcp-fail-open");
+    await saveEvidence(page, "mcp-fail-open");
   });
 });

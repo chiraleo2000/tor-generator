@@ -121,6 +121,7 @@ def test_factory_accepts_new_cloud_providers():
     assert "azure_foundry" in VALID_LLM_PROVIDERS
     assert "openai_compatible" in VALID_LLM_PROVIDERS
     assert "bedrock" in VALID_EMBEDDING_PROVIDERS
+    assert "none" in VALID_EMBEDDING_PROVIDERS
 
 
 def test_factory_creates_openai_compatible_llm():

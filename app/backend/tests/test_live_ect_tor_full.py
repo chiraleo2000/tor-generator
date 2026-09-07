@@ -222,7 +222,7 @@ def _poll_draft(client: httpx.Client, project_id: str) -> dict:
         if line != last:
             _step(line)
             last = line
-        if payload.get("all_drafted") or drafted >= total:
+        if payload.get("all_drafted") or drafted >= total or len(done_keys) >= total:
             return payload
         time.sleep(DRAFT_POLL_SEC)
     pytest.fail(f"draft did not finish in {DRAFT_DEADLINE_SEC}s last={last}")

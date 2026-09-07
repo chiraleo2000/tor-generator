@@ -58,6 +58,7 @@ export function Phase3Draft({
   onConfirm,
   projectId,
   onRefresh,
+  onDraftingChange,
 }: Readonly<{
   sections: SectionPayload[];
   expanded: string;
@@ -74,6 +75,7 @@ export function Phase3Draft({
   onConfirm: () => Promise<void>;
   projectId?: string;
   onRefresh?: () => void;
+  onDraftingChange?: (busy: boolean) => void;
 }>) {
   const [allDrafted, setAllDrafted] = useState(false);
   const filledCount = sections.filter((section) => isSectionFilled(section)).length;
@@ -117,6 +119,7 @@ export function Phase3Draft({
             onRefresh?.();
           }}
           onSectionDone={onRefresh}
+          onDraftingChange={onDraftingChange}
         />
       ) : null}
       <div className="gov-card">

@@ -534,9 +534,9 @@ async def trigger_draft(
             quality_score = final_state.get("best_draft_score")
             validation_findings = final_state.get("best_draft_findings", [])
 
-        if error and not draft_content:
+        if not str(draft_content or "").strip():
             raise ValidationError(
-                message=f"การสร้างร่างล้มเหลว: {error}",
+                message=f"การสร้างร่างล้มเหลว: {error or 'โมเดลส่งร่างว่าง'}",
                 field="draft",
             )
 

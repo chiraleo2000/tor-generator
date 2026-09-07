@@ -1,6 +1,0 @@
-﻿Playwright headed E2E=1 chat.spec.ts vs Docker http://localhost:3000
-Date: 2026-08-31
-2 passed (3.0m)
-- ถาม-ตอบ opens Open WebUI-like rooms (2.4m)  shots 13a-chat-rooms.png 13-kb-chat.png
-- chat attach ingests into private KB list (17.1s)  shots 13b-chat-attach.png 13c-chat-attach-ask.png
-Live LM Studio, no mock.

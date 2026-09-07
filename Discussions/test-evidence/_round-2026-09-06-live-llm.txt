@@ -1,0 +1,31 @@
+pytest -m live_llm  2026-09-06
+Docker backend + tests overlay + LM Studio :1234 + API :4000
+17 selected (test_live_lm_studio, test_real_procurement_pdfs, test_live_realistic_workflow, test_live_ect_tor_full)
+
+First invocation (35:31):
+  16 passed, 1 failed
+  FAIL: test_live_embeddinggemma_excerpts_from_each_procurement_pdf
+        Linux NAME_MAX / companion JSON errno 36 on long Thai filenames
+
+After test skip of unreadable bind-mount names + accept extract method=mixed:
+  test_live_embeddinggemma_excerpts_from_each_procurement_pdf PASSED (11.29s)
+
+Combined: 17/17 live_llm cases pass
+
+LM Studio (8): all PASSED
+PDF ingest+retrieve: PASSED
+Realistic workflow:
+  full drafting s1 chars=3195 PASSED
+  chat mine RAG PASSED
+  review PDF + rule engine PASSED
+  KB category=other PASSED
+ECT:
+  intake 27/27 PASSED
+  standalone source score=82 findings=11 PASSED
+  draft 13 sections then review PASSED
+    project review score=0 valid=False findings=1
+    standalone drafted TOR score=74
+    Jaccard 0.711
+    export DOCX/PDF ok
+
+Log of first run: agent terminal 6 Sep 2026 10:22–10:58 UTC

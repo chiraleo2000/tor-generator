@@ -69,8 +69,9 @@ export async function confirmPhase(page: Page) {
 }
 
 export async function saveEvidence(page: Page, name: string) {
+  const prefix = process.env.E2E_EVIDENCE_PREFIX || "";
   await page.screenshot({
-    path: path.join(evidenceDir, `${name}.png`),
+    path: path.join(evidenceDir, `${prefix}${name}.png`),
     fullPage: true,
   });
 }
@@ -78,18 +79,8 @@ export async function saveEvidence(page: Page, name: string) {
 export async function waitForLiveAssistant(page: Page, timeout = 180_000) {
   const last = page.getByTestId("chat-msg-assistant").last();
   await expect(last).toBeVisible({ timeout });
-  await expect
-    .poll(
-      async () => {
-        const paragraph = last.locator("p").first();
-        if ((await paragraph.count()) > 0) {
-          return (await paragraph.innerText()).trim();
-        }
-        return (await last.innerText()).trim();
-      },
-      { timeout }
-    )
-    .toMatch(/\S.{15,}/);
+  // Intake draft-conversation has no inner <p>; KB chat-shell does.
+  await expect(last).toHaveText(/\S.{15,}/, { timeout });
 }
 
 export async function login(

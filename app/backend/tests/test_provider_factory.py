@@ -606,6 +606,7 @@ class TestConstants:
         assert "openai" in VALID_EMBEDDING_PROVIDERS
         assert "qwen3" in VALID_EMBEDDING_PROVIDERS
         assert "local" in VALID_EMBEDDING_PROVIDERS
+        assert "none" in VALID_EMBEDDING_PROVIDERS
         assert "gemini" in VALID_EMBEDDING_PROVIDERS
 
     def test_valid_vector_store_providers(self):
@@ -672,3 +673,13 @@ class TestAzureAndBedrockFactory:
             factory = ProviderFactory(settings=bedrock_settings)
             assert factory.get_llm("chat").__class__.__name__ == "BedrockLLMProvider"
             assert factory.get_embedding().__class__.__name__ == "BedrockEmbeddingProvider"
+
+    def test_none_embedding_skips_credentials(self):
+        settings = make_settings(
+            deployment_mode="cloud",
+            llm_provider="bedrock",
+            embedding_provider="none",
+            bedrock_model_id="global.anthropic.claude-sonnet-4-6",
+        )
+        factory = ProviderFactory(settings=settings)
+        assert factory.get_embedding().__class__.__name__ == "NoneEmbeddingProvider"

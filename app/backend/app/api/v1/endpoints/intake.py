@@ -452,6 +452,7 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
                 ],
                 temperature=0.2,
                 max_tokens=384,
+                disable_thinking=True,
             ):
                 parts_local.append(token)
                 await event_q.put(("token", {"text": token}))

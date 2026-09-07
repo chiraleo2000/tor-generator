@@ -16,9 +16,8 @@ from app.llm_tokens import DEFAULT_MAX_TOKENS
 from app.providers.base import LLMProvider, LLMResponse
 from app.providers.llm_output import (
     ThinkingStreamFilter,
-    looks_like_json,
     messages_with_output_contract,
-    strip_thinking,
+    visible_answer,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,15 +61,17 @@ def thinking_request_kwargs(kwargs: dict) -> dict:
 
 
 def message_text(message: object) -> str:
-    """Visible final answer only; JSON in reasoning is a structured-output fallback."""
+    """Visible final answer only; recover Thai/JSON from reasoning if content is empty."""
     content = getattr(message, "content", None)
-    visible = strip_thinking(content) if isinstance(content, str) else ""
+    visible = visible_answer(content) if isinstance(content, str) else ""
     if visible:
         return visible
     for attr in ("reasoning_content", "reasoning"):
         value = getattr(message, attr, None)
-        if isinstance(value, str) and value.strip() and looks_like_json(value):
-            return value.strip()
+        if isinstance(value, str) and value.strip():
+            recovered = visible_answer(value)
+            if recovered:
+                return recovered
     return ""
 
 
@@ -195,6 +196,14 @@ class LMStudioLocalProvider(LLMProvider):
         logger.exception("LM Studio stream failed")
         return False
 
+    @staticmethod
+    def _default_stream_kwargs(kwargs: dict) -> dict:
+        stream_kwargs = dict(kwargs)
+        if "disable_thinking" in stream_kwargs or "enable_thinking" in stream_kwargs:
+            return stream_kwargs
+        stream_kwargs["disable_thinking"] = True
+        return stream_kwargs
+
     async def invoke(
         self,
         messages: list[dict],
@@ -273,9 +282,10 @@ class LMStudioLocalProvider(LLMProvider):
             ConnectionError: If the LM Studio endpoint is unreachable.
         """
         last_error: BaseException | None = None
+        stream_kwargs = self._default_stream_kwargs(kwargs)
         for attempt in range(3):
             try:
-                async for visible in self._stream_once(messages, **kwargs):
+                async for visible in self._stream_once(messages, **stream_kwargs):
                     yield visible
                 return
             except APIConnectionError as exc:

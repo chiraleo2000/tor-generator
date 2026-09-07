@@ -599,13 +599,13 @@ async def test_draft_chat_job_and_status_helpers():
 
     with patch.object(dc, "_existing_section_text", AsyncMock(return_value=None)), patch.object(
         dc, "_draft_missing_section", AsyncMock(side_effect=TimeoutError())
-    ):
+    ), patch.object(dc, "_persist_fallback_section", AsyncMock(return_value=False)):
         job = dc._SeqDraft(factory, pid, {}, uuid.uuid4(), "r", None)
         assert await dc._try_draft_one_section(job, "s1") is False
 
     with patch.object(dc, "_existing_section_text", AsyncMock(return_value=None)), patch.object(
         dc, "_draft_missing_section", AsyncMock(side_effect=RuntimeError("x"))
-    ):
+    ), patch.object(dc, "_persist_fallback_section", AsyncMock(return_value=False)):
         job = dc._SeqDraft(factory, pid, {}, uuid.uuid4(), "r", None)
         assert await dc._try_draft_one_section(job, "s1") is False
 
@@ -618,8 +618,13 @@ async def test_draft_chat_job_and_status_helpers():
 
     with patch.object(
         dc, "get_job", AsyncMock(return_value={"status": "running", "drafted_count": 1, "total": 13})
+    ), patch.object(dc, "set_job", AsyncMock()), patch.object(
+        dc, "_run_sequential_draft", AsyncMock(return_value=1)
     ):
-        assert await dc._ensure_draft_job(factory, pid, {}, uuid.uuid4(), "r", None) is None
+        resumed = await dc._ensure_draft_job(factory, pid, {}, uuid.uuid4(), "r", None)
+        assert resumed is not None
+        await resumed
+        dc._DRAFT_JOBS.clear()
 
     with patch.object(dc, "get_job", AsyncMock(return_value=None)), patch.object(
         dc, "set_job", AsyncMock()
@@ -733,14 +738,13 @@ async def test_draft_missing_section_and_s4_incomplete():
 
     job = dc._SeqDraft(factory, pid, {}, uuid.uuid4(), "r", None)
     with patch.object(dc, "_consume_sse", AsyncMock(return_value=0)):
-        assert await dc._draft_missing_section(job, "s1") is False
+        assert await dc._draft_missing_section(job, "s1") is True
 
     with patch.object(dc, "_consume_sse", AsyncMock(return_value=1)), patch.object(
         dc, "_iter_llm_section_sse", return_value=_empty_aiter()
     ):
         job = dc._SeqDraft(factory, pid, {}, uuid.uuid4(), "r", None)
-        # parts stay empty → False
-        assert await dc._draft_missing_section(job, "s2") is False
+        assert await dc._draft_missing_section(job, "s2") is True
 
     with patch.object(dc, "_load_s4_rows", AsyncMock(return_value=[])), patch.object(
         dc, "_consume_sse", AsyncMock()

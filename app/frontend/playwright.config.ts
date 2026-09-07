@@ -1,3 +1,7 @@
+if (process.env.FORCE_COLOR && process.env.NO_COLOR) {
+  delete process.env.NO_COLOR;
+}
+
 import { defineConfig, devices } from "@playwright/test";
 
 const e2eEnabled = process.env.E2E === "1";
@@ -28,11 +32,16 @@ function headedLaunchOptions() {
     slowMo: Number(process.env.E2E_SLOWMO_MS || "400"),
     args: [
       "--new-window",
-      "--window-position=80,80",
+      // Offset from open-test-ui.mjs (80,80) so the headed runner stays visible
+      // and Chrome does not throttle an occluded Playwright window.
+      "--window-position=140,40",
       "--window-size=1280,860",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-session-crashed-bubble",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
     ],
   };
 }
@@ -42,7 +51,7 @@ export default defineConfig({
   testIgnore: ignoredSpecs(),
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  retries: process.env.CI ? 1 : headed ? 1 : 0,
   // Shared demo officer account on the live Docker stack — parallel workers collide.
   workers: 1,
   timeout: headed ? 4_800_000 : 180_000,

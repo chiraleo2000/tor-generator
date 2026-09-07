@@ -221,10 +221,11 @@ def parse_section_fields(section_key: str, text: str) -> dict[str, str]:
 
 
 def persist_section_fields(section_key: str, text: str) -> str:
-    """JSON object of subsection fields, or empty string."""
+    """JSON object of subsection fields, or the original prose if parsing failed."""
+    raw = (text or "").strip()
     fields = parse_section_fields(section_key, text)
     if not fields:
-        return ""
+        return raw
     if section_key not in SECTION_FIELDS and len(fields) == 1 and "body" in fields:
         return fields["body"]
     return json.dumps(fields, ensure_ascii=False)

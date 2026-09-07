@@ -69,8 +69,9 @@ test.describe("Realistic unmocked golden paths", () => {
     await login(page);
     await page.getByTestId("nav-knowledge-base").click();
     await expect(page.getByTestId("knowledge-base-page")).toBeVisible();
-    await expect(page.getByRole("button", { name: "ข้อมูลอื่น ๆ" })).toBeVisible();
-    await page.getByRole("button", { name: "ข้อมูลอื่น ๆ" }).click();
+    const otherCategory = page.getByRole("button", { name: "ข้อมูลอื่น ๆ" }).first();
+    await expect(otherCategory).toBeVisible();
+    await otherCategory.click();
     await pauseLikeUser(page, 600);
     const uniqueName = `บันทึกภายใน-e2e-${Date.now()}.txt`;
     await page.locator("[data-testid=knowledge-base-page] input[type=file]").setInputFiles({

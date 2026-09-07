@@ -242,7 +242,7 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**4 ก.ย. 2026** · v0.3.1) กับสแตก Docker (`tor-app` + Mongo + Neo4j + **mcp-rag**) — UI ตามลำดับถาม-ตอบ + ร่าง 13/13 + ตรวจสอบ TOR ผ่านทั้งหมด; pytest coverage **1971 ผ่าน / 95%** — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายใน `13-USER_GUIDELINE.md` และจับคู่เคสใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**7 ก.ย. 2026** · v0.4.0) กับสแตก Docker (`tor-app` + Mongo + Neo4j + **mcp-rag** + **amazon-quick**) — UI ตามลำดับถาม-ตอบ + ร่าง 13/13 + ตรวจสอบ TOR ผ่าน; Amazon Quick MCP ดึงคลัง pgvector จริง — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายใน `13-USER_GUIDELINE.md` และจับคู่เคสใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 
@@ -250,9 +250,10 @@ npm run test:e2e:headed
 
 | ชุด | ผล |
 |-----|-----|
-| pytest ไม่รวม `live_llm`/`integration` | **1971 ผ่าน** / **1 ข้าม** / ครอบคลุม **95%** ของ `app/` (Docker 3 ก.ย. 2026) |
-| Vitest coverage | **209 ผ่าน** / 48 ไฟล์ · statements **80.5%** · lines **82.88%** |
-| UI สามเครื่องมือ headed | **3 ผ่าน** (ถาม-ตอบ + ร่าง **13/13** + ตรวจสอบ · 4 ก.ย. 2026) |
+| pytest ไม่รวม `live_llm`/`integration` | **1991 ผ่าน** / **2 ข้าม** / ครอบคลุม **94%** ของ `app/` (Docker 7 ก.ย. 2026) |
+| pytest `-m live_llm` | **17 ผ่าน** ในรอบเดียว (LM Studio + API + ECT 27/27) |
+| Vitest coverage | **306 ผ่าน** / 50 ไฟล์ · statements **94.34%** · lines **96.4%** |
+| UI สามเครื่องมือ headed | **3 ผ่าน** (ถาม-ตอบ + ร่าง **13/13** + ตรวจสอบ · 7 ก.ย. 2026) |
 | Guide screenshots | **3 ผ่าน** (`test:e2e:guide` headed · รีเฟรช PNG ใน `test-evidence/`) |
 | HTTP | `http://localhost:3000/` และ `http://localhost:4000/health` = **healthy** |
 

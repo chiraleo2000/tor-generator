@@ -11,20 +11,18 @@ import logging
 from typing import Any, AsyncIterator
 from uuid import UUID
 
-from app.config import get_settings
 from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_LABELS
-from app.llm_tokens import DRAFT_MAX_TOKENS, GEMMA_CONTEXT_WINDOW, clamp_max_tokens
-from app.providers.constants import LOCAL_LLM_PROVIDERS
+from app.llm_tokens import (
+    DRAFT_MAX_TOKENS,
+    GEMMA_CONTEXT_WINDOW,
+    SCOPE_SUB_MAX_TOKENS,
+    SECTION_MAX_TOKENS,
+    clamp_max_tokens,
+)
 from app.providers.factory import ProviderFactory
 from app.rag.kb_qa import draft_rag_top_k
 from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.services.intake_service import resolve_draft_section_key, slot_content
-from app.services.staged_prompts import (
-    COMPOSE_SECTION_INSTRUCTION,
-    SECTION_ANALYZE_SYSTEM,
-    analyze_notes,
-    attach_analysis,
-)
 from app.services.thai_draft import (
     LENGTH_RULES,
     TABLE_FORMAT_HINT,
@@ -87,7 +85,7 @@ def _section_prompt_context(
     if intake:
         parts.append(
             "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น (ห้ามใช้เอกสารโครงการอื่น):\n"
-            + intake[:12000]
+            + intake[:5000]
         )
     if content:
         parts.append(f"ข้อมูลที่มีจากขั้นวิเคราะห์:\n{content}")
@@ -120,17 +118,98 @@ def _section_prompt_context(
     return "\n".join(parts)
 
 
+def fallback_section_text(section_key: str, slot_map: dict[str, Any]) -> str:
+    """Thai draft from intake slots when the LLM returns nothing or times out."""
+    from app.domain.section_fields import SECTION_FIELDS
+
+    label = TOR_SECTION_LABELS.get(section_key, section_key)
+    facts = slot_content(slot_map, section_key).strip()
+    intake = slot_content(slot_map, "_project_intake").strip()
+    body = facts or intake[:1200]
+    rows = SECTION_FIELDS.get(section_key) or []
+    if not rows:
+        return body or (
+            f"หมวด{label} ใช้ข้อมูลจากเอกสารขั้นที่ ๐ ของโครงการนี้ "
+            "เจ้าหน้าที่ควรตรวจและเติมรายละเอียดก่อนประกาศ"
+        )
+    chunks: list[str] = []
+    for key, thai in rows:
+        chunks.append(f"### {key}")
+        chunks.append(f"({thai})")
+        chunks.append(
+            body or f"ให้ระบุ{thai}ตามเอกสารอนุมัติและขอบเขตงานของโครงการนี้"
+        )
+    return "\n".join(chunks)
+
+
+def fallback_scope_subsection(sub_key: str, slot_map: dict[str, Any]) -> str:
+    """Fill one s4.x block from slots when the model skips or hangs."""
+    title = SCOPE_SUBSECTIONS.get(sub_key, sub_key)
+    facts = slot_content(slot_map, sub_key).strip()
+    parent = slot_content(slot_map, "s4").strip()
+    intake = slot_content(slot_map, "_project_intake").strip()
+    return facts or parent[:800] or intake[:800] or (
+        f"{title}: ใช้ข้อมูลจากเอกสารขั้นที่ ๐ ของโครงการนี้ "
+        "เจ้าหน้าที่ควรตรวจและเติมรายละเอียดก่อนประกาศ"
+    )
+
+
+_s4_rag_pack: dict[str, str] = {}
+
+
+def clear_s4_rag_cache() -> None:
+    """Drop the shared s4 hybrid pack (call at the start of a sequential job)."""
+    _s4_rag_pack.clear()
+
+
+async def _hybrid_rag_pack(
+    query: str,
+    *,
+    user_id: UUID | str | None,
+    section_relevance: str,
+    top_k: int,
+    chunk_n: int,
+    chunk_chars: int,
+) -> str:
+    result, _citations, _degraded, _mcp = unpack_hybrid(
+        await hybrid_retrieve(
+            query,
+            user_id=user_id,
+            search_scope="global",
+            section_relevance=section_relevance,
+            top_k=top_k,
+        )
+    )
+    return "\n".join(c.text[:chunk_chars] for c in result.chunks[:chunk_n])
+
+
+async def _s4_shared_rag(user_id: UUID | str | None) -> str:
+    key = str(user_id or "anon")
+    cached = _s4_rag_pack.get(key)
+    if cached is not None:
+        return cached
+    try:
+        pack = await _hybrid_rag_pack(
+            "ขอบเขตงาน จัดซื้อจัดจ้างภาครัฐ พ.ร.บ. 2560",
+            user_id=user_id,
+            section_relevance="s4",
+            top_k=max(6, draft_rag_top_k() // 2),
+            chunk_n=8,
+            chunk_chars=800,
+        )
+    except Exception:
+        pack = ""
+    _s4_rag_pack[key] = pack
+    return pack
+
+
 async def _stream_llm_prompt(
     system: str, user_prompt: str, *, max_tokens: int = DRAFT_MAX_TOKENS
 ) -> AsyncIterator[str]:
-    """Analyze then stream the composed draft from the configured LLM."""
+    """Stream one compose pass from the configured LLM (no analyze-then-compose)."""
     llm = ProviderFactory().get_llm("draft")  # NOSONAR python:S930
-    notes = ""
-    if get_settings().llm_provider not in LOCAL_LLM_PROVIDERS:
-        notes = await analyze_notes(llm, user_prompt, SECTION_ANALYZE_SYSTEM)
-    compose_user = attach_analysis(user_prompt, notes, COMPOSE_SECTION_INSTRUCTION)
     max_out = clamp_max_tokens(
-        compose_user,
+        user_prompt,
         max_tokens,
         context_window=GEMMA_CONTEXT_WINDOW,
         system=system,
@@ -138,10 +217,11 @@ async def _stream_llm_prompt(
     async for token in llm.stream(
         [
             {"role": "system", "content": system},
-            {"role": "user", "content": compose_user},
+            {"role": "user", "content": user_prompt},
         ],
         temperature=0.3,
         max_tokens=max_out,
+        disable_thinking=True,
     ):
         yield token
 
@@ -156,16 +236,14 @@ async def draft_single_section(
     slot_facts = slot_content(slot_map, section_key).strip()
     query = f"ขอบเขตของงาน {label} {slot_facts[:200]}"
     try:
-        result, _citations, _degraded, _mcp = unpack_hybrid(
-            await hybrid_retrieve(
-                query,
-                user_id=user_id,
-                search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
-                section_relevance=section_key,
-                top_k=draft_rag_top_k(),
-            )
+        rag_context = await _hybrid_rag_pack(
+            query,
+            user_id=user_id,
+            section_relevance=section_key,
+            top_k=draft_rag_top_k(),
+            chunk_n=8,
+            chunk_chars=800,
         )
-        rag_context = "\n".join(c.text[:2000] for c in result.chunks[:16])
     except Exception:
         logger.warning("RAG failed for %s, proceeding without context", section_key)
         rag_context = ""
@@ -174,7 +252,7 @@ async def draft_single_section(
     async for token in _stream_llm_prompt(
         DRAFT_SYSTEM_PROMPT,
         user_prompt,
-        max_tokens=DRAFT_MAX_TOKENS,
+        max_tokens=SECTION_MAX_TOKENS,
     ):
         yield token
 
@@ -185,24 +263,11 @@ async def draft_scope_subsection(
     user_id: UUID | str | None = None,
 ) -> AsyncIterator[str]:
     """Draft one s4.x subsection from the LLM into its own content block."""
-    rag_context = ""
-    title = SCOPE_SUBSECTIONS.get(sub_key, sub_key)
-    try:
-        result, _c, _d, _mcp = unpack_hybrid(
-            await hybrid_retrieve(
-                f"ขอบเขตงาน {title}",
-                user_id=user_id,
-                search_scope="global",  # พ.ร.บ./กฎกลางเท่านั้น ไม่ดึงคลังเอกสารโครงการอื่น
-                section_relevance="s4",
-                top_k=max(6, draft_rag_top_k() // 2),
-            )
-        )
-        rag_context = "\n".join(c.text[:1800] for c in result.chunks[:12])
-    except Exception:
-        rag_context = ""
-
+    rag_context = await _s4_shared_rag(user_id)
     prompt = scope_sub_prompt(sub_key, slot_map, rag_context)
-    async for token in _stream_llm_prompt(DRAFT_SYSTEM_PROMPT, prompt):
+    async for token in _stream_llm_prompt(
+        DRAFT_SYSTEM_PROMPT, prompt, max_tokens=SCOPE_SUB_MAX_TOKENS
+    ):
         yield token
 
 

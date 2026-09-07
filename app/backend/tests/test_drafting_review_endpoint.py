@@ -241,6 +241,45 @@ class TestDraftSection:
         assert data["data"]["draft_content"] == "ร่างเนื้อหาที่สร้างขึ้น"
         assert data["data"]["quality_score"] == 85
 
+    def test_draft_section_empty_content_returns_400(self, client, mock_officer_user):
+        """Empty model output is a draft failure, not a blank 200."""
+        project = _make_project()
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = project
+        mock_sections_result = MagicMock()
+        mock_sections_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_sections_result]
+        )
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+        mock_graph = AsyncMock()
+        mock_graph.ainvoke = AsyncMock(
+            return_value={
+                "draft_content": "",
+                "quality_score": None,
+                "validation_findings": [],
+                "rag_retrieval_failed": False,
+                "error": None,
+                "best_draft_content": None,
+                "best_draft_score": -1,
+            }
+        )
+        with patch(
+            "app.orchestrator.compile_tor_drafting_graph",
+            return_value=mock_graph,
+        ):
+            response = client.post(
+                f"/api/v1/projects/{PROJECT_ID}/draft-section",
+                json={"section_key": "s1"},
+            )
+        assert response.status_code == 400
+        assert "ร่างว่าง" in response.json()["error"]["message"]
+
 
 # ---------------------------------------------------------------------------
 # POST /projects/{id}/review

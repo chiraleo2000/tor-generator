@@ -81,7 +81,8 @@ def test_amazon_quick_tools_are_draft7_and_under_limit() -> None:
             assert "required" not in prop
 
 
-def test_amazon_quick_ping_and_rest_payload() -> None:
+def test_amazon_quick_ping_and_rest_payload(monkeypatch) -> None:
+    monkeypatch.delenv("QUICK_RAG_MCP_URL", raising=False)
     quick = _load(QUICK_PATH, "amazon_quick_ping")
     _, ping_body = quick.dispatch_rpc(
         {
@@ -96,6 +97,49 @@ def test_amazon_quick_ping_and_rest_payload() -> None:
     assert snippet["rag_source"] == "mcp"
     assert "วงเงินงบประมาณ" in snippet["text"]
     assert "chunks" not in snippet
+
+
+def test_amazon_quick_retrieve_proxies_live_rag(monkeypatch) -> None:
+    quick = _load(QUICK_PATH, "amazon_quick_live")
+    monkeypatch.setenv("QUICK_RAG_MCP_URL", "http://mcp-rag:8765/mcp")
+
+    def fake_http(_url: str, _payload: dict[str, Any], *, timeout: float = 45.0) -> dict[str, Any]:
+        del timeout
+        body = {
+            "chunks": [
+                {
+                    "text": "หลักประกันผลงานตามระเบียบฯ ข้อจริงจากคลัง",
+                    "score": 0.91,
+                    "source_document": "ระเบียบพัสดุ.pdf",
+                    "metadata": {"rag_source": "mcp"},
+                }
+            ]
+        }
+        return {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}]},
+        }
+
+    monkeypatch.setattr(quick, "_http_json", fake_http)
+    snippet = quick.retrieve_payload("หลักประกันผลงาน", top_k=3)
+    assert snippet["source_document"] == "ระเบียบพัสดุ.pdf"
+    assert "หลักประกันผลงานตามระเบียบฯ" in snippet["text"]
+    assert snippet["score"] == 0.91
+    _, call_body = quick.dispatch_rpc(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "retrieve",
+                "arguments": {"query": "หลักประกันผลงาน", "top_k": 3},
+            },
+        }
+    )
+    parsed = json.loads(call_body["result"]["content"][0]["text"])
+    assert parsed["mode"] == "live"
+    assert parsed["chunks"][0]["source_document"] == "ระเบียบพัสดุ.pdf"
 
 
 def _schema_has_array(node: Any) -> bool:
@@ -178,6 +222,7 @@ def test_amazon_quick_http_health_and_retrieve(monkeypatch) -> None:
     from http.server import ThreadingHTTPServer
 
     monkeypatch.setenv("QUICK_MCP_AUTH_VALUE", "")
+    monkeypatch.delenv("QUICK_RAG_MCP_URL", raising=False)
     quick = _load(QUICK_PATH, "amazon_quick_http")
     server = ThreadingHTTPServer(("127.0.0.1", 0), quick.Handler)
     worker = threading.Thread(target=server.serve_forever, daemon=True)

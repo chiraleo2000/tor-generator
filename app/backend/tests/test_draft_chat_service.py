@@ -9,20 +9,46 @@ from app.api.v1.endpoints.draft_chat import (
     _section_done_event,
     _sse,
     section_draft_timeout,
+    sequential_draft_order,
 )
+from app.domain.tor_sections import TOR_SECTION_ORDER
 from app.services.draft_chat_service import (
     DRAFT_MAX_TOKENS,
     _section_prompt_context,
     edit_section_draft,
+    fallback_scope_subsection,
+    fallback_section_text,
     parse_draft_message_intent,
 )
+
+
+def test_sequential_order_drafts_s4_last():
+    order = sequential_draft_order()
+    assert order[-1] == "s4"
+    assert order.index("s6") < order.index("s4")
+    assert set(order) == set(TOR_SECTION_ORDER)
+
+
+def test_fallback_section_uses_intake_slots():
+    text = fallback_section_text(
+        "s6",
+        {
+            "s6": {"content": "วงเงิน 2,500,000 บาท จากงบดำเนินงาน", "status": "filled"},
+            "_project_intake": {"content": "โครงการกรมบัญชีกลาง", "status": "filled"},
+        },
+    )
+    assert "budgetAmount" in text
+    assert "2,500,000" in text
+    assert "พัฒนาระบบบริหารสัญญา" in fallback_scope_subsection(
+        "s4.1", {"s4.1": {"content": "พัฒนาระบบบริหารสัญญา"}}
+    )
 
 
 def test_section_timeout_is_capped_for_local_testing():
     assert SECTION_TIMEOUT_SECONDS >= 30
     assert SECTION_TIMEOUT_SECONDS <= 1800
     assert section_draft_timeout("s1") == float(SECTION_TIMEOUT_SECONDS)
-    assert section_draft_timeout("s4") == float(SECTION_TIMEOUT_SECONDS * 5)
+    assert section_draft_timeout("s4") == float(SECTION_TIMEOUT_SECONDS * 3)
 
 
 def test_parse_accept():
@@ -67,7 +93,7 @@ def test_section_prompt_includes_this_project_intake_only():
     assert "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น" in prompt
     assert "เอกสารขั้นศูนย์ของโครงการนี้" in prompt
     assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in prompt
-    assert "6144" in prompt
+    assert "1024" in prompt
     assert "หนึ่งร้อยถึงห้าร้อยคำ" not in prompt
 
 
@@ -78,6 +104,7 @@ async def test_edit_section_draft_includes_intake_slot():
     async def fake_stream(messages, **kwargs):
         assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
         assert kwargs["max_tokens"] >= 256
+        assert kwargs["disable_thinking"] is True
         user = messages[1]["content"]
         assert "กรมบัญชีกลาง" in user
         assert "ให้สั้นลง" in user
@@ -109,6 +136,7 @@ async def test_draft_single_section_streams_llm_tokens():
     async def fake_stream(_messages, **kwargs):
         assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
         assert kwargs["max_tokens"] >= 256
+        assert kwargs["disable_thinking"] is True
         yield "ร่าง"
         yield "จาก"
         yield "LM Studio"
@@ -133,7 +161,9 @@ async def test_draft_single_section_streams_llm_tokens():
 
 @pytest.mark.asyncio
 async def test_draft_scope_subsection_streams_llm_tokens():
-    from app.services.draft_chat_service import draft_scope_subsection
+    from app.services.draft_chat_service import clear_s4_rag_cache, draft_scope_subsection
+
+    clear_s4_rag_cache()
 
     mock_llm = MagicMock()
 
@@ -247,3 +277,41 @@ def test_section_done_sse_includes_count_and_label():
     assert payload.startswith("event: section_done")
     assert "ความเป็นมา" in payload
     assert _sse("ping", {"ok": True}).startswith("event: ping")
+
+
+@pytest.mark.asyncio
+async def test_s4_subsections_reuse_one_hybrid_retrieve():
+    from app.services.draft_chat_service import (
+        clear_s4_rag_cache,
+        draft_scope_subsection,
+    )
+
+    clear_s4_rag_cache()
+    calls = {"n": 0}
+    mock_llm = MagicMock()
+
+    async def fake_stream(_messages, **kwargs):
+        assert kwargs["max_tokens"] <= 2048
+        yield "ย่อ"
+
+    mock_result = MagicMock()
+    mock_result.chunks = [MagicMock(text="พ.ร.บ. การจัดซื้อจัดจ้าง")]
+
+    async def fake_retrieve(*_args, **_kwargs):
+        calls["n"] += 1
+        return mock_result, [], False, False
+
+    mock_llm.stream = fake_stream
+    with patch(
+        "app.services.draft_chat_service.ProviderFactory.get_llm",
+        return_value=mock_llm,
+    ), patch(
+        "app.services.draft_chat_service.hybrid_retrieve",
+        side_effect=fake_retrieve,
+    ):
+        async for _ in draft_scope_subsection("s4.1", {}):
+            pass
+        async for _ in draft_scope_subsection("s4.2", {}):
+            pass
+    assert calls["n"] == 1
+    clear_s4_rag_cache()

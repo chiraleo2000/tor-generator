@@ -1,0 +1,19 @@
+pytest -m live_llm  2026-09-07
+Docker backend + tests overlay + LM Studio :1234 + API :4000
+17 selected / 17 passed, 2 deselected in 2858.20s (0:47:38)
+
+LM Studio (8): all PASSED
+PDF embed + ingest (2): all PASSED (NAME_MAX-safe openable list)
+Realistic workflow (4):
+  full drafting s1 chars=3058 PASSED
+  chat mine RAG PASSED
+  review PDF + rule engine PASSED
+  KB category=other PASSED
+ECT (3):
+  intake 27/27 PASSED  project 5e89db4e-38d7-4757-b764-1817a66d0930
+  standalone source score=82 findings=11 PASSED
+  draft 13 sections then review PASSED
+    project review score=0 valid=False findings=1
+    standalone drafted TOR score=73
+    Jaccard 0.7233
+    export DOCX/PDF ok

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.draft_job_store import (
+    STALE_RUNNING_SECONDS,
     TTL_SECONDS,
     bump_progress,
     clear_memory,
@@ -59,10 +60,19 @@ async def test_stale_running_reports_failed():
     pid = uuid.uuid4()
     await set_job(redis, pid, "running", 4, 13)
     key = f"draft:job:{pid}"
-    redis.data[key]["updated_at"] = str(time.time() - 601)
+    redis.data[key]["updated_at"] = str(time.time() - (STALE_RUNNING_SECONDS + 1))
     read = await get_job(redis, pid)
     assert read["status"] == "failed"
     assert read["drafted_count"] == 4
+
+
+@pytest.mark.asyncio
+async def test_bump_progress_does_not_decrease():
+    pid = uuid.uuid4()
+    await set_job(None, pid, "running", 11, 13)
+    await bump_progress(None, pid, 3)
+    read = await get_job(None, pid, apply_stale=False)
+    assert read["drafted_count"] == 11
 
 
 @pytest.mark.asyncio

@@ -226,7 +226,7 @@ services:
       - tor_network
 
   # Amazon Quick remote MCP + OpenAPI REST twin (not QuickSight).
-  # Register http://host.docker.internal:8767/mcp in Amazon Quick Connectors.
+  # Desktop: http://127.0.0.1:8767/mcp — retrieve proxies to mcp-rag (real pgvector).
   amazon-quick:
     profiles: [amazon-quick]
     image: python:3.11-alpine
@@ -235,11 +235,16 @@ services:
       QUICK_MCP_PORT: "8767"
       QUICK_MCP_AUTH_HEADER: ${QUICK_MCP_AUTH_HEADER:-Authorization}
       QUICK_MCP_AUTH_VALUE: ${QUICK_MCP_AUTH_VALUE:-}
+      # Live RAG: same corpus as TOR chat (pgvector via mcp-rag).
+      QUICK_RAG_MCP_URL: ${QUICK_RAG_MCP_URL:-http://mcp-rag:8765/mcp}
     volumes:
       - ./app/infra/quick/mcp_server.py:/stub.py:ro
     command: ["python", "/stub.py"]
     ports:
       - "8767:8767"
+    depends_on:
+      mcp-rag:
+        condition: service_healthy
     healthcheck:
       test:
         [

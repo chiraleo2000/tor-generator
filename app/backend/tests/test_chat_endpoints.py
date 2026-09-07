@@ -149,11 +149,10 @@ def test_create_kb_room_returns_card_without_lazy_io(client, mock_officer_user):
 def test_create_draft_room_reuses_existing(client, mock_officer_user):
     existing = _make_room(kind="draft_intake", project_id=PROJECT_ID, title="แชทร่าง TOR")
     mock_db = AsyncMock()
-    first = MagicMock()
-    first.scalar_one_or_none.return_value = existing
-    second = MagicMock()
-    second.scalar_one_or_none.return_value = existing
-    mock_db.execute = AsyncMock(side_effect=[first, second])
+    lookup = MagicMock()
+    lookup.scalar_one_or_none.return_value = existing
+    lookup.scalars.return_value.all.return_value = []
+    mock_db.execute = AsyncMock(return_value=lookup)
     _override_db(mock_db)
 
     response = client.post(
@@ -221,6 +220,7 @@ def test_chat_sse_streams_tokens(client, mock_officer_user, monkeypatch):
     retrieve.assert_awaited()
     assert retrieve.await_args.kwargs["top_k"] == chat_rag_top_k()
     assert captured["max_tokens"] == CHAT_MAX_TOKENS
+    assert captured["disable_thinking"] is True
     assert "ข้อความเนื้อหา" in captured["messages"][0]["content"]
 
 
@@ -337,9 +337,11 @@ def test_list_messages_for_owner(client, mock_officer_user):
     msg.created_at = datetime(2026, 8, 18, 10, 0, 0, tzinfo=timezone.utc)
     room.messages = [msg]
     mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = room
-    mock_db.execute = AsyncMock(return_value=mock_result)
+    room_result = MagicMock()
+    room_result.scalar_one_or_none.return_value = room
+    msg_result = MagicMock()
+    msg_result.scalars.return_value.all.return_value = [msg]
+    mock_db.execute = AsyncMock(side_effect=[room_result, msg_result])
     _override_db(mock_db)
 
     response = client.get(f"/api/v1/chat/rooms/{ROOM_ID}/messages")
@@ -415,6 +417,29 @@ def test_room_card_and_intake_messages_helpers():
     assert kb
     sse = chat_ep._sse("done", {"mcp_degraded": True})
     assert "mcp_degraded" in sse
+
+
+def test_placeholder_title_becomes_first_user_question():
+    from app.api.v1.endpoints.chat import (
+        _is_placeholder_title,
+        _preview_message,
+        _title_from_user_text,
+    )
+
+    assert _is_placeholder_title("ถาม-ตอบคลังความรู้") is True
+    assert _is_placeholder_title("ห้องใหม่") is True
+    assert _is_placeholder_title("งวดจ่ายต้องวางหลักประกัน") is False
+    assert _title_from_user_text("  วิธีเฉพาะเจาะจงใช้งบประมาณวงเงินเท่าใด  ") == (
+        "วิธีเฉพาะเจาะจงใช้งบประมาณวงเงินเท่าใด"
+    )
+    user = MagicMock(role="user", content="คำถามจากผู้ใช้")
+    assistant = MagicMock(role="assistant", content="คำตอบยาว")
+    room = MagicMock()
+    room.messages = [user, assistant]
+    with patch("app.api.v1.endpoints.chat.sa_inspect") as inspect_room:
+        inspect_room.return_value.unloaded = set()
+        preview = _preview_message(room)
+    assert preview is user
 
 
 def test_last_loaded_message_skips_unloaded_and_inspect_error():
@@ -680,3 +705,44 @@ def test_attachment_validation_error(client, mock_officer_user):
             files={"file": ("reg.pdf", b"%PDF-1.4 content", "application/pdf")},
         )
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_message_rows_returns_empty_for_non_list():
+    from app.api.v1.endpoints import chat as chat_ep
+
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = MagicMock()
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    assert await chat_ep._message_rows(db, ROOM_ID) == []
+
+    listed = MagicMock()
+    listed.id = uuid.uuid4()
+    listed.role = "user"
+    listed.content = "ถาม"
+    listed.citations = []
+    listed.created_at = datetime(2026, 8, 18, 10, 0, 0, tzinfo=timezone.utc)
+    result.scalars.return_value.all.return_value = [listed]
+    rows = await chat_ep._message_rows(db, ROOM_ID)
+    assert rows[0].content == "ถาม"
+    payload = chat_ep._message_payload(listed)
+    assert payload["content"] == "ถาม"
+
+
+@pytest.mark.asyncio
+async def test_previews_prefer_latest_user_message():
+    from app.api.v1.endpoints import chat as chat_ep
+
+    user_msg = MagicMock()
+    user_msg.room_id = ROOM_ID
+    user_msg.role = "user"
+    user_msg.content = "คำถามล่าสุด"
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [user_msg]
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    previews = await chat_ep._previews_for_rooms(db, [ROOM_ID])
+    assert previews[ROOM_ID].content == "คำถามล่าสุด"
+    assert chat_ep._preview_from_rows([user_msg]) is user_msg
+    assert chat_ep._as_message_list(MagicMock()) == []

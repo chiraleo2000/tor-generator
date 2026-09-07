@@ -41,6 +41,7 @@ VALID_EMBEDDING_PROVIDERS = (
     "openai",
     "qwen3",
     "local",
+    "none",
     "gemini",
     "azure_foundry",
     "openai_compatible",
@@ -167,7 +168,7 @@ class ProviderFactory:
 
     def _validate_embedding_credentials(self) -> None:
         embedding = _attr(self._settings, "embedding_provider", "local")
-        if embedding in LOCAL_EMBEDDING_PROVIDERS:
+        if embedding == "none" or embedding in LOCAL_EMBEDDING_PROVIDERS:
             return
         if embedding == "openai":
             self._require_secret(
@@ -229,6 +230,10 @@ class ProviderFactory:
 
     def get_embedding(self) -> EmbeddingProvider:
         provider = _attr(self._settings, "embedding_provider", "local")
+        if provider == "none":
+            from app.providers.embedding.none_provider import NoneEmbeddingProvider
+
+            return NoneEmbeddingProvider()
         if provider in LOCAL_EMBEDDING_PROVIDERS:
             return self._create_local_embedding_provider()
         return self._create_embedding_by_kind(provider)

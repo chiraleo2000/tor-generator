@@ -13,6 +13,7 @@ from app.services.full_draft_generator import (
     RAG_TOP_K,
     DraftResult,
     FullDraftGenerator,
+    _keep_draft_rag_chunk,
     _warn_missing_facts,
     mean_quality,
     slot_user_input,
@@ -63,6 +64,30 @@ async def test_generator_uses_cache_and_mcp_unpack() -> None:
 
 
 @pytest.mark.asyncio
+async def test_generator_rag_keeps_mid_local_embeddinggemma_scores() -> None:
+    mid = RetrievedChunk(
+        id="3",
+        text="คุณสมบัติผู้ยื่นข้อเสนอ",
+        score=0.33,
+        source_document="พรบ.pdf",
+        metadata={"rag_source": "local"},
+    )
+
+    async def fake_retrieve(*_args, **_kwargs):
+        return (
+            RetrievalResult(chunks=[mid], query="q", top_k=1, actual_count=1),
+            [],
+            False,
+            False,
+        )
+
+    gen = FullDraftGenerator(retrieve=fake_retrieve)
+    chunks, warning = await gen._rag("s3", "u1")
+    assert [item["id"] for item in chunks] == ["3"]
+    assert warning is None
+
+
+@pytest.mark.asyncio
 async def test_generator_rag_filters_low_score() -> None:
     async def fake_retrieve(*_args, **_kwargs):
         low = RetrievedChunk(id="1", text="ต่ำ", score=0.1)
@@ -73,6 +98,44 @@ async def test_generator_rag_filters_low_score() -> None:
     chunks, warning = await gen._rag("s1", "u1")
     assert [item["id"] for item in chunks] == ["2"]
     assert warning == "GraphRAG ลดระดับเหลือ pgvector"
+
+
+@pytest.mark.asyncio
+async def test_generator_rag_keeps_unscored_mcp_and_custom() -> None:
+    mcp = RetrievedChunk(
+        id="m",
+        text="จาก MCP",
+        score=0.0,
+        source_document="ระเบียบ",
+        metadata={"rag_source": "mcp"},
+    )
+    custom = RetrievedChunk(
+        id="c",
+        text="จาก Custom RAG",
+        score=0.2,
+        source_document="คู่มือ",
+        metadata={"rag_source": "custom_rag"},
+    )
+    local_low = RetrievedChunk(
+        id="1", text="ต่ำ", score=0.1, metadata={"rag_source": "local"}
+    )
+
+    async def fake_retrieve(*_args, **_kwargs):
+        return (
+            RetrievalResult(
+                chunks=[local_low, mcp, custom], query="q", top_k=3, actual_count=3
+            ),
+            [],
+            False,
+            False,
+        )
+
+    gen = FullDraftGenerator(retrieve=fake_retrieve)
+    chunks, warning = await gen._rag("s1", "u1")
+    assert [item["id"] for item in chunks] == ["m", "c"]
+    assert warning is None
+    assert _keep_draft_rag_chunk(mcp) is True
+    assert _keep_draft_rag_chunk(local_low) is False
 
 
 @pytest.mark.asyncio

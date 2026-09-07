@@ -1,0 +1,14 @@
+﻿Amazon Quick live + unit  2026-09-07pm
+
+Live sidecar http://127.0.0.1:8767 (Compose profile amazon-quick)
+HEALTH 200 status=ok service=tor-amazon-quick version=0.4.0
+  rag.mode=live rag_url=http://mcp-rag:8765/mcp reachable=true service=tor-mcp-pgvector
+RETRIEVE_REST 200 text_chars=20243 source_document=real PDF (พ.ร.บ. 2560) — not amazon-quick-mcp stub
+MCP_INIT 200 serverInfo=tor-amazon-quick
+MCP_TOOLS count=3 names=retrieve,ping,get_health (Draft 7)
+MCP_CALL retrieve 200 mcp_call_chars=39322 live corpus
+
+Unit tests/test_amazon_quick.py (mcp+quick mounts):
+10 passed in 1.38s
+
+AMAZON_QUICK_OK

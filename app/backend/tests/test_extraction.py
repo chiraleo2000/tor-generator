@@ -444,10 +444,10 @@ class TestOcrPage:
         result = ocr_page(str(img_path), lang="tha+eng", timeout=30)
         assert "Extracted Thai text สวัสดี" in result
 
-        # Verify tesseract was called correctly
+        # Verify tesseract was called correctly (PATH binary or Windows default)
         call_args = mock_run.call_args
         cmd = call_args[0][0]
-        assert cmd[0] == "tesseract"
+        assert Path(cmd[0]).name.lower() in {"tesseract", "tesseract.exe"}
         assert "-l" in cmd
         assert "tha+eng" in cmd
         assert "--psm" in cmd

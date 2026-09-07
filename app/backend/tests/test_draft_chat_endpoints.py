@@ -221,7 +221,7 @@ def test_start_drafts_sections_sequentially_from_llm(client, mock_officer_user, 
     assert "event: all_done" in body
 
 
-def test_start_reports_empty_model_output(client, mock_officer_user, monkeypatch):
+def test_start_fills_empty_model_output_from_intake(client, mock_officer_user, monkeypatch):
     project = _make_project(analysis=_ready_analysis())
     _override_db(_project_db(project))
     persist = _persist_with_section(None)
@@ -244,7 +244,7 @@ def test_start_reports_empty_model_output(client, mock_officer_user, monkeypatch
         with client.stream("POST", f"/api/v1/projects/{PROJECT_ID}/draft-chat/start") as response:
             body = b"".join(response.iter_bytes()).decode("utf-8")
     assert "event: all_done" in body
-    persist.add.assert_not_called()
+    persist.add.assert_called()
 
 
 def test_message_accept_and_redraft(client, mock_officer_user, monkeypatch):
@@ -415,7 +415,7 @@ async def test_iter_llm_section_sse_timeout_and_error():
     assert "section_error" in events[0]
 
 
-def test_start_llm_error_does_not_save_fallback(client, mock_officer_user, monkeypatch):
+def test_start_llm_error_saves_intake_fallback(client, mock_officer_user, monkeypatch):
     project = _make_project(analysis=_ready_analysis())
     _override_db(_project_db(project))
     persist = _persist_with_section(None)
@@ -438,7 +438,7 @@ def test_start_llm_error_does_not_save_fallback(client, mock_officer_user, monke
             body = b"".join(response.iter_bytes()).decode("utf-8")
     assert response.status_code == 200
     assert "event: all_done" in body
-    persist.add.assert_not_called()
+    persist.add.assert_called()
 
 
 @pytest.mark.asyncio
@@ -551,7 +551,50 @@ def test_status_overlays_job_progress(client, mock_officer_user):
     assert data["all_drafted"] is False
 
 
-def test_status_job_done_marks_all_drafted(client, mock_officer_user):
+def test_status_keeps_section_count_when_job_retries_lower(client, mock_officer_user):
+    from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_ORDER
+
+    project = _make_project(analysis=_ready_analysis())
+    mock_db = AsyncMock()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    section_rows = [
+        MagicMock(
+            section_key=key,
+            content=f"เนื้อหา {key} อย่างน้อยยี่สิบตัวอักษร",
+            ai_draft=f"ร่าง {key} อย่างน้อยยี่สิบตัวอักษร",
+            is_approved=False,
+        )
+        for key in TOR_SECTION_ORDER
+    ]
+    sections_result = MagicMock()
+    sections_result.scalars.return_value.all.return_value = section_rows
+    s4_result = MagicMock()
+    s4_subs = [
+        MagicMock(
+            sub_key=key,
+            content=f"หัวข้อย่อย {key} อย่างน้อยยี่สิบตัวอักษร",
+            ai_draft=f"ร่าง {key} อย่างน้อยยี่สิบตัวอักษร",
+        )
+        for key in SCOPE_SUBSECTIONS
+    ]
+    s4_result.scalars.return_value.all.return_value = s4_subs
+    mock_db.execute = AsyncMock(side_effect=[project_result, sections_result, s4_result])
+    _override_db(mock_db)
+
+    with patch(
+        "app.api.v1.endpoints.draft_chat.get_job",
+        new_callable=AsyncMock,
+        return_value={"status": "running", "drafted_count": 3, "total": 13},
+    ):
+        response = client.get(f"/api/v1/projects/{PROJECT_ID}/draft-chat/status")
+    data = response.json()["data"]
+    assert data["job_status"] == "running"
+    assert data["drafted_count"] >= 13
+    assert data["all_drafted"] is True
+
+
+def test_status_job_done_without_sections_is_not_all_drafted(client, mock_officer_user):
     project = _make_project(analysis=_ready_analysis())
     mock_db = AsyncMock()
     project_result = MagicMock()
@@ -569,7 +612,7 @@ def test_status_job_done_marks_all_drafted(client, mock_officer_user):
         return_value={"status": "done", "drafted_count": 13, "total": 13},
     ):
         response = client.get(f"/api/v1/projects/{PROJECT_ID}/draft-chat/status")
-    assert response.json()["data"]["all_drafted"] is True
+    assert response.json()["data"]["all_drafted"] is False
 
 
 def test_message_accept_missing_draft(client, mock_officer_user, monkeypatch):
@@ -832,7 +875,7 @@ async def test_draft_missing_section_errors_and_s4_complete():
         yield "event: section_error\ndata: {}\n\n"
 
     with patch("app.api.v1.endpoints.draft_chat._iter_llm_section_sse", fail_sse):
-        assert await _draft_missing_section(job, "s1") is False
+        assert await _draft_missing_section(job, "s1") is True
 
     async def ok_sse(_redis, _rid, _key, _slots, _uid, parts, _errors):
         parts.append("ร่างหมวดหนึ่งจากโมเดล")

@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const profile = path.resolve(here, "..", ".chrome-test-profile");
 const url = process.env.E2E_BASE_URL || "http://localhost:3000/login";
+const position = process.env.E2E_WINDOW_POSITION || "80,80";
+const size = process.env.E2E_WINDOW_SIZE || "1280,860";
 
 const candidates = [
   process.env.E2E_CHROME_PATH,
@@ -34,8 +36,8 @@ const child = spawn(
     "--no-first-run",
     "--no-default-browser-check",
     "--new-window",
-    "--window-position=80,80",
-    "--window-size=1280,860",
+    `--window-position=${position}`,
+    `--window-size=${size}`,
     url,
   ],
   { detached: true, stdio: "ignore" }

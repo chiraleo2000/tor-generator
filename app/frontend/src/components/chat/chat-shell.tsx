@@ -35,6 +35,15 @@ import { cn } from "@/lib/utils";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 const TITLE_KB = "ถาม-ตอบคลังความรู้";
 const TITLE_DRAFT = "แชทร่าง TOR";
+const TITLE_NEW = "ห้องใหม่";
+
+function isPlaceholderRoom(room: ChatRoomCard): boolean {
+  const title = (room.title || "").trim();
+  return (
+    !(room.last_message || "").trim() &&
+    (title === TITLE_NEW || title === TITLE_KB || title === TITLE_DRAFT)
+  );
+}
 
 interface PrivateKbFile {
   id: string;
@@ -94,6 +103,9 @@ export function ChatShell({
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const loadGen = useRef(0);
+  const pickedId = useRef<string | null>(null);
+  const userPicked = useRef(false);
 
   const pathFor = useMemo(
     () =>
@@ -113,9 +125,14 @@ export function ChatShell({
   }, [kind, projectId]);
 
   const loadMessages = useCallback(async (roomId: string) => {
+    const gen = ++loadGen.current;
     const response = await apiClient.get(`/chat/rooms/${roomId}/messages`);
+    if (gen !== loadGen.current || pickedId.current !== roomId) {
+      return;
+    }
     const payload = unwrapData<{ messages?: ChatMessageItem[] }>(response);
-    setMessages(payload.messages || []);
+    const rows = Array.isArray(payload.messages) ? payload.messages : [];
+    setMessages(rows);
   }, []);
 
   const loadMine = useCallback(async () => {
@@ -123,6 +140,42 @@ export function ChatShell({
     const payload = unwrapData<{ userFiles?: PrivateKbFile[] }>(response);
     setMineFiles(uniqueById(payload.userFiles || []));
   }, []);
+
+  const rememberRoom = useCallback(
+    (id: string | null) => {
+      pickedId.current = id;
+      try {
+        const key = `chat-active:${kind}:${projectId || ""}`;
+        if (id) sessionStorage.setItem(key, id);
+        else sessionStorage.removeItem(key);
+      } catch {
+        /* ignore private-mode storage */
+      }
+    },
+    [kind, projectId]
+  );
+
+  const selectRoom = useCallback(
+    async (id: string, fromUser = true) => {
+      if (fromUser) {
+        userPicked.current = true;
+      } else if (userPicked.current) {
+        return;
+      }
+      rememberRoom(id);
+      setActiveId(id);
+      setError(null);
+      setMessages([]);
+      try {
+        await loadMessages(id);
+      } catch (err: unknown) {
+        if (pickedId.current === id) {
+          setError(apiErrorMessage(err, "โหลดข้อความไม่สำเร็จ"));
+        }
+      }
+    },
+    [loadMessages, rememberRoom]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -146,12 +199,20 @@ export function ChatShell({
         /* private catalog is optional in chat */
       }
       if (cancelled) return;
+      if (userPicked.current || pickedId.current) return;
+      const stored = (() => {
+        try {
+          return sessionStorage.getItem(`chat-active:${kind}:${projectId || ""}`);
+        } catch {
+          return null;
+        }
+      })();
       const existing =
+        (stored ? list.find((room) => room.id === stored) : undefined) ||
         (projectId ? list.find((room) => room.project_id === projectId) : undefined) ||
         list[0];
       if (existing) {
-        setActiveId(existing.id);
-        await loadMessages(existing.id);
+        await selectRoom(existing.id, false);
         return;
       }
       if (kind === "draft_intake" && projectId) {
@@ -161,21 +222,10 @@ export function ChatShell({
           title: TITLE_DRAFT,
         });
         const room = unwrapData<ChatRoomCard>(created);
-        if (cancelled) return;
+        if (cancelled || userPicked.current || pickedId.current) return;
         await loadRooms();
-        setActiveId(room.id);
-        await loadMessages(room.id);
-        return;
+        await selectRoom(room.id, false);
       }
-      if (kind !== "kb") return;
-      const created = await apiClient.post("/chat/rooms", {
-        kind,
-        title: TITLE_KB,
-      });
-      const room = unwrapData<ChatRoomCard>(created);
-      if (cancelled) return;
-      await loadRooms();
-      setActiveId(room.id);
     }
 
     bootstrap().catch(() => {
@@ -184,22 +234,38 @@ export function ChatShell({
     return () => {
       cancelled = true;
     };
-  }, [kind, projectId, compact, loadRooms, loadMessages, loadMine]);
+  }, [kind, projectId, compact, loadRooms, loadMessages, loadMine, selectRoom]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function handleNew() {
+  async function handleNew(loadHistory = false) {
+    const blank = rooms.find((room) => isPlaceholderRoom(room));
+    if (blank) {
+      if (loadHistory) {
+        await selectRoom(blank.id);
+        return blank.id;
+      }
+      userPicked.current = true;
+      rememberRoom(blank.id);
+      setActiveId(blank.id);
+      setMessages([]);
+      setError(null);
+      return blank.id;
+    }
     const response = await apiClient.post("/chat/rooms", {
       kind,
       project_id: projectId,
-      title: kind === "kb" ? TITLE_KB : TITLE_DRAFT,
+      title: kind === "kb" ? TITLE_NEW : TITLE_DRAFT,
     });
     const room = unwrapData<ChatRoomCard>(response);
     await loadRooms();
+    userPicked.current = true;
+    rememberRoom(room.id);
     setActiveId(room.id);
     setMessages([]);
+    setError(null);
     return room.id;
   }
 
@@ -214,9 +280,13 @@ export function ChatShell({
     await apiClient.delete(`/chat/rooms/${id}`);
     const next = await loadRooms();
     if (activeId === id) {
-      setActiveId(next[0]?.id || null);
+      if (next[0]) {
+        await selectRoom(next[0].id);
+        return;
+      }
+      rememberRoom(null);
+      setActiveId(null);
       setMessages([]);
-      if (next[0]) await loadMessages(next[0].id);
     }
   }
 
@@ -228,6 +298,7 @@ export function ChatShell({
       roomId = await handleNew();
     }
     if (!roomId) return;
+    loadGen.current += 1;
     setDraft("");
     setBusy(true);
     setError(null);
@@ -398,12 +469,11 @@ export function ChatShell({
         collapsed={collapsed}
         onSearch={setSearch}
         onSelect={(id) => {
-          setActiveId(id);
-          loadMessages(id).catch((err: unknown) =>
-            setError(apiErrorMessage(err, "โหลดข้อความไม่สำเร็จ"))
-          );
+          void selectRoom(id);
         }}
-        onNew={handleNew}
+        onNew={() => {
+          void handleNew(true);
+        }}
         onRename={handleRename}
         onDelete={handleDelete}
         onToggleCollapse={() => setCollapsed((value) => !value)}
@@ -412,6 +482,9 @@ export function ChatShell({
       <section className="flex min-w-0 flex-1 flex-col">
         {compact ? null : (
         <div className="flex flex-wrap items-center gap-1 border-b px-3 py-2">
+          <p className="mr-auto truncate text-sm font-semibold text-navy" data-testid="chat-active-title">
+            {rooms.find((room) => room.id === activeId)?.title || "แชทใหม่"}
+          </p>
           <label className="cursor-pointer rounded-md p-1.5 hover:bg-muted" title="แนบไฟล์">
             <Paperclip className="h-4 w-4" />
             <input
@@ -507,9 +580,9 @@ export function ChatShell({
         ) : null}
         <div className="flex-1 space-y-3 overflow-y-auto p-4" data-testid="chat-messages">
           {messages.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
+            <p className="py-10 text-center text-sm text-muted-foreground" data-testid="chat-empty">
               {kind === "kb"
-                ? "พิมพ์คำถามจากคลังกฎหมาย หรือเลือกชิปพรอมต์ด้านล่าง — ระบบดึงหลายชิ้นจากคลังแล้วตอบแบบเจ้าหน้าที่พร้อมอ้างอิง"
+                ? "เลือกประวัติทางซ้าย หรือพิมพ์คำถามเพื่อเริ่มแชทใหม่ — ระบบดึงหลายชิ้นจากคลังแล้วตอบพร้อมอ้างอิง"
                 : "บอทจะสรุปผลวิเคราะห์ขั้นที่ ๑ ให้ก่อน แล้วคุยถามส่วนที่ยังขาดเป็นภาษาพูด"}
             </p>
           ) : null}

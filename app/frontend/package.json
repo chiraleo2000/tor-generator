@@ -1,6 +1,6 @@
 {
   "name": "tor-drafting-frontend",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -12,12 +12,12 @@
     "test:coverage": "vitest run --coverage",
     "open:ui": "node ./scripts/open-test-ui.mjs",
     "playwright:install": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers playwright install chromium",
-    "test:e2e": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 playwright test",
-    "test:e2e:headed": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 HEADED=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 playwright test --headed",
-    "test:e2e:full": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 HEADED=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 playwright test --headed && cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 CAPTURE_GUIDE=1 CAPTURE_REPORTS=0 HEADED=1 playwright test e2e/guide-shots.spec.ts --headed",
-    "test:e2e:ui": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 HEADED=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 playwright test --ui",
-    "test:e2e:reports": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers CAPTURE_REPORTS=1 HEADED=1 playwright test e2e/reports.spec.ts --headed",
-    "test:e2e:guide": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 CAPTURE_GUIDE=1 CAPTURE_REPORTS=0 HEADED=1 playwright test e2e/guide-shots.spec.ts --headed"
+    "test:e2e": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 node ./scripts/run-playwright.mjs",
+    "test:e2e:headed": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 HEADED=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 node ./scripts/run-playwright.mjs --headed",
+    "test:e2e:full": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 HEADED=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 node ./scripts/run-playwright.mjs --headed && cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 CAPTURE_GUIDE=1 CAPTURE_REPORTS=0 HEADED=1 node ./scripts/run-playwright.mjs e2e/guide-shots.spec.ts --headed",
+    "test:e2e:ui": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 HEADED=1 CAPTURE_REPORTS=0 CAPTURE_GUIDE=0 node ./scripts/run-playwright.mjs --ui",
+    "test:e2e:reports": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers CAPTURE_REPORTS=1 HEADED=1 node ./scripts/run-playwright.mjs e2e/reports.spec.ts --headed",
+    "test:e2e:guide": "cross-env PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers E2E=1 CAPTURE_GUIDE=1 CAPTURE_REPORTS=0 HEADED=1 node ./scripts/run-playwright.mjs e2e/guide-shots.spec.ts --headed"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.2",

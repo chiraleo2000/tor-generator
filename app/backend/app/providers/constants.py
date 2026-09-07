@@ -21,6 +21,8 @@ CLOUD_LLM_PROVIDERS = frozenset(
     {"claude", "openai", "gemini", "bedrock", "azure_foundry", "openai_compatible"}
 )
 LOCAL_EMBEDDING_PROVIDERS = frozenset({"local", "qwen3"})
+# PageIndex / Custom RAG owns retrieval; no local or Bedrock embed server.
+NONE_EMBEDDING_PROVIDER = "none"
 LOCAL_EMBEDDING_SERVERS = frozenset({"lm_studio", "ollama", "llama_cpp", "sglang"})
 CLOUD_EMBEDDING_PROVIDERS = frozenset(
     {"openai", "gemini", "azure_foundry", "openai_compatible", "bedrock"}

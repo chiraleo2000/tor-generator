@@ -23,8 +23,24 @@ logger = logging.getLogger("tor_app.full_draft")
 
 TOTAL_TIMEOUT = 14400
 MAX_CORRECTIONS_PER_SECTION = 3
-RAG_THRESHOLD = 0.5
+RAG_THRESHOLD = 0.25
 RAG_TOP_K = 24
+_EXTERNAL_RAG_SOURCES = frozenset({"mcp", "custom_rag"})
+
+
+def _rag_source(chunk: Any) -> str:
+    metadata = getattr(chunk, "metadata", None) or {}
+    return str(metadata.get("rag_source") or "")
+
+
+def _keep_draft_rag_chunk(chunk: Any) -> bool:
+    """Keep local hits above the score floor; keep MCP/Custom even if score is 0."""
+    text = str(getattr(chunk, "text", "") or "").strip()
+    if not text:
+        return False
+    if _rag_source(chunk) in _EXTERNAL_RAG_SOURCES:
+        return True
+    return float(getattr(chunk, "score", 0) or 0) >= RAG_THRESHOLD
 
 
 @dataclass
@@ -205,9 +221,9 @@ class FullDraftGenerator:
             return [], "ไม่สามารถดึงเอกสารกฎหมายได้ จึงร่างจากข้อมูลที่ผู้ใช้ให้เท่านั้น"
         chunks: list[RAGChunk] = []
         for chunk in getattr(result, "chunks", []) or []:
-            score = float(getattr(chunk, "score", 0) or 0)
-            if score < RAG_THRESHOLD:
+            if not _keep_draft_rag_chunk(chunk):
                 continue
+            score = float(getattr(chunk, "score", 0) or 0)
             chunks.append(
                 {
                     "id": str(getattr(chunk, "id", "")),

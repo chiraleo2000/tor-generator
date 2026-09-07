@@ -46,6 +46,8 @@ from app.services.draft_chat_service import (
     draft_scope_subsection,
     draft_single_section,
     edit_section_draft,
+    fallback_scope_subsection,
+    fallback_section_text,
     parse_draft_message_intent,
 )
 from app.services.intake_service import is_ready_to_compose, slot_map_of, with_project_intake
@@ -65,6 +67,14 @@ def _section_timeout_seconds() -> int:
 
 # Per-section cap. Local Gemma compose often needs 4–5 minutes; 1800s blocked 13/13 for hours.
 SECTION_TIMEOUT_SECONDS = _section_timeout_seconds()
+
+
+def sequential_draft_order() -> list[str]:
+    """Draft s4 last so หมวด 6+ are not blocked by fourteen scope LLM calls."""
+    rest = [key for key in TOR_SECTION_ORDER if key != "s4"]
+    if "s4" in TOR_SECTION_ORDER:
+        return rest + ["s4"]
+    return rest
 
 
 @dataclass
@@ -398,16 +408,24 @@ async def _draft_new_s4_sub(work: _S4Work, sub_key: str, title: str) -> AsyncIte
     parts: list[str] = []
     try:
         async with admit(work.redis, "llm", f"{work.request_id}-{sub_key}"):
-            async for token in draft_scope_subsection(
-                sub_key, work.slot_map, user_id=work.user_id
-            ):
-                parts.append(token)
-                yield _sse(
-                    "token",
-                    {"section_key": "s4", "sub_key": sub_key, "text": token},
-                )
+            async with asyncio.timeout(SECTION_TIMEOUT_SECONDS):
+                async for token in draft_scope_subsection(
+                    sub_key, work.slot_map, user_id=work.user_id
+                ):
+                    parts.append(token)
+                    yield _sse(
+                        "token",
+                        {"section_key": "s4", "sub_key": sub_key, "text": token},
+                    )
     except AdmissionTimeoutError:
         work.errors.append(f"หมดเวลารอคิวโมเดลภาษา ({sub_key})")
+        yield _sse(
+            "section_error",
+            {"section_key": "s4", "sub_key": sub_key, "message": work.errors[-1]},
+        )
+        return
+    except TimeoutError:
+        work.errors.append(f"หมดเวลาร่างหัวข้อย่อย ({sub_key})")
         yield _sse(
             "section_error",
             {"section_key": "s4", "sub_key": sub_key, "message": work.errors[-1]},
@@ -463,6 +481,13 @@ async def _draft_missing_s4(job: _SeqDraft) -> bool:
         if row.sub_key and str(row.ai_draft or "").strip()
     }
     await _consume_sse(_iter_s4_subsection_sse(work, prior_ai))
+    for sub_key in SCOPE_SUBSECTIONS:
+        if str(work.collected.get(sub_key) or "").strip():
+            continue
+        filled = fallback_scope_subsection(sub_key, job.slot_map).strip()
+        if not filled:
+            continue
+        work.collected[sub_key] = filled
     if not _s4_complete(work.collected):
         logger.warning(
             "s4 incomplete for %s (%s/%s)",
@@ -496,8 +521,10 @@ async def _draft_missing_section(job: _SeqDraft, section_key: str) -> bool:
         )
     )
     if errors:
-        return False
-    full_text = "".join(parts).strip()
+        logger.warning("Draft LLM error for %s: %s", section_key, errors[:2])
+    full_text = "".join(parts).strip() or fallback_section_text(
+        section_key, job.slot_map
+    ).strip()
     if not full_text:
         return False
     async with job.session_factory() as persist:
@@ -507,10 +534,41 @@ async def _draft_missing_section(job: _SeqDraft, section_key: str) -> bool:
 
 
 def section_draft_timeout(section_key: str) -> float:
-    """s4 drafts fourteen subsections and needs a longer cap."""
+    """s4 still has many subsections; cap the whole pass so หมวด 5–13 are not blocked."""
     if section_key == "s4":
-        return float(SECTION_TIMEOUT_SECONDS * 5)
+        return float(SECTION_TIMEOUT_SECONDS * 3)
     return float(SECTION_TIMEOUT_SECONDS)
+
+
+async def _persist_fallback_section(job: _SeqDraft, section_key: str) -> bool:
+    if section_key == "s4":
+        collected: dict[str, str] = {}
+        async with job.session_factory() as read_session:
+            prior_rows = await _load_s4_rows(read_session, job.project_id)
+        for row in prior_rows:
+            text = str(row.ai_draft or row.content or "").strip()
+            if row.sub_key and text:
+                collected[row.sub_key] = text
+        for sub_key in SCOPE_SUBSECTIONS:
+            if str(collected.get(sub_key) or "").strip():
+                continue
+            filled = fallback_scope_subsection(sub_key, job.slot_map).strip()
+            if filled:
+                collected[sub_key] = filled
+        if not _s4_complete(collected):
+            return False
+        preview = build_merged_scope(collected)
+        async with job.session_factory() as persist:
+            await _save_s4_bundle(persist, job.project_id, preview, collected)
+            await persist.commit()
+        return True
+    text = fallback_section_text(section_key, job.slot_map).strip()
+    if not text:
+        return False
+    async with job.session_factory() as persist:
+        await _save_section(persist, job.project_id, section_key, text)
+        await persist.commit()
+    return True
 
 
 async def _try_draft_one_section(job: _SeqDraft, section_key: str) -> bool:
@@ -528,22 +586,33 @@ async def _try_draft_one_section(job: _SeqDraft, section_key: str) -> bool:
         )
     except TimeoutError:
         logger.warning("Draft timed out for %s on %s", section_key, job.project_id)
-        return False
+        try:
+            return await _persist_fallback_section(job, section_key)
+        except Exception:  # NOSONAR python:S110 — skip this section and continue
+            logger.exception("Fallback draft failed for %s", section_key)
+            return False
     except Exception:  # NOSONAR python:S110 — one section must not abort the job
         logger.exception("Draft failed for %s on %s", section_key, job.project_id)
-        return False
+        try:
+            return await _persist_fallback_section(job, section_key)
+        except Exception:  # NOSONAR python:S110 — skip this section and continue
+            logger.exception("Fallback draft failed for %s", section_key)
+            return False
 
 
 async def _run_sequential_draft(
-    job: _SeqDraft, remaining_passes: int = 1, reset_store: bool = True
+    job: _SeqDraft, remaining_passes: int = 2, reset_store: bool = True
 ) -> int:
-    """Draft s1–s13 (and s4.1–s4.14) one LM Studio call at a time. Survives SSE disconnect."""
+    """Draft remaining sections one LLM call at a time. Survives SSE disconnect."""
+    from app.services.draft_chat_service import clear_s4_rag_cache
+
     total = len(TOR_SECTION_ORDER)
     drafted_count = 0
     if reset_store:
+        clear_s4_rag_cache()
         await set_job(job.redis, job.project_id, "running", 0, total)
     try:
-        for section_key in TOR_SECTION_ORDER:
+        for section_key in sequential_draft_order():
             saved = await _try_draft_one_section(job, section_key)
             if not saved:
                 continue
@@ -579,9 +648,15 @@ async def _ensure_draft_job(
     if task is not None and not task.done():
         return task
     stored = await get_job(redis, project_id)
-    if stored and stored["status"] in {"queued", "running"}:
-        return None
-    await set_job(redis, project_id, "queued", 0, len(TOR_SECTION_ORDER))
+    resume = bool(stored and stored["status"] in {"queued", "running"})
+    if resume:
+        logger.warning(
+            "Resuming draft job %s (redis=%s, no live task)",
+            key,
+            stored.get("status") if stored else None,
+        )
+    else:
+        await set_job(redis, project_id, "queued", 0, len(TOR_SECTION_ORDER))
     job = _SeqDraft(
         session_factory=session_factory,
         project_id=project_id,
@@ -590,7 +665,9 @@ async def _ensure_draft_job(
         request_id=request_id,
         redis=redis,
     )
-    _DRAFT_JOBS[key] = asyncio.create_task(_run_sequential_draft(job))
+    _DRAFT_JOBS[key] = asyncio.create_task(
+        _run_sequential_draft(job, remaining_passes=2, reset_store=not resume)
+    )
     return _DRAFT_JOBS[key]
 
 
@@ -956,15 +1033,16 @@ async def draft_chat_status(
         if ai_drafted:
             drafted_count += 1
         status_list.append(row_data)
+    sections_complete = drafted_count == len(TOR_SECTION_ORDER)
     payload: dict[str, Any] = {
         "sections": status_list,
         "drafted_count": drafted_count,
         "total": len(TOR_SECTION_ORDER),
-        "all_drafted": drafted_count == len(TOR_SECTION_ORDER),
+        "all_drafted": sections_complete,
     }
     if job:
         payload["job_status"] = job["status"]
-        payload["drafted_count"] = job["drafted_count"]
         payload["total"] = job["total"] or payload["total"]
-        payload["all_drafted"] = job["status"] == "done"
+        payload["drafted_count"] = max(drafted_count, job["drafted_count"])
+        payload["all_drafted"] = sections_complete
     return _ok(request, payload)

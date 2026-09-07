@@ -17,8 +17,11 @@ from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
-TTL_SECONDS = 600
-STALE_RUNNING_SECONDS = 600
+# s4 alone can take ~25 minutes (SECTION_TIMEOUT_SECONDS * 5). Keep the Redis
+# key and "still running" window longer than that so a live draft is not marked
+# failed and restarted mid-section.
+TTL_SECONDS = 14_400
+STALE_RUNNING_SECONDS = 7_200
 KEY_PREFIX = "draft:job:"
 STATUSES = ("queued", "running", "done", "failed")
 
@@ -104,13 +107,14 @@ async def bump_progress(
     drafted_count: int,
 ) -> dict[str, Any] | None:
     current = await get_job(redis, project_id, apply_stale=False)
+    next_count = max(0, int(drafted_count))
     if current is None:
-        return await set_job(redis, project_id, "running", drafted_count, drafted_count)
+        return await set_job(redis, project_id, "running", next_count, next_count)
     return await set_job(
         redis,
         project_id,
         current["status"] if current["status"] in STATUSES else "running",
-        drafted_count,
+        max(next_count, current["drafted_count"]),
         current["total"],
     )
 
@@ -163,7 +167,7 @@ async def get_job(
     *,
     apply_stale: bool = True,
 ) -> dict[str, Any] | None:
-    """Read the latest job record. Stale running (>600s) is reported as failed."""
+    """Read the latest job record. Stale running is reported as failed."""
     raw = await _read_job_from_redis(redis, project_id) if redis is not None else None
     if raw is None:
         raw = _memory.get(str(project_id))

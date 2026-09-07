@@ -17,7 +17,7 @@ test.describe("TOR 5-phase draft", () => {
   test.skip(skipUnlessLive, skipReason);
 
   test("create project, enter Phase 3 with no per-section HITL", async ({ page }) => {
-    test.setTimeout(1_800_000);
+    test.setTimeout(4_800_000);
     await login(page);
     await createProjectAndOpenDraft(page);
     await walkLiveDraftToCompose(page);

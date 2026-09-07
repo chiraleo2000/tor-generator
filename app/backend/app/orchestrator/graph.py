@@ -382,6 +382,7 @@ async def _fallback_llm_draft(llm: Any, messages: list[dict], agent_timeout: flo
             ],
             temperature=0.3,
             max_tokens=max_out,
+            disable_thinking=True,
         )
         return response.content
 

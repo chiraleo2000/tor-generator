@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.3.1**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)  
+แอปที่รันจริงคือ **v0.4.0**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) และ Amazon Quick connector (`amazon-quick :8767` → live pgvector) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)  
 **Production แนะนำ:** Amazon Bedrock (ดู [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md))  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
 
@@ -149,15 +149,13 @@ npm run test:e2e
 npm run test:e2e:headed
 ```
 
-ชุดล่าสุดที่ผ่านทั้งหมด (**4 ก.ย. 2026** · รายละเอียด [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)):
-
-pytest coverage รันใน Docker (3 ก.ย.) · UI สามเครื่องมือรันตามลำดับบน Chrome (4 ก.ย.) · Vitest ใช้ล็อกล่าสุดที่ผ่านครบ (31 ส.ค.)
+ชุดล่าสุดที่ผ่านทั้งหมด (**7 ก.ย. 2026** · รายละเอียด [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)):
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm and not integration"` | **1971 ผ่าน** · cov **95%** |
-| MCP unit (ซอร์สปัจจุบัน) | **33 ผ่าน** |
-| Vitest `npm run test:coverage` | **209 ผ่าน** / 48 ไฟล์ · lines **82.88%** |
+| pytest `-m "not live_llm and not integration"` | **1991 ผ่าน** · cov **94%** |
+| pytest `-m live_llm` | **17 ผ่าน** ในรอบเดียว (LM Studio + API + ECT) |
+| Vitest `run --coverage` | **306 ผ่าน** / 50 ไฟล์ · lines **96.4%** |
 | UI ตามลำดับ ถาม-ตอบ → ร่าง TOR → ตรวจสอบ TOR | **3 ผ่าน** / 0 ล้ม (ร่าง **13/13 หมวด**) |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)

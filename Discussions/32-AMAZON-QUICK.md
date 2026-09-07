@@ -16,8 +16,9 @@ Local GPU testing stays on **LM Studio** (`LLM_PROVIDER=lm_studio`, `EMBEDDING_P
 | `app/infra/quick/mcp_server.py` | Remote MCP (`initialize`, `tools/list` Draft 7, `tools/call`) + REST `/health` `/retrieve` |
 | `app/infra/quick/openapi-tor.json` | OpenAPI 3.0 JSON for Quick’s OpenAPI connector (no array schemas) |
 | `app/infra/quick/README.md` | Operator steps |
-| Compose profile `amazon-quick` | Sidecar on port **8767** |
-| `app/infra/mcp/servers/retrieve_stub.py` | Existing TOR RAG source C on **8765**, now also speaks `initialize` / `tools/list` |
+| Compose profile `amazon-quick` | Sidecar on port **8767**; `QUICK_RAG_MCP_URL=http://mcp-rag:8765/mcp` → **real pgvector** |
+| `app.mcp_retrieve_server` (`mcp-rag`) | Live retrieve from the same corpus TOR chat uses |
+| `app/infra/mcp/servers/retrieve_stub.py` | Optional fake stub on **8766** (`mcp-stub` profile) |
 
 ## Local vs Quick vs AWS cloud
 
@@ -41,9 +42,10 @@ From [MCP integration](https://docs.aws.amazon.com/quick/latest/userguide/mcp-in
 
 ## Register (ops)
 
-1. `docker compose --profile amazon-quick up -d amazon-quick`
-2. In Amazon Quick: Connectors → MCP → endpoint `https://<public-or-vpc-host>:8767/mcp` (or `/`). Auth: none for the stub.
-3. Or import `app/infra/quick/openapi-tor.json`.
-4. Share the integration with the procurement team. Ask Quick to “retrieve procurement rules for performance bonds” and confirm a snippet comes back.
+1. Ensure `mcp-rag` is healthy (real pgvector) and LM Studio embeddings are loaded.
+2. `docker compose --profile amazon-quick up -d amazon-quick`
+3. Desktop Remote MCP: `http://127.0.0.1:8767/mcp` (team/cloud: `https://<public-or-vpc-host>:8767/mcp`). Auth: none unless `QUICK_MCP_AUTH_VALUE` is set.
+4. Or import `app/infra/quick/openapi-tor.json`.
+5. Ask Quick to retrieve “หลักประกันผลงาน” — expect a real `source_document` from the corpus (not `amazon-quick-mcp` stub text).
 
-Replace the stub with a private retrieve that calls TOR hybrid RAG only after TLS and network allow-lists are in place. Keep that call under 60 seconds.
+`retrieve` proxies to `mcp-rag` (`QUICK_RAG_MCP_URL`). Keep calls under 60 seconds. Cloud/team sharing still needs TLS (or Quick VPC) in front of 8767.

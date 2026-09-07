@@ -69,6 +69,7 @@ export function DraftWorkspace() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [chatDrafting, setChatDrafting] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const hydrateGen = useRef(0);
   const { ask, dialog } = useConfirmPhase();
@@ -211,7 +212,7 @@ export function DraftWorkspace() {
       await apiClient.post(
         `/projects/${projectId}/draft-section`,
         { section_key: key },
-        { headers: { "X-AI-Request-Id": requestId } }
+        { headers: { "X-AI-Request-Id": requestId }, timeout: 900_000 }
       );
       await loadSections();
       setActionInfo("ร่างด้วยระบบอัจฉริยะสำเร็จ — ตรวจข้อความแล้วบันทึก");
@@ -390,7 +391,7 @@ export function DraftWorkspace() {
           expanded={expanded}
           openSub={openSub}
           extracted={extracted}
-          busy={busy}
+          busy={busy || chatDrafting}
           actionError={actionError}
           actionInfo={actionInfo}
           onExpand={setExpanded}
@@ -400,6 +401,7 @@ export function DraftWorkspace() {
           onRefresh={() => {
             loadSections().catch(() => undefined);
           }}
+          onDraftingChange={setChatDrafting}
           onBack={() => persistPhase(2, unlocked, { allowDowngrade: true })}
           onConfirm={async () => {
             if (filledCount < 13) {

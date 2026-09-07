@@ -10,7 +10,10 @@ from app.llm_admission import (
     AdmissionTimeoutError,
     _set_request,
     admit,
+    concurrency_cap,
     get_queue_status,
+    reset_admission_queues,
+    slot_ttl_seconds,
 )
 
 
@@ -83,13 +86,16 @@ async def test_admit_timeout() -> None:
     redis.lrem = AsyncMock()
     with (
         patch("app.llm_admission.get_settings") as settings,
-        patch("app.llm_admission.asyncio.sleep", new_callable=AsyncMock),
-        patch("app.llm_admission.time.monotonic", side_effect=[0.0, 10.0, 10.0]),
+        patch(
+            "app.llm_admission.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError,
+        ),
     ):
         settings.return_value = MagicMock(
             llm_max_concurrent=1,
             embedding_max_concurrent=1,
-            llm_queue_wait_timeout_seconds=1,
+            llm_queue_wait_timeout_seconds=5,
         )
         with pytest.raises(AdmissionTimeoutError):
             async with admit(redis, "llm", request_id="x"):
@@ -192,13 +198,16 @@ async def test_admit_missing_waiter_times_out_and_lrem() -> None:
     redis.lrem = AsyncMock()
     with (
         patch("app.llm_admission.get_settings") as settings,
-        patch("app.llm_admission.asyncio.sleep", new_callable=AsyncMock),
-        patch("app.llm_admission.time.monotonic", side_effect=[0.0, 0.0, 10.0, 10.0]),
+        patch(
+            "app.llm_admission.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError,
+        ),
     ):
         settings.return_value = MagicMock(
             llm_max_concurrent=1,
             embedding_max_concurrent=1,
-            llm_queue_wait_timeout_seconds=1,
+            llm_queue_wait_timeout_seconds=5,
         )
         with pytest.raises(AdmissionTimeoutError):
             async with admit(redis, "llm", request_id="x"):
@@ -236,3 +245,21 @@ async def test_admit_generates_request_id_and_sync_on_wait() -> None:
             assert rid == "generated"
     assert waits
     redis.incr.assert_awaited()
+
+
+def test_concurrency_cap_local_llm_is_one() -> None:
+    local = MagicMock(llm_max_concurrent=8, embedding_max_concurrent=16, llm_provider="lm_studio")
+    cloud = MagicMock(llm_max_concurrent=8, embedding_max_concurrent=16, llm_provider="bedrock")
+    assert concurrency_cap("llm", local) == 1
+    assert concurrency_cap("llm", cloud) == 8
+    assert concurrency_cap("embedding", local) == 16
+    assert slot_ttl_seconds("embedding", MagicMock(llm_queue_wait_timeout_seconds=30)) >= 300
+
+
+@pytest.mark.asyncio
+async def test_reset_admission_queues_deletes_keys() -> None:
+    redis = MagicMock()
+    redis.delete = AsyncMock()
+    await reset_admission_queues(redis)
+    assert redis.delete.await_count == 2
+    await reset_admission_queues(None)

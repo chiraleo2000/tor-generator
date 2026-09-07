@@ -2,7 +2,9 @@
 
 Local sidecar so [Amazon Quick](https://aws.amazon.com/quick/) can call this TOR app’s knowledge retrieve over **remote MCP** or **OpenAPI 3.0**.
 
-This is not the AWS cloud install in `Discussions/31-MCP-RAG-AWS-QUICKSTART.md` (ECS + Bedrock + Secrets). Quick is the workplace AI assistant; it talks to *this* HTTP server.
+With Compose, `QUICK_RAG_MCP_URL=http://mcp-rag:8765/mcp` so `retrieve` uses the **same pgvector corpus** as TOR chat (not a fake stub). Unset that env only for offline unit tests.
+
+This is not the AWS cloud install in `Discussions/31-MCP-RAG-AWS-QUICKSTART.md` (ECS + Bedrock + Secrets). Quick is the workplace AI assistant; it talks to *this* HTTP server on **8767**.
 
 ## Constraints (from AWS docs)
 
@@ -15,15 +17,16 @@ This is not the AWS cloud install in `Discussions/31-MCP-RAG-AWS-QUICKSTART.md` 
 ## Run locally
 
 ```bash
-docker compose --profile amazon-quick up amazon-quick
-# or: python app/infra/quick/mcp_server.py
+docker compose up -d mcp-rag   # real pgvector retrieve
+docker compose --profile amazon-quick up -d amazon-quick
+# or host: set QUICK_RAG_MCP_URL=http://127.0.0.1:8765/mcp && python app/infra/quick/mcp_server.py
 ```
 
-- Health: `GET http://127.0.0.1:8767/health`
+- Health: `GET http://127.0.0.1:8767/health` (includes `rag.reachable`)
 - REST retrieve: `POST http://127.0.0.1:8767/retrieve` `{"query":"..."}`
 - MCP: `POST http://127.0.0.1:8767/mcp`
 
-The TOR backend’s own MCP RAG client still uses `retrieve_stub.py` on **8765**. Point Quick at **8767** so the two do not share a port.
+Point Amazon Quick Desktop at **8767**. Service **mcp-rag** owns **8765** (pgvector). Optional fake stub is profile `mcp-stub` on **8766**.
 
 ## Register in Amazon Quick
 

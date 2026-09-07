@@ -1,8 +1,104 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-> **รอบตรวจรวมล่าสุด (4 กันยายน 2026 · แอป v0.3.1):** [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)  
-> pytest coverage **1971 ผ่าน** / บรรทัด **95%** (3 ก.ย.) · Vitest **209 ผ่าน** (31 ส.ค.) · UI สามเครื่องมือ **3/3 ผ่าน** (ถาม-ตอบ + ร่าง 13/13 + ตรวจสอบ)  
-> ไฟล์นี้เก็บภาพรอบ **25–27 ส.ค. 2026** เป็น baseline — ตัวเลขในตารางเก่าด้านล่างอาจต่างจากรอบนี้
+> **รอบตรวจรวมล่าสุด (7 กันยายน 2026 · แอป v0.4.0):** [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)  
+> pytest coverage **1991 ผ่าน** / บรรทัด **94%** · Vitest **306 ผ่าน** / lines **96.4%** · UI สามเครื่องมือ **3/3** · `pytest -m live_llm` **17/17** (รอบเดียว)  
+> ภาพ `serial-*.png` เป็นรอบ 7 ก.ย. · ล็อก `_round-2026-09-07-*.txt`
+
+---
+
+## รอบ 7 กันยายน 2026 — unit + เครื่องมือบนเว็บ + live_llm (ผ่านทั้งหมด)
+
+สแตก Docker `tor-app` + **mcp-rag :8765** + LM Studio `http://127.0.0.1:1234`  
+`MCP_RAG_ENABLED=true` · อย่าส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ Compose
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest `-m "not live_llm and not integration"` + cov | **1991 ผ่าน** / 2 ข้าม / 25 ตัด live·integration · **94%** (14486 stmts, เกต 90% → 93.92%) · 3:35 นาที | `test-evidence/_round-2026-09-07-pytest.txt` |
+| Vitest `run --coverage` | **306 ผ่าน** / 50 ไฟล์ · statements **94.34%** · lines **96.4%** | `test-evidence/_round-2026-09-07-vitest.txt` |
+| UI ตามลำดับ: ถาม-ตอบ → ร่าง TOR → ตรวจสอบ TOR | **3/3 ผ่าน** · ร่าง **13/13 หมวด** (~36 นาที) | `test-evidence/_round-2026-09-07-summary.txt` |
+| pytest `-m live_llm` | **17/17 ผ่าน** ในรอบเดียว · 47:38 นาที | `test-evidence/_round-2026-09-07-live-llm.txt` |
+
+ฮาร์เนสหน้าเว็บ: `app/frontend/scripts/serial_three_tools.py` (Playwright Python + Chrome)
+
+| ขั้น UI | ผล | เวลา | หมายเหตุ |
+|---------|-----|------|----------|
+| 1 ถาม-ตอบ `/chat` | **CHAT_OK** | ~195 วินาที | citation จากคลังจริง |
+| 2 ร่าง TOR ห้าขั้น | **DRAFT_OK** | ~36 นาที | **13/13 หมวด** |
+| 3 ตรวจสอบ TOR `/review` | **REVIEW_OK** | ~101 วินาที | ไฟล์ตัวอย่างสั้นอาจได้คะแนนต่ำตามเนื้อหา |
+
+`live_llm` รันในคอนเทนเนอร์ backend (overlay `docker-compose.test.yml`) ยิง LM Studio + `http://127.0.0.1:4000`:
+
+| กลุ่ม | ผล |
+|-------|-----|
+| `test_live_lm_studio.py` (8) | โมเดล / embeddings 768-d / แชทไทย / กราฟ JSON **ผ่าน** |
+| Realistic API (4) | ร่าง s1 3058 ตัวอักษร · แชทคลังของฉัน · ตรวจ PDF · อัปโหลด `other` **ผ่าน** |
+| ECT (3) | วิเคราะห์ **27/27** · ตรวจต้นทาง **82/100** · ร่าง 13 หมวด · TOR ที่ประกอบ **73/100** · Jaccard 0.7233 **ผ่าน** |
+| PDF live embed + ingest (2) | ฝังเวกเตอร์ PDF ที่เปิดได้บน bind-mount + ingest วงเงินเฉพาะเจาะจง **ผ่าน** ในรอบเดียว |
+
+![แดชบอร์ดหลังล็อกอิน](test-evidence/serial-00-dashboard.png)
+
+![ถาม-ตอบ](test-evidence/serial-01-chat.png)
+
+![ร่างครบ 13 หมวด](test-evidence/serial-02-draft-13.png)
+
+![ร่างเสร็จ](test-evidence/serial-02-draft-done.png)
+
+![เริ่มตรวจสอบ TOR](test-evidence/serial-03-review-start.png)
+
+![สกัดข้อความ](test-evidence/serial-04-review-extract.png)
+
+![คะแนนความพร้อม](test-evidence/serial-05-review-score.png)
+
+พอร์ต **8765** เป็น `mcp-rag` ไม่ใช่เซิร์ฟเวอร์ HTML coverage
+
+---
+
+## รอบ 6 กันยายน 2026 — unit + เครื่องมือบนเว็บ + live_llm (ผ่านทั้งหมด)
+
+สแตก Docker `tor-app` + **mcp-rag :8765** + LM Studio `http://127.0.0.1:1234`  
+`MCP_RAG_ENABLED=true` · อย่าส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ Compose
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest `-m "not live_llm and not integration"` + cov | **1991 ผ่าน** / 2 ข้าม / 25 ตัด live·integration · **94%** (14486 stmts, เกต 90% → 93.93%) · 3:25 นาที | `test-evidence/_round-2026-09-06-pytest.txt` |
+| Vitest `run --coverage` | **306 ผ่าน** / 50 ไฟล์ · statements **94.34%** · lines **96.4%** · 56 วินาที | `test-evidence/_round-2026-09-06-vitest.txt` |
+| UI ตามลำดับ: ถาม-ตอบ → ร่าง TOR → ตรวจสอบ TOR | **3/3 ผ่าน** · ร่าง **13/13 หมวด** (~39 นาที) | `test-evidence/_round-2026-09-06-summary.txt` |
+| pytest `-m live_llm` | **17/17 ผ่าน** | `test-evidence/_round-2026-09-06-live-llm.txt` |
+
+ฮาร์เนสหน้าเว็บ: `app/frontend/scripts/serial_three_tools.py` (Playwright Python + Chrome)
+
+| ขั้น UI | ผล | เวลา | หมายเหตุ |
+|---------|-----|------|----------|
+| 1 ถาม-ตอบ `/chat` | **CHAT_OK** | ~130 วินาที | citation จากคลังจริง |
+| 2 ร่าง TOR ห้าขั้น | **DRAFT_OK** | ~39 นาที | **13/13 หมวด** |
+| 3 ตรวจสอบ TOR `/review` | **REVIEW_OK** | ~100 วินาที | ไฟล์ตัวอย่างสั้นอาจได้คะแนนต่ำตามเนื้อหา |
+
+`live_llm` รันในคอนเทนเนอร์ backend (overlay `docker-compose.test.yml`) ยิง LM Studio + `http://127.0.0.1:4000`:
+
+| กลุ่ม | ผล |
+|-------|-----|
+| `test_live_lm_studio.py` (8) | โมเดล / embeddings 768-d / แชทไทย / กราฟ JSON **ผ่าน** |
+| Realistic API (4) | ร่าง s1 3195 ตัวอักษร · แชทคลังของฉัน · ตรวจ PDF · อัปโหลด `other` **ผ่าน** |
+| ECT (3) | วิเคราะห์ **27/27** · ตรวจต้นทาง **82/100** · ร่าง 13 หมวด · TOR ที่ประกอบ **74/100** · Jaccard 0.711 **ผ่าน** |
+| PDF live embed + ingest | ฝังเวกเตอร์ PDF ที่ bind-mount เปิดได้ (ข้ามชื่อเกิน Linux NAME_MAX 255 ไบต์) + ingest วงเงินเฉพาะเจาะจง **ผ่าน** |
+
+รอบ live แรกเคสฝังเวกเตอร์ทั้ง 27 ไฟล์ล้มเพราะชื่อไทยยาวเกิน NAME_MAX — แก้ให้ข้ามไฟล์ที่ mount ไม่ได้แล้วรันเคสนั้นซ้ำจนผ่าน รวม **17/17**
+
+![แดชบอร์ดหลังล็อกอิน](test-evidence/serial-00-dashboard.png)
+
+![ถาม-ตอบ](test-evidence/serial-01-chat.png)
+
+![ร่างครบ 13 หมวด](test-evidence/serial-02-draft-13.png)
+
+![ร่างเสร็จ](test-evidence/serial-02-draft-done.png)
+
+![เริ่มตรวจสอบ TOR](test-evidence/serial-03-review-start.png)
+
+![สกัดข้อความ](test-evidence/serial-04-review-extract.png)
+
+![คะแนนความพร้อม](test-evidence/serial-05-review-score.png)
+
+พอร์ต **8765** เป็น `mcp-rag` ไม่ใช่เซิร์ฟเวอร์ HTML coverage
 
 ---
 
@@ -400,16 +496,16 @@ FAQ ต้องมี `google/gemma-4-e4b`, `text-embedding-embeddinggemma-300m
 
 ## Coverage HTML
 
-รอบ 4 ก.ย. 2026 พอร์ต **8765** เป็น `mcp-rag` (JSON-RPC retrieve) — อย่าเสิร์ฟ `htmlcov` ทับพอร์ตนี้  
-รายงาน coverage ล่าสุดอยู่ใน `test-evidence/_docker-pytest-coverage.txt` (TOTAL **95%**, **1971 ผ่าน**)
+รอบ 7 ก.ย. 2026 พอร์ต **8765** เป็น `mcp-rag` (JSON-RPC retrieve) — อย่าเสิร์ฟ `htmlcov` ทับพอร์ตนี้  
+รายงาน coverage ล่าสุดอยู่ใน `test-evidence/_round-2026-09-07-pytest.txt` (TOTAL **94%**, **1991 ผ่าน**)
 
 เสิร์ฟ `app/backend/htmlcov` ที่พอร์ตอื่น (เช่น 88765) หรือเปิดไฟล์ในเครื่อง แล้วค่อยรัน `npm run test:e2e:reports` ถ้าต้องการภาพ
 
-Backend `coverage.py` (Docker 3 ก.ย. 2026): **95%** (13958 stmts / 759 miss) จาก `pytest -m "not live_llm and not integration" --cov=app` — **1971 ผ่าน** / 1 ข้าม
+Backend `coverage.py` (Docker 7 ก.ย. 2026): **94%** (14486 stmts / 881 miss) จาก `pytest -m "not live_llm and not integration" --cov=app` — **1991 ผ่าน** / 2 ข้าม
 
 ![Coverage backend 83%](test-evidence/13-backend-coverage.png)
 
-Frontend Istanbul/v8 (31 ส.ค. 2026): statements **80.5%** · lines **82.88%** — **209 ผ่าน** / 48 ไฟล์
+Frontend Istanbul/v8 (7 ก.ย. 2026): statements **94.34%** · lines **96.4%** — **306 ผ่าน** / 50 ไฟล์
 
 ![Coverage frontend 82.22%](test-evidence/14-frontend-coverage.png)
 
@@ -437,7 +533,7 @@ Frontend Istanbul/v8 (31 ส.ค. 2026): statements **80.5%** · lines **82.88%*
 
 ## คำสั่งที่รันในรอบนี้
 
-รอบ **4 ก.ย. 2026** ใช้ `serial_three_tools.py` + ล็อก pytest Docker ใน `_docker-pytest-coverage.txt` (**1971 ผ่าน / 95%**) — คำสั่งด้านล่างเป็น baseline 25–27 ส.ค.
+รอบ **7 ก.ย. 2026** ใช้ `serial_three_tools.py` + pytest coverage + `pytest -m live_llm` — ล็อก `_round-2026-09-07-*.txt` (**1991 ผ่าน / 94%**, live_llm **17/17** รอบเดียว) — คำสั่งด้านล่างเป็น baseline 25–27 ส.ค.
 
 จาก `app/backend`:
 

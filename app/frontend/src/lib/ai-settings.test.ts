@@ -38,6 +38,7 @@ describe("ai-settings helpers", () => {
     expect(embedOptionsForMode("on_prem").map((item) => item.value)).toContain("local");
     expect(embedOptionsForMode("on_prem").map((item) => item.value)).toContain("openai");
     expect(embedOptionsForMode("cloud").map((item) => item.value)).toContain("gemini");
+    expect(embedOptionsForMode("cloud").map((item) => item.value)).toContain("none");
     expect(embedOptionsForMode("cloud").map((item) => item.value)).toContain("local");
     expect(embedOptionsForMode("hybrid").map((item) => item.value)).toContain("gemini");
     expect(embedOptionsForMode("hybrid").map((item) => item.value)).toContain("local");

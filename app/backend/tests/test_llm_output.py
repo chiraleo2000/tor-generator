@@ -28,6 +28,19 @@ def test_strip_thinking_drops_english_cot_without_answer():
     assert strip_thinking(USER_THINKING_LEAK) == ""
 
 
+def test_visible_answer_recovers_thai_from_reasoning_blob():
+    from app.providers.llm_output import visible_answer
+
+    raw = (
+        "<think>ตามระเบียบการจัดซื้อจัดจ้างภาครัฐ ความเป็นมาของโครงการต้องระบุปัญหา "
+        "นโยบายที่เกี่ยวข้อง และประเภทงานที่จัดจ้างให้ชัดเจน</think>"
+    )
+    result = visible_answer(raw)
+    assert "ความเป็นมาของโครงการต้องระบุปัญหา" in result
+    assert "<think" not in result.lower()
+    assert "</think" not in result.lower()
+
+
 def test_strip_thinking_keeps_thai_after_final_marker():
     raw = (
         USER_THINKING_LEAK

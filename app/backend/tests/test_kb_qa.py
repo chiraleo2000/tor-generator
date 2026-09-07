@@ -68,6 +68,7 @@ def test_build_kb_qa_messages_is_content_style_and_uses_rag():
     assert "ข้อความเนื้อหา" in messages[0]["content"]
     assert "ห้ามใช้โครงหัวข้อบังคับ" in messages[0]["content"]
     assert "ประเด็นคำถาม" in messages[0]["content"]
+    assert "ตอบให้ครบถ้วนตามเอกสาร" in messages[0]["content"]
     assert "Neo4j" in messages[0]["content"]
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "สวัสดี"
@@ -75,10 +76,11 @@ def test_build_kb_qa_messages_is_content_style_and_uses_rag():
     assert "พ.ร.บ.2560.pdf" in user
     assert "ห้ามแบ่งซื้อแบ่งจ้าง" in user
     assert "แบ่งซื้อได้หรือไม่" in user
+    assert "ครอบคลุม" in user
     assert CHAT_RAG_TOP_K >= 96
     assert chat_rag_top_k() >= 64
     assert CHAT_MAX_TOKENS == 32_768
-    assert "ไม่บังคับความยาวขั้นต่ำ" in KB_QA_SYSTEM
+    assert "ตอบให้ครบถ้วนตามเอกสาร" in KB_QA_SYSTEM
     assert "ถักทอสาระ" in KB_QA_SYSTEM
     assert "6144" not in KB_QA_SYSTEM
 

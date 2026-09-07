@@ -1,0 +1,26 @@
+Round 2026-09-06 (units + three tools + live_llm)
+
+Stack: docker compose tor-app (existing images)
+API healthy · UI 200 · mcp-rag tor-mcp-pgvector · LM Studio 200
+
+1) pytest -m "not live_llm and not integration" --cov=app
+   PIN_ON_PREM_LLM=false in the unit container only
+   1991 passed, 2 skipped, 25 deselected, 4 warnings in 205.08s
+   Coverage TOTAL 94% (14486 stmts, 880 miss) · 93.93% (fail_under 90)
+   Log: _round-2026-09-06-pytest.txt
+
+2) Vitest run --coverage
+   Test Files 50 passed · Tests 306 passed · 55.87s
+   Statements 94.34% · Branches 86.89% · Functions 94.43% · Lines 96.4%
+   Log: _round-2026-09-06-vitest.txt
+
+3) UI tools sequential (serial_three_tools.py, headed Chrome)
+   chat   CHAT_OK    ~130 s
+   draft  DRAFT_OK   ~2333 s (~38.9 min)  13/13 sections
+   review REVIEW_OK  ~100 s
+   Evidence: serial-00-dashboard.png … serial-05-review-score.png
+
+4) pytest -m live_llm
+   17/17 pass (16 on first run + embedding PDF re-run after NAME_MAX skip)
+   8 LM Studio · 4 realistic API · 3 ECT (27/27, source 82, draft 13, assembled TOR 74)
+   Log: _round-2026-09-06-live-llm.txt

@@ -1,20 +1,20 @@
-# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.3.1
+# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.4.0
 
 เอกสารฉบับเดียว (Combined_Report) ตาม `.kiro/specs/local-llm-verification-aws-migration-plan/`  
 ลำดับ: **(A) Verification** → **(B) Verification_Gate** → **(C) AWS Migration Plan** → **(D) Stability & Scale**
 
-ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · `test-evidence/_pytest-coverage.txt` · `test-evidence/_serial-three-tools-2026-09-04.txt`
+ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · `test-evidence/_round-2026-09-07-summary.txt` · `test-evidence/_round-2026-09-07-live-llm.txt`
 
 ---
 
-## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.3.1
+## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.4.0
 
 ### 0. ส่วนหัว
 
 | ฟิลด์ | ค่า |
 |-------|-----|
-| วันที่ทดสอบ | **4 กันยายน 2026** (coverage Docker 3 ก.ย. + UI สามเครื่องมือ 4 ก.ย.) |
-| เวอร์ชันแอป | v0.3.1 |
+| วันที่ทดสอบ | **7 กันยายน 2026** (unit + UI สามเครื่องมือ + `pytest -m live_llm` รอบเดียวครบ) |
+| เวอร์ชันแอป | v0.4.0 |
 | สแตก | Docker Compose โปรเจกต์ `tor-app` รวม **mcp-rag :8765** |
 | Local LLM | LM Studio `http://127.0.0.1:1234/v1` (จาก backend ใช้ `host.docker.internal`) |
 | ผู้จัดทำ | Verification_Author (รอบอัปเดตเอกสาร 4 ก.ย. 2026; เกตเดิม 31 ส.ค. ยังอยู่ด้านล่าง) |
@@ -31,7 +31,23 @@
 
 `MCP_RAG_ENABLED=true` · เซอร์วิส `mcp-rag` healthy ที่ `:8765` · citation ในแชทเป็น `mcp:` / `document:` จากคลังท้องถิ่น
 
-### 0b. ผลรอบ 3–4 กันยายน 2026 (ผ่านทั้งหมดในชุดที่รัน)
+### 0b. ผลรอบ 7 กันยายน 2026 (ผ่านทั้งหมดในชุดที่รัน)
+
+| ชุด | ผล |
+|-----|-----|
+| pytest coverage (Docker) | **1991 passed**, 2 skipped, 25 deselected, **94%** (เกต 90% → 93.92%) |
+| Vitest | **306 passed** / 50 files · statements 94.34% · lines 96.4% |
+| UI ตามลำดับ ถาม-ตอบ → ร่าง → ตรวจสอบ | **3/3 ผ่าน** · ร่าง **13/13** (~36 นาที) |
+| pytest `-m live_llm` | **17/17 ผ่าน** ในรอบเดียว · 47:38 นาที |
+| ECT live | 27/27 ช่อง · ต้นทาง 82/100 · ร่าง 13 หมวด · TOR ประกอบ 73/100 · Jaccard 0.7233 |
+| ความพร้อม | `/health` healthy · `mcp-rag` healthy · LM Studio `:1234` |
+
+ล็อก: `test-evidence/_round-2026-09-07-summary.txt`, `_round-2026-09-07-pytest.txt`, `_round-2026-09-07-vitest.txt`, `_round-2026-09-07-live-llm.txt`  
+ภาพ: `serial-00-dashboard.png` … `serial-05-review-score.png` (รอบ 7 ก.ย.)
+
+รอบ 6 ก.ย. ยังเป็นหลักฐานคู่ (ตัวเลข unit/UI ใกล้เคียง; live_llm ครั้งนั้นต้องรันซ้ำเคส PDF) · รอบ 3–4 ก.ย. ด้านล่างเป็น baseline เก่า
+
+#### รอบ 3–4 กันยายน 2026 (ก่อนหน้า)
 
 | ชุด | ผล |
 |-----|-----|
@@ -182,19 +198,17 @@ Playwright headed `e2e/chat.spec.ts` รอบนี้: **2 passed (3.0 นา�
 
 ชุดเฟส 3 ที่เพิ่มในรอบนี้ (ไม่ live): `tests/test_draft_job_store.py`, `tests/test_property_draft_stability.py`, `tests/test_draft_stability_load.py`
 
-ผลรอบล่าสุดที่ **ผ่านทั้งชุดที่รัน**:
+ผลรอบล่าสุดที่ **ผ่านทั้งชุดที่รัน** (7 ก.ย. 2026):
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `not live_llm and not integration` (Docker 3 ก.ย. 2026) | **1971 passed**, 1 skipped, 15 deselected, 3 warnings, 213.01s, **coverage 95%** (13958 stmts) |
-| MCP unit (4 ก.ย. 2026) | **33 passed** |
-| pytest `live_llm` ECT (`test_live_ect_tor_full.py`, 31 ส.ค.) | **3 passed** in 2488.26s — ไม่ได้รันซ้ำ 4 ก.ย. |
-| Vitest (31 ส.ค.) | **209 passed** / 48 files, statements **80.5%**, lines **82.88%** |
-| UI สามเครื่องมือ headed (4 ก.ย.) | **3 passed** (chat → draft 13/13 → review) |
-| Playwright headed `chat.spec.ts` (31 ส.ค.) | **2 passed** (3.0m) |
+| pytest `not live_llm and not integration` | **1991 passed**, 2 skipped, 25 deselected, 4 warnings, 215.46s, **coverage 94%** (14486 stmts) |
+| pytest `-m live_llm` | **17 passed** ในรอบเดียว · 2858.20s (0:47:38) |
+| Vitest | **306 passed** / 50 files, statements **94.34%**, lines **96.4%** |
+| UI สามเครื่องมือ headed | **3 passed** (chat → draft 13/13 → review, ~36 นาทีร่าง) |
 | SonarQube `:9400` | ไม่ตอบในรอบ 31 ส.ค. → **ข้าม** |
 
-ล็อก: `test-evidence/_docker-pytest-coverage.txt`, `_pytest-coverage.txt`, `_serial-three-tools-2026-09-04.txt`, `_vitest-coverage.txt`, `_playwright-headed.txt`
+ล็อก: `test-evidence/_round-2026-09-07-summary.txt`, `_round-2026-09-07-live-llm.txt`
 
 ---
 
@@ -207,10 +221,10 @@ Playwright headed `e2e/chat.spec.ts` รอบนี้: **2 passed (3.0 นา�
 | เวิร์กโฟลว์ร่าง TOR | ผ่าน | 5/5 ขั้น | — | 27/27 ช่อง, ร่าง 13/13, คะแนน 95, export completed; โครงการ `c3bdba69-bd72-472a-88ad-cd4fbe95bdb5` |
 | เวิร์กโฟลว์ตรวจสอบ TOR | ผ่าน | 4/4 เคส | — | ต้นทาง 82; ในโครงการ 95 `valid=true`; TOR ประกอบ 88; Jaccard 0.8812 |
 | เวิร์กโฟลว์ถาม-ตอบ KB | ผ่าน | 2/2 Playwright + ACL | — | `chat.spec.ts` headed; ACL overlap=0; ปฏิเสธ `.exe` HTTP 400 |
-| pytest not live_llm | ผ่าน | 1971 passed, 1 skipped | 95% | Docker 3 ก.ย. 2026; 15 deselected (live/integration) |
-| pytest live_llm ECT | ผ่าน | 3 passed | — | 31 ส.ค. `test_live_ect_tor_full.py` 41m28s — ไม่รันซ้ำ 4 ก.ย. |
-| Vitest | ผ่าน | 209 passed / 48 files | 80.5% stmts | ล็อก 31 ส.ค. |
-| UI สามเครื่องมือ | ผ่าน | 3/3 | — | 4 ก.ย. headed Chrome; ภาพ `serial-*.png` |
+| pytest not live_llm | ผ่าน | 1991 passed, 2 skipped | 94% | Docker 7 ก.ย. 2026; 25 deselected (live/integration) |
+| pytest live_llm | ผ่าน | 17 passed | — | 7 ก.ย. รอบเดียว; ECT 27/27, ต้นทาง 82, TOR ประกอบ 73 |
+| Vitest | ผ่าน | 306 passed / 50 files | 94.34% stmts | 7 ก.ย. lines 96.4% |
+| UI สามเครื่องมือ | ผ่าน | 3/3 | — | 7 ก.ย. headed Chrome; ภาพ `serial-*.png` |
 | Playwright E2E chat | ผ่าน | 2 passed | — | 31 ส.ค. headed, Docker `:3000`; ภาพ `13a`/`13`/`13b`/`13c` |
 | SonarQube | ข้าม | — | — | ไม่มี process ที่ `:9400` ในรอบนี้ (curl ไม่เชื่อมได้) |
 
@@ -222,8 +236,8 @@ Playwright headed `e2e/chat.spec.ts` รอบนี้: **2 passed (3.0 นา�
 
 | แหล่ง | ตำแหน่ง | รอบนี้ |
 |--------|---------|--------|
-| backend htmlcov | `app/backend/htmlcov` + `_docker-pytest-coverage.txt` | **มี** — TOTAL **95%** (python 3.11.16, 3 ก.ย. 2026) |
-| frontend coverage | `app/frontend/coverage` | **มี** — statements 80.5% / lines 82.88% (31 ส.ค.) |
+| backend htmlcov | `test-evidence/_round-2026-09-07-pytest.txt` | **มี** — TOTAL **94%** (python 3.11.16, 7 ก.ย. 2026) |
+| frontend coverage | `test-evidence/_round-2026-09-07-vitest.txt` | **มี** — statements 94.34% / lines 96.4% (7 ก.ย.) |
 | ภาพรอบก่อน | ![backend cov](test-evidence/13-backend-coverage.png) ![frontend cov](test-evidence/14-frontend-coverage.png) | baseline จากเอกสาร 18 |
 
 ---

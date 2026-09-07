@@ -34,17 +34,7 @@ logging.basicConfig(
 # -----------------------------------------------------------------------------
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan handler.
-
-    On startup: create async DB engine + sessionmaker, Redis client, MinIO client.
-    On shutdown: dispose engine, close Redis.
-    Gracefully handles missing services (logs warnings but still starts).
-    """
-    settings = get_settings()
-
-    # --- Database ---
+def _startup_database(app: FastAPI, settings) -> None:
     try:
         engine = create_async_engine(
             settings.database_url,
@@ -52,7 +42,9 @@ async def lifespan(app: FastAPI):
             max_overflow=10,
             echo=False,
         )
-        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        session_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
         app.state.db_engine = engine
         app.state.db_session_factory = session_factory
         from app.infra import set_session_factory
@@ -67,7 +59,8 @@ async def lifespan(app: FastAPI):
 
         _clear_sf(None)
 
-    # --- Redis ---
+
+async def _startup_redis(app: FastAPI, settings) -> None:
     try:
         import redis.asyncio as aioredis
 
@@ -76,12 +69,13 @@ async def lifespan(app: FastAPI):
             decode_responses=True,
             socket_connect_timeout=5,
         )
-        # Verify connectivity with a ping
         await redis_client.ping()
         app.state.redis = redis_client
         from app.infra import set_redis_client
+        from app.llm_admission import reset_admission_queues
 
         set_redis_client(redis_client)
+        await reset_admission_queues(redis_client)
         logger.info("Redis connected: %s:%d", settings.redis_host, settings.redis_port)
     except Exception as exc:
         logger.warning("Redis not reachable (app will start without caching): %s", exc)
@@ -90,7 +84,8 @@ async def lifespan(app: FastAPI):
 
         _clear_redis(None)
 
-    # --- MinIO / S3 ---
+
+def _startup_minio(app: FastAPI, settings) -> None:
     try:
         from app.export.minio_storage import build_minio_client, ensure_minio_bucket
 
@@ -102,13 +97,16 @@ async def lifespan(app: FastAPI):
         set_minio_client(minio_client)
         logger.info("Object storage connected: %s", settings.minio_endpoint)
     except Exception as exc:
-        logger.warning("MinIO not reachable (app will start without file storage): %s", exc)
+        logger.warning(
+            "MinIO not reachable (app will start without file storage): %s", exc
+        )
         app.state.minio = None
         from app.infra import set_minio_client as _clear_minio
 
         _clear_minio(None)
 
-    # --- MongoDB (originals / GridFS) ---
+
+def _startup_mongo(app: FastAPI, settings) -> None:
     try:
         from pymongo import MongoClient
 
@@ -123,7 +121,8 @@ async def lifespan(app: FastAPI):
         logger.warning("MongoDB not reachable (originals store degraded): %s", exc)
         app.state.mongo = None
 
-    # --- Neo4j (GraphRAG) ---
+
+async def _startup_neo4j(app: FastAPI, settings) -> None:
     try:
         from neo4j import AsyncGraphDatabase
 
@@ -138,63 +137,73 @@ async def lifespan(app: FastAPI):
         set_neo4j_driver(neo4j_driver)
         logger.info("Neo4j connected: %s", settings.neo4j_uri)
     except Exception as exc:
-        logger.warning("Neo4j not reachable (GraphRAG degraded to pgvector): %s", exc)
+        logger.warning(
+            "Neo4j not reachable (GraphRAG degraded to pgvector): %s", exc
+        )
         app.state.neo4j = None
 
-    # --- Run pending Alembic migrations ---
-    if app.state.db_engine is not None:
-        try:
-            import asyncio
-            import sys
-            from pathlib import Path
 
-            alembic_bin = Path(sys.executable).parent / "alembic"
-            proc = await asyncio.create_subprocess_exec(
-                str(alembic_bin),
-                "upgrade",
-                "head",
-                cwd="/app",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                detail = (stderr or stdout).decode("utf-8", errors="replace")
-                raise RuntimeError(detail or "alembic upgrade failed")
-            logger.info("Alembic migrations applied successfully")
-        except Exception as exc:
-            logger.warning(
-                "Failed to run Alembic migrations (app will start anyway): %s", exc
-            )
+async def _run_alembic_migrations() -> None:
+    import asyncio
+    import sys
+    from pathlib import Path
 
-        try:
-            from sqlalchemy import select
+    alembic_bin = Path(sys.executable).parent / "alembic"
+    proc = await asyncio.create_subprocess_exec(
+        str(alembic_bin),
+        "upgrade",
+        "head",
+        cwd="/app",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        detail = (stderr or stdout).decode("utf-8", errors="replace")
+        raise RuntimeError(detail or "alembic upgrade failed")
+    logger.info("Alembic migrations applied successfully")
 
-            from app.config import apply_runtime_overlay
-            from app.models.ai_runtime_settings import AiRuntimeSettings
-            from app.providers.constants import AI_OVERLAY_FIELDS
 
-            async with session_factory() as session:
-                result = await session.execute(
-                    select(AiRuntimeSettings).where(AiRuntimeSettings.id == 1)
-                )
-                row = result.scalar_one_or_none()
-                if row and isinstance(row.payload, dict):
-                    apply_runtime_overlay(
-                        {
-                            key: value
-                            for key, value in row.payload.items()
-                            if key in AI_OVERLAY_FIELDS
-                        }
-                    )
-                    logger.info("Applied AI runtime settings overlay from database")
-        except Exception as exc:
-            logger.warning("Could not load AI runtime settings overlay: %s", exc)
+async def _load_ai_runtime_overlay(session_factory) -> None:
+    from sqlalchemy import select
 
-    # ---- Yield control to the application ----
-    yield
+    from app.config import apply_runtime_overlay
+    from app.models.ai_runtime_settings import AiRuntimeSettings
+    from app.providers.constants import AI_OVERLAY_FIELDS
 
-    # --- Shutdown ---
+    async with session_factory() as session:
+        result = await session.execute(
+            select(AiRuntimeSettings).where(AiRuntimeSettings.id == 1)
+        )
+        row = result.scalar_one_or_none()
+        if not row or not isinstance(row.payload, dict):
+            return
+        apply_runtime_overlay(
+            {
+                key: value
+                for key, value in row.payload.items()
+                if key in AI_OVERLAY_FIELDS
+            }
+        )
+        logger.info("Applied AI runtime settings overlay from database")
+
+
+async def _startup_db_side_effects(app: FastAPI, session_factory) -> None:
+    if app.state.db_engine is None:
+        return
+    try:
+        await _run_alembic_migrations()
+    except Exception as exc:
+        logger.warning(
+            "Failed to run Alembic migrations (app will start anyway): %s", exc
+        )
+    try:
+        await _load_ai_runtime_overlay(session_factory)
+    except Exception as exc:
+        logger.warning("Could not load AI runtime settings overlay: %s", exc)
+
+
+async def _shutdown_resources(app: FastAPI) -> None:
     if app.state.db_engine is not None:
         await app.state.db_engine.dispose()
         logger.info("Database engine disposed")
@@ -215,6 +224,25 @@ async def lifespan(app: FastAPI):
     if neo4j is not None:
         await neo4j.close()
         logger.info("Neo4j connection closed")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler.
+
+    On startup: create async DB engine + sessionmaker, Redis client, MinIO client.
+    On shutdown: dispose engine, close Redis.
+    Gracefully handles missing services (logs warnings but still starts).
+    """
+    settings = get_settings()
+    _startup_database(app, settings)
+    await _startup_redis(app, settings)
+    _startup_minio(app, settings)
+    _startup_mongo(app, settings)
+    await _startup_neo4j(app, settings)
+    await _startup_db_side_effects(app, getattr(app.state, "db_session_factory", None))
+    yield
+    await _shutdown_resources(app)
 
 
 # -----------------------------------------------------------------------------

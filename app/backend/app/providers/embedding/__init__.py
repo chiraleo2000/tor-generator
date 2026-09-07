@@ -1,6 +1,7 @@
 """Embedding provider implementations (OpenAI, Gemini, local OpenAI-compat)."""
 
 from app.providers.embedding.gemini_provider import GeminiEmbeddingProvider
+from app.providers.embedding.none_provider import NoneEmbeddingProvider
 from app.providers.embedding.openai_provider import OpenAIEmbeddingProvider
 from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
 
@@ -11,4 +12,5 @@ __all__ = [
     "Qwen3LocalEmbeddingProvider",
     "LocalEmbeddingProvider",
     "GeminiEmbeddingProvider",
+    "NoneEmbeddingProvider",
 ]

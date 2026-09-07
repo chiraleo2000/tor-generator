@@ -15,6 +15,7 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { navItemIsActive } from "@/lib/nav-active";
 import { useAuthStore } from "@/stores/auth-store";
 
 interface NavItem {
@@ -102,13 +103,13 @@ function NavSection({
       <p className="mb-2 text-[11px] uppercase tracking-wider text-white/55">{title}</p>
       {items.map((item) => {
         const Icon = item.icon;
-        const active =
-          pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = navItemIsActive(pathname, item.href);
         return (
           <Link
             key={item.href}
             href={item.href}
             data-testid={item.testId}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "mb-1 flex items-center gap-2.5 rounded-lg border-l-[3px] px-3 py-2.5 text-sm transition-colors",
               active

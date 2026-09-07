@@ -139,6 +139,41 @@ def extract_text(file_path: str, mime_type: str) -> ExtractionResult:
     )
 
 
+def _pdf_method(used_ocr: bool, used_direct: bool) -> Literal["direct", "ocr", "mixed"]:
+    if used_ocr and used_direct:
+        return "mixed"
+    if used_ocr:
+        return "ocr"
+    return "direct"
+
+
+def _append_pdf_page(
+    page: fitz.Page,
+    page_num: int,
+    ocr_timeout: int,
+    page_texts: list[str],
+    warnings: list[str],
+) -> tuple[bool, bool]:
+    """Return (used_direct, used_ocr) flags for one page."""
+    text = page.get_text().strip()
+    if _page_text_usable(text):
+        page_texts.append(text)
+        return True, False
+    logger.info(
+        "Page %d has insufficient text (%d chars), falling back to OCR",
+        page_num + 1,
+        len(text),
+    )
+    ocr_text = _ocr_pdf_page(page, page_num, ocr_timeout, warnings)
+    if ocr_text:
+        page_texts.append(ocr_text)
+        return False, True
+    page_texts.append(text)
+    if not text:
+        warnings.append(f"Page {page_num + 1}: Could not extract text (direct or OCR)")
+    return False, False
+
+
 def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> ExtractionResult:
     """Extract text from a PDF file using PyMuPDF.
 
@@ -161,48 +196,17 @@ def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> Extra
     page_count = len(doc)
 
     for page_num in range(page_count):
-        page = doc[page_num]
-        text = page.get_text().strip()
-
-        if _page_text_usable(text):
-            # Direct text extraction succeeded
-            page_texts.append(text)
-            used_direct = True
-        else:
-            # Text is too short/empty — fall back to OCR
-            logger.info(
-                "Page %d has insufficient text (%d chars), falling back to OCR",
-                page_num + 1,
-                len(text),
-            )
-            ocr_text = _ocr_pdf_page(page, page_num, ocr_timeout, warnings)
-            if ocr_text:
-                page_texts.append(ocr_text)
-                used_ocr = True
-            else:
-                # OCR also failed or returned nothing
-                page_texts.append(text)  # Keep whatever little text there was
-                if not text:
-                    warnings.append(
-                        f"Page {page_num + 1}: Could not extract text (direct or OCR)"
-                    )
+        direct, ocr = _append_pdf_page(
+            doc[page_num], page_num, ocr_timeout, page_texts, warnings
+        )
+        used_direct = used_direct or direct
+        used_ocr = used_ocr or ocr
 
     doc.close()
-
-    # Determine extraction method
-    if used_ocr and used_direct:
-        method: Literal["direct", "ocr", "mixed"] = "mixed"
-    elif used_ocr:
-        method = "ocr"
-    else:
-        method = "direct"
-
-    full_text = "\n\n".join(page_texts)
-
     return ExtractionResult(
-        text=full_text,
+        text="\n\n".join(page_texts),
         page_count=page_count,
-        method=method,
+        method=_pdf_method(used_ocr, used_direct),
         warnings=warnings,
     )
 
@@ -287,6 +291,22 @@ def ocr_page(image_path: str, lang: str = "tha+eng", timeout: int = DEFAULT_OCR_
     return text
 
 
+def _tesseract_executable() -> str:
+    """Resolve the Tesseract binary (env override, PATH, or Windows default)."""
+    override = (os.environ.get("TESSERACT_CMD") or "").strip()
+    if override:
+        return override
+    from shutil import which
+
+    found = which("tesseract")
+    if found:
+        return found
+    windows_default = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    if windows_default.is_file():
+        return str(windows_default)
+    return "tesseract"
+
+
 def _run_tesseract(
     image_path: str,
     *,
@@ -294,8 +314,9 @@ def _run_tesseract(
     timeout: int,
     psm: str,
 ) -> str:
+    exe = _tesseract_executable()
     cmd = [
-        "tesseract",
+        exe,
         image_path,
         "stdout",
         "-l",
@@ -303,6 +324,11 @@ def _run_tesseract(
         "--psm",
         psm,
     ]
+    env = os.environ.copy()
+    # Windows Tesseract expects TESSDATA_PREFIX to be the tessdata/ folder itself.
+    tessdata_dir = Path(exe).resolve().parent / "tessdata"
+    if tessdata_dir.is_dir():
+        env["TESSDATA_PREFIX"] = str(tessdata_dir)
     try:
         result = subprocess.run(
             cmd,
@@ -312,11 +338,14 @@ def _run_tesseract(
             errors="replace",
             timeout=timeout,
             check=False,
+            env=env,
         )
     except FileNotFoundError:
         raise FileNotFoundError(
             "Tesseract OCR is not installed or not found in PATH. "
-            "Install with: apt-get install tesseract-ocr tesseract-ocr-tha"
+            "Set TESSERACT_CMD or install under "
+            r"C:\Program Files\Tesseract-OCR "
+            "(Linux: apt-get install tesseract-ocr tesseract-ocr-tha)"
         ) from None
     if result.returncode != 0:
         stderr_msg = result.stderr.strip() if result.stderr else "Unknown error"
@@ -324,6 +353,45 @@ def _run_tesseract(
             f"Tesseract OCR failed (exit code {result.returncode}): {stderr_msg}"
         )
     return result.stdout.strip()
+
+
+def _heading_prefix(style_name: str) -> str | None:
+    if not style_name.startswith("Heading"):
+        return None
+    try:
+        level = int(style_name.split()[-1])
+    except (ValueError, IndexError):
+        level = 1
+    return "#" * level
+
+
+def _docx_paragraph_line(paragraph: object) -> str | None:
+    text = paragraph.text.strip()
+    if not text:
+        return None
+    style = paragraph.style
+    style_name = style.name if style else ""
+    prefix = _heading_prefix(style_name)
+    if prefix is None:
+        return text
+    return f"{prefix} {text}"
+
+
+def _docx_table_lines(table: object, table_idx: int) -> list[str]:
+    table_lines: list[str] = []
+    for row in table.rows:
+        cells = [cell.text.strip() for cell in row.cells]
+        unique_cells = _deduplicate_adjacent(cells)
+        if any(unique_cells):
+            table_lines.append(" | ".join(unique_cells))
+    if not table_lines:
+        return []
+    return [f"\n[Table {table_idx + 1}]", *table_lines]
+
+
+def _estimate_text_pages(full_text: str) -> int:
+    length = len(full_text)
+    return max(1, length // 3000 + (1 if length % 3000 else 0))
 
 
 def extract_docx(file_path: str) -> ExtractionResult:
@@ -345,50 +413,18 @@ def extract_docx(file_path: str) -> ExtractionResult:
     except Exception as e:
         raise ValueError(f"Failed to open DOCX file: {e}") from e
 
-    # Extract paragraphs, preserving heading structure
     for paragraph in doc.paragraphs:
-        text = paragraph.text.strip()
-        if not text:
-            continue
+        line = _docx_paragraph_line(paragraph)
+        if line is not None:
+            sections.append(line)
 
-        style_name = paragraph.style.name if paragraph.style else ""
-
-        if style_name.startswith("Heading"):
-            # Extract heading level from style name (e.g., "Heading 1" -> level 1)
-            try:
-                level = int(style_name.split()[-1])
-            except (ValueError, IndexError):
-                level = 1
-
-            # Format heading with level indicator
-            prefix = "#" * level
-            sections.append(f"{prefix} {text}")
-        else:
-            sections.append(text)
-
-    # Extract table content
     for table_idx, table in enumerate(doc.tables):
-        table_lines: list[str] = []
-        for row_idx, row in enumerate(table.rows):
-            cells = [cell.text.strip() for cell in row.cells]
-            # Remove duplicate cell text (merged cells produce duplicates)
-            unique_cells = _deduplicate_adjacent(cells)
-            if any(unique_cells):  # Skip empty rows
-                table_lines.append(" | ".join(unique_cells))
-
-        if table_lines:
-            sections.append(f"\n[Table {table_idx + 1}]")
-            sections.extend(table_lines)
+        sections.extend(_docx_table_lines(table, table_idx))
 
     full_text = "\n".join(sections)
-
-    # Estimate page count from content (DOCX doesn't have fixed pages)
-    # Approximate: ~3000 chars per page for Thai text
-    estimated_pages = max(1, len(full_text) // 3000 + (1 if len(full_text) % 3000 else 0))
-
     return ExtractionResult(
         text=full_text,
-        page_count=estimated_pages,
+        page_count=_estimate_text_pages(full_text),
         method="direct",
         warnings=warnings,
     )
@@ -413,6 +449,32 @@ def _deduplicate_adjacent(items: list[str]) -> list[str]:
     return result
 
 
+def _pptx_table_lines(shape: object) -> list[str]:
+    table_lines: list[str] = []
+    for row in shape.table.rows:
+        cells = [cell.text.strip() for cell in row.cells]
+        table_lines.append(" | ".join(cells))
+    return table_lines
+
+
+def _pptx_shape_lines(shape: object) -> list[str]:
+    if getattr(shape, "has_table", False):
+        table_lines = _pptx_table_lines(shape)
+        return ["\n".join(table_lines)] if table_lines else []
+    text = getattr(shape, "text", "") or ""
+    stripped = text.strip()
+    return [stripped] if stripped else []
+
+
+def _pptx_slide_section(index: int, slide: object) -> str | None:
+    slide_parts: list[str] = [f"## Slide {index}"]
+    for shape in slide.shapes:
+        slide_parts.extend(_pptx_shape_lines(shape))
+    if len(slide_parts) <= 1:
+        return None
+    return "\n".join(slide_parts)
+
+
 def extract_pptx(file_path: str) -> ExtractionResult:
     """Extract headings, lists, and tables from a PowerPoint file."""
     warnings: list[str] = []
@@ -425,22 +487,9 @@ def extract_pptx(file_path: str) -> ExtractionResult:
     presentation = Presentation(file_path)
     sections: list[str] = []
     for index, slide in enumerate(presentation.slides, start=1):
-        slide_parts: list[str] = [f"## Slide {index}"]
-        for shape in slide.shapes:
-            if getattr(shape, "has_table", False):
-                table_lines: list[str] = []
-                for row in shape.table.rows:
-                    cells = [cell.text.strip() for cell in row.cells]
-                    table_lines.append(" | ".join(cells))
-                if table_lines:
-                    slide_parts.append("\n".join(table_lines))
-                continue
-            text = getattr(shape, "text", "") or ""
-            stripped = text.strip()
-            if stripped:
-                slide_parts.append(stripped)
-        if len(slide_parts) > 1:
-            sections.append("\n".join(slide_parts))
+        section = _pptx_slide_section(index, slide)
+        if section is not None:
+            sections.append(section)
     return ExtractionResult(
         text="\n\n".join(sections),
         page_count=len(list(presentation.slides)),
@@ -542,6 +591,25 @@ def _append_thai_text(value: object, parts: list[str]) -> None:
         _append_thai_text(item, parts)
 
 
+def _combined_section_contents(payload: object) -> list[str]:
+    contents: list[str] = []
+    if not isinstance(payload, dict):
+        return contents
+    name = payload.get("name")
+    if isinstance(name, str) and name.strip():
+        contents.append(name.strip())
+    sections = payload.get("sections")
+    if not isinstance(sections, list):
+        return contents
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        content = str(section.get("content") or "").strip()
+        if content:
+            contents.append(content)
+    return contents
+
+
 def extract_combined_kb_json(file_path: str) -> ExtractionResult:
     """Extract RAG text from a knowledge-base `*_combined.json` file.
 
@@ -549,19 +617,7 @@ def extract_combined_kb_json(file_path: str) -> ExtractionResult:
     Empty packs return empty text so ingestion can fail.
     """
     payload = json.loads(Path(file_path).read_text(encoding="utf-8"))
-    contents: list[str] = []
-    if isinstance(payload, dict):
-        name = payload.get("name")
-        if isinstance(name, str) and name.strip():
-            contents.append(name.strip())
-        sections = payload.get("sections")
-        if isinstance(sections, list):
-            for section in sections:
-                if not isinstance(section, dict):
-                    continue
-                content = section.get("content") or ""
-                if str(content).strip():
-                    contents.append(str(content).strip())
+    contents = _combined_section_contents(payload)
     text = "\n\n".join(contents).strip()
     return ExtractionResult(
         text=text,
@@ -590,6 +646,25 @@ def flatten_decision_rules_json(file_path: str) -> ExtractionResult:
     )
 
 
+def _tor_focus_contents(payload: object) -> list[str]:
+    contents: list[str] = []
+    if not isinstance(payload, dict):
+        return contents
+    focus = payload.get("focus_areas")
+    if not isinstance(focus, dict):
+        return contents
+    for sections in focus.values():
+        if not isinstance(sections, list):
+            continue
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            content = str(section.get("content") or "").strip()
+            if content:
+                contents.append(content)
+    return contents
+
+
 def extract_tor_extract_json(file_path: str) -> ExtractionResult:
     """Extract RAG text from a knowledge-base `*_tor_extract.json` file.
 
@@ -598,23 +673,9 @@ def extract_tor_extract_json(file_path: str) -> ExtractionResult:
     can fail instead of embedding raw JSON keys.
     """
     payload = json.loads(Path(file_path).read_text(encoding="utf-8"))
-    contents: list[str] = []
-    if isinstance(payload, dict):
-        focus = payload.get("focus_areas")
-        if isinstance(focus, dict):
-            for sections in focus.values():
-                if not isinstance(sections, list):
-                    continue
-                for section in sections:
-                    if not isinstance(section, dict):
-                        continue
-                    content = section.get("content") or ""
-                    if str(content).strip():
-                        contents.append(str(content).strip())
-    parts = contents
+    contents = _tor_focus_contents(payload)
     source = payload.get("source_file") if isinstance(payload, dict) else None
-    if source and contents:
-        parts = [str(source), *contents]
+    parts = [str(source), *contents] if source and contents else contents
     text = "\n\n".join(parts).strip()
     return ExtractionResult(
         text=text,

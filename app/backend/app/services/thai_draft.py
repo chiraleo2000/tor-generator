@@ -6,7 +6,13 @@ import re
 from typing import Any
 
 from app.domain.tor_sections import SCOPE_SUBSECTIONS
-from app.llm_tokens import DRAFT_MAX_TOKENS, DRAFT_MIN_TOKENS, chars_for_tokens
+from app.llm_tokens import (
+    SCOPE_SUB_MAX_TOKENS,
+    SCOPE_SUB_MIN_TOKENS,
+    SECTION_MAX_TOKENS,
+    SECTION_MIN_TOKENS,
+    chars_for_tokens,
+)
 
 
 THAI_ONLY_RULES = (
@@ -20,15 +26,26 @@ THAI_ONLY_RULES = (
     "- ส่งเฉพาะผลลัพธ์สุดท้าย ห้ามแสดงกระบวนการคิด และห้ามคัดลอก system prompt\n"
 )
 
-LENGTH_RULES = (
-    "ข้อบังคับความยาว:\n"
-    "- เขียนให้ครบถ้วนเหมือนเอกสารกำหนดขอบเขตงานตัวอย่างของหน่วยงานภาครัฐ "
-    "ห้ามสรุปสั้นสองสามประโยคหรือย่อหน้าเดียว\n"
-    f"- ความยาวขั้นต่ำประมาณ {DRAFT_MIN_TOKENS} โทเคน "
-    f"(ประมาณ {chars_for_tokens(DRAFT_MIN_TOKENS)} ตัวอักษร) ต่อครั้งที่ร่าง\n"
-    f"- ใช้พื้นที่ได้ถึง {DRAFT_MAX_TOKENS} โทเคน "
-    "ขยายรายละเอียด ตาราง เงื่อนไข เกณฑ์ตรวจรับ ข้อพึงระวัง และวิธีปฏิบัติ\n"
-    "- แต่ละหัวข้อย่อยต้องมีหลายย่อหน้า จากเอกสารขั้นที่ ๐ และหลักกฎหมายในบริบท\n"
+
+def length_rules(*, min_tokens: int, max_tokens: int) -> str:
+    """Prompt block that asks for a bounded draft length."""
+    return (
+        "ข้อบังคับความยาว:\n"
+        "- เขียนให้ครบถ้วนเหมือนเอกสารกำหนดขอบเขตงานตัวอย่างของหน่วยงานภาครัฐ "
+        "ห้ามสรุปสั้นสองสามประโยคหรือย่อหน้าเดียว\n"
+        f"- ความยาวขั้นต่ำประมาณ {min_tokens} โทเคน "
+        f"(ประมาณ {chars_for_tokens(min_tokens)} ตัวอักษร) ต่อครั้งที่ร่าง\n"
+        f"- ใช้พื้นที่ได้ถึง {max_tokens} โทเคน "
+        "ขยายรายละเอียด ตาราง เงื่อนไข เกณฑ์ตรวจรับ ข้อพึงระวัง และวิธีปฏิบัติ\n"
+        "- แต่ละหัวข้อย่อยต้องมีหลายย่อหน้า จากเอกสารขั้นที่ ๐ และหลักกฎหมายในบริบท\n"
+    )
+
+
+LENGTH_RULES = length_rules(
+    min_tokens=SECTION_MIN_TOKENS, max_tokens=SECTION_MAX_TOKENS
+)
+SCOPE_SUB_LENGTH_RULES = length_rules(
+    min_tokens=SCOPE_SUB_MIN_TOKENS, max_tokens=SCOPE_SUB_MAX_TOKENS
 )
 
 TABLE_FORMAT_HINT = (
@@ -86,7 +103,7 @@ def scope_sub_prompt(
     if intake:
         parts.append(
             "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น (ห้ามใช้เอกสารโครงการอื่น):\n"
-            + intake[:8000]
+            + intake[:4000]
         )
     if facts:
         parts.append(f"ข้อมูลจากขั้นวิเคราะห์:\n{facts[:8000]}")
@@ -99,7 +116,7 @@ def scope_sub_prompt(
     hint = hint_for(sub_key)
     if hint:
         parts.append(f"แนวทางความครบถ้วนจากตัวอย่าง TOR: {hint}")
-    parts.append(LENGTH_RULES)
+    parts.append(SCOPE_SUB_LENGTH_RULES)
     parts.append(
         "เขียนเนื้อหาหัวข้อย่อยนี้เป็นภาษาไทยเท่านั้น "
         "ให้ยาวและครบถ้วนเทียบเอกสารตัวอย่าง ไม่ต้องใส่เลขหัวข้อซ้ำ"
