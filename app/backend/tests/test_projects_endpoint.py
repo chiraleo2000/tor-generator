@@ -234,8 +234,33 @@ class TestCreateProject:
         response = client.post("/api/v1/projects", json=body)
         assert response.status_code == 422
 
+    def test_create_project_without_budget_succeeds(self, client, mock_officer_user):
+        """Budget is optional on create; omitted budget defaults to 0."""
+        body = {
+            "name": "โครงการทดสอบไม่มีงบ",
+            "ministry": "กระทรวงทดสอบ",
+            "project_type": "it",
+        }
+        mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock(side_effect=lambda p: _apply_defaults(p))
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+
+        response = client.post("/api/v1/projects", json=body)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["ok"] is True
+        assert data["data"]["budget"] == 0
+        added = mock_db.add.call_args[0][0]
+        assert added.budget == 0
+
     def test_create_project_invalid_budget_returns_422(self, client, mock_officer_user):
-        """Budget must be positive integer."""
+        """Budget must be positive integer when provided."""
         body = {
             "name": "โครงการทดสอบ",
             "ministry": "กระทรวงทดสอบ",
@@ -770,8 +795,10 @@ class TestPhaseAndExtractionHitl:
         app.dependency_overrides[get_db] = override_db
         response = client.get(f"/api/v1/projects/{PROJECT_ID}/sections")
         assert response.status_code == 200
+        from app.domain.section_profile import profile_for_project
+
         sections = response.json()["data"]["sections"]
-        assert len(sections) == 13
+        assert len(sections) == len(profile_for_project(project.project_type).main_storage_keys())
         assert sections[0]["key"] == "s1"
 
 
@@ -867,8 +894,15 @@ class TestWorkflowAndWorkspaceWrites:
         assert response.status_code == 400
         assert project.status == "draft"
         audit.assert_not_called()
+        from app.domain.section_profile import profile_for_project
+
         missing = response.json()["error"]["details"]["missing"]
-        assert {item["section_key"] for item in missing} == set(TOR_SECTION_ORDER)
+        expected = {
+            item.storage_key
+            for item in profile_for_project(project.project_type).main_sections
+            if item.required
+        }
+        assert {item["section_key"] for item in missing} == expected
 
     def test_submit_approved_is_rejected(self, client, mock_officer_user):
         project = _make_project(status="approved")

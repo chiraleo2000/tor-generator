@@ -257,13 +257,16 @@ const TOR = [
   ["s12","เอกสารและหลักฐานที่ผู้เสนอราคาต้องนำมายื่น"],["s13","เงื่อนไขอื่น ๆ"]
 ];
 const HITL = new Set(["s3","s6","s8","s10","s13"]);
-const SCOPE = [
-  ["s4.1","สรุปขอบเขตงาน"],["s4.2","ระบบงานปัจจุบัน (As-Is)"],["s4.3","งานหลักและกิจกรรม"],
-  ["s4.4","ข้อกำหนดด้านฮาร์ดแวร์"],["s4.5","ข้อกำหนดด้านซอฟต์แวร์และลิขสิทธิ์"],["s4.6","จุดเชื่อมโยงระบบ"],
-  ["s4.7","มาตรฐานและแบบอ้างอิง"],["s4.8","ผลงานส่งมอบ"],["s4.9","ระยะเวลาการสนับสนุนและบำรุงรักษา"],
-  ["s4.10","บุคลากรและทีมงาน"],["s4.11","รูปแบบการบำรุงรักษา"],["s4.12","การดำเนินงานและการบริหารจัดการ"],
-  ["s4.13","แผนสำรองและกู้คืนระบบ"],["s4.14","ข้อกำหนดด้านความมั่นคงปลอดภัย"]
-];
+const SCOPE_BY_TYPE = {
+  hire_develop: [["system_overview","ภาพรวมระบบ"],["functional","หน้าที่การทำงาน"],["integration","เชื่อมโยง/โอนย้าย"],["licenses","ลิขสิทธิ์ซอฟต์แวร์"],["standards_security","มาตรฐานความมั่นคง"],["testing","ทดสอบ"],["deliverable_docs","เอกสาร/ซอร์สโค้ด"],["training","ฝึกอบรม"],["project_team","ทีมงาน"],["sla_warranty","SLA ช่วงรับประกัน"]],
+  buy_goods: [["items","รายการพัสดุและจำนวน"],["general_conditions","เงื่อนไขทั่วไป"],["specification","คุณลักษณะเฉพาะ"],["installation","ติดตั้ง"],["delivery_acceptance","ส่งมอบ/ตรวจรับ"],["training","ฝึกอบรม"]],
+  construction: [["work_items","รายการงาน"],["drawings","แบบรูป"],["demolition","รื้อถอน"],["site_access","เข้าปฏิบัติงาน"],["supervision","ควบคุมงาน"],["handover","ส่งมอบ/As-built"],["acceptance","ตรวจรับ"]],
+  hire_consult: [["methodology","ระเบียบวิธี"],["population","กลุ่มเป้าหมาย"],["instrument","เครื่องมือ"],["fieldwork","ภาคสนาม"],["analysis","วิเคราะห์"],["expert_meeting","ประชุมผู้เชี่ยวชาญ"],["reports","รายงาน"],["team","ทีม man-month"]],
+  hire_service: [["volume","ปริมาณงาน"],["process","กระบวนการ"],["quality","มาตรฐานคุณภาพ"],["resources","ทรัพยากร"],["document_care","การดูแลเอกสาร"],["progress","รายงานความคืบหน้า"],["media_delivery","ส่งมอบสื่อ"]],
+  hire_maintain: [["asset_list","รายการระบบ/อุปกรณ์"],["cm","CM"],["pm","PM"],["sla","SLA"],["helpdesk","ศูนย์รับแจ้ง"],["spares","อะไหล่"],["onsite","บุคลากรหน้างาน"],["reports","รายงาน"],["backup","สำรองข้อมูล"]],
+  lease_service: [["service_detail","รายละเอียดบริการ"],["equipment","อุปกรณ์ที่ผู้ให้เช่าจัดหา"],["availability","ความพร้อมใช้งาน"],["noc","NOC ๒๔ ชม."],["usage_report","รายงานปริมาณใช้"],["maintenance","บำรุงรักษาตลอดสัญญา"],["lessee_rights","สิทธิผู้เช่า"]]
+};
+const SCOPE = SCOPE_BY_TYPE.buy_goods;
 const DOC_CLASSES = [
   ["announced_price","ประกาศราคากลาง",true],["budget_approval","หนังสืออนุมัติงบประมาณ",true],
   ["fiscal_year","เอกสารปีงบประมาณ",false],["charter","เอกสารโครงการ (Charter / Brief)",false],

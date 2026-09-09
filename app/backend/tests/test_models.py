@@ -153,10 +153,10 @@ class TestProjectModel:
         col = Project.__table__.columns["current_step"]
         assert col.default.arg == 1
 
-    def test_project_default_project_type_is_general(self, sample_user_id: uuid.UUID):
-        """Test that Project project_type column default is configured as 'general'."""
+    def test_project_default_project_type_is_buy_goods(self, sample_user_id: uuid.UUID):
+        """Test that Project project_type column default is configured as 'buy_goods'."""
         col = Project.__table__.columns["project_type"]
-        assert col.default.arg == "general"
+        assert col.default.arg == "buy_goods"
 
     def test_project_default_workflow_mode_is_wizard(self):
         """Test that Project workflow_mode column default is 'wizard'."""

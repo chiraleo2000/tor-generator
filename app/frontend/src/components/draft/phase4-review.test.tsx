@@ -41,7 +41,7 @@ describe("Phase4Review", () => {
     expect(screen.queryByText("ยังไม่ได้ยืนยันหมวดที่เจ้าหน้าที่ต้องตรวจ")).not.toBeInTheDocument();
     expect(screen.getByText("ส่งขออนุมัติ")).toBeDisabled();
     expect(screen.getByTestId("phase4-submit-hint")).toHaveTextContent(
-      "กรอกให้ครบ ๑๓ หมวดก่อนส่งขออนุมัติ"
+      "กรอกให้ครบทุกหมวดตามประเภทงานก่อนส่งขออนุมัติ"
     );
   });
 

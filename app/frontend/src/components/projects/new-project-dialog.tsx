@@ -18,13 +18,7 @@ import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import type { ProjectType } from "@/types";
-
-const PROJECT_TYPE_OPTIONS = [
-  { value: "it", label: "ระบบเทคโนโลยีสารสนเทศ" },
-  { value: "construction", label: "งานก่อสร้าง" },
-  { value: "consulting", label: "งานจ้างที่ปรึกษา" },
-  { value: "general", label: "จัดซื้อจัดจ้างทั่วไป" },
-];
+import { PROCUREMENT_CATEGORIES } from "@/lib/tor-profiles";
 
 function isAsciiDigitString(value: string): boolean {
   if (!value) {
@@ -65,7 +59,7 @@ export function NewProjectDialog({
   const [name, setName] = useState("");
   const [ministry, setMinistry] = useState("");
   const [budget, setBudget] = useState("");
-  const [projectType, setProjectType] = useState<ProjectType>("general");
+  const [projectType, setProjectType] = useState<ProjectType | "">("");
   const [templateId, setTemplateId] = useState("");
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -86,17 +80,30 @@ export function NewProjectDialog({
 
   async function handleCreate() {
     setError(null);
-    const budgetNum = parseProjectBudget(budget);
-    if (!name.trim() || !ministry.trim() || budgetNum === null) {
-      setError("กรุณากรอกชื่อโครงการ หน่วยงาน และงบประมาณ");
+    if (!name.trim() || !ministry.trim()) {
+      setError("กรุณากรอกชื่อโครงการ และหน่วยงาน");
       return;
+    }
+    if (!projectType) {
+      setError("กรุณาเลือกหมวดใหญ่ประเภทการจัดซื้อจัดจ้าง");
+      return;
+    }
+    const trimmedBudget = budget.trim();
+    let budgetNum: number | undefined;
+    if (trimmedBudget) {
+      const parsed = parseProjectBudget(budget);
+      if (parsed === null) {
+        setError("งบประมาณต้องเป็นจำนวนเต็มบวก (เลข ASCII)");
+        return;
+      }
+      budgetNum = parsed;
     }
     setSaving(true);
     try {
       const project = await createProject({
         name: name.trim(),
         ministry: ministry.trim(),
-        budget: budgetNum,
+        ...(budgetNum !== undefined ? { budget: budgetNum } : {}),
         projectType,
         templateId: templateId || undefined,
       });
@@ -144,7 +151,7 @@ export function NewProjectDialog({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="np-budget">งบประมาณ (บาท)</Label>
+          <Label htmlFor="np-budget">งบประมาณ (บาท) — ไม่บังคับ</Label>
           <Input
             id="np-budget"
             data-testid="new-project-budget"
@@ -154,12 +161,17 @@ export function NewProjectDialog({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="np-type">ประเภท</Label>
+          <Label htmlFor="np-type">หมวดใหญ่ประเภทการจัดซื้อจัดจ้าง</Label>
           <Select
             id="np-type"
+            data-testid="new-project-type"
             value={projectType}
             onChange={(e) => setProjectType(e.target.value as ProjectType)}
-            options={PROJECT_TYPE_OPTIONS}
+            placeholder="เลือกหมวดใหญ่"
+            options={PROCUREMENT_CATEGORIES.map((item) => ({
+              value: item.key,
+              label: item.label,
+            }))}
           />
         </div>
         <div className="space-y-1">

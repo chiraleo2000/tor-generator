@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
+import { PROCUREMENT_CATEGORIES } from "@/lib/tor-profiles";
 import { TOR_SECTION_LABELS, TOR_SECTION_ORDER } from "@/lib/tor-sections";
 
 interface TemplateRow {
@@ -32,7 +33,7 @@ const defaultStructure = JSON.stringify(
 export default function AdminTemplatesPage() {
   const [items, setItems] = useState<TemplateRow[]>([]);
   const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("general");
+  const [industry, setIndustry] = useState("buy_goods");
   const [structure, setStructure] = useState(defaultStructure);
   const [guidance, setGuidance] = useState('{"s1":"อธิบายความเป็นมา"}');
   const [editing, setEditing] = useState<string | null>(null);
@@ -120,12 +121,10 @@ export default function AdminTemplatesPage() {
         <Select
           value={industry}
           onChange={(e) => setIndustry(e.target.value)}
-          options={[
-            { value: "it", label: "IT" },
-            { value: "construction", label: "ก่อสร้าง" },
-            { value: "consulting", label: "ที่ปรึกษา" },
-            { value: "general", label: "ทั่วไป" },
-          ]}
+          options={PROCUREMENT_CATEGORIES.map((item) => ({
+            value: item.key,
+            label: item.label,
+          }))}
         />
         <Label>โครงสร้างส่วน (JSON)</Label>
         <Textarea

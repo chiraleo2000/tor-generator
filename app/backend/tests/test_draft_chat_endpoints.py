@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.deps import get_current_user, get_db
+from app.domain.section_profile import profile_for_project
 from app.domain.slots import FACT_REQUIRED_SLOTS
 from app.llm_admission import AdmissionTimeoutError
 from app.main import app
@@ -19,6 +20,14 @@ from app.services.intake_service import empty_slot_map
 
 USER_ID = uuid.UUID("12345678-1234-5678-1234-567812345678")
 PROJECT_ID = uuid.UUID("abcdefab-abcd-abcd-abcd-abcdefabcdef")
+
+
+def _scope_keys(category: str = "buy_goods") -> list[str]:
+    return profile_for_project(category).scope_storage_keys()
+
+
+def _main_keys(category: str = "buy_goods") -> list[str]:
+    return profile_for_project(category).main_storage_keys()
 
 
 def _make_user():
@@ -45,6 +54,7 @@ def _make_project(*, analysis=None):
     project.analysis_json = analysis or {}
     project.extracted_fields = {}
     project.current_phase = 3
+    project.project_type = "buy_goods"
     project.created_at = datetime(2026, 8, 24, tzinfo=timezone.utc)
     project.updated_at = datetime(2026, 8, 24, tzinfo=timezone.utc)
     return project
@@ -310,13 +320,12 @@ def test_status_counts_drafted_sections(client, mock_officer_user):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["drafted_count"] == 1
-    assert data["total"] == 13
+    assert data["total"] == len(_main_keys())
     assert data["all_drafted"] is False
     assert data["sections"][0]["human_confirmed"] is True
 
 
 def test_status_partial_s4_is_not_fully_drafted(client, mock_officer_user):
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
     project = _make_project(analysis=_ready_analysis())
     mock_db = AsyncMock()
@@ -337,18 +346,19 @@ def test_status_partial_s4_is_not_fully_drafted(client, mock_officer_user):
     assert response.status_code == 200
     data = response.json()["data"]
     s4 = next(item for item in data["sections"] if item["section_key"] == "s4")
+    from app.domain.section_profile import profile_for_project
+
     assert s4["ai_drafted"] is False
     assert data["all_drafted"] is False
-    assert len(SCOPE_SUBSECTIONS) == 14
+    assert len(profile_for_project("buy_goods").scope_storage_keys()) >= 6
 
 
-def test_s4_complete_requires_all_fourteen():
+def test_s4_complete_requires_all_profile_subs():
     from app.api.v1.endpoints.draft_chat import _s4_complete
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
     partial = {"s4.1": "มีเนื้อหาแล้วอย่างน้อยยี่สิบตัว"}
     assert _s4_complete(partial) is False
-    full = {key: f"เนื้อหา {key} อย่างน้อยยี่สิบตัวอักษร" for key in SCOPE_SUBSECTIONS}
+    full = {key: f"เนื้อหา {key} อย่างน้อยยี่สิบตัวอักษร" for key in _scope_keys()}
     assert _s4_complete(full) is True
 
 
@@ -446,7 +456,6 @@ async def test_iter_s4_subsection_sse_drafts_each_sub_in_order():
     from contextlib import asynccontextmanager
 
     from app.api.v1.endpoints.draft_chat import _S4Work, _iter_s4_subsection_sse
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
     order: list[str] = []
     collected: dict[str, str] = {}
@@ -473,8 +482,8 @@ async def test_iter_s4_subsection_sse_drafts_each_sub_in_order():
         patch("app.api.v1.endpoints.draft_chat.draft_scope_subsection", side_effect=fake_sub),
     ):
         events = [event async for event in _iter_s4_subsection_sse(work, {})]
-    assert order == list(SCOPE_SUBSECTIONS)
-    assert collected == {key: f"llm-{key}" for key in SCOPE_SUBSECTIONS}
+    assert order == _scope_keys()
+    assert collected == {key: f"llm-{key}" for key in _scope_keys()}
     assert not errors
     assert any("subsection_start" in event for event in events)
     assert any("subsection_done" in event for event in events)
@@ -552,7 +561,6 @@ def test_status_overlays_job_progress(client, mock_officer_user):
 
 
 def test_status_keeps_section_count_when_job_retries_lower(client, mock_officer_user):
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_ORDER
 
     project = _make_project(analysis=_ready_analysis())
     mock_db = AsyncMock()
@@ -565,7 +573,7 @@ def test_status_keeps_section_count_when_job_retries_lower(client, mock_officer_
             ai_draft=f"ร่าง {key} อย่างน้อยยี่สิบตัวอักษร",
             is_approved=False,
         )
-        for key in TOR_SECTION_ORDER
+        for key in _main_keys()
     ]
     sections_result = MagicMock()
     sections_result.scalars.return_value.all.return_value = section_rows
@@ -576,7 +584,7 @@ def test_status_keeps_section_count_when_job_retries_lower(client, mock_officer_
             content=f"หัวข้อย่อย {key} อย่างน้อยยี่สิบตัวอักษร",
             ai_draft=f"ร่าง {key} อย่างน้อยยี่สิบตัวอักษร",
         )
-        for key in SCOPE_SUBSECTIONS
+        for key in _scope_keys()
     ]
     s4_result.scalars.return_value.all.return_value = s4_subs
     mock_db.execute = AsyncMock(side_effect=[project_result, sections_result, s4_result])
@@ -590,7 +598,7 @@ def test_status_keeps_section_count_when_job_retries_lower(client, mock_officer_
         response = client.get(f"/api/v1/projects/{PROJECT_ID}/draft-chat/status")
     data = response.json()["data"]
     assert data["job_status"] == "running"
-    assert data["drafted_count"] >= 13
+    assert data["drafted_count"] >= len(_main_keys())
     assert data["all_drafted"] is True
 
 
@@ -706,7 +714,6 @@ def test_message_revision_llm_error(client, mock_officer_user, monkeypatch):
 @pytest.mark.asyncio
 async def test_existing_section_text_s4_complete_and_plain_empty():
     from app.api.v1.endpoints.draft_chat import _existing_section_text
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
     persist = AsyncMock()
     persist.commit = AsyncMock()
@@ -728,7 +735,7 @@ async def test_existing_section_text_s4_complete_and_plain_empty():
 
     complete = {
         key: MagicMock(sub_key=key, ai_draft=f"เนื้อหา {key} อย่างน้อยยี่สิบตัวอักษร", content="")
-        for key in SCOPE_SUBSECTIONS
+        for key in _scope_keys()
     }
     with patch(
         "app.api.v1.endpoints.draft_chat._load_s4_rows",
@@ -858,7 +865,6 @@ async def test_draft_missing_section_errors_and_s4_complete():
         _draft_missing_s4,
         _draft_missing_section,
     )
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
     persist = _persist_with_section(None)
     job = _SeqDraft(
@@ -889,7 +895,7 @@ async def test_draft_missing_section_errors_and_s4_complete():
     save.assert_awaited()
 
     async def fill_s4(work, _existing):
-        for key in SCOPE_SUBSECTIONS:
+        for key in _scope_keys():
             work.collected[key] = f"เนื้อหา {key} อย่างน้อยยี่สิบตัวอักษร"
         if False:
             yield ""
@@ -1014,10 +1020,9 @@ async def test_iter_s4_replays_existing_then_drafts_rest():
     from contextlib import asynccontextmanager
 
     from app.api.v1.endpoints.draft_chat import _S4Work, _iter_s4_subsection_sse
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
     collected: dict[str, str] = {}
-    first = next(iter(SCOPE_SUBSECTIONS))
+    first = _scope_keys()[0]
 
     @asynccontextmanager
     async def passthrough_admit(*_args, **_kwargs):
@@ -1047,3 +1052,64 @@ async def test_iter_s4_replays_existing_then_drafts_rest():
     assert first in collected
     assert any("subsection_start" in event for event in events)
     assert collected[first].startswith("มีอยู่แล้ว")
+
+
+@pytest.mark.asyncio
+async def test_draft_event_bus_relays_section_start_and_done():
+    """Live /start observers should receive section frames from the background job."""
+    import asyncio
+
+    from app.api.v1.endpoints.draft_chat import (
+        _publish_draft_sse,
+        _relay_job_sse,
+        _sse,
+        _stream_attached_job_progress,
+        _subscribe_draft_events,
+        _unsubscribe_draft_events,
+    )
+
+    queue = _subscribe_draft_events(PROJECT_ID)
+
+    async def fake_tokens():
+        yield _sse("section_start", {"section_key": "s1", "title": "ความเป็นมา"})
+        yield _sse("token", {"section_key": "s1", "text": "กรม"})
+        yield _sse(
+            "section_done",
+            {
+                "section_key": "s1",
+                "title": "ความเป็นมา",
+                "content": "กรมบัญชีกลาง",
+                "drafted_count": 1,
+                "total": 13,
+            },
+        )
+
+    async def job_body():
+        await _relay_job_sse(PROJECT_ID, fake_tokens())
+        return 1
+
+    job = asyncio.create_task(job_body())
+
+    async def empty_emit(*_args, **_kwargs):
+        if False:
+            yield ""
+
+    with patch("app.api.v1.endpoints.draft_chat._emit_newly_done_sections", empty_emit):
+        events = [
+            event
+            async for event in _stream_attached_job_progress(
+                job,
+                lambda: _SessionCM(_persist_with_section(None)),
+                PROJECT_ID,
+                set(),
+                queue,
+            )
+        ]
+    _unsubscribe_draft_events(PROJECT_ID, queue)
+    assert any("event: section_start" in event for event in events)
+    assert any("event: token" in event for event in events)
+    assert any("event: section_done" in event for event in events)
+    assert any("event: all_done" in event for event in events)
+
+    # Publishing with no subscribers must not raise.
+    _publish_draft_sse(PROJECT_ID, _sse("token", {"section_key": "s2", "text": "x"}))

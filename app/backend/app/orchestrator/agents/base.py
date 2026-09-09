@@ -224,7 +224,14 @@ class BaseDraftingAgent(ABC):
             TimeoutError: If LLM invocation exceeds configured timeout.
             ConnectionError: If LLM provider is unreachable.
         """
-        system_prompt = self.get_system_prompt()
+        category = None
+        if isinstance(user_input, dict):
+            raw = user_input.get("project_type") or user_input.get("category")
+            category = raw if isinstance(raw, str) else None
+        try:
+            system_prompt = self.get_system_prompt(category=category)
+        except TypeError:
+            system_prompt = self.get_system_prompt()
         user_message = self.build_user_message(
             user_input=user_input,
             rag_chunks=rag_chunks or [],

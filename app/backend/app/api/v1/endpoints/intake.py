@@ -18,7 +18,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.constants import PROJECT_NOT_FOUND
 from app.deps import get_current_user, get_db
-from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS
+from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, empty_slot_keys, fact_required_slots
 from app.exceptions import NotFoundError, ValidationError
 from app.io_temp import unlink_path, write_temp_bytes
 from app.llm_admission import AdmissionTimeoutError, admit
@@ -63,6 +63,7 @@ from app.services.intake_service import (
     phase2_filled_ack,
     phase2_template_reply,
     ready_criteria_met,
+    reply_options_for_slot,
     slot_map_of,
 )
 
@@ -190,13 +191,18 @@ def _flag_analysis(project: Project) -> None:
 
 def _intake_pack(texts: Any) -> tuple[str, list[str]]:
     items = texts if isinstance(texts, list) else []
-    pack = "\n\n".join(
-        str(item.get("text") or "").strip()
-        for item in items
-        if isinstance(item, dict) and str(item.get("text") or "").strip()
-    )
-    filenames = [str(item.get("name")) for item in items if isinstance(item, dict)]
-    return pack, filenames
+    parts: list[str] = []
+    filenames: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        name = str(item.get("name") or "file")
+        filenames.append(name)
+        parts.append(f"===== ไฟล์: {name} =====\n{text}")
+    return "\n\n".join(parts), filenames
 
 
 def _gap_questions_for(slot_map: dict[str, Any]) -> list[str]:
@@ -207,29 +213,18 @@ def _gap_questions_for(slot_map: dict[str, Any]) -> list[str]:
     ]
 
 
-def _apply_analyze_result(project: Project, result: dict[str, Any]) -> dict[str, Any]:
-    analysis = merge_analysis(project.analysis_json or {}, result)
-    analysis["intake_files"] = analysis.get("intake_files") or (project.analysis_json or {}).get(
-        "intake_files", []
-    )
-    analysis["analyzed"] = True
-    analysis["standard_fill_keys"] = []
-    project.analysis_json = analysis
-    _flag_analysis(project)
-    project.current_phase = max(project.current_phase or 0, 1)
-    return analysis
-
-
 async def _persist_heuristic_slot_map(
     project: Project, db: AsyncSession, slot_map: dict[str, Any]
 ) -> None:
+    """Optional mid-analyze snapshot only — must NOT unlock Phase 1 before LLM finishes."""
     analysis = merge_analysis(
         project.analysis_json or {},
         {
             "slot_map": slot_map,
             "gap_questions": _gap_questions_for(slot_map),
             "ready_to_compose": False,
-            "analyzed": True,
+            "analyzed": False,
+            "analyze_in_progress": True,
         },
     )
     analysis["intake_files"] = analysis.get("intake_files") or (project.analysis_json or {}).get(
@@ -237,13 +232,31 @@ async def _persist_heuristic_slot_map(
     )
     project.analysis_json = analysis
     _flag_analysis(project)
-    project.current_phase = max(project.current_phase or 0, 1)
     await db.flush()
     await db.commit()
 
 
+def _apply_analyze_result(project: Project, result: dict[str, Any]) -> dict[str, Any]:
+    analysis = merge_analysis(project.analysis_json or {}, result)
+    analysis["intake_files"] = analysis.get("intake_files") or (project.analysis_json or {}).get(
+        "intake_files", []
+    )
+    analysis["analyzed"] = True
+    analysis["analyze_in_progress"] = False
+    analysis["standard_fill_keys"] = []
+    project.analysis_json = analysis
+    _flag_analysis(project)
+    project.current_phase = max(project.current_phase or 0, 1)
+    return analysis
+
+
 def _asking_key(value: Any) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _ptype(project: Project | None) -> str | None:
+    raw = getattr(project, "project_type", None) if project is not None else None
+    return raw if isinstance(raw, str) else None
 
 
 def _chat_done_payload(
@@ -254,16 +267,18 @@ def _chat_done_payload(
     asking_key: str | None,
     citations: list | None = None,
     extra: dict[str, Any] | None = None,
+    category: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "content": content,
         "citations": citations or [],
-        "coverage": coverage_table(slot_map),
+        "coverage": coverage_table(slot_map, category),
         "filled_slots": filled_keys,
         "current_slot": asking_key,
-        "next_question": build_slot_question(asking_key) if asking_key else None,
-        "all_fact_filled": not missing_fact_keys(slot_map),
-        "progress": coverage_progress(slot_map),
+        "next_question": build_slot_question(asking_key, category) if asking_key else None,
+        "reply_options": reply_options_for_slot(asking_key),
+        "all_fact_filled": not missing_fact_keys(slot_map, category),
+        "progress": coverage_progress(slot_map, category),
     }
     if extra:
         payload.update(extra)
@@ -475,6 +490,7 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
                     asking_key=asking,
                     citations=work.citations,
                     extra={"graph_degraded": work.degraded},
+                    category=_ptype(work.project),
                 ),
             )
         )
@@ -496,7 +512,8 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
                     filled_keys=work.filled_keys,
                     asking_key=work.asking_key,
                     citations=work.citations,
-                    extra={"fast_path": True},
+                    extra={"graph_degraded": work.degraded, "llm_timeout": True},
+                    category=_ptype(work.project),
                 ),
             )
         )
@@ -541,7 +558,7 @@ async def _iter_intake_chat_sse(
 ) -> AsyncIterator[str]:
     session_maker = request.app.state.db_session_factory
     asking_key = _asking_key(asking)
-    all_filled_now = not missing_fact_keys(slot_map)
+    all_filled_now = not missing_fact_keys(slot_map, _ptype(project))
 
     if ref_key:
         async for event in _stream_reference_fill(
@@ -679,7 +696,8 @@ async def intake_analyze(
         project,
         pack,
         filenames,
-        persist_heuristic=lambda slot_map: _persist_heuristic_slot_map(project, db, slot_map),
+        # Do not early-persist heuristics: that set analyzed=True and the UI
+        # advanced to Phase 1 before the LLM finished reading the documents.
     )
     analysis = _apply_analyze_result(project, result)
     await db.flush()
@@ -688,7 +706,7 @@ async def intake_analyze(
         {
             "slot_map": analysis["slot_map"],
             "gap_questions": analysis.get("gap_questions") or [],
-            "coverage": coverage_table(analysis["slot_map"]),
+            "coverage": coverage_table(analysis["slot_map"], _ptype(project)),
             "ready_to_compose": False,
             "analyzed": True,
             "phase": project.current_phase,
@@ -705,11 +723,11 @@ async def intake_coverage(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
-    slot_map = (project.analysis_json or {}).get("slot_map") or empty_slot_map()
+    slot_map = (project.analysis_json or {}).get("slot_map") or empty_slot_map(_ptype(project))
     return _ok(
         request,
         {
-            "coverage": coverage_table(slot_map),
+            "coverage": coverage_table(slot_map, _ptype(project)),
             "gap_questions": (project.analysis_json or {}).get("gap_questions") or [],
             "ready_to_compose": bool((project.analysis_json or {}).get("ready_to_compose")),
             "slot_map": slot_map,
@@ -728,15 +746,15 @@ async def intake_fill_reference(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
-    if body.slot_key not in INTAKE_SLOT_LABELS:
+    if body.slot_key not in empty_slot_keys(_ptype(project)):
         raise ValidationError(message="รหัสช่องไม่ถูกต้อง", field="slot_key")
     analysis = dict(project.analysis_json or {})
-    slot_map = dict(analysis.get("slot_map") or empty_slot_map())
+    slot_map = dict(analysis.get("slot_map") or empty_slot_map(_ptype(project)))
     existing = slot_map.get(body.slot_key)
     if (
         isinstance(existing, dict)
         and existing.get("status") == "filled"
-        and body.slot_key in FACT_REQUIRED_SLOTS
+        and body.slot_key in fact_required_slots(_ptype(project))
     ):
         return _ok(
             request,
@@ -746,7 +764,7 @@ async def intake_fill_reference(
                 "skipped": True,
                 "content": existing.get("content") or "",
                 "sources": existing.get("sources") or [],
-                "coverage": coverage_table(slot_map),
+                "coverage": coverage_table(slot_map, _ptype(project)),
             },
         )
     filled = await fill_reference_slot(body.slot_key, current_user.id)
@@ -763,7 +781,7 @@ async def intake_fill_reference(
             "skipped": action == "skipped",
             "content": current.get("content") or filled.get("content") or "",
             "sources": current.get("sources") or filled.get("sources") or [],
-            "coverage": coverage_table(slot_map),
+            "coverage": coverage_table(slot_map, _ptype(project)),
         },
     )
 
@@ -778,8 +796,8 @@ async def intake_confirm_ready(
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
     analysis = dict(project.analysis_json or {})
-    slot_map = analysis.get("slot_map") or empty_slot_map()
-    if not ready_criteria_met(slot_map):
+    slot_map = analysis.get("slot_map") or empty_slot_map(_ptype(project))
+    if not ready_criteria_met(slot_map, _ptype(project)):
         raise ValidationError(
             message="ยังมีช่องข้อเท็จจริงที่บังคับว่าง — ตอบในแชทหรืออัปโหลดเอกสารเพิ่ม",
             field="ready_to_compose",
@@ -808,7 +826,7 @@ async def intake_open_qa(
     analysis = dict(project.analysis_json or {})
     slot_map = slot_map_of(project)
     brief = build_phase2_opening(slot_map, list(analysis.get("gap_questions") or []))
-    asking = next_asking_slot(slot_map)
+    asking = next_asking_slot(slot_map, category=_ptype(project))
     analysis["current_asking_slot"] = asking
     if not analysis.get("phase2_briefed"):
         db.add(
@@ -835,14 +853,19 @@ async def intake_open_qa(
         analysis["phase2_followup_slot"] = asking
         project.analysis_json = analysis
         await db.commit()
+    asking_out = analysis.get("current_asking_slot") or asking
+    asking_key = asking_out if isinstance(asking_out, str) else None
     return _ok(
         request,
         {
             "brief": brief,
             "room_id": str(room.id),
-            "coverage": coverage_table(slot_map),
-            "current_slot": analysis.get("current_asking_slot") or asking,
-            "next_question": build_slot_question(asking) if asking else None,
+            "coverage": coverage_table(slot_map, _ptype(project)),
+            "current_slot": asking_key,
+            "next_question": build_slot_question(asking_key, _ptype(project)) if asking_key else None,
+            "reply_options": reply_options_for_slot(asking_key),
+            "all_fact_filled": not missing_fact_keys(slot_map, _ptype(project)),
+            "progress": coverage_progress(slot_map, _ptype(project)),
         },
     )
 
@@ -886,10 +909,12 @@ async def intake_qa_next(
     """Return the next slot question for sequential Phase 2 Q&A."""
     project = await _project(db, project_id, current_user)
     analysis = dict(project.analysis_json or {})
-    slot_map = analysis.get("slot_map") or empty_slot_map()
+    slot_map = analysis.get("slot_map") or empty_slot_map(_ptype(project))
     current = analysis.get("current_asking_slot")
-    asking = next_asking_slot(slot_map, current if isinstance(current, str) else None)
-    all_filled = not missing_fact_keys(slot_map)
+    asking = next_asking_slot(
+        slot_map, current if isinstance(current, str) else None, _ptype(project)
+    )
+    all_filled = not missing_fact_keys(slot_map, _ptype(project))
     if asking != current:
         analysis["current_asking_slot"] = asking
         project.analysis_json = analysis
@@ -898,12 +923,12 @@ async def intake_qa_next(
         request,
         {
             "current_slot": asking,
-            "question": build_slot_question(asking) if asking else None,
+            "question": build_slot_question(asking, _ptype(project)) if asking else None,
             "slot_label": INTAKE_SLOT_LABELS.get(asking or "", ""),
-            "coverage": coverage_table(slot_map),
+            "coverage": coverage_table(slot_map, _ptype(project)),
             "all_fact_filled": all_filled,
-            "missing_count": len(missing_fact_keys(slot_map)),
-            "total_fact_slots": len(FACT_REQUIRED_SLOTS),
+            "missing_count": len(missing_fact_keys(slot_map, _ptype(project))),
+            "total_fact_slots": len(fact_required_slots(_ptype(project))),
         },
     )
 
@@ -926,7 +951,7 @@ async def intake_fill_references(
         request,
         {
             "filled_keys": filled["filled_keys"],
-            "coverage": coverage_table(filled["slot_map"]),
+            "coverage": coverage_table(filled["slot_map"], _ptype(project)),
         },
     )
 
@@ -982,21 +1007,31 @@ async def intake_chat(
     db.add(ChatMessage(room_id=room.id, role="user", content=body.content, citations=[]))
     await db.flush()
     analysis = dict(project.analysis_json or {})
-    slot_map = analysis.get("slot_map") or empty_slot_map()
+    slot_map = analysis.get("slot_map") or empty_slot_map(_ptype(project))
     asking = next_asking_slot(
         slot_map,
         analysis.get("current_asking_slot")
         if isinstance(analysis.get("current_asking_slot"), str)
         else None,
+        _ptype(project),
     )
     filled_keys: list[str] = []
     ref_key = parse_fill_reference_request(body.content)
     if not ref_key:
-        filled_keys = apply_chat_answer_to_slots(slot_map, body.content)
-        asking = next_asking_slot(slot_map)
+        filled_keys = apply_chat_answer_to_slots(
+            slot_map,
+            body.content,
+            current_slot=asking if isinstance(asking, str) else None,
+            category=_ptype(project),
+        )
+        asking = next_asking_slot(slot_map, category=_ptype(project))
     analysis["slot_map"] = slot_map
     analysis["current_asking_slot"] = asking
     project.analysis_json = analysis
+    try:
+        flag_modified(project, "analysis_json")
+    except AttributeError:
+        pass
     # Commit before SSE so slot fills + user message survive if the stream ends early.
     await db.commit()
     request_id = (

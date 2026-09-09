@@ -286,8 +286,10 @@ class TestDOCXContent:
         docx_bytes = self.generator.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
 
+        from app.domain.section_profile import export_main_plan
+
         full_text = "\n".join(p.text for p in doc.paragraphs)
-        for label in TOR_SECTION_LABELS.values():
+        for _key, label in export_main_plan(content.project_type):
             assert label in full_text, f"Section '{label}' not found in document"
 
     def test_section_content_rendered(self):
@@ -432,6 +434,6 @@ class TestDOCXSectionOrder:
         # Check that section 1 appears before section 2, etc.
         pos_s1 = full_text.find("ความเป็นมา")
         pos_s2 = full_text.find("วัตถุประสงค์")
-        pos_s3 = full_text.find("คุณสมบัติของผู้เสนอราคา")
+        pos_s3 = full_text.find("คุณสมบัติของผู้ยื่นข้อเสนอ")
 
         assert pos_s1 < pos_s2 < pos_s3

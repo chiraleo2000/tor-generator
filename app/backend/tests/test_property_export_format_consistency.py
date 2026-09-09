@@ -22,8 +22,8 @@ from docx import Document
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from app.domain.section_profile import export_main_plan
 from app.export.docx_generator import (
-    TOR_SECTION_LABELS,
     TOR_SECTION_ORDER,
     DOCXGenerator,
     TORContent,
@@ -163,7 +163,21 @@ def _tor_content_strategy(draw):
     project_name = draw(_project_name_strategy)
     ministry = draw(_ministry_strategy)
     budget = draw(st.integers(min_value=100_000, max_value=10_000_000_000))
-    project_type = draw(st.sampled_from(["it", "construction", "consulting", "general"]))
+    project_type = draw(
+        st.sampled_from(
+            [
+                "hire_develop",
+                "hire_maintain",
+                "lease_service",
+                "buy_goods",
+                "construction",
+                "hire_consult",
+                "hire_service",
+                "it",
+                "general",
+            ]
+        )
+    )
     use_thai_numerals = draw(st.booleans())
 
     # Randomly fill some sections (at least 1, up to all 13)
@@ -242,12 +256,13 @@ class TestExportFormatConsistency:
         html = pdf_gen._build_html(content)
         html_texts = _extract_text_from_html(html)
 
-        # All 13 section headings should be present in both outputs
+        # Profile headings should be present in both outputs with consecutive numbers.
         from app.export.thai_formatting import format_section_number
 
-        for idx, section_key in enumerate(TOR_SECTION_ORDER, start=1):
+        for idx, (_section_key, label) in enumerate(
+            export_main_plan(content.project_type), start=1
+        ):
             num_str = format_section_number(idx, content.use_thai_numerals)
-            label = TOR_SECTION_LABELS[section_key]
             heading_text = f"{num_str}. {label}"
 
             assert heading_text in docx_texts, (
@@ -302,7 +317,10 @@ class TestExportFormatConsistency:
         html_texts = _extract_text_from_html(html)
 
         # Every non-empty paragraph in sections should be in both
+        plan_keys = {key for key, _label in export_main_plan(content.project_type)}
         for section_key, section_text in content.sections.items():
+            if section_key not in plan_keys:
+                continue
             if content.sub_sections.get(section_key):
                 continue
             paragraphs = section_text.strip().split("\n")
@@ -433,12 +451,12 @@ class TestExportFormatConsistency:
             ):
                 docx_headings.append(text)
 
-        # Both should have exactly 13 section headings in the same order
-        assert len(html_headings) == 13, (
-            f"Expected 13 section headings in HTML, got {len(html_headings)}"
+        expected = len(export_main_plan(content.project_type))
+        assert len(html_headings) == expected, (
+            f"Expected {expected} section headings in HTML, got {len(html_headings)}"
         )
-        assert len(docx_headings) == 13, (
-            f"Expected 13 section headings in DOCX, got {len(docx_headings)}"
+        assert len(docx_headings) == expected, (
+            f"Expected {expected} section headings in DOCX, got {len(docx_headings)}"
         )
         assert html_headings == docx_headings, (
             f"Section heading order differs:\n"

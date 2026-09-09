@@ -27,7 +27,8 @@ from typing import Any
 HOST = os.environ.get("QUICK_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("QUICK_MCP_PORT", "8767"))
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_VERSION = "0.4.0"
+SERVER_VERSION = "0.5.0"
+MCP_TOOLS_CALL = "tools/call"
 _JSON = "application/json"
 _HEALTH_PATH = "/health"
 _MCP_PATHS = {"/", "/mcp"}
@@ -37,9 +38,9 @@ _HEALTH_PATHS = {"/", _HEALTH_PATH}
 RETRIEVE_TOOL: dict[str, Any] = {
     "name": "retrieve",
     "description": (
-        "Search Thai public-procurement knowledge for TOR drafting from the "
-        "project pgvector corpus (documents/sources). "
-        "Pass a natural-language query. Returns grounded snippets."
+        "Search Thai public-procurement knowledge for TOR drafting. "
+        "Optional rag_group selects which RAG corpus on the shared S3 bucket "
+        "(call list_rag_groups first). Returns grounded snippets."
     ),
     "inputSchema": {
         "type": "object",
@@ -51,6 +52,10 @@ RETRIEVE_TOOL: dict[str, Any] = {
             "top_k": {
                 "type": "integer",
                 "description": "Hint for how many snippets to prefer. Optional.",
+            },
+            "rag_group": {
+                "type": "string",
+                "description": "RAG group id (e.g. procurement-th). Optional.",
             },
         },
         "required": ["query"],
@@ -80,7 +85,20 @@ HEALTH_TOOL: dict[str, Any] = {
     },
 }
 
-TOOLS = [RETRIEVE_TOOL, PING_TOOL, HEALTH_TOOL]
+LIST_RAG_GROUPS_TOOL: dict[str, Any] = {
+    "name": "list_rag_groups",
+    "description": (
+        "List RAG groups available on the shared S3 bucket. "
+        "Pass an id to retrieve as rag_group."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    },
+}
+
+TOOLS = [RETRIEVE_TOOL, LIST_RAG_GROUPS_TOOL, PING_TOOL, HEALTH_TOOL]
 
 
 def rag_mcp_url() -> str:
@@ -160,7 +178,9 @@ def _chunks_from_mcp_result(body: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def fetch_rag_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
+def fetch_rag_chunks(
+    query: str, top_k: int = 5, rag_group: str | None = None
+) -> list[dict[str, Any]]:
     """Proxy retrieve to project mcp-rag (pgvector). Empty URL → stub chunk."""
     url = rag_mcp_url()
     if not url:
@@ -170,20 +190,23 @@ def fetch_rag_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
     except (TypeError, ValueError):
         k = 5
     k = max(1, min(k, 20))
+    arguments: dict[str, Any] = {
+        "query": query,
+        "top_k": k,
+        "search_scope": "both",
+    }
+    if rag_group and str(rag_group).strip():
+        arguments["rag_group"] = str(rag_group).strip()
     try:
         body = _http_json(
             url,
             {
                 "jsonrpc": "2.0",
                 "id": 1,
-                "method": "tools/call",
+                "method": MCP_TOOLS_CALL,
                 "params": {
                     "name": "retrieve",
-                    "arguments": {
-                        "query": query,
-                        "top_k": k,
-                        "search_scope": "both",
-                    },
+                    "arguments": arguments,
                 },
             },
             timeout=50.0,
@@ -220,9 +243,59 @@ def fetch_rag_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
     ]
 
 
-def retrieve_payload(query: str, top_k: int = 5) -> dict[str, Any]:
+def fetch_list_rag_groups() -> dict[str, Any]:
+    """Proxy list_rag_groups to mcp-rag when configured."""
+    url = rag_mcp_url()
+    if not url:
+        return {
+            "default_group": "procurement-th",
+            "bucket": "",
+            "groups": [
+                {
+                    "id": "procurement-th",
+                    "name": "จัดซื้อจัดจ้าง (คลังหลัก)",
+                    "description": "stub offline",
+                    "vector_index": "procurement-th-embed4-v1",
+                    "prefix": "rags/procurement-th/",
+                }
+            ],
+            "mode": "stub",
+        }
+    try:
+        body = _http_json(
+            url,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": MCP_TOOLS_CALL,
+                "params": {"name": "list_rag_groups", "arguments": {}},
+            },
+            timeout=20.0,
+        )
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"error": str(exc), "groups": [], "mode": "error"}
+    if body.get("error"):
+        return {"error": body["error"], "groups": [], "mode": "error"}
+    chunks_text = ""
+    result = body.get("result") or {}
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list) and content:
+        chunks_text = str((content[0] or {}).get("text") or "")
+    try:
+        parsed = json.loads(chunks_text) if chunks_text else {}
+    except json.JSONDecodeError:
+        parsed = {"raw": chunks_text}
+    if isinstance(parsed, dict):
+        parsed.setdefault("mode", "live")
+        return parsed
+    return {"groups": [], "mode": "live", "raw": chunks_text}
+
+
+def retrieve_payload(
+    query: str, top_k: int = 5, rag_group: str | None = None
+) -> dict[str, Any]:
     """Flat OpenAPI object (no arrays): best snippet from real RAG or stub."""
-    chunks = fetch_rag_chunks(query, top_k=top_k)
+    chunks = fetch_rag_chunks(query, top_k=top_k, rag_group=rag_group)
     first = chunks[0]
     meta = first.get("metadata") if isinstance(first.get("metadata"), dict) else {}
     rag_source = str(meta.get("rag_source") or "mcp")
@@ -231,6 +304,7 @@ def retrieve_payload(query: str, top_k: int = 5) -> dict[str, Any]:
         "score": float(first.get("score") or 0.0),
         "source_document": str(first.get("source_document") or ""),
         "rag_source": rag_source,
+        "rag_group": str(rag_group or meta.get("rag_group") or ""),
     }
 
 
@@ -293,14 +367,25 @@ def _call_tool(req_id: Any, name: str, args: dict[str, Any]) -> dict[str, Any]:
             "rag": rag_backend_status(),
         }
         return _text_result(req_id, json.dumps(status, ensure_ascii=False))
+    if name == "list_rag_groups":
+        return _text_result(
+            req_id, json.dumps(fetch_list_rag_groups(), ensure_ascii=False)
+        )
     if name != "retrieve":
         return _rpc_error(req_id, -32601, "unknown tool")
     try:
         top_k = int(args.get("top_k") or 5)
     except (TypeError, ValueError):
         top_k = 5
-    chunks = fetch_rag_chunks(str(args.get("query") or ""), top_k=top_k)
-    body = {"chunks": chunks, "mode": "live" if rag_mcp_url() else "stub"}
+    rag_group = str(args.get("rag_group") or "").strip() or None
+    chunks = fetch_rag_chunks(
+        str(args.get("query") or ""), top_k=top_k, rag_group=rag_group
+    )
+    body = {
+        "chunks": chunks,
+        "mode": "live" if rag_mcp_url() else "stub",
+        "rag_group": rag_group or "",
+    }
     return _text_result(req_id, json.dumps(body, ensure_ascii=False))
 
 
@@ -313,7 +398,7 @@ def dispatch_rpc(payload: dict[str, Any]) -> tuple[int, dict[str, Any] | None]:
         return 200, _initialize_result(req_id)
     if method == "tools/list":
         return 200, _tools_list_result(req_id)
-    if method != "tools/call":
+    if method != MCP_TOOLS_CALL:
         return 200, _rpc_error(req_id, -32601, "method not found")
     params = payload.get("params") or {}
     args = params.get("arguments") or {}
@@ -365,7 +450,13 @@ class Handler(_RequestHandler):
 
     def _handle_retrieve(self, payload: Any) -> None:
         query = str(payload.get("query") or "") if isinstance(payload, dict) else ""
-        self._send(200, retrieve_payload(query, top_k=_parse_top_k(payload)))
+        rag_group = None
+        if isinstance(payload, dict):
+            rag_group = str(payload.get("rag_group") or "").strip() or None
+        self._send(
+            200,
+            retrieve_payload(query, top_k=_parse_top_k(payload), rag_group=rag_group),
+        )
 
     def _handle_rpc(self, payload: Any) -> None:
         if not isinstance(payload, dict):

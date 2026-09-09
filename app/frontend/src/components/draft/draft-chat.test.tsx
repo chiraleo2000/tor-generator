@@ -87,7 +87,7 @@ describe("DraftChat", () => {
     await waitFor(() => expect(streamSsePost).toHaveBeenCalled());
     expect(sseCallUrl(vi.mocked(streamSsePost).mock.calls[0])).toContain("/draft-chat/start");
     expect(await screen.findByTestId("draft-accept-s1")).toBeInTheDocument();
-    expect(screen.getByText(/กำลังเริ่มร่างทั้ง ๑๓ หมวด/)).toBeInTheDocument();
+    expect(screen.getByText(/กำลังเริ่มร่างตามประเภทงาน/)).toBeInTheDocument();
     await waitFor(() => expect(onAllDrafted).toHaveBeenCalled());
     expect(onSectionDone).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("draft-edit-s1"));

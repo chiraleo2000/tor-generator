@@ -7,7 +7,11 @@ from typing import Any
 from uuid import UUID
 
 from app.config import get_settings
-from app.domain.tor_sections import MANDATORY_HUMAN_REVIEW_SECTIONS, TOR_SECTION_ORDER
+from app.domain.tor_sections import (
+    EXTRA_SECTION_ORDER,
+    MANDATORY_HUMAN_REVIEW_SECTIONS,
+    TOR_SECTION_ORDER,
+)
 from app.orchestrator.agent_state import AgentWorkflowState
 from app.services.agent_intake_service import IntakeIngestionService
 from app.services.coverage import build_coverage_map, compute_readiness_score, compute_ready
@@ -213,7 +217,7 @@ async def validate_draft_node(state: AgentWorkflowState) -> dict[str, Any]:
     need_retry = False
     for item in errors:
         section = item.get("affected_section") or ""
-        if section not in TOR_SECTION_ORDER:
+        if section not in TOR_SECTION_ORDER and section not in EXTRA_SECTION_ORDER:
             continue
         used = int(attempts.get(section) or 0)
         if used >= MAX_CORRECTIONS:

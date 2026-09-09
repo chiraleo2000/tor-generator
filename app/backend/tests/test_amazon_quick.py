@@ -73,7 +73,7 @@ def test_amazon_quick_tools_are_draft7_and_under_limit() -> None:
     tools = body["result"]["tools"]
     assert 1 <= len(tools) <= 100
     names = {tool["name"] for tool in tools}
-    assert names == {"retrieve", "ping", "get_health"}
+    assert names == {"retrieve", "list_rag_groups", "ping", "get_health"}
     for tool in tools:
         assert _required_is_array(tool)
         assert quick.required_is_draft7(tool)

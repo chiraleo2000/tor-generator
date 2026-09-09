@@ -19,7 +19,7 @@ Axios `apiClient` uses `withCredentials: true` so the HttpOnly cookie `tor_acces
 | Admin | `/admin/templates`, `/admin/knowledge-base`, `/admin/users`, `/admin/ai-settings` | Admin layout redirects non-admins |
 
 - Officers browse `/knowledge-base`: shared groups (`mandatory_handbook`, `mandatory_raw`) plus **เอกสารของฉัน**. Upload goes to `POST /knowledge-base/mine` (owner-only RAG). Admins still push shared files via `/knowledge-base/upload` and `/admin/knowledge-base`.
-- Main nav: แดชบอร์ด, ฐานความรู้, ร่าง TOR, ตรวจสอบ TOR, **ถาม-ตอบ** (`/chat`), คู่มือ. Admin cluster is below. Creating a project opens a form (name, agency, budget, type) then `/projects/{id}/draft`. Reviewer/admin see **อนุมัติ** / **ส่งกลับ** on `in_review` rows (`decideProject` → `POST /projects/{id}/approve|reject`). Officers cannot edit while a project is in review. Phase 3 submit is disabled until 13 sections are filled **and** HITL sections are confirmed.
+- Main nav: แดชบอร์ด, ฐานความรู้, ร่าง TOR, ตรวจสอบ TOR, **ถาม-ตอบ** (`/chat`), คู่มือ. Admin cluster is below. Creating a project opens a form (name, agency, budget, type) then `/projects/{id}/draft`. Reviewer/admin see **อนุมัติ** / **ส่งกลับ** on `in_review` rows (`decideProject` → `POST /projects/{id}/approve|reject`). Officers cannot edit while a project is in review. Phase 3 submit is disabled until every section in the project's Section_Profile is filled.
 
 ## Client state (Zustand)
 
@@ -79,7 +79,7 @@ docker compose -p tor-app --env-file .env up -d --build frontend
 
 Problems that name `frontend/...` or `backend/...` at the repo root are stale. Those folders are not on disk. Live sources are `app/frontend` and `app/backend`. Close leftover tabs, then **Developer: Reload Window**. SonarLint excludes only `frontend/**` and `backend/**` at the repo root — not `**/frontend/**`, which would skip this app tree. The root `tsconfig.json` lists `.vscode/tsconfig-placeholder.ts` so TypeScript does not raise TS18002 (`files` empty) and does not infer a project over leftover root paths.
 
-Last headed live run (**7 ก.ย. 2026**): Python Playwright `serial_three_tools.py` **3 ผ่าน** / 0 ล้ม (chat → draft **13/13** → review) on Docker `:3000` + LM Studio + `mcp-rag`. Pytest coverage **1991 ผ่าน**, lines **94%**. Vitest **306 ผ่าน**, lines **96.4%**. `pytest -m live_llm` **17 ผ่าน** (รอบเดียว). Screenshots: `discussions/18-TEST_EVIDENCE.md`.
+Last headed live run (**7 ก.ย. 2026 บ่าย**): Python Playwright `serial_three_tools.py` **3 ผ่าน** / 0 ล้ม (chat → draft **13/13** → review) on Docker `:3000` + LM Studio + `mcp-rag`. รอบ **9 ก.ย. 2026**: pytest unit **2046** · Vitest **309** · `pytest -m live_llm` **17 ผ่าน** (ECT ร่างตามโปรไฟล์ 15 หมวด) หลัง rebuild frontend+backend. Screenshots: `discussions/18-TEST_EVIDENCE.md`.
 
 `e2e/reports.spec.ts` and `e2e/guide-shots.spec.ts` stay out of `npm run test:e2e` unless `CAPTURE_REPORTS=1` / `CAPTURE_GUIDE=1`.
 

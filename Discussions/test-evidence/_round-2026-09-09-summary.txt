@@ -1,0 +1,26 @@
+Round 2026-09-09 — Section_Profile Docker deploy + live_llm
+
+Stack: docker compose -p tor-app --env-file .env --profile amazon-quick
+Rebuild: frontend + backend (Next.js build needed optional param on scopeSubsectionsFor)
+Seed: docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
+LM Studio :1234 — google/gemma-4-e4b + text-embedding-embeddinggemma-300m
+
+Unit (host, earlier same day):
+  pytest -m "not live_llm and not integration"  2046 passed / 25 deselected
+  vitest run  309 passed / 50 files
+
+live_llm (host -> API :4000 + LM Studio :1234):
+  17 passed, 2055 deselected in 3284.11s (0:54:44)
+  log: _round-2026-09-09-live-llm.txt
+
+ECT hire_develop:
+  analyze 13/25 then fill-references
+  standalone source review 79
+  draft 15 profile mains (s1-s13 + s15/s16/s17; s4 last)
+  assembled TOR review 78
+  Jaccard 0.7744
+
+Health after run:
+  http://localhost:3000  200
+  http://localhost:4000/health  healthy
+  http://localhost:8767/health  rag.reachable=true

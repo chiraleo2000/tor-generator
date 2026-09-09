@@ -31,8 +31,8 @@ class Project(Base):
     ministry: Mapped[str] = mapped_column(String(255), nullable=False)
     budget: Mapped[int] = mapped_column(BigInteger, nullable=False)
     project_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="general"
-    )  # it|construction|consulting|general
+        String(50), nullable=False, default="buy_goods"
+    )  # hire_develop|hire_maintain|lease_service|buy_goods|construction|hire_consult|hire_service
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="draft"
     )  # draft|in_review|approved|rejected|archived

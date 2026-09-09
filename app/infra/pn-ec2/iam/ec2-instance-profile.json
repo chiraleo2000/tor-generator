@@ -1,0 +1,59 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockInvokeEmbedAndChat",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:Converse",
+        "bedrock:ConverseStream"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3KnowledgeBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:AbortMultipartUpload",
+        "s3:ListBucketMultipartUploads"
+      ],
+      "Resource": [
+        "arn:aws:s3:::changeme-pn-tor-kb",
+        "arn:aws:s3:::changeme-pn-tor-kb/*"
+      ]
+    },
+    {
+      "Sid": "S3VectorsPN",
+      "Effect": "Allow",
+      "Action": [
+        "s3vectors:QueryVectors",
+        "s3vectors:GetVectors",
+        "s3vectors:PutVectors",
+        "s3vectors:DeleteVectors",
+        "s3vectors:ListIndexes",
+        "s3vectors:GetIndex",
+        "s3vectors:CreateIndex",
+        "s3vectors:ListVectorBuckets",
+        "s3vectors:GetVectorBucket"
+      ],
+      "Resource": [
+        "*",
+        "arn:aws:s3vectors:ap-southeast-1:*:bucket/changeme-pn-tor-vectors",
+        "arn:aws:s3vectors:ap-southeast-1:*:bucket/changeme-pn-tor-vectors/*"
+      ]
+    },
+    {
+      "Sid": "OptionalSecretsRead",
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue"],
+      "Resource": "arn:aws:secretsmanager:ap-southeast-1:*:secret:pn/tor/*"
+    }
+  ]
+}

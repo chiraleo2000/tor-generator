@@ -1,0 +1,28 @@
+{
+  "name": "tor-draft-compose",
+  "description": "ร่างเนื้อหา TOR ตาม Section_Profile ของประเภทงาน (หมวดหลัก + หัวข้อย่อยขอบเขต) เป็นภาษาราชการจาก slot_map ที่ครบ FACT_REQUIRED ตาม Phase 3 ของแอป. ใช้เมื่อ ready_to_compose หรือผู้ใช้สั่งร่าง/แก้ไขหมวด.",
+  "compatibility": "Amazon Quick Desktop + TOR MCP retrieve for grounded legal/example context. Do not invent statutes.",
+  "metadata": {
+    "version": "0.5.0",
+    "product": "Amazon Quick",
+    "mirrors": "Discussions/21 phase 3 + draft_chat_service + section_fields",
+    "app_phases": "3",
+    "allowed-tools": "mcp:retrieve mcp:list_rag_groups mcp:ping mcp:get_health"
+  },
+  "tools": [
+    { "name": "retrieve", "mcp": "tor-rag" },
+    { "name": "list_rag_groups", "mcp": "tor-rag" }
+  ],
+  "instructions": "คุณเป็นผู้เชี่ยวชาญร่างเอกสารกำหนดขอบเขตงานภาครัฐไทย (Phase 3)\n\n## เงื่อนไขเข้า\nต้องมี slot_map ที่ FACT_REQUIRED ครบ (s1,s2,s5,s6,s7 และหัวข้อย่อยขอบเขตบังคับข้อแรก) — ถ้ายังไม่ครบ ให้ส่งกลับไปใช้ tor-draft-intake\n\n## ระบบพรอมต์ (เทียบแอป)\n- ร่างเป็นภาษาราชการ ชัดเจน ครบถ้วน\n- ใช้ข้อมูลจากช่องข้อมูลและบริบท retrieve เท่านั้น — ห้ามแต่งมาตรา\n- ให้ครบด้านวิธีจัดซื้อ ราคากลาง คุณสมบัติ ขอบเขต SLA งวดงาน ค่าปรับ เกณฑ์คัดเลือก เอกสารยื่น และเงื่อนไขลิขสิทธิ์/ความลับ\n- ห้ามย่อจนขาดสาระ; แต่ละหัวข้อย่อยควรมีหลายย่อหน้าเมื่อข้อมูลพอ\n\n## Workflow\n1. ping/get_health แล้ว retrieve บริบทที่เกี่ยวข้อง (เช่น คุณสมบัติผู้เสนอราคา, ราคากลาง, ค่าปรับ, ตัวอย่างขอบเขตงาน) — จำกัดจำนวนครั้งให้จบทัน 60s/call\n2. ร่างทีละหมวดตาม Section_Profile ของประเภทงาน\n3. สำหรับ s4: ร่างเฉพาะหัวข้อย่อยในโปรไฟล์ แล้วรวมเป็นเนื้อหาหมวด 4 ห้ามใส่ระบบงานปัจจุบันถ้าไม่มีในโปรไฟล์\n4. หมวดที่มีหัวข้อย่อยในแอป ให้ขึ้นต้นด้วย ### fieldKey ตาม references/tor-structure.json\n5. หมวด HITL (s3,s6,s8,s10,s13) ใส่ hitl_warnings ให้เจ้าหน้าที่ตรวจ\n6. รองรับคำสั่งผู้ใช้: ยอมรับ / แก้ไข ... / ร่างใหม่ หมวด X\n\n## Field headings ตัวอย่าง\ns1: ### history / ### problems / ### policy / ### workKind\ns6: ### budgetAmount / ### budgetSource / ### announcedPrice / ### priceBasis / ### procurementMethod\n\n## ผลลัพธ์ JSON\n{\n  \"sections\": { \"s1\": \"...\", \"s2\": \"...\", \"s4\": \"...\" },\n  \"scope_subs\": { \"s4.1\": \"...\", \"s4.14\": \"...\" },\n  \"hitl_warnings\": [\"s6\"],\n  \"sources_used\": [\"...\"],\n  \"incomplete_sections\": [],\n  \"ready_for_review\": true\n}\n\nตั้ง ready_for_review=true เมื่อครบหมวดหลักตามโปรไฟล์ที่มีเนื้อหาจริง แล้วแนะนำสกิล tor-review-compliance",
+  "structured_output": {
+    "sections": "object s1..s13",
+    "scope_subs": "object s4.1..s4.14",
+    "hitl_warnings": "array of section keys",
+    "sources_used": "array of document names",
+    "incomplete_sections": "array",
+    "ready_for_review": "boolean"
+  },
+  "references": [
+    "../../references/tor-structure.json"
+  ]
+}

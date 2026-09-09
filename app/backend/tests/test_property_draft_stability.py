@@ -17,6 +17,7 @@ from hypothesis import strategies as st
 
 from app.api.v1.endpoints.projects import missing_submit_sections, officer_can_submit
 from app.deps import get_current_user, get_db
+from app.domain.section_profile import profile_for_project
 from app.domain.slots import FACT_REQUIRED_SLOTS
 from app.domain.tor_sections import TOR_SECTION_ORDER
 from app.draft_job_store import bump_progress, clear_memory, get_job, mark_status, set_job
@@ -77,17 +78,24 @@ def test_property_8_job_status_readable_across_instances(
     asyncio.run(body())
 
 
+_REQUIRED_SUBMIT_KEYS = [
+    item.storage_key
+    for item in profile_for_project("buy_goods").main_sections
+    if item.required
+]
+
+
 @pytest.mark.property
 @settings(max_examples=100, deadline=None)
 @given(
-    flags=st.lists(st.booleans(), min_size=13, max_size=13),
+    flags=st.lists(st.booleans(), min_size=len(_REQUIRED_SUBMIT_KEYS), max_size=len(_REQUIRED_SUBMIT_KEYS)),
     status=st.sampled_from(["draft", "rejected", "in_review", "approved", "archived"]),
 )
 def test_property_9_submit_rejected_iff_incomplete_or_bad_status(
     flags: list[bool], status: str
 ):
     """Feature: local-llm-verification-aws-migration-plan, Property 9: submit ถูกปฏิเสธก็ต่อเมื่อไม่ครบหรือสถานะผิด"""
-    rows = [_row(key, filled) for key, filled in zip(TOR_SECTION_ORDER, flags, strict=True)]
+    rows = [_row(key, filled) for key, filled in zip(_REQUIRED_SUBMIT_KEYS, flags, strict=True)]
     missing = missing_submit_sections(rows)
     allowed = officer_can_submit(status, 4, True)
     rejected = bool(missing) or not allowed
@@ -188,7 +196,7 @@ def test_property_11_sse_contract_compatible(monkeypatch):
         async def __aexit__(self, *_args):
             return False
 
-    monkeypatch.setattr(app.state, "db_session_factory", lambda: _SessionCM(persist))
+    monkeypatch.setattr(app.state, "db_session_factory", lambda: _SessionCM(persist), raising=False)
 
     async def existing(*_args, **_kwargs):
         return "ร่างที่มีอยู่แล้วอย่างน้อยยี่สิบตัวอักษร"

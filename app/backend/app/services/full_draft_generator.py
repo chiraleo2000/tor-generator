@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.config import get_settings
+from app.domain.section_profile import section_order
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS
 from app.domain.tor_sections import TOR_SECTION_ORDER
 from app.llm_tokens import DRAFT_MAX_TOKENS
@@ -68,11 +69,21 @@ def slot_user_input(slot_map: dict[str, Any], section_key: str) -> dict[str, Any
         payload["content"] = str(slot.get("content") or "")
         payload["sources"] = slot.get("sources") or []
     if section_key == "s4":
+        from app.domain.section_profile import profile_for_project
+
+        ptype = None
+        if isinstance(slot_map, dict):
+            raw = slot_map.get("_project_type") or slot_map.get("project_type")
+            ptype = raw if isinstance(raw, str) else None
+        keys = profile_for_project(ptype).scope_storage_keys()
         subs = {
             key: str((slot_map.get(key) or {}).get("content") or "")
-            for key in slot_map
-            if str(key).startswith("s4.")
+            for key in keys
+            if isinstance(slot_map.get(key), dict)
         }
+        for key, value in slot_map.items():
+            if str(key).startswith("s4.") and isinstance(value, dict):
+                subs[str(key)] = str(value.get("content") or "")
         payload["scope_subsections"] = subs
     return payload
 
@@ -150,10 +161,12 @@ class FullDraftGenerator:
         _warn_missing_facts(slot_map, result)
         deadline = time.monotonic() + TOTAL_TIMEOUT
         meta = project_metadata or {}
-        for section_key in TOR_SECTION_ORDER:
+        ptype = meta.get("project_type") if isinstance(meta.get("project_type"), str) else None
+        order = section_order(ptype) or list(TOR_SECTION_ORDER)
+        for section_key in order:
             if time.monotonic() >= deadline:
                 result.sections_pending.extend(
-                    key for key in TOR_SECTION_ORDER if key not in result.section_drafts
+                    key for key in order if key not in result.section_drafts
                 )
                 result.warnings.append("หมดเวลาสร้างร่าง TOR ทั้งฉบับ คืนเฉพาะส่วนที่เสร็จแล้ว")
                 break

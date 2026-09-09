@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { MappingBox } from "@/components/brand/mapping-box";
+import { scopeSubsectionsFor } from "@/lib/tor-profiles";
 import {
-  SCOPE_SUBSECTIONS,
   SECTION_FIELDS,
   isSectionFilled,
   parseSectionDraft,
@@ -79,7 +79,7 @@ export function Phase3Draft({
 }>) {
   const [allDrafted, setAllDrafted] = useState(false);
   const filledCount = sections.filter((section) => isSectionFilled(section)).length;
-  const draftedEnough = allDrafted || filledCount >= 13;
+  const draftedEnough = allDrafted || (sections.length > 0 && filledCount >= sections.length);
   const canReview = !projectId || draftedEnough;
 
   return (
@@ -89,8 +89,8 @@ export function Phase3Draft({
           ขั้นที่ ๓: ร่างเนื้อหา — คุยแล้วให้ระบบร่าง
         </h3>
         <p className="mb-4 text-xs text-muted-foreground">
-          ระบบร่างทั้ง ๑๓ หมวดเป็นภาษาไทยจากเอกสารขั้นที่ ๐ ของโครงการนี้และกฎหมายกลาง
-          แล้วใส่ลงหัวข้อย่อยของแต่ละหมวดโดยตรง (หมวด ๔ ใช้ช่อง ๔.๑–๔.๑๔)
+          ระบบร่างหมวดตามประเภทงานที่เลือก เป็นภาษาไทยจากเอกสารขั้นที่ ๐ ของโครงการนี้และกฎหมายกลาง
+          แล้วใส่ลงหัวข้อย่อยของแต่ละหมวดโดยตรง
           กดไปทบทวนแล้วระบบตรวจกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐ ของโครงการนี้
           ตารางในเนื้อหาจะกลายเป็นตารางจริงในไฟล์เวิร์ด/พีดีเอฟ
         </p>
@@ -107,7 +107,7 @@ export function Phase3Draft({
         {actionInfo ? <p className="mb-3 text-sm text-brand-green">{actionInfo}</p> : null}
         {allDrafted ? (
           <p className="mb-3 text-sm font-bold text-green-800" data-testid="phase3-all-drafted">
-            ร่างครบ ๑๓ หมวดแล้ว — กดไปทบทวน (ขั้นที่ ๔) เพื่อตรวจกฎและส่งออก
+            ร่างครบทุกหมวดตามประเภทงานแล้ว — กดไปทบทวน (ขั้นที่ ๔) เพื่อตรวจกฎและส่งออก
           </p>
         ) : null}
       </div>
@@ -298,8 +298,9 @@ function ScopeSubsectionEditor({
   onOpenSub: (key: string) => void;
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
 }>) {
-  const chips = subs || SCOPE_SUBSECTIONS.map((item) => ({
-    ...item,
+  const chips = subs || scopeSubsectionsFor().map((item) => ({
+    key: item.key,
+    title: item.title,
     content: "",
     filled: false,
   }));
@@ -317,7 +318,7 @@ function ScopeSubsectionEditor({
   return (
     <div className="space-y-3" data-testid="scope-subsection-editor">
       <p className="text-xs text-muted-foreground">
-        หมวด ๔ เติมลงหัวข้อย่อยโดยตรง ({filledN}/{SCOPE_SUBSECTIONS.length} หัวข้อมีเนื้อหา) —
+        หมวด ๔ เติมลงหัวข้อย่อยโดยตรง ({filledN}/{chips.length} หัวข้อมีเนื้อหา) —
         แก้ไขในช่องด้านล่างได้เลย ขั้นที่ ๔ จะรวมเป็นเอกสารเดียวตอนส่งออก
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -372,7 +373,7 @@ function ScopeSubsectionEditor({
       </div>
       {!openSub && filledN === 0 ? (
         <p className="text-xs text-amber-800">
-          ยังไม่มีหัวข้อย่อย — กด «ร่างด้วยระบบอัจฉริยะ» เพื่อเติม ๔.๑–๔.๑๔ หรือเลือกหัวข้อด้านบนเพื่อพิมพ์เอง
+          ยังไม่มีหัวข้อย่อย — กด «ร่างด้วยระบบอัจฉริยะ» เพื่อเติมตามประเภทงาน หรือเลือกหัวข้อด้านบนเพื่อพิมพ์เอง
         </p>
       ) : null}
     </div>

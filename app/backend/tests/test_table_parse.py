@@ -74,7 +74,7 @@ def test_scope_overview_is_short_not_full_merge():
             "s4.3": "งานติดตั้ง",
         }
     )
-    assert "รายละเอียดครบในหัวข้อย่อย" in overview
+    assert "รายละเอียดอยู่ในหัวข้อย่อย" in overview
     assert "งานติดตั้ง" not in overview
     assert len(overview) < 450
 

@@ -11,7 +11,8 @@ import logging
 from typing import Any, AsyncIterator
 from uuid import UUID
 
-from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_LABELS
+from app.domain.section_profile import profile_for_project, subsection_title
+from app.domain.tor_sections import TOR_SECTION_LABELS
 from app.llm_tokens import (
     DRAFT_MAX_TOKENS,
     GEMMA_CONTEXT_WINDOW,
@@ -62,21 +63,26 @@ def _section_prompt_context(
     section_key: str,
     slot_map: dict[str, Any],
     rag_context: str,
+    category: str | None = None,
 ) -> str:
     """Build user prompt for drafting a single section."""
-    label = TOR_SECTION_LABELS.get(section_key, section_key)
+    profile = profile_for_project(category)
+    label = next(
+        (item.title for item in profile.main_sections if item.storage_key == section_key),
+        TOR_SECTION_LABELS.get(section_key, section_key),
+    )
     content = slot_content(slot_map, section_key)
     sub_content = ""
     if section_key == "s4":
         subs = [
-            f"- {k} {SCOPE_SUBSECTIONS.get(k, k)}: {slot_content(slot_map, k)}"
-            for k in SCOPE_SUBSECTIONS
-            if slot_content(slot_map, k)
+            f"- {item.storage_key} {item.title}: {slot_content(slot_map, item.storage_key)}"
+            for item in profile.scope_subsections
+            if slot_content(slot_map, item.storage_key)
         ]
         sub_content = "\n".join(subs)
 
     parts = [
-        f"ร่างหมวดที่ {section_key.replace('s', '')} ({label})",
+        f"ร่างหมวด ({label}) ประเภทงาน {profile.label}",
         "",
         THAI_ONLY_RULES,
         TABLE_FORMAT_HINT,
@@ -94,10 +100,11 @@ def _section_prompt_context(
     if rag_context:
         parts.append(f"\nบริบทกฎหมาย/ระเบียบจากคลังความรู้:\n{rag_context}")
     if section_key == "s4":
+        listed = ", ".join(item.storage_key for item in profile.scope_subsections)
         parts.append(
-            "\nหมวดนี้ต้องร่างลงหัวข้อย่อย ๔.๑–๔.๑๔ โดยตรง "
-            "ขึ้นต้นแต่ละหัวข้อด้วย ### s4.N ตามที่มีข้อมูล "
-            "ห้ามรวมเป็นก้อนเดียวโดยไม่มี ###"
+            "\nหมวดนี้ต้องร่างลงหัวข้อย่อยตามประเภทงานโดยตรง "
+            f"ขึ้นต้นแต่ละหัวข้อด้วย ### ตามรหัส ({listed}) "
+            "ห้ามรวมเป็นก้อนเดียวโดยไม่มี ### และห้ามใส่หัวข้อที่ไม่อยู่ในรายการ"
         )
     else:
         from app.domain.section_fields import field_prompt_block
@@ -142,9 +149,11 @@ def fallback_section_text(section_key: str, slot_map: dict[str, Any]) -> str:
     return "\n".join(chunks)
 
 
-def fallback_scope_subsection(sub_key: str, slot_map: dict[str, Any]) -> str:
-    """Fill one s4.x block from slots when the model skips or hangs."""
-    title = SCOPE_SUBSECTIONS.get(sub_key, sub_key)
+def fallback_scope_subsection(
+    sub_key: str, slot_map: dict[str, Any], category: str | None = None
+) -> str:
+    """Fill one scope subsection from slots when the model skips or hangs."""
+    title = subsection_title(sub_key, category, sub_key)
     facts = slot_content(slot_map, sub_key).strip()
     parent = slot_content(slot_map, "s4").strip()
     intake = slot_content(slot_map, "_project_intake").strip()
@@ -230,6 +239,7 @@ async def draft_single_section(
     section_key: str,
     slot_map: dict[str, Any],
     user_id: UUID | str | None = None,
+    category: str | None = None,
 ) -> AsyncIterator[str]:
     """Draft one section using LLM + RAG. Yields tokens from the model only."""
     label = TOR_SECTION_LABELS.get(section_key, section_key)
@@ -248,7 +258,7 @@ async def draft_single_section(
         logger.warning("RAG failed for %s, proceeding without context", section_key)
         rag_context = ""
 
-    user_prompt = _section_prompt_context(section_key, slot_map, rag_context)
+    user_prompt = _section_prompt_context(section_key, slot_map, rag_context, category)
     async for token in _stream_llm_prompt(
         DRAFT_SYSTEM_PROMPT,
         user_prompt,
@@ -261,10 +271,11 @@ async def draft_scope_subsection(
     sub_key: str,
     slot_map: dict[str, Any],
     user_id: UUID | str | None = None,
+    category: str | None = None,
 ) -> AsyncIterator[str]:
-    """Draft one s4.x subsection from the LLM into its own content block."""
+    """Draft one scope subsection from the LLM into its own content block."""
     rag_context = await _s4_shared_rag(user_id)
-    prompt = scope_sub_prompt(sub_key, slot_map, rag_context)
+    prompt = scope_sub_prompt(sub_key, slot_map, rag_context, category)
     async for token in _stream_llm_prompt(
         DRAFT_SYSTEM_PROMPT, prompt, max_tokens=SCOPE_SUB_MAX_TOKENS
     ):
@@ -277,16 +288,20 @@ async def collect_scope_subsection_drafts(
     *,
     only_missing: bool = False,
     existing: dict[str, str] | None = None,
+    category: str | None = None,
 ) -> dict[str, str]:
-    """Draft s4.1–s4.14 one LM Studio call at a time; skip only prior LLM drafts."""
+    """Draft profile scope subsections one LLM call at a time."""
     out: dict[str, str] = {}
-    for sub_key in SCOPE_SUBSECTIONS:
+    for item in profile_for_project(category).scope_subsections:
+        sub_key = item.storage_key
         prior = str((existing or {}).get(sub_key) or "").strip()
         if only_missing and prior:
             out[sub_key] = prior
             continue
         parts: list[str] = []
-        async for token in draft_scope_subsection(sub_key, slot_map, user_id=user_id):
+        async for token in draft_scope_subsection(
+            sub_key, slot_map, user_id=user_id, category=category
+        ):
             parts.append(token)
         text = "".join(parts).strip()
         if text:
@@ -294,12 +309,12 @@ async def collect_scope_subsection_drafts(
     return out
 
 
-def build_merged_scope(subs: dict[str, str]) -> str:
-    return merge_scope_from_subs(subs)
+def build_merged_scope(subs: dict[str, str], category: str | None = None) -> str:
+    return merge_scope_from_subs(subs, category)
 
 
-def build_scope_overview(subs: dict[str, str]) -> str:
-    return scope_overview_from_subs(subs)
+def build_scope_overview(subs: dict[str, str], category: str | None = None) -> str:
+    return scope_overview_from_subs(subs, category)
 
 
 async def edit_section_draft(

@@ -1,20 +1,20 @@
-# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.4.0
+# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.5.0
 
 เอกสารฉบับเดียว (Combined_Report) ตาม `.kiro/specs/local-llm-verification-aws-migration-plan/`  
 ลำดับ: **(A) Verification** → **(B) Verification_Gate** → **(C) AWS Migration Plan** → **(D) Stability & Scale**
 
-ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · `test-evidence/_round-2026-09-07-summary.txt` · `test-evidence/_round-2026-09-07-live-llm.txt`
+ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · `test-evidence/_round-2026-09-09-summary.txt` · `test-evidence/_round-2026-09-09-live-llm.txt` (live_llm 17/17) · รอบ UI headed คู่: `test-evidence/_round-2026-09-07pm-summary.txt`
 
 ---
 
-## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.4.0
+## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.5.0
 
 ### 0. ส่วนหัว
 
 | ฟิลด์ | ค่า |
 |-------|-----|
-| วันที่ทดสอบ | **7 กันยายน 2026** (unit + UI สามเครื่องมือ + `pytest -m live_llm` รอบเดียวครบ) |
-| เวอร์ชันแอป | v0.4.0 |
+| วันที่ทดสอบ | **9 กันยายน 2026** (unit 2046 + Vitest 309 + `live_llm` 17/17 + Docker rebuild) · รอบ UI headed คู่ **7 กันยายน 2026 บ่าย** |
+| เวอร์ชันแอป | v0.5.0 |
 | สแตก | Docker Compose โปรเจกต์ `tor-app` รวม **mcp-rag :8765** |
 | Local LLM | LM Studio `http://127.0.0.1:1234/v1` (จาก backend ใช้ `host.docker.internal`) |
 | ผู้จัดทำ | Verification_Author (รอบอัปเดตเอกสาร 4 ก.ย. 2026; เกตเดิม 31 ส.ค. ยังอยู่ด้านล่าง) |
@@ -31,21 +31,35 @@
 
 `MCP_RAG_ENABLED=true` · เซอร์วิส `mcp-rag` healthy ที่ `:8765` · citation ในแชทเป็น `mcp:` / `document:` จากคลังท้องถิ่น
 
-### 0b. ผลรอบ 7 กันยายน 2026 (ผ่านทั้งหมดในชุดที่รัน)
+### 0a. ผลรอบ 9 กันยายน 2026 — Section_Profile (unit + live_llm + Docker)
 
 | ชุด | ผล |
 |-----|-----|
-| pytest coverage (Docker) | **1991 passed**, 2 skipped, 25 deselected, **94%** (เกต 90% → 93.92%) |
+| pytest `-m "not live_llm and not integration"` | **2046 ผ่าน** / 25 ตัด |
+| Vitest `run` | **309 ผ่าน** / 50 ไฟล์ |
+| pytest `-m live_llm` | **17/17 ผ่าน** ในรอบเดียว · 54:44 นาที |
+| ECT live | วิเคราะห์ 13/25 + fill-references · ต้นทาง 79/100 · ร่างโปรไฟล์ `hire_develop` 15 หมวด · TOR ประกอบ 78/100 · Jaccard 0.7744 |
+| Docker | rebuild frontend+backend · `/health` healthy · `amazon-quick` `rag.reachable=true` · LM Studio `:1234` |
+
+ล็อก: `test-evidence/_round-2026-09-09-summary.txt`, `_round-2026-09-09-live-llm.txt`  
+รอบนี้ไม่ได้รัน UI headed ซ้ำ (ชุด headed ล่าสุดยังเป็น 7 ก.ย. บ่าย)
+
+### 0b. ผลรอบ 7 กันยายน 2026 บ่าย (ผ่านทั้งหมดในชุดที่รัน)
+
+| ชุด | ผล |
+|-----|-----|
+| pytest coverage (Docker) | **1992 passed**, 2 skipped, 25 deselected, **94%** (เกต 90% → 93.92%) |
 | Vitest | **306 passed** / 50 files · statements 94.34% · lines 96.4% |
-| UI ตามลำดับ ถาม-ตอบ → ร่าง → ตรวจสอบ | **3/3 ผ่าน** · ร่าง **13/13** (~36 นาที) |
-| pytest `-m live_llm` | **17/17 ผ่าน** ในรอบเดียว · 47:38 นาที |
-| ECT live | 27/27 ช่อง · ต้นทาง 82/100 · ร่าง 13 หมวด · TOR ประกอบ 73/100 · Jaccard 0.7233 |
-| ความพร้อม | `/health` healthy · `mcp-rag` healthy · LM Studio `:1234` |
+| Amazon Quick `:8767` | live RAG healthy · REST/MCP retrieve PDF จริง · unit **10/10** |
+| UI ตามลำดับ ถาม-ตอบ → ร่าง → ตรวจสอบ | **3/3 ผ่าน** · ร่าง **13/13** (~46 นาที) |
+| pytest `-m live_llm` | **17/17 ผ่าน** ในรอบเดียว · 52:13 นาที |
+| ECT live | 27/27 ช่อง · ต้นทาง 82/100 · ร่าง 13 หมวด · TOR ประกอบ 82/100 · Jaccard 0.7176 |
+| ความพร้อม | `/health` healthy · `mcp-rag` · `amazon-quick` · LM Studio `:1234` |
 
-ล็อก: `test-evidence/_round-2026-09-07-summary.txt`, `_round-2026-09-07-pytest.txt`, `_round-2026-09-07-vitest.txt`, `_round-2026-09-07-live-llm.txt`  
-ภาพ: `serial-00-dashboard.png` … `serial-05-review-score.png` (รอบ 7 ก.ย.)
+ล็อก: `test-evidence/_round-2026-09-07pm-summary.txt`, `_round-2026-09-07pm-pytest.txt`, `_round-2026-09-07pm-vitest.txt`, `_round-2026-09-07pm-live-llm.txt`, `_round-2026-09-07pm-amazon-quick.txt`  
+ภาพ: `serial-00-dashboard.png` … `serial-05-review-score.png` (รอบบ่าย)
 
-รอบ 6 ก.ย. ยังเป็นหลักฐานคู่ (ตัวเลข unit/UI ใกล้เคียง; live_llm ครั้งนั้นต้องรันซ้ำเคส PDF) · รอบ 3–4 ก.ย. ด้านล่างเป็น baseline เก่า
+รอบเช้า 7 ก.ย. ยังเป็นหลักฐานคู่ (1991/94% · live_llm 17/17 · ยังไม่มี Amazon Quick ในรอบนั้น) · รอบ 3–4 ก.ย. ด้านล่างเป็น baseline เก่า
 
 #### รอบ 3–4 กันยายน 2026 (ก่อนหน้า)
 
@@ -198,17 +212,18 @@ Playwright headed `e2e/chat.spec.ts` รอบนี้: **2 passed (3.0 นา�
 
 ชุดเฟส 3 ที่เพิ่มในรอบนี้ (ไม่ live): `tests/test_draft_job_store.py`, `tests/test_property_draft_stability.py`, `tests/test_draft_stability_load.py`
 
-ผลรอบล่าสุดที่ **ผ่านทั้งชุดที่รัน** (7 ก.ย. 2026):
+ผลรอบล่าสุดที่ **ผ่านทั้งชุดที่รัน** (7 ก.ย. 2026 บ่าย):
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `not live_llm and not integration` | **1991 passed**, 2 skipped, 25 deselected, 4 warnings, 215.46s, **coverage 94%** (14486 stmts) |
-| pytest `-m live_llm` | **17 passed** ในรอบเดียว · 2858.20s (0:47:38) |
+| pytest `not live_llm and not integration` | **1992 passed**, 2 skipped, 25 deselected, 4 warnings, 226.15s, **coverage 94%** (14486 stmts) |
+| pytest `-m live_llm` | **17 passed** ในรอบเดียว · 3133.73s (0:52:13) |
 | Vitest | **306 passed** / 50 files, statements **94.34%**, lines **96.4%** |
-| UI สามเครื่องมือ headed | **3 passed** (chat → draft 13/13 → review, ~36 นาทีร่าง) |
+| Amazon Quick | live `:8767` RAG + unit **10/10** |
+| UI สามเครื่องมือ headed | **3 passed** (chat → draft 13/13 → review, ~46 นาทีร่าง) |
 | SonarQube `:9400` | ไม่ตอบในรอบ 31 ส.ค. → **ข้าม** |
 
-ล็อก: `test-evidence/_round-2026-09-07-summary.txt`, `_round-2026-09-07-live-llm.txt`
+ล็อก: `test-evidence/_round-2026-09-07pm-summary.txt`, `_round-2026-09-07pm-live-llm.txt`, `_round-2026-09-07pm-amazon-quick.txt`
 
 ---
 
@@ -221,10 +236,11 @@ Playwright headed `e2e/chat.spec.ts` รอบนี้: **2 passed (3.0 นา�
 | เวิร์กโฟลว์ร่าง TOR | ผ่าน | 5/5 ขั้น | — | 27/27 ช่อง, ร่าง 13/13, คะแนน 95, export completed; โครงการ `c3bdba69-bd72-472a-88ad-cd4fbe95bdb5` |
 | เวิร์กโฟลว์ตรวจสอบ TOR | ผ่าน | 4/4 เคส | — | ต้นทาง 82; ในโครงการ 95 `valid=true`; TOR ประกอบ 88; Jaccard 0.8812 |
 | เวิร์กโฟลว์ถาม-ตอบ KB | ผ่าน | 2/2 Playwright + ACL | — | `chat.spec.ts` headed; ACL overlap=0; ปฏิเสธ `.exe` HTTP 400 |
-| pytest not live_llm | ผ่าน | 1991 passed, 2 skipped | 94% | Docker 7 ก.ย. 2026; 25 deselected (live/integration) |
-| pytest live_llm | ผ่าน | 17 passed | — | 7 ก.ย. รอบเดียว; ECT 27/27, ต้นทาง 82, TOR ประกอบ 73 |
-| Vitest | ผ่าน | 306 passed / 50 files | 94.34% stmts | 7 ก.ย. lines 96.4% |
-| UI สามเครื่องมือ | ผ่าน | 3/3 | — | 7 ก.ย. headed Chrome; ภาพ `serial-*.png` |
+| pytest not live_llm | ผ่าน | 1992 passed, 2 skipped | 94% | Docker 7 ก.ย. 2026 บ่าย; 25 deselected (live/integration) |
+| pytest live_llm | ผ่าน | 17 passed | — | 7 ก.ย. บ่าย รอบเดียว; ECT 27/27, ต้นทาง 82, TOR ประกอบ 82 |
+| Vitest | ผ่าน | 306 passed / 50 files | 94.34% stmts | 7 ก.ย. บ่าย lines 96.4% |
+| Amazon Quick | ผ่าน | live + 10 unit | — | `:8767` rag.mode=live · PDF จริง ไม่ใช่ stub |
+| UI สามเครื่องมือ | ผ่าน | 3/3 | — | 7 ก.ย. บ่าย headed Chrome; ภาพ `serial-*.png` |
 | Playwright E2E chat | ผ่าน | 2 passed | — | 31 ส.ค. headed, Docker `:3000`; ภาพ `13a`/`13`/`13b`/`13c` |
 | SonarQube | ข้าม | — | — | ไม่มี process ที่ `:9400` ในรอบนี้ (curl ไม่เชื่อมได้) |
 
@@ -236,8 +252,8 @@ Playwright headed `e2e/chat.spec.ts` รอบนี้: **2 passed (3.0 นา�
 
 | แหล่ง | ตำแหน่ง | รอบนี้ |
 |--------|---------|--------|
-| backend htmlcov | `test-evidence/_round-2026-09-07-pytest.txt` | **มี** — TOTAL **94%** (python 3.11.16, 7 ก.ย. 2026) |
-| frontend coverage | `test-evidence/_round-2026-09-07-vitest.txt` | **มี** — statements 94.34% / lines 96.4% (7 ก.ย.) |
+| backend htmlcov | `test-evidence/_round-2026-09-07pm-pytest.txt` | **มี** — TOTAL **94%** (python 3.11.16, 7 ก.ย. 2026 บ่าย) |
+| frontend coverage | `test-evidence/_round-2026-09-07pm-vitest.txt` | **มี** — statements 94.34% / lines 96.4% (7 ก.ย. บ่าย) |
 | ภาพรอบก่อน | ![backend cov](test-evidence/13-backend-coverage.png) ![frontend cov](test-evidence/14-frontend-coverage.png) | baseline จากเอกสาร 18 |
 
 ---

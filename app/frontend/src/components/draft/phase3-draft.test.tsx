@@ -299,7 +299,7 @@ describe("Phase3Draft", () => {
     );
     const root = screen.getByTestId("phase3-draft");
     expect(root).toHaveTextContent("ขั้นที่ ๓");
-    expect(root).toHaveTextContent("๔.๑–๔.๑๔");
+    expect(root).toHaveTextContent("ตามประเภทงาน");
     expect(screen.queryByText("Phase 3")).not.toBeInTheDocument();
     expect(screen.queryByText("As-Is")).not.toBeInTheDocument();
     expect(screen.getByTestId("scope-sub-s4.1")).toBeInTheDocument();

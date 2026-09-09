@@ -214,10 +214,10 @@ class PDFGenerator:
         """
         parts: list[str] = []
         section_num = 1
+        from app.domain.section_profile import export_main_plan, ordered_scope_export
 
-        for section_key in TOR_SECTION_ORDER:
+        for section_key, section_label in export_main_plan(content.project_type):
             section_content = content.sections.get(section_key, "")
-            section_label = TOR_SECTION_LABELS.get(section_key, f"ส่วนที่ {section_key}")
 
             # Section heading
             num_str = format_section_number(section_num, content.use_thai_numerals)
@@ -239,7 +239,11 @@ class PDFGenerator:
             if filled_subs:
                 parts.append(
                     self._build_sub_sections_html(
-                        section_num, filled_subs, content.use_thai_numerals
+                        section_num,
+                        filled_subs,
+                        content.use_thai_numerals,
+                        content.project_type,
+                        section_key,
                     )
                 )
 
@@ -249,25 +253,28 @@ class PDFGenerator:
 
     def _build_sub_sections_html(
         self,
-        _parent_num: int,
+        parent_num: int,
         sub_sections: dict[str, str],
         use_thai_numerals: bool,
+        project_type: str | None = None,
+        section_key: str = "s4",
     ) -> str:
-        """Build HTML for sub-sections."""
-        from app.domain.tor_sections import SCOPE_SUBSECTIONS
+        """Build HTML for sub-sections with consecutive profile numbering."""
+        from app.domain.section_profile import ordered_scope_export, subsection_title
 
         parts: list[str] = []
+        if section_key == "s4":
+            plan = ordered_scope_export(project_type, sub_sections)
+        else:
+            plan = [
+                (key, subsection_title(key, project_type, key), text)
+                for key, text in sub_sections.items()
+            ]
 
-        sorted_keys = sorted(
-            sub_sections.keys(),
-            key=lambda k: self._parse_sub_key(k),
-        )
-
-        for sub_key in sorted_keys:
-            sub_content = sub_sections[sub_key]
-            title = SCOPE_SUBSECTIONS.get(sub_key, "")
-            num_key = sub_key.replace("s4.", "4.") if sub_key.startswith("s4.") else sub_key
-            sub_num_str = format_section_number(num_key, use_thai_numerals)
+        for index, (_sub_key, title, sub_content) in enumerate(plan, start=1):
+            sub_num_str = format_section_number(
+                f"{parent_num}.{index}", use_thai_numerals
+            )
             heading = f"{sub_num_str} {title}".strip()
 
             parts.append(

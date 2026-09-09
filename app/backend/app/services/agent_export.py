@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app import infra as runtime
-from app.domain.tor_sections import TOR_SECTION_ORDER
+from app.domain.section_profile import section_order
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.tor_section import TORSection
@@ -29,8 +29,10 @@ async def persist_and_export(state: AgentWorkflowState) -> dict[str, str | None]
         ).scalar_one_or_none()
         if project is None:
             raise ValueError("ไม่พบโครงการ")
-        await apply_slot_map_to_sections(db, project_id, state.get("slot_map") or {})
-        for key in TOR_SECTION_ORDER:
+        await apply_slot_map_to_sections(
+            db, project_id, state.get("slot_map") or {}, project.project_type
+        )
+        for key in section_order(project.project_type):
             text = str(drafts.get(key) or "").strip()
             if not text:
                 continue

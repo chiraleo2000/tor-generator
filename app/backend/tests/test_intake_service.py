@@ -68,13 +68,18 @@ def test_ready_criteria_requires_filled_facts():
     assert ready_criteria_met(slots) is True
 
 
-def test_has_been_analyzed_from_flag_or_slot_map():
+def test_has_been_analyzed_requires_explicit_flag():
     empty = _project()
     assert has_been_analyzed(empty) is False
     flagged = _project(analysis={"analyzed": True})
     assert has_been_analyzed(flagged) is True
-    mapped = _project(analysis={"slot_map": {"s1": {"status": "gap"}}})
-    assert has_been_analyzed(mapped) is True
+    # Mid-analyze slot_map alone must not unlock Phase 1 before LLM finishes.
+    mapped = _project(analysis={"slot_map": {"s1": {"status": "filled", "content": "x"}}})
+    assert has_been_analyzed(mapped) is False
+    in_progress = _project(
+        analysis={"slot_map": {"s1": {"status": "gap"}}, "analyzed": False, "analyze_in_progress": True}
+    )
+    assert has_been_analyzed(in_progress) is False
 
 
 def test_is_ready_to_compose_needs_flag_and_facts():
@@ -287,6 +292,27 @@ def test_apply_chat_answer_does_not_overwrite_filled():
     assert slots["s1"]["content"] == "ต้นฉบับจากเอกสาร"
 
 
+def test_apply_chat_answer_prefers_asked_slot_over_weak_heuristic():
+    slots = empty_slot_map()
+    for key in ("s1", "s2", "s5", "s6", "s7", "s4.1"):
+        slots[key] = {"content": "มีแล้ว", "status": "filled", "sources": []}
+    updated = apply_chat_answer_to_slots(
+        slots,
+        "ตาม พ.ร.บ. กฎระเบียบ และแนวทางปฏิบัติของกระทรวงการคลังและส่วนกลาง",
+        current_slot="s10",
+    )
+    assert updated == ["s10"]
+    assert "กระทรวงการคลัง" in slots["s10"]["content"]
+
+
+def test_reply_options_default_for_optional_slots():
+    from app.services.intake_service import DEFAULT_MOF_STANDARD_ANSWER, reply_options_for_slot
+
+    opts = reply_options_for_slot("s10")
+    assert opts[0] == DEFAULT_MOF_STANDARD_ANSWER
+    assert reply_options_for_slot("s1") == []
+
+
 def test_phase2_opening_includes_phase1_text():
     slots = empty_slot_map()
     slots["s1"] = {
@@ -456,19 +482,123 @@ def test_project_intake_pack_keeps_more_than_8k_chars():
     assert len(pack) > 8000
 
 
-def test_analyze_prompt_chunks_keeps_head_and_tail():
+def test_analyze_prompt_chunks_covers_long_pack_evenly():
     from app.services.intake_service import ANALYZE_CHUNK_CHARS
 
     raw = "ก" * (ANALYZE_CHUNK_CHARS * 6)
     chunks = _analyze_prompt_chunks(raw)
-    assert len(chunks) == ANALYZE_MAX_CHUNKS
+    assert 2 <= len(chunks) <= ANALYZE_MAX_CHUNKS
     assert chunks[0].startswith("ก")
     assert chunks[-1].endswith("ก")
+    # Middle of the document must not be dropped (old head+tail only kept ends).
+    joined = "".join(chunks)
+    assert len(joined) >= ANALYZE_CHUNK_CHARS * 2
+
+
+def test_analyze_prompt_chunks_splits_multi_file_markers():
+    pack = (
+        "===== ไฟล์: a.pdf =====\n"
+        + ("ก" * 100)
+        + "\n\n===== ไฟล์: b.pdf =====\n"
+        + ("ข" * 100)
+    )
+    chunks = _analyze_prompt_chunks(pack)
+    assert any("a.pdf" in chunk for chunk in chunks)
+    assert any("b.pdf" in chunk for chunk in chunks)
+
+
+def test_next_asking_slot_continues_optional_after_facts():
+    slots = empty_slot_map()
+    for key in ("s1", "s2", "s5", "s6", "s7", "s4.1"):
+        slots[key] = {"content": f"ข้อมูล{key}", "status": "filled", "sources": []}
+    nxt = next_asking_slot(slots)
+    assert nxt is not None
+    assert nxt not in {"s1", "s2", "s5", "s6", "s7", "s4.1"}
+    assert nxt == "s3"
+
+
+def test_phase2_opening_offers_optional_after_facts():
+    slots = empty_slot_map()
+    for key in ("s1", "s2", "s5", "s6", "s7", "s4.1"):
+        slots[key] = {"content": f"ข้อมูล{key}", "status": "filled", "sources": []}
+    brief = build_phase2_opening(slots, [])
+    assert "เติมช่องอื่นต่อได้" in brief
+    assert "s3" in brief
 
 
 @pytest.mark.asyncio
-async def test_analyze_pack_fills_coded_paste_without_llm():
-    with patch("app.services.intake_service.ProviderFactory") as factory:
+async def test_analyze_pack_always_calls_llm_even_when_facts_look_complete():
+    """Coded packs must still hit the LLM — heuristics are gap-fill only."""
+    facts = _coded_pack()
+    long_tail = (
+        "\nคุณสมบัติผู้ยื่นข้อเสนอ ต้องเป็นนิติบุคคลจดทะเบียนในประเทศไทย "
+        "ทุนจดทะเบียนชำระแล้วไม่น้อยกว่าสามล้านบาท\n"
+        "แผนการส่งมอบงาน 4 งวด งวดละ 25%\n"
+        "อัตราค่าปรับส่งมอบช้าวันละ 0.1 ของวงเงินสัญญา\n"
+    )
+    pack = facts + (long_tail * 40)
+    payload = {
+        "slot_map": {
+            "s3": {"content": "นิติบุคคลไทย ทุน 3 ล้าน", "status": "filled", "sources": ["llm"]},
+            "s8": {"content": "4 งวด งวดละ 25%", "status": "filled", "sources": ["llm"]},
+            "s10": {"content": "ค่าปรับ 0.1%/วัน", "status": "filled", "sources": ["llm"]},
+        },
+        "gap_questions": [],
+    }
+    llm = MagicMock()
+    llm.invoke = AsyncMock(
+        return_value=MagicMock(content=json.dumps(payload, ensure_ascii=False))
+    )
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
+        factory.return_value.get_llm.return_value = llm
+        result = await analyze_pack(_project(), pack, ["tor.pdf"])
+    llm.invoke.assert_awaited()
+    assert result["slot_map"]["s3"]["status"] == "filled"
+    assert result["slot_map"]["s8"]["status"] == "filled"
+    # Heuristic still fills fact slots the model left empty.
+    assert result["slot_map"]["s1"]["status"] == "filled"
+    assert "กรมบัญชีกลาง" in result["slot_map"]["s1"]["content"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_pack_prefers_llm_over_heuristic_on_same_slot():
+    """LLM content wins; heuristic only fills empty slots."""
+    pack = _coded_pack()
+    payload = {
+        "slot_map": {
+            "s1": {
+                "content": "ความเป็นมาจากโมเดลอ่านเอกสารจริง",
+                "status": "filled",
+                "sources": ["llm"],
+            },
+        },
+        "gap_questions": [],
+    }
+    llm = MagicMock()
+    llm.invoke = AsyncMock(
+        return_value=MagicMock(content=json.dumps(payload, ensure_ascii=False))
+    )
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
+        factory.return_value.get_llm.return_value = llm
+        result = await analyze_pack(_project(), pack, ["paste.txt"])
+    assert result["slot_map"]["s1"]["content"] == "ความเป็นมาจากโมเดลอ่านเอกสารจริง"
+    assert result["slot_map"]["s6"]["status"] == "filled"  # heuristic gap-fill
+    llm.invoke.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_analyze_pack_coded_paste_falls_back_when_llm_off():
+    """ANALYZE_USE_LLM=False keeps document heuristics only (no ProviderFactory)."""
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", False),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
         result = await analyze_pack(_project(), _coded_pack(), ["paste.txt"])
     factory.assert_not_called()
     assert result["analyzed"] is True

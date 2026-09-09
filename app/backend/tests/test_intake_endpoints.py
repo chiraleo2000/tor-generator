@@ -93,8 +93,11 @@ def test_coverage_returns_s4_subslots(client, mock_officer_user):
     assert response.status_code == 200
     keys = [row["key"] for row in response.json()["data"]["coverage"]]
     assert "s1" in keys
-    assert "s4.1" in keys
-    assert "s4.14" in keys
+    assert "items" in keys
+    assert "s4.1" not in keys or "items" in keys
+    assert "ระบบงานปัจจุบัน" not in " ".join(
+        row.get("label", "") for row in response.json()["data"]["coverage"]
+    )
     assert response.json()["data"]["ready_to_compose"] is False
 
 
@@ -597,7 +600,7 @@ def test_open_draft_seeds_phase3_brief(client, mock_officer_user):
 
     response = client.post(f"/api/v1/projects/{PROJECT_ID}/intake/open-draft")
     assert response.status_code == 200
-    assert "๑๓ หมวด" in response.json()["data"]["brief"]
+    assert "ประเภทงาน" in response.json()["data"]["brief"]
     mock_db.commit.assert_awaited()
     assert project.analysis_json["phase3_opened"] is True
 
@@ -827,14 +830,18 @@ async def test_persist_heuristic_and_apply_analyze():
     slots = empty_slot_map()
     slots["s1"] = {"content": "โครงการ", "status": "filled", "sources": []}
     await _persist_heuristic_slot_map(project, mock_db, slots)
-    assert project.analysis_json["analyzed"] is True
+    assert project.analysis_json["analyzed"] is False
+    assert project.analysis_json["analyze_in_progress"] is True
+    assert (project.current_phase or 0) == 0
     mock_db.flush.assert_awaited()
     mock_db.commit.assert_awaited()
 
     result = {"slot_map": slots, "gap_questions": ["ขอวงเงิน"]}
     analysis = _apply_analyze_result(project, result)
     assert analysis["analyzed"] is True
+    assert analysis["analyze_in_progress"] is False
     assert analysis["standard_fill_keys"] == []
+    assert project.current_phase >= 1
 
 
 @pytest.mark.asyncio

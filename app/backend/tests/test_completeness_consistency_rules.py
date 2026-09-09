@@ -90,11 +90,11 @@ class TestSectionPresenceRule:
         assert "s5" in halt.missing_sections
         assert "s6" in halt.missing_sections
         assert "s8" in halt.missing_sections
-        assert "s9" in halt.missing_sections
-        assert "s10" in halt.missing_sections
         assert "s11" in halt.missing_sections
-        assert "s12" in halt.missing_sections
         assert "s13" in halt.missing_sections
+        assert "s9" not in halt.missing_sections
+        assert "s10" not in halt.missing_sections
+        assert "s12" not in halt.missing_sections
 
     def test_missing_single_section_raises_halt(self, complete_tor_document: dict):
         """Even one missing section raises MissingSectionsHalt."""
@@ -162,8 +162,9 @@ class TestRequiredSubsectionsRule:
     def test_scope_with_subsections_as_dict(self, complete_tor_document: dict):
         """Scope with subsections as nested dict passes."""
         complete_tor_document["sections"]["s4"] = {
-            "s4.1": "รายละเอียดงานพัฒนาระบบ",
-            "s4.8": "ผลงานส่งมอบ: รายงาน, ระบบ, คู่มือ",
+            "items": "รายการพัสดุที่จัดซื้อและจำนวน",
+            "specification": "คุณลักษณะเฉพาะของพัสดุ",
+            "delivery_acceptance": "เงื่อนไขการส่งมอบและการตรวจรับ",
         }
         rule = RequiredSubsectionsRule()
         findings = rule.validate(complete_tor_document)
@@ -171,8 +172,9 @@ class TestRequiredSubsectionsRule:
 
     def test_scope_with_subsections_as_top_level(self, complete_tor_document: dict):
         """Subsections as top-level keys pass."""
-        complete_tor_document["sections"]["s4.1"] = "รายละเอียดงาน"
-        complete_tor_document["sections"]["s4.8"] = "ผลงานส่งมอบ"
+        complete_tor_document["sections"]["items"] = "รายการพัสดุ"
+        complete_tor_document["sections"]["specification"] = "คุณลักษณะเฉพาะ"
+        complete_tor_document["sections"]["delivery_acceptance"] = "ส่งมอบตรวจรับ"
         rule = RequiredSubsectionsRule()
         findings = rule.validate(complete_tor_document)
         assert findings == []
@@ -182,11 +184,12 @@ class TestRequiredSubsectionsRule:
         # s4 is just a string, no subsections explicitly defined
         complete_tor_document["sections"]["s4"] = "ขอบเขตของงาน"
         # Remove any top-level subsection keys
-        complete_tor_document["sections"].pop("s4.1", None)
-        complete_tor_document["sections"].pop("s4.8", None)
+        complete_tor_document["sections"].pop("items", None)
+        complete_tor_document["sections"].pop("specification", None)
+        complete_tor_document["sections"].pop("delivery_acceptance", None)
         rule = RequiredSubsectionsRule()
         findings = rule.validate(complete_tor_document)
-        assert len(findings) == 2
+        assert len(findings) == 3
         assert all(f.severity == Severity.WARNING for f in findings)
         assert all(f.rule_violated == "COMPLETENESS_SUBSECTION_MISSING" for f in findings)
         assert all(f.affected_section == "s4" for f in findings)
@@ -194,13 +197,12 @@ class TestRequiredSubsectionsRule:
     def test_partial_subsections_produces_one_warning(self, complete_tor_document: dict):
         """Only missing subsections produce warnings."""
         complete_tor_document["sections"]["s4"] = {
-            "s4.1": "รายละเอียดงานพัฒนาระบบ",
-            # s4.8 missing
+            "items": "รายการพัสดุที่จัดซื้อและจำนวน",
         }
         rule = RequiredSubsectionsRule()
         findings = rule.validate(complete_tor_document)
-        assert len(findings) == 1
-        assert "ผลงานส่งมอบ" in findings[0].message
+        assert len(findings) == 2
+        assert all("รายการพัสดุ" not in f.message for f in findings)
 
 
 # --- Tests: MinimumContentRule ---
@@ -586,7 +588,7 @@ class TestEngineHaltingOnMissingSections:
 
         assert result.halted is True
         # The incomplete doc is missing s3, s5, s6, s8, s9, s10, s11, s12, s13
-        expected_missing = {"s3", "s5", "s6", "s8", "s9", "s10", "s11", "s12", "s13"}
+        expected_missing = {"s3", "s5", "s6", "s8", "s11", "s13"}
         assert set(result.missing_sections.keys()) == expected_missing
 
     def test_engine_full_integration_all_rules(self, complete_tor_document: dict):

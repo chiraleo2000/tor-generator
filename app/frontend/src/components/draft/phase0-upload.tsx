@@ -65,8 +65,10 @@ function Phase0ProgressPanel({
       >
         <Loader2 className="mt-0.5 h-6 w-6 shrink-0 animate-spin text-navy" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-navy">กำลังวิเคราะห์เอกสาร...</p>
-          <p className="text-xs text-muted-foreground">อย่าปิดหน้านี้ จนกว่าจะเข้าขั้นที่ ๑</p>
+          <p className="text-sm font-bold text-navy">กำลังอ่านเอกสารด้วยโมเดล...</p>
+          <p className="text-xs text-muted-foreground">
+            ระบบดึงเนื้อหาทุกไฟล์แล้วจัดเข้าช่องทีละหมวด — อย่าปิดหน้านี้จนกว่าจะเข้าขั้นที่ ๑
+          </p>
           <progress className="mt-3 h-2 w-full" />
           <FileNameList names={uploadedNames} />
           {hasPaste ? (

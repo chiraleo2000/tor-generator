@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TOR Structure — mirrors app/backend domain model",
+  "version": "0.5.0",
+  "source": "app/backend/app/domain/{tor_sections,section_fields,slots}.py",
+  "sections": {
+    "s1": {
+      "label_th": "ความเป็นมา",
+      "fields": [
+        { "key": "history", "label_th": "ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม" },
+        { "key": "problems", "label_th": "ปัญหาที่พบ (ระบุตัวเลข/สถิติ)" },
+        { "key": "policy", "label_th": "นโยบาย/กฎหมายที่เกี่ยวข้อง" },
+        { "key": "workKind", "label_th": "ประเภทงาน (จ้างพัฒนา/บำรุงรักษา/ที่ปรึกษา)" }
+      ]
+    },
+    "s2": {
+      "label_th": "วัตถุประสงค์",
+      "fields": [
+        { "key": "mainObj", "label_th": "วัตถุประสงค์หลัก (ชัดเจน วัดผลได้)" },
+        { "key": "users", "label_th": "กลุ่มผู้ใช้งานเป้าหมาย" },
+        { "key": "kpi", "label_th": "ตัวชี้วัดความสำเร็จ" }
+      ]
+    },
+    "s3": {
+      "label_th": "คุณสมบัติของผู้เสนอราคา",
+      "hitl": true,
+      "fields": [
+        { "key": "general", "label_th": "คุณสมบัติทั่วไป (e-GP ผู้ทิ้งงาน สถานะนิติบุคคล)" },
+        { "key": "paidup", "label_th": "ทุนจดทะเบียน/มูลค่าสุทธิกิจการ/วงเงินสินเชื่อ" },
+        { "key": "experience", "label_th": "ผลงานย้อนหลัง อายุบริษัท และวงเงินผลงาน" },
+        { "key": "specialist", "label_th": "ที่ปรึกษา/OEM/ทีมงานและ man-month" }
+      ]
+    },
+    "s4": {
+      "label_th": "ขอบเขตของงาน",
+      "subsections_note_th": "หัวข้อย่อยแปรตาม Procurement_Category จาก Section_Profile ไม่ใช้ s4.1–s4.14 ตายตัว ห้ามใส่ระบบงานปัจจุบันในจัดซื้อครุภัณฑ์ ก่อสร้าง และจ้างเหมาเอกสาร",
+      "profile_source": "app/backend/app/domain/section_profiles.json",
+      "legacy_subsections": {
+        "s4.1": "สรุปขอบเขตงาน",
+        "s4.2": "ระบบงานปัจจุบัน"
+      }
+    },
+    "s5": {
+      "label_th": "ระยะเวลาดำเนินการ",
+      "fields": [
+        { "key": "timelineRange", "label_th": "วันเริ่มต้น - วันสิ้นสุด" },
+        { "key": "milestones", "label_th": "งวดงานหลัก" }
+      ]
+    },
+    "s6": {
+      "label_th": "วงเงินงบประมาณ",
+      "hitl": true,
+      "fields": [
+        { "key": "budgetAmount", "label_th": "วงเงินงบประมาณ (บาท)" },
+        { "key": "budgetSource", "label_th": "ที่มาของงบประมาณ" },
+        { "key": "announcedPrice", "label_th": "ราคากลาง (บาท)" },
+        { "key": "priceBasis", "label_th": "วิธีคำนวณราคากลาง" },
+        { "key": "procurementMethod", "label_th": "วิธีจัดซื้อจัดจ้าง" }
+      ]
+    },
+    "s7": {
+      "label_th": "สถานที่ดำเนินการ",
+      "fields": [{ "key": "location", "label_th": "สถานที่ดำเนินการ" }]
+    },
+    "s8": {
+      "label_th": "งวดงานและการจ่ายเงิน",
+      "hitl": true,
+      "fields": [
+        { "key": "installments", "label_th": "จำนวนงวดการจ่ายเงิน" },
+        { "key": "paymentTerms", "label_th": "เงื่อนไขการเบิกจ่ายแต่ละงวด" },
+        { "key": "retention", "label_th": "เงินประกันผลงาน/หนังสือค้ำประกัน" }
+      ]
+    },
+    "s9": {
+      "label_th": "การรับประกัน",
+      "fields": [{ "key": "warranty", "label_th": "ระยะเวลารับประกัน" }]
+    },
+    "s10": {
+      "label_th": "อัตราค่าปรับ",
+      "hitl": true,
+      "fields": [
+        { "key": "penalty", "label_th": "ค่าปรับส่งมอบล่าช้า (ร้อยละต่อวัน)" },
+        { "key": "slaPenalty", "label_th": "ค่าปรับระบบขัดข้อง/SLA" }
+      ]
+    },
+    "s11": {
+      "label_th": "หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ",
+      "fields": [
+        { "key": "evalMethod", "label_th": "วิธีการประเมิน" },
+        { "key": "evalWeight", "label_th": "สัดส่วนคะแนน (ถ้ามีเกณฑ์คุณภาพ)" },
+        { "key": "passingGrade", "label_th": "คะแนนผ่านขั้นต่ำ/การนำเสนอ" }
+      ]
+    },
+    "s12": {
+      "label_th": "เอกสารและหลักฐานที่ผู้เสนอราคาต้องนำมายื่น",
+      "fields": [
+        { "key": "docs", "label_th": "รายการเอกสารที่ต้องยื่นประกอบ" },
+        { "key": "socTable", "label_th": "ตารางเปรียบเทียบข้อกำหนด (SoC)" }
+      ]
+    },
+    "s13": {
+      "label_th": "เงื่อนไขอื่น ๆ",
+      "hitl": true,
+      "fields": [
+        { "key": "other", "label_th": "เงื่อนไขอื่น ๆ" },
+        { "key": "ipCopyright", "label_th": "ลิขสิทธิ์ ซอร์สโค้ด และทรัพย์สินทางปัญญา" },
+        { "key": "nda", "label_th": "ความลับข้อมูลและ PDPA" },
+        { "key": "reservations", "label_th": "ข้อสงวนสิทธิ์" },
+        { "key": "responsibleUnit", "label_th": "หน่วยงานผู้รับผิดชอบ" }
+      ]
+    }
+  },
+  "section_order": ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12", "s13"],
+  "procurement_categories": [
+    "hire_develop",
+    "hire_maintain",
+    "lease_service",
+    "buy_goods",
+    "construction",
+    "hire_consult",
+    "hire_service"
+  ],
+  "legacy_type_map": {
+    "it": "hire_develop",
+    "construction": "construction",
+    "consulting": "hire_consult",
+    "general": "buy_goods"
+  },
+  "fact_required_slots": ["s1", "s2", "s5", "s6", "s7", "first_required_scope"],
+  "intake_slot_count_note": "จำนวนช่องแปรตาม Section_Profile ของหมวดใหญ่",
+  "app_phases": [
+    {
+      "phase": 0,
+      "name_th": "เตรียมข้อมูล",
+      "gate_out": "analyzed && coverageCount > 0"
+    },
+    {
+      "phase": 1,
+      "name_th": "ผลวิเคราะห์",
+      "gate_out": "immediate to phase 2"
+    },
+    {
+      "phase": 2,
+      "name_th": "สอบถามเพิ่ม",
+      "gate_out": "all FACT_REQUIRED_SLOTS filled → ready_to_compose"
+    },
+    {
+      "phase": 3,
+      "name_th": "ร่างเนื้อหา",
+      "gate_out": "all profile mother sections filled → confirm phase 4"
+    },
+    {
+      "phase": 4,
+      "name_th": "ทบทวนและส่งออก",
+      "gate_out": "profile sections filled for submit; score ≥70 is warning only"
+    }
+  ]
+}

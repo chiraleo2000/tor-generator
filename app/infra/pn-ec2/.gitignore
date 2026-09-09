@@ -1,0 +1,8 @@
+# Local secrets for PN EC2 deploy — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+nginx/pn.conf
+!nginx/pn.conf.example

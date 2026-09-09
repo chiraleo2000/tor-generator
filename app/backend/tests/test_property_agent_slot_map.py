@@ -33,9 +33,10 @@ def incoming_maps(draw):
 @settings(max_examples=30, deadline=None)
 @given(incoming_maps())
 def test_slot_map_is_exhaustive(incoming: dict):
-    result = apply_incoming_slots(empty_slot_map(), incoming)
-    assert set(result) == set(INTAKE_SLOT_ORDER)
-    assert len(result) == 27
+    base = empty_slot_map()
+    result = apply_incoming_slots(base, incoming)
+    assert set(result) == set(base)
+    assert "not_a_slot" not in result
     for slot in result.values():
         assert slot["status"] in STATUSES
 

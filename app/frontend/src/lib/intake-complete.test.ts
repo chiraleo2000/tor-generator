@@ -36,4 +36,15 @@ describe("intake-complete", () => {
       ])
     ).toBe(true);
   });
+
+  it("falls back to known fact keys when fact_required flags are missing", () => {
+    const rows = ["s1", "s2", "s5", "s6", "s7", "s4.1"].map((key) => ({
+      key,
+      label: key,
+      status: "filled",
+      filled: true,
+      fact_required: false,
+    }));
+    expect(factTopicsComplete(rows)).toBe(true);
+  });
 });

@@ -567,7 +567,7 @@ async def test_draft_chat_job_and_status_helpers():
     import asyncio
 
     from app.api.v1.endpoints import draft_chat as dc
-    from app.domain.tor_sections import TOR_SECTION_ORDER
+    from app.domain.section_profile import profile_for_project
 
     dc._DRAFT_JOBS.clear()
     pid = uuid.uuid4()
@@ -595,7 +595,7 @@ async def test_draft_chat_job_and_status_helpers():
             redis=None,
         )
         count = await dc._run_sequential_draft(job, remaining_passes=0)
-        assert count == len(TOR_SECTION_ORDER)
+        assert count == len(profile_for_project(None).main_storage_keys())
 
     with patch.object(dc, "_existing_section_text", AsyncMock(return_value=None)), patch.object(
         dc, "_draft_missing_section", AsyncMock(side_effect=TimeoutError())
@@ -1882,7 +1882,7 @@ async def test_draft_chat_existing_text_and_upsert():
 
 @pytest.mark.asyncio
 async def test_draft_chat_service_rag_failure_and_only_missing():
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
+    from app.domain.section_profile import profile_for_project
     from app.services.draft_chat_service import (
         collect_scope_subsection_drafts,
         draft_single_section,
@@ -1898,7 +1898,7 @@ async def test_draft_chat_service_rag_failure_and_only_missing():
         tokens = [item async for item in draft_single_section("s1", {})]
     assert tokens == ["token"]
 
-    existing = {key: "มีแล้ว" for key in SCOPE_SUBSECTIONS}
+    existing = {key: "มีแล้ว" for key in profile_for_project("buy_goods").scope_storage_keys()}
     out = await collect_scope_subsection_drafts({}, only_missing=True, existing=existing)
     assert out == existing
 
@@ -1919,7 +1919,8 @@ async def test_run_sequential_draft_retries_and_marks_failed():
         patch.object(dc, "bump_progress", AsyncMock()),
         patch.object(dc, "mark_status", AsyncMock()) as mark,
         patch.object(dc, "_try_draft_one_section", AsyncMock(return_value=False)),
-        patch("app.api.v1.endpoints.draft_chat.TOR_SECTION_ORDER", ["s1"]),
+        patch.object(dc, "sequential_draft_order", lambda project_type=None: ["s1"]),
+        patch.object(dc, "_mains", lambda project_type=None: ["s1"]),
     ):
         count = await dc._run_sequential_draft(job, remaining_passes=1)
     assert count == 0
@@ -1929,7 +1930,8 @@ async def test_run_sequential_draft_retries_and_marks_failed():
         patch.object(dc, "set_job", AsyncMock()),
         patch.object(dc, "mark_status", AsyncMock()),
         patch.object(dc, "_try_draft_one_section", AsyncMock(side_effect=RuntimeError("boom"))),
-        patch("app.api.v1.endpoints.draft_chat.TOR_SECTION_ORDER", ["s1"]),
+        patch.object(dc, "sequential_draft_order", lambda project_type=None: ["s1"]),
+        patch.object(dc, "_mains", lambda project_type=None: ["s1"]),
     ):
         with pytest.raises(RuntimeError, match="boom"):
             await dc._run_sequential_draft(job, remaining_passes=0)

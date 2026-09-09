@@ -64,12 +64,77 @@ def test_extract_full_ect_ai_chatbot_fixture():
     assert found.get("s12")
     assert found.get("s4.6")
     assert found.get("s4.13")
+    assert "กกต" in found["s4.6"] or "Web Chat" in found["s4.6"]
+
+
+def test_connect_alone_does_not_inject_ect_sample():
+    """Budget/TOR forms that merely say เชื่อมต่อ must not get กกต. Widget sample text."""
+    text = (
+        "หลักการและเหตุผล\n"
+        "หน่วยงานต้องพัฒนาระบบที่เชื่อมต่อกับฐานข้อมูลภายใน\n"
+        "วัตถุประสงค์\n"
+        "เพื่อเชื่อมต่อข้อมูลระหว่างส่วนกลางและส่วนภูมิภาค\n"
+        "งบประมาณรวม .......... 1,000,000............ บาท\n"
+        "จำนวน 120 วัน\n"
+        "ระยะเวลาดำเนินงาน\n"
+        "จำนวน 120 วัน\n"
+        "ชื่อสถานที่ตั้ง\n"
+        "กรุงเทพมหานคร\n"
+    )
+    found = extract_slot_contents(text)
+    assert "1,000,000" in found["s6"]
+    assert found["s5"] == "120 วัน"
+    assert "กรุงเทพมหานคร" in found["s7"]
+    s46 = found.get("s4.6") or ""
+    assert "กกต" not in s46
+    assert "Zero Data Retention" not in s46
+    assert "Web Chat Widget" not in s46
+
+
+def test_extract_skk_budget_form_fixture():
+    from pathlib import Path
+
+    path = Path(__file__).with_name("fixtures").joinpath("skk_budget_form_pack.txt")
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    found = extract_slot_contents(text)
+    assert "ภายใต้สภาวะการเปลี่ยนแปลง" in found["s1"]
+    assert "เพื่อออกแบบและพัฒนาระบบ" in found["s2"]
+    assert found["s5"] == "270 วัน"
+    assert "5,730,000" in found["s6"]
+    assert "มหาวิทยาลัยเกษตรศาสตร์" in found["s7"]
+    assert "Web Application" in found["s4.1"]
+    assert "ระบบงาน" in found["s4.2"]
+    assert "แท็บเล็ต" in found["s4.4"] or "Hardware" in found["s4.4"]
+    assert "เชื่อมโยง" in (found.get("s4.6") or "")
+    assert "กกต" not in (found.get("s4.6") or "")
+    assert "Zero Data Retention" not in (found.get("s4.6") or "")
+    assert "ผู้จัดการโครงการ" in found["s4.10"] or "Programmer" in found["s4.10"]
 
 
 def test_short_mention_of_project_does_not_fake_background():
     found = extract_slot_contents("เนื้อหาโครงการยังไม่ติดรหัสช่อง")
     assert "s1" not in found
     assert "s6" not in found
+
+
+def test_extract_inline_colon_labels_without_newlines():
+    text = (
+        "ความเป็นมา: กรมบัญชีกลางมีความจำเป็นต้องจัดซื้อระบบสารสนเทศบริหารสัญญาจัดซื้อจัดจ้าง "
+        "วัตถุประสงค์: เพื่อให้เจ้าหน้าที่พัสดุบริหารสัญญา "
+        "วงเงินงบประมาณ: 5,000,000 บาท จากงบดำเนินงานประจำปี "
+        "ระยะเวลาดำเนินการ: 180 วัน นับจากวันที่ลงนามในสัญญา "
+        "สถานที่ดำเนินการ: สำนักงานปลัดกระทรวง กรุงเทพมหานคร "
+        "ขอบเขตงานหลัก: วิเคราะห์ความต้องการ พัฒนาโมดูลบริหารสัญญา"
+    )
+    found = extract_slot_contents(text)
+    assert "กรมบัญชีกลาง" in found["s1"]
+    assert "เจ้าหน้าที่พัสดุ" in found["s2"]
+    assert "5,000,000" in found["s6"]
+    assert "180" in found["s5"]
+    assert "สำนักงานปลัดกระทรวง" in found["s7"]
+    assert "โมดูลบริหารสัญญา" in found["s4.1"]
 
 
 def test_overlay_filled_slots_keeps_paste_facts():

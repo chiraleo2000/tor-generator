@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import { unwrapData } from "@/lib/api-unwrap";
 import { streamSsePost, type ChatMessageItem } from "@/lib/chat-sse";
+import { factProgressFromCoverage } from "@/lib/intake-complete";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import type { CoverageRow } from "@/components/draft/phase1-coverage";
+
+const DEFAULT_MOF_OPTION =
+  "ตาม พ.ร.บ. กฎระเบียบ และแนวทางปฏิบัติของกระทรวงการคลังและส่วนกลาง";
 
 function briefAsMessage(brief: string): ChatMessageItem {
   return {
@@ -42,6 +46,8 @@ export function DraftConversation({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachLegal, setAttachLegal] = useState(false);
+  const [replyOptions, setReplyOptions] = useState<string[]>([]);
+  const [allFactFilled, setAllFactFilled] = useState(false);
   const [progress, setProgress] = useState<{ filled: number; total: number; percent: number } | null>(
     null
   );
@@ -69,20 +75,37 @@ export function DraftConversation({
           room_id?: string;
           coverage?: CoverageRow[];
           brief?: string;
+          reply_options?: string[];
+          all_fact_filled?: boolean;
+          progress?: { filled?: number; total?: number; percent?: number };
         }>(response);
         if (!live) return;
         const id = payload.room_id || "";
         setRoomId(id);
+        if (Array.isArray(payload.reply_options)) {
+          setReplyOptions(payload.reply_options);
+        }
+        if (typeof payload.all_fact_filled === "boolean") {
+          setAllFactFilled(payload.all_fact_filled);
+        }
         if (payload.coverage?.length) {
           onCoverageRef.current?.(payload.coverage);
-          const filled = payload.coverage.filter((row) => row.filled || row.status === "filled")
-            .length;
-          const total = payload.coverage.length || 1;
-          setProgress({
-            filled,
-            total,
-            percent: Math.round((filled / total) * 1000) / 10,
-          });
+          if (
+            payload.progress &&
+            typeof payload.progress.filled === "number" &&
+            typeof payload.progress.total === "number"
+          ) {
+            setProgress({
+              filled: payload.progress.filled,
+              total: payload.progress.total,
+              percent:
+                typeof payload.progress.percent === "number"
+                  ? payload.progress.percent
+                  : 0,
+            });
+          } else {
+            setProgress(factProgressFromCoverage(payload.coverage));
+          }
         }
         let loaded: ChatMessageItem[] = [];
         if (id) {
@@ -115,7 +138,6 @@ export function DraftConversation({
   async function sendIntake(content: string, withLegal: boolean) {
     const controller = new AbortController();
     abortRef.current = controller;
-    // No client watchdog — LM Studio often runs chat sequentially; provider timeout bounds the stream.
     await streamSsePost(
       `${apiBase}/projects/${projectId}/intake/chat`,
       { content, search_scope: "both", attach_legal_reference: withLegal },
@@ -152,6 +174,12 @@ export function DraftConversation({
             if (last?.role !== "assistant") return prev;
             return [...prev.slice(0, -1), { ...last, content: text || last.content }];
           });
+          if (Array.isArray(data.reply_options)) {
+            setReplyOptions(data.reply_options as string[]);
+          }
+          if (typeof data.all_fact_filled === "boolean") {
+            setAllFactFilled(data.all_fact_filled);
+          }
           if (Array.isArray(data.coverage)) {
             onCoverageRef.current?.(data.coverage as CoverageRow[]);
           }
@@ -165,14 +193,7 @@ export function DraftConversation({
               percent: typeof prog.percent === "number" ? prog.percent : 0,
             });
           } else if (Array.isArray(data.coverage)) {
-            const rows = data.coverage as CoverageRow[];
-            const filled = rows.filter((row) => row.filled || row.status === "filled").length;
-            const total = rows.length || 1;
-            setProgress({
-              filled,
-              total,
-              percent: Math.round((filled / total) * 1000) / 10,
-            });
+            setProgress(factProgressFromCoverage(data.coverage as CoverageRow[]));
           }
         }
         if (event === "error") {
@@ -247,12 +268,23 @@ export function DraftConversation({
     }
   }
 
+  function pickOption(text: string) {
+    setDraft(text);
+  }
+
+  const options =
+    replyOptions.length > 0
+      ? replyOptions
+      : mode === "intake" && allFactFilled
+        ? [DEFAULT_MOF_OPTION]
+        : [];
+
   return (
     <div className="flex min-h-[48vh] flex-col overflow-hidden rounded-xl border bg-white" data-testid="draft-conversation">
       {mode === "intake" && progress ? (
         <div className="border-b px-4 py-2" data-testid="intake-progress">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>ความครบช่องข้อเท็จจริง</span>
+            <span>ความครบช่องข้อเท็จจริง (บังคับ)</span>
             <span data-testid="intake-progress-label">
               {progress.filled}/{progress.total} ({progress.percent}%)
             </span>
@@ -264,6 +296,11 @@ export function DraftConversation({
               data-testid="intake-progress-bar"
             />
           </div>
+          {allFactFilled || progress.filled >= progress.total ? (
+            <p className="mt-1.5 text-xs text-brand-green" data-testid="intake-facts-ready-hint">
+              ข้อเท็จจริงครบแล้ว — กดปุ่ม «ครบแล้ว — ไปร่าง (ขั้นที่ ๓)» ด้านบนได้เลย
+            </p>
+          ) : null}
         </div>
       ) : null}
       {error ? (
@@ -292,6 +329,32 @@ export function DraftConversation({
         <div ref={endRef} />
       </div>
       <div className="border-t p-3">
+        {mode === "intake" && options.length > 0 ? (
+          <div className="mb-2 space-y-1" data-testid="intake-reply-options">
+            <p className="text-xs text-muted-foreground">ทางเลือกตอบเร็ว (ค่าเริ่มต้นด้านบน):</p>
+            <div className="flex flex-wrap gap-2">
+              {options.map((option, index) => (
+                <button
+                  key={`${index}-${option.slice(0, 24)}`}
+                  type="button"
+                  data-testid={index === 0 ? "intake-reply-option-default" : `intake-reply-option-${index}`}
+                  disabled={busy}
+                  className={cn(
+                    "max-w-full rounded-md border px-2.5 py-1.5 text-left text-xs",
+                    index === 0
+                      ? "border-brand-green/40 bg-emerald-50 text-emerald-950"
+                      : "border-slate-200 bg-white text-slate-800"
+                  )}
+                  onClick={() => {
+                    pickOption(option);
+                  }}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="flex items-end gap-2">
           <textarea
             data-testid="chat-input"

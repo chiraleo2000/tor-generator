@@ -10,11 +10,8 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function hasBeenAnalyzed(analysis: Record<string, unknown>): boolean {
-  if (analysis.analyzed === true) {
-    return true;
-  }
-  const slotMap = asRecord(analysis.slot_map);
-  return Object.keys(slotMap).length > 0;
+  // Require the explicit flag — a mid-analyze slot_map must not unlock Phase 1.
+  return analysis.analyzed === true;
 }
 
 /** Highest selectable phase: 0 before analyze, 2 after analyze, 3 compose, 4 confirmed. */

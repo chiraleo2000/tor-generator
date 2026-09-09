@@ -12,7 +12,7 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 
 **Production บน AWS ล้วน (ไม่มี hybrid LLM):** ชุด **24–27** + **29 (TBD)** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS  
 RAG **อนุญาตสองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังเป็น Bedrock — ดู [29](29-TBD-AWS-CLOUD-ONLY.md)  
-หลักฐานตรวจ Local LLM ล่าสุด (7 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.3.1**
+หลักฐานตรวจ Local LLM ล่าสุด (9 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.5.0** · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md)
 
 | File | Topic |
 |------|--------|
@@ -21,7 +21,7 @@ RAG **อนุญาตสองแหล่งข้อมูล** (คลั�
 | `15-APPLICATION_DESCRIPTION.md` | คำอธิบายแอป |
 | `16-BACKEND_ARCHITECTURE.md` | สถาปัตยกรรม backend |
 | `17-FRONTEND_ARCHITECTURE.md` | สถาปัตยกรรม frontend |
-| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — รอบล่าสุด **7 ก.ย. 2026** (coverage 94% + Vitest 306 + UI สามเครื่องมือ + live_llm 17/17 รอบเดียว) |
+| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — รอบล่าสุด **9 ก.ย. 2026** (unit 2046 + Vitest 309 · live_llm **17/17** · Docker frontend+backend · Section_Profile) |
 | `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (24 ส.ค. 2026 อัปเดตเส้นทาง 5 Phase) |
 | `19-APPLICATION_OPERATING_REPORT.docx` | ฉบับ Word (TH Sarabun New, ตาราง, ภาพจอ, ไดอะแกรม) |
 | `19-APPLICATION_OPERATING_REPORT.pdf` | ฉบับ PDF ส่งออกจาก Word |
@@ -39,6 +39,10 @@ RAG **อนุญาตสองแหล่งข้อมูล** (คลั�
 | `30-DEV-ASSIGNMENT-MCP-AND-AWS.md` | มอบหมายทีม DEV: สปรินต์ MCP RAG + YAML deploy AWS |
 | `31-MCP-RAG-AWS-QUICKSTART.md` | MCP + Custom RAG บน Amazon (Secrets JSON, egress, fail-open) |
 | `32-AMAZON-QUICK.md` | Amazon Quick workplace AI connectors (MCP Draft 7 + OpenAPI), not QuickSight |
+| `33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md` | **แผน PN:** EC2 (ไม่มี Fargate) · Embed 4 · S3 Vectors · MCP · [PDF](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.pdf) |
+| `34-AWS-PN-TOOLS-LIST.md` | **เครื่องมือ AWS PN** บน EC2 · multi-RAG · [PDF](34-AWS-PN-TOOLS-LIST.pdf) |
+| `35-AWS-PN-DEV-AND-DEPLOY.md` | **คู่มือ deploy EC2** + ตั้ง AWS + `.env` ครบ · แพ็กเกจ `app/infra/pn-ec2/` |
+| `37-TOR-PROFILES-BY-TYPE.md` | **Section_Profile ตาม ๗ ประเภทงาน** — แหล่งความจริงของชุดหัวข้อ TOR (กันยายน 2026) |
 
 ชุด `01`–`12` เป็นบันทึกออกแบบก่อนหน้า (รวม PoC HTML) — อย่าใช้ `10`/`11` เป็นคู่มือติดตั้งของแอป Docker ปัจจุบัน
 

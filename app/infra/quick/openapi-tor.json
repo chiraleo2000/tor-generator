@@ -63,6 +63,10 @@
                   "top_k": {
                     "type": "integer",
                     "description": "Optional hint for snippet count. The stub still returns one object."
+                  },
+                  "rag_group": {
+                    "type": "string",
+                    "description": "Optional RAG group id on the shared S3 bucket (e.g. procurement-th)."
                   }
                 }
               }
@@ -92,6 +96,10 @@
                     "rag_source": {
                       "type": "string",
                       "description": "Always mcp for this connector."
+                    },
+                    "rag_group": {
+                      "type": "string",
+                      "description": "RAG group used for this retrieve, if any."
                     }
                   }
                 }

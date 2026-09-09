@@ -334,6 +334,21 @@ class TestExtractDocx:
         assert "Row 1 Col A" in result.text
         assert "[Table 1]" in result.text
 
+    def test_preserves_body_order_with_tables(self, tmp_path: Path):
+        """Tables stay between surrounding paragraphs (not dumped at the end)."""
+        docx_path = tmp_path / "ordered.docx"
+        doc = Document()
+        doc.add_paragraph("ก่อนตาราง")
+        table = doc.add_table(rows=1, cols=1)
+        table.rows[0].cells[0].text = "ในตาราง"
+        doc.add_paragraph("หลังตาราง")
+        doc.save(str(docx_path))
+        result = extract_docx(str(docx_path))
+        before = result.text.index("ก่อนตาราง")
+        mid = result.text.index("ในตาราง")
+        after = result.text.index("หลังตาราง")
+        assert before < mid < after
+
     def test_thai_content(self, sample_docx_thai: str):
         """Handles Thai content correctly."""
         result = extract_docx(sample_docx_thai)

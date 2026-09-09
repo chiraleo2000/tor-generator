@@ -52,9 +52,17 @@ export function resetDraftChatStartsForTests(): void {
   startedProjects.clear();
 }
 
-function phaseStatusCopy(phase: DraftPhase): { text: string; className: string } | null {
+function phaseStatusCopy(
+  phase: DraftPhase,
+  draftingLabel?: string | null
+): { text: string; className: string } | null {
   if (phase === "drafting") {
-    return { text: "กำลังร่าง... กรุณารอ", className: "mt-1.5 text-xs text-amber-700" };
+    return {
+      text: draftingLabel
+        ? `กำลังร่าง${draftingLabel}...`
+        : "กำลังร่าง... กรุณารอ",
+      className: "mt-1.5 text-xs text-amber-700",
+    };
   }
   if (phase === "reviewing") {
     return {
@@ -197,6 +205,7 @@ export function DraftChat({
   const [totalSections] = useState(13);
   const [phase, setPhase] = useState<"idle" | "drafting" | "reviewing" | "complete">("idle");
   const [currentEditSection, setCurrentEditSection] = useState<string | null>(null);
+  const [draftingLabel, setDraftingLabel] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const started = useRef(false);
   const sectionsRef = useRef<SectionStatus[]>([]);
@@ -236,6 +245,7 @@ export function DraftChat({
       }
       if (data.all_drafted) {
         setPhase("complete");
+        setDraftingLabel(null);
         onAllDrafted();
         return true;
       }
@@ -351,24 +361,53 @@ export function DraftChat({
           const messageId = `draft-${key}-${Date.now()}`;
           ids[key] = messageId;
           const title = typeof data.title === "string" ? data.title : sectionTitle(key);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: messageId,
-              role: "bot",
-              content: "",
-              sectionKey: key,
-              sectionTitle: title,
-              isDraft: true,
-              status: "drafting",
-            },
-          ]);
+          setDraftingLabel(`หมวด ${key.replace("s", "")}: ${title}`);
+          setMessages((prev) => {
+            const existing = prev.find(
+              (row) => row.sectionKey === key && row.status === "drafting"
+            );
+            if (existing) {
+              ids[key] = existing.id;
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                id: messageId,
+                role: "bot",
+                content: "",
+                sectionKey: key,
+                sectionTitle: title,
+                isDraft: true,
+                status: "drafting",
+              },
+            ];
+          });
           return;
         }
         if (event === "token" && key) {
           const piece = typeof data.text === "string" ? data.text : "";
-          const messageId = ids[key];
-          if (!messageId) return;
+          if (!piece) return;
+          let messageId = ids[key];
+          if (!messageId) {
+            messageId = `draft-${key}-${Date.now()}`;
+            ids[key] = messageId;
+            const title = sectionTitle(key);
+            setDraftingLabel(`หมวด ${key.replace("s", "")}: ${title}`);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: messageId!,
+                role: "bot",
+                content: piece,
+                sectionKey: key,
+                sectionTitle: title,
+                isDraft: true,
+                status: "drafting",
+              },
+            ]);
+            return;
+          }
           setMessages((prev) => {
             const current = prev.find((row) => row.id === messageId);
             return patchDraftMessage(prev, messageId, {
@@ -379,6 +418,12 @@ export function DraftChat({
         }
         if (event === "section_done" && key) {
           const content = typeof data.content === "string" ? data.content : "";
+          const count = Number(data.drafted_count);
+          if (Number.isFinite(count) && count > 0) {
+            setDraftedCount((prev) => Math.max(prev, count));
+          } else {
+            setDraftedCount((prev) => Math.min(totalSections, prev + 1));
+          }
           const existingId = ids[key];
           if (!existingId) {
             const messageId = `draft-${key}-done`;
@@ -404,12 +449,32 @@ export function DraftChat({
           void refreshStatus();
           return;
         }
+        if (event === "subsection_start") {
+          const subKey = typeof data.sub_key === "string" ? data.sub_key : "";
+          const title = typeof data.title === "string" ? data.title : subKey;
+          if (subKey) {
+            setDraftingLabel(`หมวด 4 (${subKey} ${title})`);
+          }
+          return;
+        }
         if (event === "subsection_done") {
           onSectionDone?.();
           void refreshStatus();
           return;
         }
         if (event === "progress") {
+          const message = typeof data.message === "string" ? data.message : "";
+          if (message) {
+            setDraftingLabel(message);
+          }
+          return;
+        }
+        if (event === "all_done") {
+          const count = Number(data.drafted_count);
+          if (Number.isFinite(count) && count > 0) {
+            setDraftedCount((prev) => Math.max(prev, count));
+          }
+          setDraftingLabel(null);
           return;
         }
         if (event === "section_error") {
@@ -438,7 +503,7 @@ export function DraftChat({
       {
         id: "sys-start",
         role: "system",
-        content: "กำลังเริ่มร่างทั้ง ๑๓ หมวดอัตโนมัติ — หมวดขอบเขตงานจะเติมลงหัวข้อย่อยโดยตรง",
+        content: "กำลังเริ่มร่างตามประเภทงานอัตโนมัติ — หมวดขอบเขตงานจะเติมลงหัวข้อย่อยโดยตรง",
       },
     ]);
 
@@ -579,7 +644,7 @@ export function DraftChat({
     setDraft(`แก้ไข หมวด ${sectionKey.replace("s", "")}: `);
   }
 
-  const hint = phaseStatusCopy(phase);
+  const hint = phaseStatusCopy(phase, draftingLabel);
 
   return (
     <div className="flex flex-col rounded-xl border bg-white" data-testid="draft-chat">

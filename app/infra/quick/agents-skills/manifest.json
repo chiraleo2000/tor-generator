@@ -1,0 +1,70 @@
+{
+  "name": "tor-amazon-quick-agents-skills",
+  "version": "0.5.0",
+  "product": "Amazon Quick (workplace AI) — not QuickSight",
+  "paired_connector": {
+    "mcp": "app/infra/quick/mcp_server.py",
+    "openapi": "app/infra/quick/openapi-tor.json",
+    "default_local_url": "http://127.0.0.1:8767/mcp",
+    "tools": ["retrieve", "list_rag_groups", "ping", "get_health"],
+    "constraints": [
+      "Remote HTTP MCP only (no stdio)",
+      "Tool timeout 60 seconds",
+      "Max 100 tools; recreate connector after tool changes",
+      "OpenAPI schemas must not use array types in responses"
+    ]
+  },
+  "mirrors_application": {
+    "draft_workflow": "Discussions/21-WORKFLOW_DRAFT_TOR.md",
+    "review_workflow": "Discussions/22-WORKFLOW_REVIEW_TOR.md",
+    "kb_workflow": "Discussions/23-WORKFLOW_KB_QA.md"
+  },
+  "agents": [
+    {
+      "id": "tor-draft-agent",
+      "path": "agents/tor-draft-agent.json",
+      "use_when_th": "ร่าง TOR ตามกระบวนการ 5 ขั้นของแอป"
+    },
+    {
+      "id": "tor-review-agent",
+      "path": "agents/tor-review-agent.json",
+      "use_when_th": "ตรวจสอบ TOR ภายนอกหรือทบทวนร่าง 13 หมวด"
+    }
+  ],
+  "skills": [
+    {
+      "id": "tor-kb-retrieve",
+      "path": "skills/tor-kb-retrieve/",
+      "import": "SKILL.md",
+      "definition": "skill.json"
+    },
+    {
+      "id": "tor-draft-intake",
+      "path": "skills/tor-draft-intake/",
+      "import": "SKILL.md",
+      "definition": "skill.json"
+    },
+    {
+      "id": "tor-draft-compose",
+      "path": "skills/tor-draft-compose/",
+      "import": "SKILL.md",
+      "definition": "skill.json"
+    },
+    {
+      "id": "tor-review-compliance",
+      "path": "skills/tor-review-compliance/",
+      "import": "SKILL.md",
+      "definition": "skill.json"
+    }
+  ],
+  "references": [
+    "references/tor-structure.json",
+    "references/compliance-rules.json"
+  ],
+  "quick_import_notes_th": [
+    "Skills: Agents & skills → Skills → Import from file → เลือก SKILL.md ของแต่ละสกิล",
+    "Agents (scheduled / chat): แนบ MCP connector TOR (:8767 หรือ HTTPS EC2 /mcp) แล้ววาง prompt จากไฟล์ agents/*.json",
+    "Amazon Quick Automate Custom Agent: คัดลอก instructions + structured_output จาก skill.json",
+    "อย่าตั้ง LLM_PROVIDER=bedrock แค่เพื่อทดสอบ Quick บนเครื่อง — Quick ใช้โมเดลของตัวเอง และเรียก retrieve ผ่าน MCP"
+  ]
+}

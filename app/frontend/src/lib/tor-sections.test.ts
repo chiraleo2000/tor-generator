@@ -15,11 +15,10 @@ import {
 } from "./tor-sections";
 
 describe("canonical TOR sections", () => {
-  it("keeps 13 legal sections and 14 scope sub-headings", () => {
+  it("keeps 13 legal mother sections; scope chips come from Section_Profile", () => {
     expect(TOR_SECTION_ORDER).toHaveLength(13);
     expect(Object.keys(TOR_SECTION_LABELS)).toHaveLength(13);
-    expect(SCOPE_SUBSECTIONS).toHaveLength(14);
-    expect(SCOPE_SUBSECTIONS.find((item) => item.key === "s4.2")?.title).toBe("ระบบงานปัจจุบัน");
+    expect(SCOPE_SUBSECTIONS.length).toBeGreaterThanOrEqual(8);
     expect(HITL_SECTIONS).toEqual(["s3", "s6", "s8", "s10", "s13"]);
     expect(DOC_CLASSES.filter((item) => item.required).map((item) => item.id)).toEqual(
       ["announced_price", "budget_approval"]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from app.domain.section_profile import is_scope_storage_key
 from app.orchestrator.agents.background_agent import BackgroundDraftingAgent
 from app.orchestrator.agents.base import BaseDraftingAgent
 from app.orchestrator.agents.budget_agent import BudgetDraftingAgent
@@ -49,8 +50,10 @@ REVIEW_AGENT = ReviewAgent()
 def get_agent_for_section(section_key: str) -> BaseDraftingAgent | None:
     """Get the specialized agent for a given TOR section key."""
     lookup = section_key
-    if section_key.startswith("s4"):
+    if section_key.startswith("s4") or is_scope_storage_key(section_key):
         lookup = "s4"
+    elif section_key in {"s15", "s16", "s17"}:
+        lookup = "s13"
     agent = AGENT_REGISTRY.get(lookup)
     if agent is None:
         logger.warning(

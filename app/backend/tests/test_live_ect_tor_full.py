@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.domain.section_profile import profile_for_project
 from app.services.tor_assemble import plain_tor_from_section_items
 from tests.test_live_lm_studio import _require_lm_studio
 from tests.test_live_realistic_workflow import (
@@ -33,8 +34,10 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ECT_PACK = Path(__file__).with_name("fixtures").joinpath("ect_ai_chatbot_pack.txt")
-FACT_KEYS = ("s1", "s2", "s5", "s6", "s7", "s4.1")
-# Drafting 13 sections + s4.1–s4.14 on local Gemma can take well over an hour.
+_HIRE_DEV = profile_for_project("hire_develop")
+_FIRST_SCOPE = _HIRE_DEV.required_scope_keys()[0]
+FACT_KEYS = ("s1", "s2", "s5", "s6", "s7", _FIRST_SCOPE)
+# hire_develop mains + profile scope on local Gemma can take well over an hour.
 DRAFT_POLL_SEC = 20
 DRAFT_DEADLINE_SEC = 14_400
 
@@ -109,12 +112,21 @@ def ect_project(live_client: httpx.Client) -> str:
     ]
     _step(f"analyze filled {len(filled)}/{len(coverage)} empty={empty}")
     assert coverage, "analyze returned no coverage"
+    coverage_by_key = {row.get("key"): row for row in coverage}
     for key in FACT_KEYS:
-        row = next((item for item in coverage if item.get("key") == key), None)
+        row = coverage_by_key.get(key)
+        if row is None and key == _FIRST_SCOPE:
+            row = coverage_by_key.get("s4.1")
         assert row, f"missing coverage row {key}"
         assert row.get("status") == "filled", f"{key} not filled: {row}"
         assert str(row.get("preview") or "").strip(), f"{key} empty preview"
-    assert len(filled) >= 20, f"expected broad slot coverage, got {len(filled)}"
+    fact_required = [row for row in coverage if row.get("fact_required")]
+    filled_required = [
+        row for row in fact_required if row.get("filled") or row.get("status") == "filled"
+    ]
+    assert len(filled_required) >= min(6, len(fact_required) or 6), (
+        f"expected fact-required slots filled, got {len(filled_required)}/{len(fact_required)}"
+    )
 
     try:
         refs = live_client.post(
@@ -146,8 +158,9 @@ def test_live_ect_intake_covers_document_slots(ect_project: str, live_client: ht
     assert coverage.status_code == 200, coverage.text[:800]
     rows = _data(coverage).get("coverage") or []
     filled = {row["key"] for row in _filled_rows(rows)}
-    for key in FACT_KEYS + ("s3", "s8", "s11", "s4.14"):
-        assert key in filled, f"{key} should be filled from ECT pack, have {sorted(filled)}"
+    for key in FACT_KEYS + ("s3", "s8", "s11"):
+        present = key in filled or (key == _FIRST_SCOPE and "s4.1" in filled)
+        assert present, f"{key} should be filled from ECT pack, have {sorted(filled)}"
 
 
 @pytest.mark.integration
@@ -182,7 +195,7 @@ def test_live_ect_standalone_review_source_document(live_client: httpx.Client):
 
 
 def _kick_draft(client: httpx.Client, project_id: str) -> None:
-    _step("Start 13-section draft job")
+    _step("Start profile-order draft job")
     opened = client.post(
         f"/api/v1/projects/{project_id}/intake/open-draft",
         timeout=30.0,
@@ -212,7 +225,7 @@ def _poll_draft(client: httpx.Client, project_id: str) -> dict:
         assert status.status_code == 200, status.text[:800]
         payload = _data(status)
         drafted = int(payload.get("drafted_count") or 0)
-        total = int(payload.get("total") or 13)
+        total = int(payload.get("total") or len(_HIRE_DEV.main_storage_keys()))
         done_keys = [
             row.get("section_key")
             for row in payload.get("sections") or []

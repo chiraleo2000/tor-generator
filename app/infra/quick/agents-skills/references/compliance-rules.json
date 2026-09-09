@@ -1,0 +1,110 @@
+{
+  "title": "TOR Compliance Rules — mirrors RuleEngine + ReviewAgent",
+  "version": "0.5.0",
+  "source": [
+    "app/backend/app/rule_engine/engine.py",
+    "app/backend/app/rule_engine/rules/*.py",
+    "app/backend/app/orchestrator/agents/review_agent.py",
+    "app/backend/app/rag/law_review.py"
+  ],
+  "scoring": {
+    "category_weights": {
+      "legal": 0.4,
+      "completeness": 0.3,
+      "consistency": 0.2,
+      "format": 0.1
+    },
+    "severity_deductions": {
+      "error": 20,
+      "warning": 10,
+      "suggestion": 5
+    },
+    "passing_threshold": 70,
+    "note_th": "คะแนน < 70 เป็นคำเตือนเท่านั้น ไม่ล็อกการส่งขออนุมัติในแอป"
+  },
+  "finding_kinds": {
+    "legal_violation": {
+      "group_th": "กลุ่ม ก",
+      "requires": "legal_basis จากบริบทกฎหมายที่ retrieve ได้ — ห้ามแต่งมาตรา"
+    },
+    "risk_abnormality": {
+      "group_th": "กลุ่ม ข",
+      "risk_types": ["vague", "price", "cost", "content"]
+    }
+  },
+  "law_review_queries": [
+    "พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 ระเบียบกระทรวงการคลัง",
+    "วิธีประกาศเชิญชวนทั่วไป วิธีคัดเลือก วิธีเฉพาะเจาะจง วงเงิน",
+    "ราคากลาง หลักเกณฑ์การคำนวณราคา ประกาศราคากลาง",
+    "อัตราค่าปรับร้อยละต่อวัน การรับประกันผลงาน",
+    "คุณสมบัติผู้เสนอราคา ทุนจดทะเบียน มูลค่าสุทธิกิจการ e-GP ผู้ทิ้งงาน",
+    "หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ เกณฑ์ราคา เกณฑ์คุณภาพ"
+  ],
+  "deterministic_checks": [
+    {
+      "id": "paid_up_capital",
+      "category": "legal",
+      "rule_th": "ทุนจดทะเบียนชำระแล้ว ≥ floor(งบประมาณ / 4) เมื่อระบุวงเงินได้"
+    },
+    {
+      "id": "penalty_rate",
+      "category": "legal",
+      "rule_th": "ค่าปรับส่งมอบล่าช้า ร้อยละ 0.01–0.20 ต่อวัน และไม่ต่ำกว่า 100 บาทต่อวัน"
+    },
+    {
+      "id": "brand_lock",
+      "category": "legal",
+      "rule_th": "ชื่อยี่ห้อเฉพาะต้องมีคำว่า «หรือเทียบเท่า»"
+    },
+    {
+      "id": "legal_refs",
+      "category": "legal",
+      "rule_th": "อ้าง พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 หรือชื่อย่อที่รับรู้ได้"
+    },
+    {
+      "id": "required_clauses",
+      "category": "completeness",
+      "rule_th": "ต้องมีคุณสมบัติ (s3) ขอบเขต (s4) รับประกัน (s9) ค่าปรับ (s10)"
+    },
+    {
+      "id": "announced_price",
+      "category": "legal",
+      "rule_th": "ต้องมีราคากลาง; ถ้างบกับราคากลางต่างกัน >20% ให้ flag เป็นความเสี่ยงราคา"
+    },
+    {
+      "id": "thirteen_sections",
+      "category": "completeness",
+      "rule_th": "ครบ 13 หมวด; เน้น s4.1 และ s4.8"
+    },
+    {
+      "id": "consistency_budget_scope",
+      "category": "consistency",
+      "rule_th": "งบ ↔ ขอบเขต, ระยะเวลา ↔ ผลส่งมอบ, งวดจ่ายรวม ≈ 100%, ภาษาคลุมเครือ"
+    },
+    {
+      "id": "format_thai_be",
+      "category": "format",
+      "rule_th": "วันที่แบบพุทธศักราชเมื่อระบุวันที่; ลำดับหมวดตาม s1–s13"
+    },
+    {
+      "id": "procurement_method",
+      "category": "risk",
+      "rule_th": "วงเงินสูงควรระบุวิธีจัดซื้อ (e-bidding / คัดเลือก / เฉพาะเจาะจง)"
+    }
+  ],
+  "suggestion_schema": {
+    "category": ["consistency", "completeness", "clarity", "compliance"],
+    "section_key": "s1|s2|...|s13",
+    "current_text": "string ≤200 chars from document",
+    "suggested_text": "full replacement Thai formal text",
+    "predicted_score_improvement": "0.5–10.0",
+    "finding_kind": ["legal_violation", "risk_abnormality"],
+    "legal_basis": "string optional",
+    "risk_type": ["vague", "price", "cost", "content"]
+  },
+  "compare": {
+    "method": "Jaccard token similarity",
+    "ui_pass_threshold": 0.5,
+    "note_th": "เกณฑ์ความคล้ายบนจอ ไม่ใช่เกณฑ์กฎหมาย"
+  }
+}

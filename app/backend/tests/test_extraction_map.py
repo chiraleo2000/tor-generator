@@ -55,5 +55,6 @@ def test_json_field_blob_flattens_for_review():
     assert not mapped["s1"].lstrip().startswith("{")
 
 
-def test_labels_cover_thirteen_sections():
-    assert len(TOR_SECTION_LABELS) == 13
+def test_labels_cover_canonical_and_extra_sections():
+    assert len(TOR_SECTION_LABELS) >= 13
+    assert {"s15", "s16", "s17"} <= set(TOR_SECTION_LABELS)

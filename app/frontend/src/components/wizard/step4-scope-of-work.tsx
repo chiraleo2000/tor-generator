@@ -7,24 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useWizardStore } from "@/stores/wizard-store";
 import type { Step4Data } from "@/types/wizard";
-import { SCOPE_SUBSECTIONS } from "@/lib/tor-sections";
+import { scopeSubsectionsFor } from "@/lib/tor-profiles";
 import { useRowKeys } from "@/lib/use-row-keys";
 
-const MAX_SUBSECTIONS = 14;
-
-const DEFAULT_STEP4_DATA: Step4Data = {
-  scope_items: SCOPE_SUBSECTIONS.map((item) => ({
-    title: item.title,
-    details: "",
-  })),
-  deliverables: [""],
-};
+const MAX_SUBSECTIONS = 20;
 
 export function Step4ScopeOfWork() {
   const { formData, setFormData, setValidationErrors, clearValidationErrors } =
     useWizardStore();
 
-  const data: Step4Data = (formData[4] as Step4Data) || DEFAULT_STEP4_DATA;
+  const step1 = formData[1] as { project_type?: string } | undefined;
+  const scopeDefs = scopeSubsectionsFor(step1?.project_type);
+  const data: Step4Data = (formData[4] as Step4Data) || {
+    scope_items: scopeDefs.map((item) => ({ title: item.title, details: "" })),
+    deliverables: [""],
+  };
   const { keys: scopeKeys, removeAt: removeScopeKey } = useRowKeys(
     data.scope_items.length
   );

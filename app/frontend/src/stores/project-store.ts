@@ -82,7 +82,7 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       const response = await apiClient.post("/projects", {
         name: data.name,
         ministry: data.ministry,
-        budget: data.budget,
+        ...(data.budget !== undefined ? { budget: data.budget } : {}),
         project_type: data.projectType,
         template_id: data.templateId || null,
       });

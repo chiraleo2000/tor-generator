@@ -1,0 +1,53 @@
+# HTTP reverse proxy for PN on EC2 (TLS termination often via host certbot + 443).
+# Copy to pn.conf after editing server_name, or use scripts/render-nginx-from-env.sh
+# Enable: docker compose --profile with-nginx up -d
+
+upstream pn_frontend {
+    server frontend:3000;
+}
+upstream pn_backend {
+    server backend:4000;
+}
+upstream pn_mcp {
+    server amazon-quick:8767;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 32m;
+
+    location /api/ {
+        proxy_pass http://pn_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 600s;
+    }
+
+    location /mcp {
+        proxy_pass http://pn_mcp/mcp;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Authorization $http_authorization;
+        proxy_read_timeout 60s;
+    }
+
+    location /health-mcp {
+        proxy_pass http://pn_mcp/health;
+        proxy_http_version 1.1;
+    }
+
+    location / {
+        proxy_pass http://pn_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

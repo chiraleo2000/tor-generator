@@ -58,12 +58,12 @@ describe("phase-gate", () => {
     expect(canSelectPhase(0, 0, -1)).toBe(false);
   });
 
-  it("treats slot_map keys as analyzed and filled slots as material", () => {
+  it("does not unlock from mid-analyze slot_map without analyzed flag", () => {
     expect(
       intakeUnlockedPhase({
-        analysisJson: { slot_map: { s1: { status: "gap" } } },
+        analysisJson: { slot_map: { s1: { status: "gap" } }, analyzed: false },
       })
-    ).toBe(2);
+    ).toBe(0);
     expect(
       hasIntakeMaterial({
         analysisJson: { slot_map: { s1: { status: "filled", content: "มีข้อมูล" } } },

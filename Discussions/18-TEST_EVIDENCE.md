@@ -1,12 +1,90 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-> **รอบตรวจรวมล่าสุด (7 กันยายน 2026 · แอป v0.4.0):** [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)  
-> pytest coverage **1991 ผ่าน** / บรรทัด **94%** · Vitest **306 ผ่าน** / lines **96.4%** · UI สามเครื่องมือ **3/3** · `pytest -m live_llm` **17/17** (รอบเดียว)  
-> ภาพ `serial-*.png` เป็นรอบ 7 ก.ย. · ล็อก `_round-2026-09-07-*.txt`
+> **รอบ 9 กันยายน 2026 — Section_Profile ตามประเภทงาน:** pytest `-m "not live_llm and not integration"` **2046 ผ่าน** / 25 ตัด · Vitest **309 ผ่าน** / 50 ไฟล์ · `pytest -m live_llm` **17/17** · Docker `tor-app` rebuild frontend+backend  
+> รอบตรวจรวมก่อนหน้าที่มี UI สามเครื่องมือ headed (7 กันยายน 2026 บ่าย · แอป v0.4.0): [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)
 
 ---
 
-## รอบ 7 กันยายน 2026 — unit + เครื่องมือบนเว็บ + live_llm (ผ่านทั้งหมด)
+## รอบ 9 กันยายน 2026 — Section_Profile (unit + Docker + live_llm)
+
+ชุดหัวข้อ TOR แปรตามหมวดใหญ่ ๗ ประเภท (`section_profile.py` · [37](37-TOR-PROFILES-BY-TYPE.md)) ไม่ใช้ `s4.1`–`s4.14` ตายตัว
+
+สแตก Docker `tor-app` + **mcp-rag :8765** + **amazon-quick :8767** + LM Studio `http://127.0.0.1:1234`  
+โมเดลที่โหลด: `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m`  
+`docker compose -p tor-app --env-file .env --profile amazon-quick up -d --build frontend backend` แล้ว `python -m app.seed_db`  
+แก้ TypeScript ตอน build frontend: `scopeSubsectionsFor(raw?: string | null)` ให้เรียกแบบไม่ส่งอาร์กิวเมนต์ได้
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest `-m "not live_llm and not integration"` | **2046 ผ่าน** / 25 ตัด live·integration · ~3:32 นาที (`test_amazon_quick` HTTP ขาดครั้งหนึ่งแล้วผ่านเมื่อรันซ้ำ) | รอบ unit เช้า |
+| Vitest `run` | **309 ผ่าน** / 50 ไฟล์ · ~65 วินาที | รอบ unit เช้า |
+| pytest `-m live_llm` | **17/17 ผ่าน** ในรอบเดียว · 54:44 นาที (3284.11s) | `test-evidence/_round-2026-09-09-live-llm.txt` |
+| Docker health หลัง deploy | frontend `:3000` 200 · backend `/health` healthy · amazon-quick `rag.reachable=true` | รอบบ่าย |
+
+`live_llm` รันบนโฮสต์ (`app/backend`) ยิง LM Studio `:1234` + API `http://127.0.0.1:4000`:
+
+| กลุ่ม | ผล |
+|-------|-----|
+| ECT (3) | วิเคราะห์ **13/25** แล้ว fill-references เติมช่องว่าง · ตรวจต้นทาง **79/100** · ร่างตามโปรไฟล์ `hire_develop` **15 หมวด** (รวม s15/s16/s17) · TOR ที่ประกอบ **78/100** · Jaccard **0.7744** **ผ่าน** |
+| `test_live_lm_studio.py` (8) | โมเดล / embeddings 768-d / แชทไทย / กราฟ JSON **ผ่าน** |
+| Realistic API (4) | ร่าง s1 · แชทคลังของฉัน · ตรวจ PDF · อัปโหลด `other` **ผ่าน** |
+| PDF live embed + ingest (2) | **ผ่าน** |
+
+จุดที่ตรวจในรอบ unit: สร้างโครงการต้องเลือกหมวดใหญ่ · ล็อกหมวดหลังขั้นที่ ๓ · หัวข้อย่อยขอบเขตตามโปรไฟล์ · ส่งออกเลขหมวดต่อเนื่องจากโปรไฟล์ · `buy_goods`/`construction`/`hire_service` ไม่มีระบบงานปัจจุบัน
+
+---
+
+## รอบ 7 กันยายน 2026 บ่าย — unit + UI + live_llm + Amazon Quick (ผ่านทั้งหมด)
+
+สแตก Docker `tor-app` + **mcp-rag :8765** + **amazon-quick :8767** (profile) + LM Studio `http://127.0.0.1:1234`  
+`MCP_RAG_ENABLED=true` · อย่าส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ Compose
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest `-m "not live_llm and not integration"` + cov | **1992 ผ่าน** / 2 ข้าม / 25 ตัด · **94%** (เกต 90% → 93.92%) · 3:46 นาที | `test-evidence/_round-2026-09-07pm-pytest.txt` |
+| Vitest `run --coverage` | **306 ผ่าน** / 50 ไฟล์ · statements **94.34%** · lines **96.4%** | `test-evidence/_round-2026-09-07pm-vitest.txt` |
+| Amazon Quick live `:8767` + unit | health `rag.mode=live` · REST/MCP retrieve จาก PDF จริง · **10/10** unit | `test-evidence/_round-2026-09-07pm-amazon-quick.txt` · [32](32-AMAZON-QUICK.md) |
+| UI ตามลำดับ: ถาม-ตอบ → ร่าง TOR → ตรวจสอบ TOR | **3/3 ผ่าน** · ร่าง **13/13 หมวด** (~46 นาที) | `test-evidence/_round-2026-09-07pm-summary.txt` |
+| pytest `-m live_llm` | **17/17 ผ่าน** ในรอบเดียว · 52:13 นาที | `test-evidence/_round-2026-09-07pm-live-llm.txt` |
+
+ฮาร์เนสหน้าเว็บ: `app/frontend/scripts/serial_three_tools.py` (Playwright Python + Chrome)
+
+| ขั้น UI | ผล | เวลา | หมายเหตุ |
+|---------|-----|------|----------|
+| 1 ถาม-ตอบ `/chat` | **CHAT_OK** | ~189 วินาที | citation จากคลังจริง |
+| 2 ร่าง TOR ห้าขั้น | **DRAFT_OK** | ~46 นาที | **13/13 หมวด** |
+| 3 ตรวจสอบ TOR `/review` | **REVIEW_OK** | ~102 วินาที | ไฟล์ตัวอย่างสั้นอาจได้คะแนนต่ำตามเนื้อหา |
+
+`live_llm` รันในคอนเทนเนอร์ backend (overlay `docker-compose.test.yml`) ยิง LM Studio + `http://127.0.0.1:4000`:
+
+| กลุ่ม | ผล |
+|-------|-----|
+| `test_live_lm_studio.py` (8) | โมเดล / embeddings 768-d / แชทไทย / กราฟ JSON **ผ่าน** |
+| Realistic API (4) | ร่าง s1 · แชทคลังของฉัน · ตรวจ PDF · อัปโหลด `other` **ผ่าน** |
+| ECT (3) | วิเคราะห์ **27/27** · ตรวจต้นทาง **82/100** · ร่าง 13 หมวด · TOR ที่ประกอบ **82/100** · Jaccard 0.7176 **ผ่าน** |
+| PDF live embed + ingest (2) | **ผ่าน** ในรอบเดียว |
+
+Amazon Quick (`tor-amazon-quick` v0.4.0): `GET /health` → `rag.reachable=true` · `POST /retrieve` คืน `source_document` จาก PDF จริง (ไม่ใช่ stub `amazon-quick-mcp`) · MCP `tools/list` = retrieve, ping, get_health
+
+![แดชบอร์ดหลังล็อกอิน](test-evidence/serial-00-dashboard.png)
+
+![ถาม-ตอบ](test-evidence/serial-01-chat.png)
+
+![ร่างครบ 13 หมวด](test-evidence/serial-02-draft-13.png)
+
+![ร่างเสร็จ](test-evidence/serial-02-draft-done.png)
+
+![เริ่มตรวจสอบ TOR](test-evidence/serial-03-review-start.png)
+
+![สกัดข้อความ](test-evidence/serial-04-review-extract.png)
+
+![คะแนนความพร้อม](test-evidence/serial-05-review-score.png)
+
+พอร์ต **8765** = `mcp-rag` · **8767** = Amazon Quick sidecar
+
+---
+
+## รอบ 7 กันยายน 2026 เช้า — unit + เครื่องมือบนเว็บ + live_llm (ผ่านทั้งหมด)
 
 สแตก Docker `tor-app` + **mcp-rag :8765** + LM Studio `http://127.0.0.1:1234`  
 `MCP_RAG_ENABLED=true` · อย่าส่ง `POSTGRES_HOST=127.0.0.1` ในเชลล์เดียวกับ Compose

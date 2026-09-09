@@ -6,6 +6,7 @@ These tests fail clearly when the Compose stack is down. They do not skip.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from datetime import datetime
@@ -18,18 +19,20 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-API_BASE = "http://127.0.0.1:4000"
+API_BASE = os.environ.get("LIVE_API_BASE", "http://127.0.0.1:4000")
 EMAIL = "officer@example.go.th"
 PASSWORD = "Passw0rd!"
 
-INTAKE_TEXT = (
-    "ความเป็นมา: กรมบัญชีกลางมีความจำเป็นต้องจัดซื้อระบบสารสนเทศบริหารสัญญาจัดซื้อจัดจ้าง "
-    "เพื่อติดตามงวดจ่ายและการส่งมอบให้เป็นไปตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 "
-    "วัตถุประสงค์: เพื่อให้เจ้าหน้าที่พัสดุบริหารสัญญา ตรวจรับงาน และรายงานสถานะได้ครบถ้วนตามกฎหมาย "
-    "วงเงินงบประมาณ: 5,000,000 บาท จากงบดำเนินงานประจำปี "
-    "ระยะเวลาดำเนินการ: 180 วัน นับจากวันที่ลงนามในสัญญา "
-    "สถานที่ดำเนินการ: สำนักงานปลัดกระทรวง กรุงเทพมหานคร "
-    "ขอบเขตงานหลัก: วิเคราะห์ความต้องการ พัฒนาโมดูลบริหารสัญญา ทดสอบระบบ อบรมผู้ใช้ และส่งมอบคู่มือใช้งาน"
+INTAKE_TEXT = "\n".join(
+    [
+        "ความเป็นมา (s1): กรมบัญชีกลางมีความจำเป็นต้องจัดซื้อระบบสารสนเทศบริหารสัญญาจัดซื้อจัดจ้าง",
+        "เพื่อติดตามงวดจ่ายและการส่งมอบให้เป็นไปตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560",
+        "วัตถุประสงค์ (s2): เพื่อให้เจ้าหน้าที่พัสดุบริหารสัญญา ตรวจรับงาน และรายงานสถานะได้ครบถ้วนตามกฎหมาย",
+        "ระยะเวลาดำเนินการ (s5): 180 วัน นับจากวันที่ลงนามในสัญญา",
+        "วงเงินงบประมาณ (s6): 5,000,000 บาท จากงบดำเนินงานประจำปี",
+        "สถานที่ดำเนินการ (s7): สำนักงานปลัดกระทรวง กรุงเทพมหานคร",
+        "ขอบเขตงานหลัก (s4.1): วิเคราะห์ความต้องการ พัฒนาโมดูลบริหารสัญญา ทดสอบระบบ อบรมผู้ใช้ และส่งมอบคู่มือใช้งาน",
+    ]
 )
 
 MINE_DOC = (
@@ -63,12 +66,21 @@ def _thai_count(text: str) -> int:
 
 
 def _require_api() -> None:
-    response = httpx.get(f"{API_BASE}/health", timeout=5.0)
-    response.raise_for_status()
-    payload = response.json()
-    status = payload.get("status") or payload.get("data", {}).get("status")
-    if status not in {None, "healthy", "ok", True}:
-        _step(f"health payload={payload}")
+    deadline = time.time() + 90
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            response = httpx.get(f"{API_BASE}/health", timeout=5.0)
+            response.raise_for_status()
+            payload = response.json()
+            status = payload.get("status") or payload.get("data", {}).get("status")
+            if status not in {None, "healthy", "ok", True}:
+                _step(f"health payload={payload}")
+            return
+        except Exception as exc:  # noqa: BLE001 — live stack may bounce during rebuild
+            last_error = exc
+            time.sleep(3)
+    pytest.fail(f"API not reachable at {API_BASE}: {last_error}")
 
 
 def _data(response: httpx.Response) -> dict:
@@ -180,7 +192,8 @@ def test_live_full_drafting_workflow(live_client: httpx.Client):
     analysis = _data(analyzed)
     coverage = analysis.get("coverage") or []
     filled = [row for row in coverage if row.get("filled") or row.get("status") == "filled"]
-    _step(f"analyze filled {len(filled)} slots")
+    filled_keys = [row.get("key") for row in filled]
+    _step(f"analyze filled {len(filled)} slots keys={filled_keys}")
     assert coverage, "analyze returned no coverage rows"
     _pause(2)
 
@@ -192,12 +205,32 @@ def test_live_full_drafting_workflow(live_client: httpx.Client):
     assert refs.status_code == 200, refs.text[:1200]
     _pause(2)
 
-    _step("Step 5: draft section s1 with LM Studio")
-    drafted = live_client.post(
-        f"/api/v1/projects/{project_id}/draft-section",
-        json={"section_key": "s1"},
-        timeout=1800.0,
+    _step("Step 4b: confirm-ready before compose")
+    ready = live_client.post(
+        f"/api/v1/projects/{project_id}/intake/confirm-ready",
+        json={"confirm": True},
+        timeout=30.0,
     )
+    assert ready.status_code == 200, ready.text[:800]
+    assert _data(ready).get("ready_to_compose") is True
+    _pause()
+
+    _step("Step 5: draft section s1 with LM Studio")
+    drafted = None
+    for attempt in range(1, 4):
+        drafted = live_client.post(
+            f"/api/v1/projects/{project_id}/draft-section",
+            json={"section_key": "s1"},
+            timeout=1800.0,
+        )
+        if drafted.status_code == 200:
+            break
+        body = drafted.text[:400]
+        _step(f"draft-section attempt {attempt} status={drafted.status_code} {body[:180]}")
+        if "หมดเวลารอคิว" not in body and drafted.status_code not in {429, 503}:
+            break
+        time.sleep(20)
+    assert drafted is not None
     draft = str(_data(drafted).get("draft_content") or "") if drafted.status_code == 200 else ""
     _step(f"draft-section status={drafted.status_code} chars={len(draft)}")
     assert drafted.status_code == 200, drafted.text[:1200]

@@ -20,7 +20,17 @@ from pydantic import BaseModel, Field, field_validator
 # ---------------------------------------------------------------------------
 
 ProjectStatus = Literal["draft", "in_review", "approved", "rejected", "archived"]
-ProjectType = Literal["it", "construction", "consulting", "general"]
+ProcurementCategory = Literal[
+    "hire_develop",
+    "hire_maintain",
+    "lease_service",
+    "buy_goods",
+    "construction",
+    "hire_consult",
+    "hire_service",
+]
+LegacyProjectType = Literal["it", "consulting", "general"]
+ProjectType = ProcurementCategory | LegacyProjectType
 
 
 # ---------------------------------------------------------------------------
@@ -45,17 +55,28 @@ class ProjectCreateRequest(BaseModel):
         description="Ministry or organization name",
         examples=["กระทรวงการพัฒนาสังคมและความมั่นคงของมนุษย์"],
     )
-    budget: int = Field(
-        ...,
+    budget: Optional[int] = Field(
+        default=None,
         gt=0,
-        description="Project budget in baht (positive integer)",
+        description="Optional project budget in baht (positive integer when provided)",
         examples=[5000000],
     )
-    project_type: ProjectType = Field(
-        default="general",
-        description="Project type category",
-        examples=["it"],
+    project_type: str = Field(
+        ...,
+        min_length=1,
+        description="Procurement category (7 keys; legacy it/construction/consulting/general accepted)",
+        examples=["hire_develop"],
     )
+
+    @field_validator("project_type")
+    @classmethod
+    def _normalize_category(cls, value: str) -> str:
+        from app.domain.section_profile import ProfileStatus, classify_category
+
+        status, mapped = classify_category(value)
+        if status is not ProfileStatus.OK:
+            raise ValueError("ต้องเลือกหมวดใหญ่ประเภทการจัดซื้อจัดจ้าง")
+        return mapped
     template_id: Optional[uuid.UUID] = Field(
         default=None,
         description="Optional template to use for pre-populating TOR structure",
@@ -82,9 +103,9 @@ class ProjectUpdateRequest(BaseModel):
         gt=0,
         description="Updated budget in baht",
     )
-    project_type: Optional[ProjectType] = Field(
+    project_type: Optional[str] = Field(
         default=None,
-        description="Updated project type",
+        description="Updated procurement category",
     )
     status: Optional[ProjectStatus] = Field(
         default=None,
@@ -94,6 +115,18 @@ class ProjectUpdateRequest(BaseModel):
         default=None,
         description="Updated template reference",
     )
+
+    @field_validator("project_type")
+    @classmethod
+    def _normalize_update_category(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        from app.domain.section_profile import ProfileStatus, classify_category
+
+        status, mapped = classify_category(value)
+        if status is not ProfileStatus.OK:
+            raise ValueError("หมวดใหญ่ประเภทการจัดซื้อจัดจ้างไม่ถูกต้อง")
+        return mapped
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +154,13 @@ class ProjectResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("project_type", mode="before")
+    @classmethod
+    def _norm_type(cls, value: object) -> str:
+        from app.domain.section_profile import category_for_project
+
+        return category_for_project(str(value or ""))
 
     @field_validator("current_phase", mode="before")
     @classmethod
@@ -151,6 +191,13 @@ class ProjectListItem(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("project_type", mode="before")
+    @classmethod
+    def _list_type(cls, value: object) -> str:
+        from app.domain.section_profile import category_for_project
+
+        return category_for_project(str(value or ""))
 
     @field_validator("current_phase", mode="before")
     @classmethod

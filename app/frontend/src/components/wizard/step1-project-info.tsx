@@ -17,18 +17,13 @@ import { apiClient } from "@/lib/api-client";
 import type { Step1Data, TemplateOption } from "@/types/wizard";
 import { ExtractionConfirm } from "@/components/projects/extraction-confirm";
 
-const PROJECT_TYPE_OPTIONS = [
-  { value: "it", label: "ระบบเทคโนโลยีสารสนเทศ" },
-  { value: "construction", label: "งานก่อสร้าง" },
-  { value: "consulting", label: "งานจ้างที่ปรึกษา" },
-  { value: "general", label: "จัดซื้อจัดจ้างทั่วไป" },
-];
+import { PROCUREMENT_CATEGORIES } from "@/lib/tor-profiles";
 
 const DEFAULT_STEP1_DATA: Step1Data = {
   project_name: "",
   ministry: "",
   budget: null,
-  project_type: "general",
+  project_type: "",
   template_id: null,
   location: "",
   duration_days: null,
@@ -241,7 +236,7 @@ export function Step1ProjectInfo() {
 
       {/* Project Type */}
       <div className="space-y-2">
-        <Label htmlFor="project_type">ประเภทโครงการ</Label>
+        <Label htmlFor="project_type">หมวดใหญ่ประเภทการจัดซื้อจัดจ้าง</Label>
         <Select
           id="project_type"
           value={data.project_type}
@@ -251,7 +246,11 @@ export function Step1ProjectInfo() {
               e.target.value as Step1Data["project_type"]
             )
           }
-          options={PROJECT_TYPE_OPTIONS}
+          placeholder="เลือกหมวดใหญ่"
+          options={PROCUREMENT_CATEGORIES.map((item) => ({
+            value: item.key,
+            label: item.label,
+          }))}
         />
       </div>
 

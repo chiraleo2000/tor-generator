@@ -6,8 +6,19 @@ export type UserRole = 'officer' | 'reviewer' | 'admin';
 /** Project status lifecycle */
 export type ProjectStatus = 'draft' | 'in_review' | 'approved' | 'rejected' | 'archived';
 
-/** Project types */
-export type ProjectType = 'it' | 'construction' | 'consulting' | 'general';
+/** Project types — 7 procurement categories plus legacy stored values */
+export type ProcurementCategory =
+  | 'hire_develop'
+  | 'hire_maintain'
+  | 'lease_service'
+  | 'buy_goods'
+  | 'construction'
+  | 'hire_consult'
+  | 'hire_service';
+
+export type LegacyProjectType = 'it' | 'consulting' | 'general';
+
+export type ProjectType = ProcurementCategory | LegacyProjectType;
 
 /** Toast severity levels */
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -46,7 +57,7 @@ export interface Project {
 export interface CreateProjectInput {
   name: string;
   ministry: string;
-  budget: number;
+  budget?: number;
   projectType: ProjectType;
   templateId?: string;
 }

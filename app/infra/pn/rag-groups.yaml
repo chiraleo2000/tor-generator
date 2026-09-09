@@ -1,0 +1,26 @@
+# PN multi-RAG on one S3 bucket
+# One bucket, many RAG groups (prefix + vector index each).
+# MCP retrieve can pass rag_group to select which group to search.
+
+bucket_env: MINIO_BUCKET   # use app MinIO/S3 bucket from settings when empty below
+bucket: ""                 # optional override, e.g. pn-tor-kb
+
+default_group: procurement-th
+chunk_target_tokens: 4096
+embedding_model: cohere.embed-v4:0
+embedding_dimensions: 1024
+
+groups:
+  - id: procurement-th
+    name: จัดซื้อจัดจ้าง (คลังหลัก)
+    description: กฎหมาย ระเบียบ คู่มือจัดซื้อจัดจ้างภาครัฐ
+    prefix: rags/procurement-th/
+    vector_index: procurement-th-embed4-v1
+    mcp_enabled: true
+
+  - id: agency-extra
+    name: คลังหน่วยงานเสริม
+    description: เอกสารเพิ่มของหน่วยงาน (แยก index)
+    prefix: rags/agency-extra/
+    vector_index: agency-extra-embed4-v1
+    mcp_enabled: true

@@ -35,5 +35,6 @@ Point Amazon Quick Desktop at **8767**. Service **mcp-rag** owns **8765** (pgvec
    Endpoint: public HTTPS URL of this sidecar (or VPC DNS). Auth: none for the local stub.
 3. Or **OpenAPI Specification** and import `openapi-tor.json`.
 4. After you change tools, delete and recreate the connector (tool list is frozen at register time).
+5. Import **Agents & Skills** from [`agents-skills/`](agents-skills/README.md) (`SKILL.md` + agent JSON) so Quick can draft/review TOR with the same phase logic as the web app.
 
 Production: put TLS in front, keep retrieve under 60s, and optionally replace the stub body with a call to TOR `hybrid_retrieve` on the private network.

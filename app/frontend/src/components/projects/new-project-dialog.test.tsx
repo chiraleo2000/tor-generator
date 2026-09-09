@@ -63,9 +63,34 @@ describe("NewProjectDialog", () => {
     render(<NewProjectDialog open onOpenChange={() => undefined} />);
     fireEvent.click(await screen.findByTestId("create-project-submit"));
     expect(await screen.findByTestId("new-project-error")).toHaveTextContent(
-      "กรุณากรอกชื่อโครงการ หน่วยงาน และงบประมาณ"
+      "กรุณากรอกชื่อโครงการ และหน่วยงาน"
     );
     expect(createProject).not.toHaveBeenCalled();
+  });
+
+  it("creates a project without budget", async () => {
+    createProject.mockResolvedValue({ id: "proj-10" });
+    const onOpenChange = vi.fn();
+    render(<NewProjectDialog open onOpenChange={onOpenChange} />);
+    fireEvent.change(await screen.findByTestId("new-project-name"), {
+      target: { value: "โครงการไม่มีงบ" },
+    });
+    fireEvent.change(screen.getByTestId("new-project-ministry"), {
+      target: { value: "กรมบัญชีกลาง" },
+    });
+    fireEvent.change(screen.getByTestId("new-project-type"), {
+      target: { value: "buy_goods" },
+    });
+    fireEvent.click(screen.getByTestId("create-project-submit"));
+    await waitFor(() => expect(createProject).toHaveBeenCalled());
+    expect(createProject).toHaveBeenCalledWith({
+      name: "โครงการไม่มีงบ",
+      ministry: "กรมบัญชีกลาง",
+      projectType: "buy_goods",
+      templateId: undefined,
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(push).toHaveBeenCalledWith("/projects/proj-10/draft");
   });
 
   it("creates a project and navigates to the 5-phase draft", async () => {
@@ -78,6 +103,9 @@ describe("NewProjectDialog", () => {
     fireEvent.change(screen.getByTestId("new-project-ministry"), {
       target: { value: "กรมบัญชีกลาง" },
     });
+    fireEvent.change(screen.getByTestId("new-project-type"), {
+      target: { value: "buy_goods" },
+    });
     fireEvent.change(screen.getByTestId("new-project-budget"), {
       target: { value: "1,500,000" },
     });
@@ -87,7 +115,7 @@ describe("NewProjectDialog", () => {
       name: "โครงการทดสอบ",
       ministry: "กรมบัญชีกลาง",
       budget: 1500000,
-      projectType: "general",
+      projectType: "buy_goods",
       templateId: undefined,
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -105,6 +133,9 @@ describe("NewProjectDialog", () => {
     });
     fireEvent.change(screen.getByTestId("new-project-ministry"), {
       target: { value: "กรมบัญชีกลาง" },
+    });
+    fireEvent.change(screen.getByTestId("new-project-type"), {
+      target: { value: "buy_goods" },
     });
     fireEvent.change(screen.getByTestId("new-project-budget"), {
       target: { value: "1000" },

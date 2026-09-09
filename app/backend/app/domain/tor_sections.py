@@ -1,21 +1,16 @@
-"""Canonical TOR section model — single source of truth.
+"""Canonical TOR storage keys — catalog of mother sections s1–s13 plus extras.
 
-Legal 13-section schema used by export, Rule Engine, orchestrator agents,
-and the 8-step wizard. Discussion 01's 10-section outline is content
-guidance only; product storage/export always uses these keys.
-
-Wizard mapping (Requirement 4):
-  Step 1 metadata → project row + s5 duration + s7 location
-  Step 2 problem → s1
-  Step 3 objectives → s2
-  Step 4 scope → s4 + s4.1..s4.14
-  Step 5 qualifications → s3
-  Step 6 budget/payment → s5, s6, s8, s9, s10
-  Step 7 review → all 13 (AI fills orphan s7/s11/s12/s13 if empty)
-  Step 8 export → none
+Per-project topic lists come from ``section_profile``. This module keeps the
+storage catalog, wizard step map, and sample payloads.
 """
 
 from __future__ import annotations
+
+from app.domain.section_profile import (
+    LEGACY_SCOPE_TITLES,
+    all_scope_storage_keys,
+    profile_for_project,
+)
 
 # Ordered legal TOR sections (พ.ร.บ. 2560 / government TOR structure)
 TOR_SECTION_ORDER: list[str] = [
@@ -37,7 +32,7 @@ TOR_SECTION_ORDER: list[str] = [
 TOR_SECTION_LABELS: dict[str, str] = {
     "s1": "ความเป็นมา",
     "s2": "วัตถุประสงค์",
-    "s3": "คุณสมบัติของผู้เสนอราคา",
+    "s3": "คุณสมบัติของผู้ยื่นข้อเสนอ",
     "s4": "ขอบเขตของงาน",
     "s5": "ระยะเวลาดำเนินการ",
     "s6": "วงเงินงบประมาณ",
@@ -48,12 +43,17 @@ TOR_SECTION_LABELS: dict[str, str] = {
     "s11": "หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ",
     "s12": "เอกสารและหลักฐานที่ผู้เสนอราคาต้องนำมายื่น",
     "s13": "เงื่อนไขอื่น ๆ",
+    "s15": "ลิขสิทธิ์และกรรมสิทธิ์ในผลงาน",
+    "s16": "การรักษาความลับของข้อมูลและการคุ้มครองข้อมูลส่วนบุคคล",
+    "s17": "หน่วยงานผู้รับผิดชอบและสถานที่ติดต่อ",
 }
+
+EXTRA_SECTION_ORDER: list[str] = ["s15", "s16", "s17"]
 
 TOR_SECTION_LABELS_BILINGUAL: dict[str, str] = {
     "s1": "ความเป็นมา (Background)",
     "s2": "วัตถุประสงค์ (Objectives)",
-    "s3": "คุณสมบัติของผู้เสนอราคา (Vendor Qualifications)",
+    "s3": "คุณสมบัติของผู้ยื่นข้อเสนอ (Vendor Qualifications)",
     "s4": "ขอบเขตของงาน (Scope of Work)",
     "s5": "ระยะเวลาดำเนินการ (Timeline)",
     "s6": "วงเงินงบประมาณ (Budget)",
@@ -64,30 +64,18 @@ TOR_SECTION_LABELS_BILINGUAL: dict[str, str] = {
     "s11": "หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ (Evaluation Criteria)",
     "s12": "เอกสารและหลักฐานที่ผู้เสนอราคาต้องนำมายื่น (Supporting Documents)",
     "s13": "เงื่อนไขอื่น ๆ (Other Conditions)",
+    "s15": "ลิขสิทธิ์และกรรมสิทธิ์ในผลงาน (Intellectual Property)",
+    "s16": "การรักษาความลับของข้อมูลและการคุ้มครองข้อมูลส่วนบุคคล (Confidentiality)",
+    "s17": "หน่วยงานผู้รับผิดชอบและสถานที่ติดต่อ (Responsible Unit)",
 }
 
-# Scope of Work 14 subsections (Discussion 01 / mockup 06)
-SCOPE_SUBSECTIONS: dict[str, str] = {
-    "s4.1": "สรุปขอบเขตงาน",
-    "s4.2": "ระบบงานปัจจุบัน",
-    "s4.3": "งานหลักและกิจกรรม",
-    "s4.4": "ข้อกำหนดด้านฮาร์ดแวร์",
-    "s4.5": "ข้อกำหนดด้านซอฟต์แวร์และลิขสิทธิ์",
-    "s4.6": "จุดเชื่อมโยงระบบ",
-    "s4.7": "มาตรฐานและแบบอ้างอิง",
-    "s4.8": "ผลงานส่งมอบ",
-    "s4.9": "ระยะเวลาการสนับสนุน บำรุงรักษา และ SLA",
-    "s4.10": "บุคลากร ทีมงาน และปริมาณงาน (man-day)",
-    "s4.11": "รูปแบบการบำรุงรักษา (PM/CM)",
-    "s4.12": "การดำเนินงานและการบริหารจัดการ",
-    "s4.13": "แผนสำรอง กู้คืนระบบ และการสำรองข้อมูล",
-    "s4.14": "ข้อกำหนดด้านความมั่นคงปลอดภัย PDPA",
-}
+SCOPE_SUBSECTIONS: dict[str, str] = {**LEGACY_SCOPE_TITLES, **all_scope_storage_keys()}
 
-# Minimum required scope subsections for completeness (warnings, not halt)
+# Default warnings when no project type is available (buy_goods profile).
 SCOPE_REQUIRED_SUBSECTIONS: dict[str, str] = {
-    "s4.1": SCOPE_SUBSECTIONS["s4.1"],
-    "s4.8": SCOPE_SUBSECTIONS["s4.8"],
+    item.storage_key: item.title
+    for item in profile_for_project("buy_goods").scope_subsections
+    if item.required
 }
 
 MINIMUM_CONTENT_LENGTH: int = 20

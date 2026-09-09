@@ -394,10 +394,47 @@ def _estimate_text_pages(full_text: str) -> int:
     return max(1, length // 3000 + (1 if length % 3000 else 0))
 
 
+def _docx_body_sections(doc: object) -> list[str]:
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    sections: list[str] = []
+    table_idx = 0
+    body = doc.element.body
+    for child in body.iterchildren():
+        if child.tag == qn("w:p"):
+            line = _docx_paragraph_line(Paragraph(child, doc))
+            if line is not None:
+                sections.append(line)
+            continue
+        if child.tag != qn("w:tbl"):
+            continue
+        sections.extend(_docx_table_lines(Table(child, doc), table_idx))
+        table_idx += 1
+    return sections
+
+
+def _docx_fallback_sections(doc: object) -> list[str]:
+    from docx.document import Document as DocxDocument
+
+    if not isinstance(doc, DocxDocument):
+        return []
+    sections: list[str] = []
+    for paragraph in doc.paragraphs:
+        line = _docx_paragraph_line(paragraph)
+        if line is not None:
+            sections.append(line)
+    for idx, table in enumerate(doc.tables):
+        sections.extend(_docx_table_lines(table, idx))
+    return sections
+
+
 def extract_docx(file_path: str) -> ExtractionResult:
     """Extract text from a DOCX file preserving document structure.
 
-    Extracts paragraphs with heading levels and table content.
+    Walks the document body in order so tables stay next to surrounding
+    paragraphs (critical for Thai budget / TOR proposal forms).
 
     Args:
         file_path: Path to the DOCX file.
@@ -405,28 +442,18 @@ def extract_docx(file_path: str) -> ExtractionResult:
     Returns:
         ExtractionResult with structured text content.
     """
-    warnings: list[str] = []
-    sections: list[str] = []
-
     try:
         doc = Document(file_path)
     except Exception as e:
         raise ValueError(f"Failed to open DOCX file: {e}") from e
 
-    for paragraph in doc.paragraphs:
-        line = _docx_paragraph_line(paragraph)
-        if line is not None:
-            sections.append(line)
-
-    for table_idx, table in enumerate(doc.tables):
-        sections.extend(_docx_table_lines(table, table_idx))
-
+    sections = _docx_body_sections(doc) or _docx_fallback_sections(doc)
     full_text = "\n".join(sections)
     return ExtractionResult(
         text=full_text,
         page_count=_estimate_text_pages(full_text),
         method="direct",
-        warnings=warnings,
+        warnings=[],
     )
 
 

@@ -404,8 +404,8 @@ export function DraftWorkspace() {
           onDraftingChange={setChatDrafting}
           onBack={() => persistPhase(2, unlocked, { allowDowngrade: true })}
           onConfirm={async () => {
-            if (filledCount < 13) {
-              setActionError("ร่างให้ครบ ๑๓ หมวดก่อนเข้าทบทวน");
+            if (filledCount < sections.length) {
+              setActionError("ร่างให้ครบทุกหมวดตามประเภทงานก่อนเข้าทบทวน");
               return;
             }
             const ok = await ask(PHASE_FORWARD_CONFIRM[4]);
@@ -434,7 +434,7 @@ export function DraftWorkspace() {
             projectId={projectId}
             sections={sections}
             filledCount={filledCount}
-            total={TOR_SECTION_ORDER.length}
+            total={sections.length || TOR_SECTION_ORDER.length}
             score={reviewScore}
             findings={reviewFindings}
             suggestions={reviewSuggestions}

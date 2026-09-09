@@ -1,5 +1,5 @@
 import type { AxiosResponse } from "axios";
-import type { ApiResponse } from "@/types";
+import type { ApiResponse, ProjectType } from "@/types";
 
 /** Unwrap FastAPI SuccessResponse { ok, data } or return raw payload. */
 export function unwrapData<T>(response: AxiosResponse<unknown>): T {
@@ -35,11 +35,7 @@ export function snakeToCamelProject(raw: Record<string, unknown>) {
     name: asString(raw.name),
     ministry: asString(raw.ministry),
     budget: Number(raw.budget ?? 0),
-    projectType: (asString(raw.project_type) || asString(raw.projectType) || "general") as
-      | "it"
-      | "construction"
-      | "consulting"
-      | "general",
+    projectType: (asString(raw.project_type) || asString(raw.projectType)) as ProjectType,
     status: (asString(raw.status) || "draft") as
       | "draft"
       | "in_review"

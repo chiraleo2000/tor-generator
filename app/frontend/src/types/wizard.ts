@@ -5,7 +5,7 @@ export interface Step1Data {
   project_name: string;
   ministry: string;
   budget: number | null;
-  project_type: ProjectType;
+  project_type: ProjectType | "";
   template_id: string | null;
   location: string;
   duration_days: number | null;

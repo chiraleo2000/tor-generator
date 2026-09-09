@@ -55,8 +55,8 @@ async def test_generator_uses_cache_and_mcp_unpack() -> None:
 
     gen = FullDraftGenerator(llm=MagicMock(), cache=cache, retrieve=fake_retrieve)
     with patch(
-        "app.services.full_draft_generator.TOR_SECTION_ORDER",
-        ["s1"],
+        "app.services.full_draft_generator.section_order",
+        return_value=["s1"],
     ):
         result = await gen.generate_all({}, project_id="p1", user_id="u1")
     assert result.section_drafts["s1"] == "ร่างจากแคช"
@@ -176,7 +176,7 @@ async def test_generator_drafts_when_cache_empty() -> None:
 
     gen = FullDraftGenerator(llm=MagicMock(), cache=cache, retrieve=fake_retrieve)
     with (
-        patch("app.services.full_draft_generator.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.full_draft_generator.section_order", return_value=["s1"]),
         patch("app.services.full_draft_generator.get_agent_for_section", return_value=agent),
     ):
         result = await gen.generate_all({"s1": {"content": "มี", "status": "filled"}}, project_id="p1")
@@ -195,7 +195,7 @@ async def test_generator_marks_pending_when_agent_missing() -> None:
 
     gen = FullDraftGenerator(llm=MagicMock(), cache=cache, retrieve=fake_retrieve)
     with (
-        patch("app.services.full_draft_generator.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.full_draft_generator.section_order", return_value=["s1"]),
         patch("app.services.full_draft_generator.get_agent_for_section", return_value=None),
     ):
         result = await gen.generate_all({}, project_id="p1")
@@ -215,7 +215,7 @@ async def test_generator_handles_draft_exception() -> None:
 
     gen = FullDraftGenerator(llm=MagicMock(), cache=cache, retrieve=fake_retrieve)
     with (
-        patch("app.services.full_draft_generator.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.full_draft_generator.section_order", return_value=["s1"]),
         patch("app.services.full_draft_generator.get_agent_for_section", return_value=agent),
     ):
         result = await gen.generate_all({})
@@ -321,7 +321,7 @@ async def test_generator_short_and_blank_drafts() -> None:
 
     gen = FullDraftGenerator(llm=MagicMock(), cache=cache, retrieve=fake_retrieve)
     with (
-        patch("app.services.full_draft_generator.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.full_draft_generator.section_order", return_value=["s1"]),
         patch("app.services.full_draft_generator.get_agent_for_section", return_value=short_agent),
     ):
         short = await gen.generate_all({}, project_id="p1")
@@ -332,7 +332,7 @@ async def test_generator_short_and_blank_drafts() -> None:
     blank_agent = MagicMock()
     blank_agent.draft = AsyncMock(return_value="   ")
     with (
-        patch("app.services.full_draft_generator.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.full_draft_generator.section_order", return_value=["s1"]),
         patch("app.services.full_draft_generator.get_agent_for_section", return_value=blank_agent),
     ):
         blank = await gen.generate_all({})
@@ -344,7 +344,7 @@ async def test_generator_short_and_blank_drafts() -> None:
 async def test_generator_timeout_marks_remaining_pending() -> None:
     gen = FullDraftGenerator(llm=MagicMock())
     with (
-        patch("app.services.full_draft_generator.TOR_SECTION_ORDER", ["s1", "s2"]),
+        patch("app.services.full_draft_generator.section_order", return_value=["s1", "s2"]),
         patch("app.services.full_draft_generator.time.monotonic", side_effect=[0.0, 999999.0]),
     ):
         result = await gen.generate_all({})

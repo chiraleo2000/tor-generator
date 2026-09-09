@@ -34,12 +34,14 @@ from app.domain.extraction_map import (
     section_preview,
 )
 from app.domain.file_magic import require_allowed_upload
-from app.domain.tor_sections import (
-    MANDATORY_HUMAN_REVIEW_SECTIONS,
-    SCOPE_SUBSECTIONS,
-    TOR_SECTION_LABELS,
-    TOR_SECTION_ORDER,
+from app.domain.section_profile import (
+    category_for_project,
+    category_is_locked,
+    extra_legacy_scope_items,
+    parse_section_ref,
+    profile_for_project,
 )
+from app.domain.tor_sections import MANDATORY_HUMAN_REVIEW_SECTIONS
 from app.exceptions import NotFoundError, ValidationError
 from app.io_temp import unlink_path, write_temp_bytes
 from app.models.project import Project
@@ -93,18 +95,31 @@ def _row_has_content(row: TORSection | None) -> bool:
     return bool(str(row.content or "").strip() or str(row.ai_draft or "").strip())
 
 
-def missing_submit_sections(rows: list[TORSection]) -> list[dict[str, str]]:
-    """Unfilled s1–s13 for server-side submit (s4 ok if parent or any s4.N is filled)."""
+def missing_submit_sections(
+    rows: list[TORSection],
+    project_type: str | None = None,
+) -> list[dict[str, str]]:
+    """Unfilled required mother sections for server-side submit."""
+    profile = profile_for_project(project_type)
     by_key, subs = _index_tor_sections(rows)
     missing: list[dict[str, str]] = []
-    for key in TOR_SECTION_ORDER:
+    for item in profile.main_sections:
+        if not item.required:
+            continue
+        key = item.storage_key
         parent = by_key.get(key)
         if key == "s4":
             scope = subs.get("s4") or {}
-            has_sub = any(_row_has_content(row) for row in scope.values())
+            allowed = set(profile.scope_storage_keys())
+            has_sub = any(
+                _row_has_content(row)
+                for sub_key, row in scope.items()
+                if sub_key in allowed or sub_key.startswith("s4.")
+            )
             if _row_has_content(parent) or has_sub:
                 continue
-            missing.append({"section_key": "s4", "sub_key": "s4.1"})
+            first = profile.required_scope_keys()[0] if profile.required_scope_keys() else "s4"
+            missing.append({"section_key": "s4", "sub_key": first})
             continue
         if not _row_has_content(parent):
             missing.append({"section_key": key, "sub_key": ""})
@@ -124,17 +139,39 @@ def _index_tor_sections(
     return by_key, subs
 
 
-def _scope_sub_payload(scope_map: dict[str, TORSection], _slot_map: dict) -> list[dict]:
+def _scope_sub_payload(
+    scope_map: dict[str, TORSection],
+    _slot_map: dict,
+    project_type: str | None,
+) -> list[dict]:
+    profile = profile_for_project(project_type)
     items: list[dict] = []
-    for sub_key, title in SCOPE_SUBSECTIONS.items():
-        sub_row = scope_map.get(sub_key) or scope_map.get(sub_key.replace("s4.", "4."))
+    for sub in profile.scope_subsections:
+        sub_row = scope_map.get(sub.storage_key) or scope_map.get(sub.semantic_key)
         content = (sub_row.content if sub_row else "") or ""
         items.append(
             {
-                "key": sub_key,
-                "title": title,
+                "key": sub.storage_key,
+                "title": sub.title,
+                "required": sub.required,
                 "content": content,
                 "filled": bool(str(content).strip()),
+            }
+        )
+    stored = {
+        key: (row.content or "")
+        for key, row in scope_map.items()
+        if _row_has_content(row)
+    }
+    for extra in extra_legacy_scope_items(stored, project_type):
+        items.append(
+            {
+                "key": extra["key"],
+                "title": extra["title"],
+                "required": False,
+                "content": extra["content"],
+                "filled": True,
+                "extra": True,
             }
         )
     return items
@@ -155,8 +192,9 @@ def _hydrate_scope_subs(
     parent: TORSection | None,
     scope_map: dict[str, TORSection],
     slot_map: dict,
+    project_type: str | None = None,
 ) -> list[dict]:
-    items = _scope_sub_payload(scope_map, slot_map)
+    items = _scope_sub_payload(scope_map, slot_map, project_type)
     if not any(item["filled"] for item in items):
         blob = (parent.content if parent else "") or ""
         if blob.strip():
@@ -288,7 +326,7 @@ async def create_project(
         owner_id=current_user.id,
         name=body.name,
         ministry=body.ministry,
-        budget=body.budget,
+        budget=body.budget if body.budget is not None else 0,
         project_type=body.project_type,
         status="draft",
         current_step=1,
@@ -380,6 +418,17 @@ async def update_project(
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         raise ValidationError(message="ไม่มีข้อมูลที่ต้องการอัปเดต")
+
+    if "project_type" in update_data:
+        locked = category_is_locked(
+            current_step=int(project.current_step or 1),
+            current_phase=int(project.current_phase or 0),
+        )
+        if locked and update_data["project_type"] != category_for_project(project.project_type):
+            raise ValidationError(
+                message="ไม่สามารถเปลี่ยนหมวดใหญ่หลังเริ่มร่างเนื้อหา",
+                field="project_type",
+            )
 
     for field, value in update_data.items():
         setattr(project, field, value)
@@ -619,10 +668,10 @@ async def submit_project(
     section_rows = (
         await db.execute(select(TORSection).where(TORSection.project_id == project_id))
     ).scalars().all()
-    missing = missing_submit_sections(list(section_rows))
+    missing = missing_submit_sections(list(section_rows), project.project_type)
     if missing:
         raise ValidationError(
-            message="ยังร่างไม่ครบ 13 หมวด จึงส่งตรวจสอบไม่ได้",
+            message="ยังร่างไม่ครบหมวดที่จำเป็น จึงส่งตรวจสอบไม่ได้",
             details={"missing": missing},
         )
     project.status = "in_review"
@@ -916,24 +965,30 @@ def _section_list_item(
     subs: dict[str, dict[str, TORSection]],
     extracted: dict,
     slot_map: dict,
+    project_type: str | None,
+    title: str,
 ) -> dict:
     content = (row.content if row else "") or ""
     if key != "s4":
         content = _normalize_parent_content(key, content, row)
     filled = bool(str(content or "").strip())
+    profile = profile_for_project(project_type)
+    hitl = any(item.hitl for item in profile.main_sections if item.storage_key == key)
     item: dict = {
         "key": key,
-        "title": TOR_SECTION_LABELS[key],
+        "title": title,
         "filled": filled,
         "content": content,
         "ai_draft": row.ai_draft if row else "",
         "human_confirmed": bool(row.is_approved) if row else False,
-        "hitl": key in MANDATORY_HUMAN_REVIEW_SECTIONS,
+        "hitl": hitl or key in MANDATORY_HUMAN_REVIEW_SECTIONS,
         "matchStatus": "matched" if extracted else "partial",
     }
     if key == "s4":
         item["big"] = True
-        item["subs"] = _hydrate_scope_subs(row, subs.get("s4") or {}, slot_map)
+        item["subs"] = _hydrate_scope_subs(
+            row, subs.get("s4") or {}, slot_map, project_type
+        )
         item["filled"] = filled or any(sub["filled"] for sub in item["subs"])
     return item
 
@@ -957,17 +1012,27 @@ async def list_project_sections(
     extracted = project.extracted_fields or {}
     raw_slots = (project.analysis_json or {}).get("slot_map") or {}
     slot_map = raw_slots if isinstance(raw_slots, dict) else {}
+    profile = profile_for_project(project.project_type)
     sections = [
         _section_list_item(
-            key,
-            by_key.get(key),
+            item.storage_key,
+            by_key.get(item.storage_key),
             subs=subs,
             extracted=extracted,
             slot_map=slot_map,
+            project_type=project.project_type,
+            title=item.title,
         )
-        for key in TOR_SECTION_ORDER
+        for item in profile.main_sections
     ]
-    return _build_success_response(request, {"sections": sections})
+    return _build_success_response(
+        request,
+        {
+            "sections": sections,
+            "procurement_category": profile.category,
+            "profile_label": profile.label,
+        },
+    )
 
 
 @router.put(
@@ -983,15 +1048,12 @@ async def put_project_section(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
-    await _owned_project(project_id, current_user, db)
+    project = await _owned_project(project_id, current_user, db)
     key = section_key.strip()
-    main_key = key
-    sub_key = None
-    if key.startswith(("s4.", "4.")):
-        main_key = "s4"
-        sub_key = key if key.startswith("s4.") else f"s4.{key[2:]}"
-    elif key not in TOR_SECTION_ORDER:
+    parsed = parse_section_ref(key, project.project_type)
+    if parsed is None:
         raise ValidationError(message="รหัสหมวดไม่ถูกต้อง", field="section_key")
+    main_key, sub_key = parsed
 
     content = body.content
     if body.fields:

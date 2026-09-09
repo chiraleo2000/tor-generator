@@ -18,7 +18,7 @@ import { unwrapData } from "@/lib/api-unwrap";
 import { splitReviewFindings, toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
 import { useRealtimeValidation } from "@/lib/use-realtime-validation";
 import { InlineValidationFeedback } from "@/components/wizard/inline-validation-feedback";
-import { TOR_SECTION_LABELS, TOR_SECTION_ORDER, SCOPE_SUBSECTIONS } from "@/lib/tor-sections";
+import { profileForProject, scopeSubsectionsFor } from "@/lib/tor-profiles";
 import { cn } from "@/lib/utils";
 
 // --- Types ---
@@ -65,6 +65,7 @@ function assembleSections(
         budget?: number;
         location?: string;
         duration_days?: number | null;
+        project_type?: string;
       }
     | undefined;
   const step2 = formData[2] as { description?: string } | undefined;
@@ -149,10 +150,10 @@ function assembleSections(
   contents.s12 = step7?.s12 || "";
   contents.s13 = step7?.s13 || "";
 
-  return TOR_SECTION_ORDER.map((key, index) => ({
-    key,
-    title: `${index + 1}. ${TOR_SECTION_LABELS[key]}`,
-    content: contents[key] || "",
+  return profileForProject(step1?.project_type).main_sections.map((item, index) => ({
+    key: item.key,
+    title: `${index + 1}. ${item.title}`,
+    content: contents[item.key] || "",
   }));
 }
 
@@ -561,12 +562,14 @@ export function Step7Review() {
                     </pre>
                     {section.key === "s4" && (
                       <div className="flex flex-wrap gap-1 mt-3">
-                        {SCOPE_SUBSECTIONS.map((sub) => (
+                        {scopeSubsectionsFor(
+                          (formData[1] as { project_type?: string } | undefined)?.project_type
+                        ).map((sub) => (
                           <span
                             key={sub.key}
                             className="text-[11px] px-2 py-0.5 rounded-full border bg-muted"
                           >
-                            {sub.key.replace("s", "")} {sub.title}
+                            {sub.title}
                           </span>
                         ))}
                       </div>

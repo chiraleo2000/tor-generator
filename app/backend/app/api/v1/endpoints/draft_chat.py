@@ -1,11 +1,10 @@
 """Chat-driven TOR drafting endpoints (Phase 3).
 
-POST /projects/{id}/draft-chat/start — auto-draft all 13 sections (SSE stream)
+POST /projects/{id}/draft-chat/start — auto-draft mother sections (SSE stream)
 POST /projects/{id}/draft-chat/message — edit/accept/redraft via chat (SSE stream)
 GET  /projects/{id}/draft-chat/status — drafting progress
 
-หมวดขอบเขตงาน (s4) บันทึกลงหัวข้อย่อย s4.1–s4.14 โดยตรง
-ส่วนหัวข้อหลักเก็บเฉพาะสรุปสั้น ๆ เพื่อไม่ให้ซ้ำตอนส่งออกขั้นที่ ๔
+หมวดขอบเขตงาน (s4) บันทึกลงหัวข้อย่อยตาม Section_Profile ของประเภทงาน
 """
 
 from __future__ import annotations
@@ -25,11 +24,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
-from app.domain.tor_sections import (
-    SCOPE_SUBSECTIONS,
-    TOR_SECTION_LABELS,
-    TOR_SECTION_ORDER,
-)
+from app.domain.section_profile import LEGACY_SCOPE_TITLES, profile_for_project
+from app.domain.tor_sections import TOR_SECTION_LABELS
 from app.draft_job_store import bump_progress, get_job, mark_status, set_job
 from app.exceptions import NotFoundError, ValidationError
 from app.export.table_parse import split_scope_subsection_draft
@@ -55,6 +51,80 @@ from app.services.intake_service import is_ready_to_compose, slot_map_of, with_p
 logger = logging.getLogger("tor_app.draft_chat")
 router = APIRouter()
 _DRAFT_JOBS: dict[str, asyncio.Task[int]] = {}
+# Live SSE fan-out from the background draft job to connected observers.
+_DRAFT_EVENT_SUBS: dict[str, list[asyncio.Queue[str]]] = {}
+
+
+def _subscribe_draft_events(project_id: uuid.UUID) -> asyncio.Queue[str]:
+    key = str(project_id)
+    queue: asyncio.Queue[str] = asyncio.Queue(maxsize=512)
+    _DRAFT_EVENT_SUBS.setdefault(key, []).append(queue)
+    return queue
+
+
+def _unsubscribe_draft_events(project_id: uuid.UUID, queue: asyncio.Queue[str]) -> None:
+    key = str(project_id)
+    subs = _DRAFT_EVENT_SUBS.get(key)
+    if not subs:
+        return
+    try:
+        subs.remove(queue)
+    except ValueError:
+        return
+    if not subs:
+        _DRAFT_EVENT_SUBS.pop(key, None)
+
+
+def _publish_draft_sse(project_id: uuid.UUID, raw: str, *, drop_ok: bool = True) -> None:
+    """Push one SSE frame to live observers. Token frames may drop if a queue is full."""
+    for queue in _DRAFT_EVENT_SUBS.get(str(project_id), ()):
+        try:
+            queue.put_nowait(raw)
+            continue
+        except asyncio.QueueFull:
+            if drop_ok:
+                continue
+        try:
+            queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        try:
+            queue.put_nowait(raw)
+        except asyncio.QueueFull:
+            pass
+
+
+def _sse_payload_section_key(raw: str) -> str | None:
+    if "event: section_done" not in raw:
+        return None
+    for line in raw.splitlines():
+        if not line.startswith("data: "):
+            continue
+        try:
+            data = json.loads(line[6:])
+        except json.JSONDecodeError:
+            return None
+        key = data.get("section_key")
+        return key if isinstance(key, str) else None
+    return None
+
+
+def _ptype_of(proj: Any) -> str | None:
+    if proj is None:
+        return None
+    raw = getattr(proj, "project_type", None)
+    return raw if isinstance(raw, str) else None
+
+
+def _mains(project_type: str | None) -> list[str]:
+    return profile_for_project(project_type).main_storage_keys()
+
+
+def _scopes(project_type: str | None) -> dict[str, str]:
+    return {
+        item.storage_key: item.title
+        for item in profile_for_project(project_type).scope_subsections
+    }
 
 
 def _section_timeout_seconds() -> int:
@@ -69,10 +139,11 @@ def _section_timeout_seconds() -> int:
 SECTION_TIMEOUT_SECONDS = _section_timeout_seconds()
 
 
-def sequential_draft_order() -> list[str]:
-    """Draft s4 last so หมวด 6+ are not blocked by fourteen scope LLM calls."""
-    rest = [key for key in TOR_SECTION_ORDER if key != "s4"]
-    if "s4" in TOR_SECTION_ORDER:
+def sequential_draft_order(project_type: str | None = None) -> list[str]:
+    """Draft s4 last so later mother sections are not blocked by scope LLM calls."""
+    order = _mains(project_type)
+    rest = [key for key in order if key != "s4"]
+    if "s4" in order:
         return rest + ["s4"]
     return rest
 
@@ -85,6 +156,7 @@ class _SeqDraft:
     user_id: uuid.UUID
     request_id: str
     redis: Any
+    project_type: str | None = None
 
 
 @dataclass
@@ -97,6 +169,7 @@ class _S4Work:
     errors: list[str]
     session_factory: Any | None = None
     project_id: uuid.UUID | None = None
+    project_type: str | None = None
 
 
 @dataclass
@@ -110,12 +183,28 @@ class _ChatStream:
     user_id: uuid.UUID
     request_id: str
     session_factory: Any
+    project_type: str | None = None
 
 
 async def _consume_sse(events: AsyncIterator[str]) -> int:
     count = 0
     async for _event in events:
         count += 1
+    return count
+
+
+def _sse_drop_ok(raw: str) -> bool:
+    """Only token frames are safe to drop when an observer queue is full."""
+    return raw.startswith("event: token")
+
+
+async def _relay_job_sse(project_id: uuid.UUID, events: AsyncIterator[str]) -> int:
+    """Consume draft SSE while forwarding frames to live /start observers."""
+    count = 0
+    async for raw in events:
+        count += 1
+        _publish_draft_sse(project_id, raw, drop_ok=_sse_drop_ok(raw))
+        await asyncio.sleep(0)
     return count
 
 
@@ -128,7 +217,16 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _section_done_event(section_key: str, label: str, content: str, drafted_count: int) -> str:
+def _section_done_event(
+    section_key: str,
+    label: str,
+    content: str,
+    drafted_count: int,
+    total: int | None = None,
+    project_type: str | None = None,
+) -> str:
+    if total is None:
+        total = len(_mains(project_type))
     return _sse(
         "section_done",
         {
@@ -136,7 +234,7 @@ def _section_done_event(section_key: str, label: str, content: str, drafted_coun
             "title": label,
             "content": content,
             "drafted_count": drafted_count,
-            "total": len(TOR_SECTION_ORDER),
+            "total": total,
         },
     )
 
@@ -149,8 +247,8 @@ def _s4_ai_map(rows: list[TORSection]) -> dict[str, str]:
     }
 
 
-def _s4_complete(drafted: dict[str, str]) -> bool:
-    return all(str(drafted.get(key) or "").strip() for key in SCOPE_SUBSECTIONS)
+def _s4_complete(drafted: dict[str, str], project_type: str | None = None) -> bool:
+    return all(str(drafted.get(key) or "").strip() for key in _scopes(project_type))
 
 
 async def _existing_section_text(
@@ -160,9 +258,11 @@ async def _existing_section_text(
 ) -> str | None:
     async with session_factory() as persist:
         if section_key == "s4":
+            proj = await persist.get(Project, project_id)
+            ptype = _ptype_of(proj)
             drafted = _s4_ai_map(await _load_s4_rows(persist, project_id))
-            if _s4_complete(drafted):
-                return build_merged_scope(drafted)
+            if _s4_complete(drafted, ptype):
+                return build_merged_scope(drafted, ptype)
             return None
         row = await _get_section(persist, project_id, section_key)
         if row is None or not str(row.ai_draft or "").strip():
@@ -316,7 +416,7 @@ def _s4_overview_text(parts: dict[str, str], content: str) -> str:
     clipped = content.strip()
     if len(clipped) > 360:
         clipped = clipped[:360].rstrip() + "…"
-    return f"{clipped}\n\n(รายละเอียดครบในหัวข้อย่อย ๔.๑–๔.๑๔)"
+    return f"{clipped}\n\n(รายละเอียดอยู่ในหัวข้อย่อยขอบเขตของงานตามประเภทโครงการ)"
 
 
 async def _save_s4_bundle(
@@ -325,13 +425,16 @@ async def _save_s4_bundle(
     content: str,
     subs: dict[str, str] | None = None,
 ) -> None:
-    """Persist s4.x rows; top-level s4 keeps a short overview only."""
+    """Persist scope subsection rows; top-level s4 keeps a short overview only."""
     parts = dict(subs or {})
     if not parts:
         parts = split_scope_subsection_draft(content)
+    proj = await db.get(Project, project_id)
+    ptype = _ptype_of(proj)
+    allowed = set(_scopes(ptype)) | set(LEGACY_SCOPE_TITLES)
     for sub_key, body in parts.items():
         text = (body or "").strip()
-        if sub_key not in SCOPE_SUBSECTIONS or not text:
+        if sub_key not in allowed or not text:
             continue
         await _upsert_sub(db, project_id, sub_key, text)
     overview = _s4_overview_text(parts, content)
@@ -450,7 +553,7 @@ async def _draft_new_s4_sub(work: _S4Work, sub_key: str, title: str) -> AsyncIte
 
 
 async def _iter_s4_subsection_sse(work: _S4Work, existing: dict[str, str]) -> AsyncIterator[str]:
-    for sub_key, title in SCOPE_SUBSECTIONS.items():
+    for sub_key, title in _scopes(work.project_type).items():
         prior = (existing.get(sub_key) or "").strip()
         if prior:
             async for event in _replay_existing_s4_sub(
@@ -472,6 +575,7 @@ async def _draft_missing_s4(job: _SeqDraft) -> bool:
         errors=[],
         session_factory=job.session_factory,
         project_id=job.project_id,
+        project_type=job.project_type,
     )
     async with job.session_factory() as read_session:
         prior_rows = await _load_s4_rows(read_session, job.project_id)
@@ -480,23 +584,23 @@ async def _draft_missing_s4(job: _SeqDraft) -> bool:
         for row in prior_rows
         if row.sub_key and str(row.ai_draft or "").strip()
     }
-    await _consume_sse(_iter_s4_subsection_sse(work, prior_ai))
-    for sub_key in SCOPE_SUBSECTIONS:
+    await _relay_job_sse(job.project_id, _iter_s4_subsection_sse(work, prior_ai))
+    for sub_key in _scopes(job.project_type):
         if str(work.collected.get(sub_key) or "").strip():
             continue
-        filled = fallback_scope_subsection(sub_key, job.slot_map).strip()
+        filled = fallback_scope_subsection(sub_key, job.slot_map, job.project_type).strip()
         if not filled:
             continue
         work.collected[sub_key] = filled
-    if not _s4_complete(work.collected):
+    if not _s4_complete(work.collected, job.project_type):
         logger.warning(
             "s4 incomplete for %s (%s/%s)",
             job.project_id,
             len(work.collected),
-            len(SCOPE_SUBSECTIONS),
+            len(_scopes(job.project_type)),
         )
         return False
-    preview = build_merged_scope(work.collected)
+    preview = build_merged_scope(work.collected, job.project_type)
     async with job.session_factory() as persist:
         await _save_s4_bundle(persist, job.project_id, preview, work.collected)
         await persist.commit()
@@ -509,7 +613,8 @@ async def _draft_missing_section(job: _SeqDraft, section_key: str) -> bool:
         return await _draft_missing_s4(job)
     parts: list[str] = []
     errors: list[str] = []
-    await _consume_sse(
+    await _relay_job_sse(
+        job.project_id,
         _iter_llm_section_sse(
             job.redis,
             job.request_id,
@@ -518,7 +623,7 @@ async def _draft_missing_section(job: _SeqDraft, section_key: str) -> bool:
             job.user_id,
             parts,
             errors,
-        )
+        ),
     )
     if errors:
         logger.warning("Draft LLM error for %s: %s", section_key, errors[:2])
@@ -540,28 +645,32 @@ def section_draft_timeout(section_key: str) -> float:
     return float(SECTION_TIMEOUT_SECONDS)
 
 
+async def _persist_fallback_s4(job: _SeqDraft) -> bool:
+    collected: dict[str, str] = {}
+    async with job.session_factory() as read_session:
+        prior_rows = await _load_s4_rows(read_session, job.project_id)
+    for row in prior_rows:
+        text = str(row.ai_draft or row.content or "").strip()
+        if row.sub_key and text:
+            collected[row.sub_key] = text
+    for sub_key in _scopes(job.project_type):
+        if str(collected.get(sub_key) or "").strip():
+            continue
+        filled = fallback_scope_subsection(sub_key, job.slot_map, job.project_type).strip()
+        if filled:
+            collected[sub_key] = filled
+    if not _s4_complete(collected, job.project_type):
+        return False
+    preview = build_merged_scope(collected, job.project_type)
+    async with job.session_factory() as persist:
+        await _save_s4_bundle(persist, job.project_id, preview, collected)
+        await persist.commit()
+    return True
+
+
 async def _persist_fallback_section(job: _SeqDraft, section_key: str) -> bool:
     if section_key == "s4":
-        collected: dict[str, str] = {}
-        async with job.session_factory() as read_session:
-            prior_rows = await _load_s4_rows(read_session, job.project_id)
-        for row in prior_rows:
-            text = str(row.ai_draft or row.content or "").strip()
-            if row.sub_key and text:
-                collected[row.sub_key] = text
-        for sub_key in SCOPE_SUBSECTIONS:
-            if str(collected.get(sub_key) or "").strip():
-                continue
-            filled = fallback_scope_subsection(sub_key, job.slot_map).strip()
-            if filled:
-                collected[sub_key] = filled
-        if not _s4_complete(collected):
-            return False
-        preview = build_merged_scope(collected)
-        async with job.session_factory() as persist:
-            await _save_s4_bundle(persist, job.project_id, preview, collected)
-            await persist.commit()
-        return True
+        return await _persist_fallback_s4(job)
     text = fallback_section_text(section_key, job.slot_map).strip()
     if not text:
         return False
@@ -572,6 +681,12 @@ async def _persist_fallback_section(job: _SeqDraft, section_key: str) -> bool:
 
 
 async def _try_draft_one_section(job: _SeqDraft, section_key: str) -> bool:
+    label = TOR_SECTION_LABELS.get(section_key, section_key)
+    _publish_draft_sse(
+        job.project_id,
+        _sse("section_start", {"section_key": section_key, "title": label}),
+        drop_ok=False,
+    )
     existing = await _existing_section_text(
         job.session_factory, job.project_id, section_key
     )
@@ -600,24 +715,41 @@ async def _try_draft_one_section(job: _SeqDraft, section_key: str) -> bool:
             return False
 
 
+async def _publish_section_done(
+    job: _SeqDraft, section_key: str, drafted_count: int
+) -> None:
+    text = await _existing_section_text(
+        job.session_factory, job.project_id, section_key
+    )
+    if not text:
+        return
+    label = TOR_SECTION_LABELS.get(section_key, section_key)
+    _publish_draft_sse(
+        job.project_id,
+        _section_done_event(section_key, label, text, drafted_count),
+        drop_ok=False,
+    )
+
+
 async def _run_sequential_draft(
     job: _SeqDraft, remaining_passes: int = 2, reset_store: bool = True
 ) -> int:
     """Draft remaining sections one LLM call at a time. Survives SSE disconnect."""
     from app.services.draft_chat_service import clear_s4_rag_cache
 
-    total = len(TOR_SECTION_ORDER)
+    total = len(_mains(job.project_type))
     drafted_count = 0
     if reset_store:
         clear_s4_rag_cache()
         await set_job(job.redis, job.project_id, "running", 0, total)
     try:
-        for section_key in sequential_draft_order():
+        for section_key in sequential_draft_order(job.project_type):
             saved = await _try_draft_one_section(job, section_key)
             if not saved:
                 continue
             drafted_count += 1
             await bump_progress(job.redis, job.project_id, drafted_count)
+            await _publish_section_done(job, section_key, drafted_count)
         if drafted_count < total and remaining_passes > 0:
             logger.info(
                 "Retry incomplete draft for %s (%s/%s)",
@@ -642,6 +774,7 @@ async def _ensure_draft_job(
     user_id: uuid.UUID,
     request_id: str,
     redis: Any,
+    project_type: str | None = None,
 ) -> asyncio.Task[int] | None:
     key = str(project_id)
     task = _DRAFT_JOBS.get(key)
@@ -656,7 +789,7 @@ async def _ensure_draft_job(
             stored.get("status") if stored else None,
         )
     else:
-        await set_job(redis, project_id, "queued", 0, len(TOR_SECTION_ORDER))
+        await set_job(redis, project_id, "queued", 0, len(_mains(project_type)))
     job = _SeqDraft(
         session_factory=session_factory,
         project_id=project_id,
@@ -664,6 +797,7 @@ async def _ensure_draft_job(
         user_id=user_id,
         request_id=request_id,
         redis=redis,
+        project_type=project_type,
     )
     _DRAFT_JOBS[key] = asyncio.create_task(
         _run_sequential_draft(job, remaining_passes=2, reset_store=not resume)
@@ -675,15 +809,89 @@ async def _emit_newly_done_sections(
     session_factory: Any,
     project_id: uuid.UUID,
     seen: set[str],
+    project_type: str | None = None,
 ) -> AsyncIterator[str]:
-    for key in TOR_SECTION_ORDER:
+    if project_type is None:
+        async with session_factory() as session:
+            proj = await session.get(Project, project_id)
+            project_type = _ptype_of(proj)
+    total = len(_mains(project_type))
+    for key in _mains(project_type):
         if key in seen:
             continue
         text = await _existing_section_text(session_factory, project_id, key)
         if not text:
             continue
         seen.add(key)
-        yield _section_done_event(key, TOR_SECTION_LABELS.get(key, key), text, len(seen))
+        yield _section_done_event(
+            key, TOR_SECTION_LABELS.get(key, key), text, len(seen), total, project_type
+        )
+
+
+async def _drain_draft_event_queue(
+    queue: asyncio.Queue[str],
+    seen: set[str],
+) -> AsyncIterator[str]:
+    while True:
+        try:
+            raw = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return
+        key = _sse_payload_section_key(raw)
+        if key:
+            seen.add(key)
+        yield raw
+
+
+async def _stream_job_live_events(
+    queue: asyncio.Queue[str],
+    session_factory: Any,
+    project_id: uuid.UUID,
+    seen: set[str],
+    *,
+    job_done: Any,
+) -> AsyncIterator[str]:
+    """Yield live job frames; fall back to DB poll when the queue is quiet."""
+    while not job_done():
+        try:
+            raw = await asyncio.wait_for(queue.get(), timeout=0.75)
+        except TimeoutError:
+            yield ": ping\n\n"
+            async for event in _emit_newly_done_sections(session_factory, project_id, seen):
+                yield event
+            continue
+        key = _sse_payload_section_key(raw)
+        if key:
+            seen.add(key)
+        yield raw
+    async for raw in _drain_draft_event_queue(queue, seen):
+        yield raw
+    async for event in _emit_newly_done_sections(session_factory, project_id, seen):
+        yield event
+
+
+async def _iter_background_live_frames(
+    redis: Any,
+    live: asyncio.Queue[str],
+    session_factory: Any,
+    project_id: uuid.UUID,
+    seen: set[str],
+) -> AsyncIterator[str]:
+    while True:
+        stored = await get_job(redis, project_id)
+        if (stored or {}).get("status") in {"done", "failed"}:
+            break
+        try:
+            raw = await asyncio.wait_for(live.get(), timeout=0.75)
+        except TimeoutError:
+            yield ": ping\n\n"
+            async for event in _emit_newly_done_sections(session_factory, project_id, seen):
+                yield event
+            continue
+        key = _sse_payload_section_key(raw)
+        if key:
+            seen.add(key)
+        yield raw
 
 
 async def _stream_background_job_progress(
@@ -691,20 +899,32 @@ async def _stream_background_job_progress(
     session_factory: Any,
     project_id: uuid.UUID,
     seen: set[str],
+    queue: asyncio.Queue[str] | None = None,
 ) -> AsyncIterator[str]:
+    owned = queue is None
+    live = queue or _subscribe_draft_events(project_id)
     drafted_count = len(seen)
-    while True:
-        stored = await get_job(redis, project_id)
+    try:
+        async for frame in _iter_background_live_frames(
+            redis, live, session_factory, project_id, seen
+        ):
+            yield frame
+        async for raw in _drain_draft_event_queue(live, seen):
+            yield raw
         async for event in _emit_newly_done_sections(session_factory, project_id, seen):
             yield event
-        if stored is None or stored["status"] in {"done", "failed"}:
-            drafted_count = int((stored or {}).get("drafted_count") or len(seen))
-            break
-        yield ": ping\n\n"
-        await asyncio.sleep(2)
+        stored = await get_job(redis, project_id)
+        drafted_count = int((stored or {}).get("drafted_count") or len(seen))
+    finally:
+        if owned:
+            _unsubscribe_draft_events(project_id, live)
+    ptype = None
+    async with session_factory() as session:
+        proj = await session.get(Project, project_id)
+        ptype = _ptype_of(proj)
     yield _sse(
         "all_done",
-        {"drafted_count": drafted_count, "total": len(TOR_SECTION_ORDER)},
+        {"drafted_count": drafted_count, "total": len(_mains(ptype))},
     )
 
 
@@ -713,14 +933,22 @@ async def _stream_attached_job_progress(
     session_factory: Any,
     project_id: uuid.UUID,
     seen: set[str],
+    queue: asyncio.Queue[str] | None = None,
 ) -> AsyncIterator[str]:
-    while not job.done():
-        yield ": ping\n\n"
-        finished, _ = await asyncio.wait({job}, timeout=2)
-        async for event in _emit_newly_done_sections(session_factory, project_id, seen):
+    owned = queue is None
+    live = queue or _subscribe_draft_events(project_id)
+    try:
+        async for event in _stream_job_live_events(
+            live,
+            session_factory,
+            project_id,
+            seen,
+            job_done=job.done,
+        ):
             yield event
-        if finished:
-            break
+    finally:
+        if owned:
+            _unsubscribe_draft_events(project_id, live)
     drafted_count = 0
     try:
         drafted_count = job.result()
@@ -728,11 +956,15 @@ async def _stream_attached_job_progress(
         logger.exception("Sequential draft job failed for %s", project_id)
     async for event in _emit_newly_done_sections(session_factory, project_id, seen):
         yield event
+    ptype = None
+    async with session_factory() as session:
+        proj = await session.get(Project, project_id)
+        ptype = _ptype_of(proj)
     yield _sse(
         "all_done",
         {
             "drafted_count": drafted_count or len(seen),
-            "total": len(TOR_SECTION_ORDER),
+            "total": len(_mains(ptype)),
         },
     )
 
@@ -742,24 +974,35 @@ async def _stream_start_draft_chat(
     project_id: uuid.UUID,
     redis: Any,
     job: asyncio.Task[int] | None,
+    queue: asyncio.Queue[str],
 ) -> AsyncIterator[str]:
-    yield _sse(
-        "progress",
-        {"message": "เริ่มร่างทีละหมวดจากโมเดลภาษา", "total": len(TOR_SECTION_ORDER)},
-    )
-    seen: set[str] = set()
-    async for event in _emit_newly_done_sections(session_factory, project_id, seen):
-        yield event
-    if job is None:
-        async for event in _stream_background_job_progress(
-            redis, session_factory, project_id, seen
+    try:
+        ptype = None
+        async with session_factory() as session:
+            proj = await session.get(Project, project_id)
+            ptype = _ptype_of(proj)
+        yield _sse(
+            "progress",
+            {
+                "message": "เริ่มร่างทีละหมวดจากโมเดลภาษา",
+                "total": len(_mains(ptype)),
+            },
+        )
+        seen: set[str] = set()
+        async for event in _emit_newly_done_sections(session_factory, project_id, seen):
+            yield event
+        if job is None:
+            async for event in _stream_background_job_progress(
+                redis, session_factory, project_id, seen, queue
+            ):
+                yield event
+            return
+        async for event in _stream_attached_job_progress(
+            job, session_factory, project_id, seen, queue
         ):
             yield event
-        return
-    async for event in _stream_attached_job_progress(
-        job, session_factory, project_id, seen
-    ):
-        yield event
+    finally:
+        _unsubscribe_draft_events(project_id, queue)
 
 
 @router.post("/{project_id}/draft-chat/start", dependencies=[Depends(rate_limit_ai)])
@@ -769,7 +1012,7 @@ async def start_draft_chat(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> StreamingResponse:
-    """Auto-draft all 13 TOR sections. Streams SSE progress; work continues if the client drops."""
+    """Auto-draft mother TOR sections for this project's profile. Work continues if the client drops."""
     project = await _project(db, project_id, current_user)
     if not is_ready_to_compose(project):
         raise ValidationError(
@@ -781,12 +1024,20 @@ async def start_draft_chat(
     ).strip()
     session_factory = request.app.state.db_session_factory
     redis = getattr(request.app.state, "redis", None)
+    # Subscribe before spawning the job so the first section_start is not missed.
+    queue = _subscribe_draft_events(project_id)
     job = await _ensure_draft_job(
-        session_factory, project_id, slot_map, current_user.id, request_id, redis
+        session_factory,
+        project_id,
+        slot_map,
+        current_user.id,
+        request_id,
+        redis,
+        project.project_type,
     )
 
     return StreamingResponse(
-        _stream_start_draft_chat(session_factory, project_id, redis, job),
+        _stream_start_draft_chat(session_factory, project_id, redis, job, queue),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -826,12 +1077,13 @@ async def _stream_s4_redraft(
         errors=[],
         session_factory=stream.session_factory,
         project_id=stream.project_id,
+        project_type=stream.project_type,
     )
     async for event in _iter_s4_subsection_sse(work, {}):
         yield event
     if not work.collected:
         return
-    preview = build_merged_scope(work.collected)
+    preview = build_merged_scope(work.collected, stream.project_type)
     async with stream.session_factory() as persist:
         await _save_s4_bundle(persist, stream.project_id, preview, work.collected)
         await persist.commit()
@@ -966,6 +1218,7 @@ async def draft_chat_message(
                 user_id=current_user.id,
                 request_id=request_id,
                 session_factory=session_factory,
+                project_type=project.project_type,
             )
         ),
         media_type="text/event-stream",
@@ -1008,7 +1261,7 @@ async def draft_chat_status(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     """Get current drafting progress."""
-    await _project(db, project_id, current_user)
+    project = await _project(db, project_id, current_user)
     redis = getattr(request.app.state, "redis", None)
     job = await get_job(redis, project_id)
     sections = (
@@ -1023,21 +1276,22 @@ async def draft_chat_status(
     s4_rows = await _load_s4_rows(db, project_id)
     s4_subs = {row.sub_key: row.content or "" for row in s4_rows if row.sub_key}
     s4_ai_map = _s4_ai_map(s4_rows)
-    s4_ready = _s4_complete(s4_ai_map)
+    s4_ready = _s4_complete(s4_ai_map, project.project_type)
     status_list = []
     drafted_count = 0
-    for key in TOR_SECTION_ORDER:
+    mains = _mains(project.project_type)
+    for key in mains:
         row_data, ai_drafted = _draft_status_row(
             key, section_map.get(key), s4_ready=s4_ready, s4_subs=s4_subs
         )
         if ai_drafted:
             drafted_count += 1
         status_list.append(row_data)
-    sections_complete = drafted_count == len(TOR_SECTION_ORDER)
+    sections_complete = drafted_count == len(mains)
     payload: dict[str, Any] = {
         "sections": status_list,
         "drafted_count": drafted_count,
-        "total": len(TOR_SECTION_ORDER),
+        "total": len(mains),
         "all_drafted": sections_complete,
     }
     if job:

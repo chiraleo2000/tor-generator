@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.domain.section_profile import export_main_plan
 from app.export.docx_generator import TOR_SECTION_LABELS, TOR_SECTION_ORDER, TORContent
 from app.export.pdf_generator import PDFGenerator, _escape_html
 
@@ -129,7 +130,7 @@ class TestPDFGeneratorHTMLContent:
         """All 13 TOR section labels appear in the generated HTML."""
         content = TORContent(project_name="Test")
         html = self.generator._build_html(content)
-        for label in TOR_SECTION_LABELS.values():
+        for _key, label in export_main_plan(content.project_type):
             assert label in html, f"Section label '{label}' not found in HTML"
 
     def test_sections_in_correct_order(self):
@@ -137,8 +138,7 @@ class TestPDFGeneratorHTMLContent:
         content = TORContent(project_name="Test")
         html = self.generator._build_html(content)
         positions = []
-        for i, key in enumerate(TOR_SECTION_ORDER, start=1):
-            label = TOR_SECTION_LABELS[key]
+        for i, (_key, label) in enumerate(export_main_plan(content.project_type), start=1):
             pos = html.find(f"{i}. {label}")
             assert pos >= 0, f"Section {i}. {label} not found"
             positions.append(pos)

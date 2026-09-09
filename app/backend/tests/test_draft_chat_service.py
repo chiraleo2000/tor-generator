@@ -11,6 +11,7 @@ from app.api.v1.endpoints.draft_chat import (
     section_draft_timeout,
     sequential_draft_order,
 )
+from app.domain.section_profile import profile_for_project
 from app.domain.tor_sections import TOR_SECTION_ORDER
 from app.services.draft_chat_service import (
     DRAFT_MAX_TOKENS,
@@ -26,7 +27,8 @@ def test_sequential_order_drafts_s4_last():
     order = sequential_draft_order()
     assert order[-1] == "s4"
     assert order.index("s6") < order.index("s4")
-    assert set(order) == set(TOR_SECTION_ORDER)
+    mains = profile_for_project(None).main_storage_keys()
+    assert set(order) == set(mains)
 
 
 def test_fallback_section_uses_intake_slots():
@@ -226,9 +228,10 @@ async def test_draft_single_section_propagates_llm_timeout():
 
 @pytest.mark.asyncio
 async def test_collect_scope_subsection_drafts_calls_llm_in_order():
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
+    from app.domain.section_profile import profile_for_project
     from app.services.draft_chat_service import collect_scope_subsection_drafts
 
+    keys = profile_for_project(None).scope_storage_keys()
     calls: list[str] = []
 
     async def fake_sub(sub_key, *_args, **_kwargs):
@@ -241,16 +244,16 @@ async def test_collect_scope_subsection_drafts_calls_llm_in_order():
     ):
         out = await collect_scope_subsection_drafts({})
 
-    assert calls == list(SCOPE_SUBSECTIONS)
-    assert out == {key: f"ร่างจากโมเดล {key}" for key in SCOPE_SUBSECTIONS}
+    assert calls == keys
+    assert out == {key: f"ร่างจากโมเดล {key}" for key in keys}
 
 
 @pytest.mark.asyncio
 async def test_collect_scope_skips_prior_then_drafts_rest_in_order():
-    from app.domain.tor_sections import SCOPE_SUBSECTIONS
+    from app.domain.section_profile import profile_for_project
     from app.services.draft_chat_service import collect_scope_subsection_drafts
 
-    keys = list(SCOPE_SUBSECTIONS)
+    keys = profile_for_project(None).scope_storage_keys()
     calls: list[str] = []
 
     async def fake_sub(sub_key, *_args, **_kwargs):

@@ -86,7 +86,7 @@ async def test_persist_and_export_writes_sections(
     session = _AsyncSession([project_result, section_result, version_result])
     monkeypatch.setattr(runtime, "session_factory", lambda: session)
     with (
-        patch("app.services.agent_export.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.agent_export.section_order", return_value=["s1"]),
         patch(
             "app.services.agent_export.apply_slot_map_to_sections",
             new_callable=AsyncMock,
@@ -141,7 +141,7 @@ async def test_persist_and_export_updates_existing_and_versions(
     session = _AsyncSession([project_result, section_result, version_result])
     monkeypatch.setattr(runtime, "session_factory", lambda: session)
     with (
-        patch("app.services.agent_export.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.agent_export.section_order", return_value=["s1"]),
         patch(
             "app.services.agent_export.apply_slot_map_to_sections",
             new_callable=AsyncMock,
@@ -177,7 +177,7 @@ async def test_persist_and_export_skips_blank_drafts(
     session = _AsyncSession([project_result, version_result])
     monkeypatch.setattr(runtime, "session_factory", lambda: session)
     with (
-        patch("app.services.agent_export.TOR_SECTION_ORDER", ["s1"]),
+        patch("app.services.agent_export.section_order", return_value=["s1"]),
         patch(
             "app.services.agent_export.apply_slot_map_to_sections",
             new_callable=AsyncMock,

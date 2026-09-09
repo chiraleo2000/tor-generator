@@ -1,0 +1,25 @@
+# PN multi-RAG on one S3 bucket (EC2 deploy package)
+# Referenced by PN_RAG_GROUPS_PATH in .env
+
+bucket_env: PN_S3_BUCKET
+bucket: ""
+
+default_group: procurement-th
+chunk_target_tokens: 4096
+embedding_model: cohere.embed-v4:0
+embedding_dimensions: 1024
+
+groups:
+  - id: procurement-th
+    name: จัดซื้อจัดจ้าง (คลังหลัก)
+    description: กฎหมาย ระเบียบ คู่มือจัดซื้อจัดจ้างภาครัฐ
+    prefix: rags/procurement-th/
+    vector_index: procurement-th-embed4-v1
+    mcp_enabled: true
+
+  - id: agency-extra
+    name: คลังหน่วยงานเสริม
+    description: เอกสารเพิ่มของหน่วยงาน (แยก index)
+    prefix: rags/agency-extra/
+    vector_index: agency-extra-embed4-v1
+    mcp_enabled: true

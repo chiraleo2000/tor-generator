@@ -49,7 +49,7 @@ def test_readiness_is_filled_fact_required_ratio(slot_map: dict):
 @pytest.mark.property
 @settings(max_examples=20, deadline=None)
 @given(slot_maps())
-def test_coverage_map_has_27_slots(slot_map: dict):
+def test_coverage_map_has_profile_slots(slot_map: dict):
     rows = build_coverage_map(slot_map)
-    assert len(rows) == 27
+    assert len(rows) == len(INTAKE_SLOT_ORDER)
     assert {row["key"] for row in rows} == set(INTAKE_SLOT_ORDER)

@@ -21,6 +21,7 @@ from app.api.v1.endpoints import (
     intake,
     kb_chat,
     knowledge_base,
+    pn_kb,
     projects,
     review,
     standalone_review,
@@ -57,6 +58,7 @@ api_router.include_router(drafting_router)
 api_router.include_router(review_router)
 api_router.include_router(templates.router, prefix="/templates", tags=["templates"])
 api_router.include_router(knowledge_base.router, prefix="/knowledge-base", tags=["knowledge-base"])
+api_router.include_router(pn_kb.router, prefix="/pn/kb", tags=["pn-kb"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(ai_queue.router, prefix="/ai", tags=["ai-queue"])
 api_router.include_router(agent.router, prefix="/agent", tags=["agent"])

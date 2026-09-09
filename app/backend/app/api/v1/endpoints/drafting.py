@@ -88,9 +88,19 @@ def _user_input_for_draft(
         user_input["intake_slot_status"] = target_slot.get("status")
         user_input["intake_slot_sources"] = target_slot.get("sources")
     if body.section_key == "s4":
+        from app.domain.section_profile import profile_for_project
+
+        keys = profile_for_project(project.project_type).scope_storage_keys()
         user_input["scope_subslots"] = {
-            key: slot_map.get(key) for key in slot_map if str(key).startswith("s4.")
+            key: slot_map.get(key) for key in keys if slot_map.get(key)
         }
+        user_input["scope_subslots"].update(
+            {
+                key: slot_map.get(key)
+                for key in slot_map
+                if str(key).startswith("s4.")
+            }
+        )
     return user_input
 
 

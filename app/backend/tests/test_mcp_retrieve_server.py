@@ -21,7 +21,7 @@ async def test_dispatch_initialize_and_tools_list() -> None:
     )
     assert status == 200
     assert init_body is not None
-    assert init_body["result"]["serverInfo"]["name"] == "tor-mcp-pgvector"
+    assert init_body["result"]["serverInfo"]["name"] == "tor-mcp-retrieve"
 
     status, listed = await dispatch_rpc(
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}

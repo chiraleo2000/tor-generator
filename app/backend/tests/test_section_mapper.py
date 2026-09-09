@@ -34,7 +34,7 @@ async def test_incremental_append_and_preserve():
 def test_apply_incoming_ignores_unknown_keys():
     result = apply_incoming_slots(empty_slot_map(), {"nope": {"status": "filled"}})
     assert "nope" not in result
-    assert len(result) == 27
+    assert len(result) == len(empty_slot_map())
 
 
 def test_apply_incoming_normalizes_invalid_status():

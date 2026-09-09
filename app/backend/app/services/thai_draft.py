@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.domain.tor_sections import SCOPE_SUBSECTIONS
+from app.domain.section_profile import extra_legacy_scope_items, profile_for_project, subsection_title
 from app.llm_tokens import (
     SCOPE_SUB_MAX_TOKENS,
     SCOPE_SUB_MIN_TOKENS,
@@ -56,30 +56,38 @@ TABLE_FORMAT_HINT = (
 )
 
 
-def scope_overview_from_subs(subs: dict[str, str]) -> str:
-    """Short top-level s4 text — details live in s4.1–s4.14 only."""
-    lead = str(subs.get("s4.1") or "").strip()
+def scope_overview_from_subs(subs: dict[str, str], category: str | None = None) -> str:
+    """Short top-level s4 text — details live in profile subsections."""
+    profile = profile_for_project(category)
+    lead = ""
+    for item in profile.scope_subsections:
+        lead = str(subs.get(item.storage_key) or subs.get(item.semantic_key) or "").strip()
+        if lead:
+            break
     if not lead:
-        for key in SCOPE_SUBSECTIONS:
-            lead = str(subs.get(key) or "").strip()
+        for value in subs.values():
+            lead = str(value or "").strip()
             if lead:
                 break
     if not lead:
         return ""
     if len(lead) > 360:
         lead = lead[:360].rstrip() + "…"
-    return f"{lead}\n\n(รายละเอียดครบในหัวข้อย่อย ๔.๑–๔.๑๔)"
+    return f"{lead}\n\n(รายละเอียดอยู่ในหัวข้อย่อยขอบเขตของงานตามประเภทโครงการ)"
 
 
-def merge_scope_from_subs(subs: dict[str, str]) -> str:
-    """Readable preview of filled subsections (not the export body duplicate)."""
+def merge_scope_from_subs(subs: dict[str, str], category: str | None = None) -> str:
+    profile = profile_for_project(category)
     parts: list[str] = []
-    for key, title in SCOPE_SUBSECTIONS.items():
-        text = str(subs.get(key) or "").strip()
+    for index, item in enumerate(profile.scope_subsections, start=1):
+        text = str(subs.get(item.storage_key) or subs.get(item.semantic_key) or "").strip()
         if not text:
             continue
-        num = key.replace("s4.", "๔.")
-        parts.append(f"{num} {title}\n{text}")
+        parts.append(f"๔.{index} {item.title}\n{text}")
+    extra_n = len(parts)
+    for extra in extra_legacy_scope_items(subs, category):
+        extra_n += 1
+        parts.append(f"๔.{extra_n} {extra['title']}\n{extra['content']}")
     return "\n\n".join(parts)
 
 
@@ -87,14 +95,21 @@ def scope_sub_prompt(
     sub_key: str,
     slot_map: dict[str, Any],
     rag_context: str = "",
+    category: str | None = None,
 ) -> str:
-    title = SCOPE_SUBSECTIONS.get(sub_key, sub_key)
+    title = subsection_title(sub_key, category, sub_key)
     from app.services.intake_service import slot_content
 
     facts = slot_content(slot_map, sub_key).strip()
     parent = slot_content(slot_map, "s4").strip()
+    display_no = sub_key
+    if category:
+        for index, item in enumerate(profile_for_project(category).scope_subsections, start=1):
+            if item.storage_key == sub_key or item.semantic_key == sub_key:
+                display_no = f"๔.{index}"
+                break
     parts = [
-        f"ร่างหัวข้อย่อย {sub_key.replace('s4.', '๔.')} «{title}» ของหมวดขอบเขตของงาน",
+        f"ร่างหัวข้อย่อย {display_no} «{title}» ของหมวดขอบเขตของงาน",
         "",
         THAI_ONLY_RULES,
         TABLE_FORMAT_HINT,
@@ -113,7 +128,7 @@ def scope_sub_prompt(
         parts.append(f"บริบทกฎหมาย:\n{rag_context[:4000]}")
     from app.domain.tor_draft_hints import hint_for
 
-    hint = hint_for(sub_key)
+    hint = hint_for(sub_key, category)
     if hint:
         parts.append(f"แนวทางความครบถ้วนจากตัวอย่าง TOR: {hint}")
     parts.append(SCOPE_SUB_LENGTH_RULES)

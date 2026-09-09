@@ -1,5 +1,6 @@
 import type { Step1Data, Step4Data, Step5Data, Step6Data } from "@/types/wizard";
 import { SCOPE_SUBSECTIONS } from "@/lib/tor-sections";
+import { scopeSubsectionsFor } from "@/lib/tor-profiles";
 
 export function toWizardApiPayload(step: number, data: unknown): Record<string, unknown> {
   const source = (data ?? {}) as Record<string, unknown>;
@@ -31,8 +32,11 @@ export function toWizardApiPayload(step: number, data: unknown): Record<string, 
       deliverables: d.deliverables ?? [],
     };
     (d.scope_items ?? []).forEach((item, index) => {
-      const key = SCOPE_SUBSECTIONS[index]?.key ?? `s4.${index + 1}`;
-      payload[key] = `${item.title}\n${item.details}`.trim();
+      const profileKey = scopeSubsectionsFor("buy_goods")[index]?.key;
+      const legacyKey = SCOPE_SUBSECTIONS[index]?.key ?? `s4.${index + 1}`;
+      const text = `${item.title}\n${item.details}`.trim();
+      payload[legacyKey] = text;
+      if (profileKey) payload[profileKey] = text;
     });
     return payload;
   }

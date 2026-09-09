@@ -1,5 +1,7 @@
 /** Canonical TOR section model — mirrors backend/app/domain/tor_sections.py. */
 
+import { scopeSubsectionTitle as profileScopeTitle } from "./tor-profiles";
+
 export const TOR_SECTION_ORDER = [
   "s1",
   "s2",
@@ -51,10 +53,10 @@ export const SCOPE_SUBSECTIONS: { key: string; title: string }[] = [
   { key: "s4.14", title: "ข้อกำหนดด้านความมั่นคงปลอดภัย PDPA" },
 ];
 
-/** Always show the Thai chip/label, even if an older API payload still says As-Is. */
 export function scopeSubsectionTitle(key: string, fallback = ""): string {
   const found = SCOPE_SUBSECTIONS.find((item) => item.key === key);
-  return found?.title || fallback || key;
+  if (found?.title) return found.title;
+  return profileScopeTitle(key, undefined, fallback);
 }
 
 export const STEP_SECTION_MAP: Record<number, string[]> = {

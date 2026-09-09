@@ -7,6 +7,7 @@ import { CoverageTable, type CoverageRow } from "@/components/draft/phase1-cover
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
+import { factTopicsComplete } from "@/lib/intake-complete";
 
 export function Phase2Qa({
   projectId,
@@ -32,11 +33,11 @@ export function Phase2Qa({
   onCoverage?: (rows: CoverageRow[]) => void;
 }>) {
   const facts = coverage.filter((row) => row.fact_required);
-  const missingFacts = facts.filter((row) => !row.filled);
+  const missingFacts = facts.filter((row) => !(row.filled || row.status === "filled"));
   const gapNonFacts = coverage.filter(
     (row) => !row.fact_required && row.status === "gap"
   );
-  const factReady = facts.length > 0 && missingFacts.length === 0;
+  const factReady = factTopicsComplete(coverage);
   const [standardBusy, setStandardBusy] = useState(false);
   const [standardMsg, setStandardMsg] = useState<string | null>(null);
 
@@ -74,12 +75,15 @@ export function Phase2Qa({
       <div className="gov-card">
         <h3 className="text-navy">ขั้นที่ ๒: คุยต่อ — เติมช่องที่ยังขาด</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          วางข้อความชุดใหญ่ได้เลย ระบบจัดเข้าหลายช่องเอง แล้วถามเฉพาะที่ยังขาด
+          วางข้อความชุดใหญ่ได้เลย ระบบจัดเข้าหลายช่องเอง แล้วถามทีละช่องที่ยังขาด
+          ข้อเท็จจริงหลักครบแล้วก็ยังเติมช่องอื่นต่อได้ หรือกดไปร่างได้เลย
           ช่องกฎหมาย/มาตรฐานกดปุ่มด้านล่างเพื่อใช้ตาม พ.ร.บ. และระเบียบกลางจากคลัง
         </p>
         <p className="mt-2 text-sm text-navy">
           {factReady
-            ? "ข้อเท็จจริงหลักครบแล้ว — ยืนยันเมื่อพร้อมไปร่างเนื้อหา"
+            ? gapNonFacts.length > 0
+              ? `ข้อเท็จจริงหลักครบแล้ว — ยังเติมได้อีก ${gapNonFacts.length} ช่อง หรือยืนยันไปร่างได้`
+              : "ข้อเท็จจริงหลักครบแล้ว — ยืนยันเมื่อพร้อมไปร่างเนื้อหา"
             : `ยังขาดข้อเท็จจริง ${missingFacts.length} ช่อง — ตอบในแชทหรือวางข้อความยาวได้`}
         </p>
         {gapNonFacts.length > 0 ? (
@@ -112,6 +116,22 @@ export function Phase2Qa({
         ) : null}
       </div>
       <FactStatusChips coverage={facts} />
+      {gapNonFacts.length > 0 ? (
+        <div className="space-y-1" data-testid="phase2-optional-gaps">
+          <p className="text-xs text-muted-foreground">ช่องอื่นที่ยังว่าง (เติมต่อได้):</p>
+          <div className="flex flex-wrap gap-2">
+            {gapNonFacts.slice(0, 12).map((row) => (
+              <span
+                key={row.key}
+                data-testid={`phase2-optional-${row.key}`}
+                className="max-w-full rounded-md bg-slate-100 px-2.5 py-1 text-xs text-slate-800"
+              >
+                {row.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {coverage.length ? <CoverageTable coverage={coverage} gaps={[]} /> : null}
       <Button
         type="button"

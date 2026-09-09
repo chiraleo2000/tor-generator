@@ -114,6 +114,13 @@ describe("Phase2Qa", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("ยังไม่ครบช่องข้อเท็จจริงที่บังคับ");
   });
 
+  it("shows optional gap chips after facts are ready", () => {
+    render(<Phase2Qa {...baseProps} coverage={coverage} onCoverage={vi.fn()} />);
+    expect(screen.getByTestId("phase2-optional-gaps")).toBeInTheDocument();
+    expect(screen.getByTestId("phase2-optional-s10")).toHaveTextContent("อัตราค่าปรับ");
+    expect(screen.getByText(/ยังเติมได้อีก 1 ช่อง/)).toBeInTheDocument();
+  });
+
   it("reports a fill-references failure", async () => {
     vi.mocked(apiClient.post).mockRejectedValue({
       response: { data: { error: { message: "ดึงมาตรฐานกลางไม่สำเร็จ" } } },
