@@ -1,6 +1,6 @@
 # AWS infrastructure templates (production path)
 
-เอกสารหลัก: [Discussions/24–27](../../../Discussions/24-AWS_CLOUD_OVERVIEW.md) · TBD Cloud ล้วน + RAG สองแหล่ง: [29](../../../Discussions/29-TBD-AWS-CLOUD-ONLY.md)  
+เอกสารหลัก: [Discussions/24–27](../../../Discussions/24-AWS_CLOUD_OVERVIEW.md) · แผนขึ้น webapp: [38](../../../Discussions/38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) · TBD Cloud ล้วน + RAG สองแหล่ง: [29](../../../Discussions/29-TBD-AWS-CLOUD-ONLY.md)  
 `DEPLOYMENT_MODE=cloud` เท่านั้น — ห้าม hybrid LLM ใน task นี้
 
 โฟลเดอร์นี้เป็น **โครงพร้อมใส่บัญชี** ไม่ใช่สแตกที่ apply แล้วเสร็จเอง

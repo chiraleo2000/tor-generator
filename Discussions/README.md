@@ -11,8 +11,9 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 คำอธิบายเวิร์กโฟลว์สามบริการหลัก (ภาษาไทย ตรวจจากโค้ดจริง **26 ส.ค. 2026 รอบบ่าย**) อยู่ที่ **21–23** ใช้ชุดนี้เมื่อขัดกับบันทึกเก่าใน `15`/`19` (เช่น วิเคราะห์ขั้นที่ ๐ ไม่ดึงกฎหมายอัตโนมัติแล้ว และเกต HITL บนปุ่มไปทบทวนไม่มีแล้ว)
 
 **Production บน AWS ล้วน (ไม่มี hybrid LLM):** ชุด **24–27** + **29 (TBD)** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS  
+**แผนขึ้น webapp (เลือกเส้น EC2 หรือ ECS):** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) — build จาก `app/frontend` ไม่ใช่โฟลเดอร์ `frontend/` ที่ราก  
 RAG **อนุญาตสองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังเป็น Bedrock — ดู [29](29-TBD-AWS-CLOUD-ONLY.md)  
-หลักฐานตรวจ Local LLM ล่าสุด (9 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.5.0** · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md)
+หลักฐานตรวจ Local LLM ล่าสุด (9 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.5.0** · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md) · **แผน deploy webapp AWS** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md)
 
 | File | Topic |
 |------|--------|
@@ -42,7 +43,9 @@ RAG **อนุญาตสองแหล่งข้อมูล** (คลั�
 | `33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md` | **แผน PN:** EC2 (ไม่มี Fargate) · Embed 4 · S3 Vectors · MCP · [PDF](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.pdf) |
 | `34-AWS-PN-TOOLS-LIST.md` | **เครื่องมือ AWS PN** บน EC2 · multi-RAG · [PDF](34-AWS-PN-TOOLS-LIST.pdf) |
 | `35-AWS-PN-DEV-AND-DEPLOY.md` | **คู่มือ deploy EC2** + ตั้ง AWS + `.env` ครบ · แพ็กเกจ `app/infra/pn-ec2/` |
+| `36-AWS-PN-USER-SETUP-AND-RUNBOOK.md` | **คู่มือผู้ใช้ Local→AWS + งานมือ** |
 | `37-TOR-PROFILES-BY-TYPE.md` | **Section_Profile ตาม ๗ ประเภทงาน** — แหล่งความจริงของชุดหัวข้อ TOR (กันยายน 2026) |
+| `38-AWS-WEBAPP-DEPLOYMENT-PLAN.md` | **แผน deploy webapp บน AWS** — ซอร์ส `app/frontend` · เส้น PN/EC2 กับ ECS Fargate |
 
 ชุด `01`–`12` เป็นบันทึกออกแบบก่อนหน้า (รวม PoC HTML) — อย่าใช้ `10`/`11` เป็นคู่มือติดตั้งของแอป Docker ปัจจุบัน
 

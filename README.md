@@ -3,7 +3,7 @@
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
 แอปที่รันจริงคือ **v0.5.0**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) และ Amazon Quick connector (`amazon-quick :8767` → live pgvector) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)  
-**Production แนะนำ:** Amazon Bedrock (ดู [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md))  
+**Production แนะนำ:** Amazon Bedrock — แผนขึ้น webapp บน AWS: [Discussions/38-AWS-WEBAPP-DEPLOYMENT-PLAN.md](Discussions/38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) (เส้น PN/EC2 หรือ ECS) · ทางลัด Bedrock บน EC2: [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md)  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
 
 **GitHub Pages คือ UI จำลองเท่านั้น** — เปิดจาก [`index.html`](index.html) ที่ root ของรีโป ให้หน้าตาและเมนูตรงกับแอปปัจจุบัน แต่ไม่เรียก API/LLM จริง และ**ไม่ได้**ใช้ `discussions/06-UXUI-Mockup.html`
@@ -16,7 +16,7 @@
 
 | Folder | ใส่ที่นี่ |
 |--------|-----------|
-| **[app/](app/)** | เว็บแอป: Next.js UI, FastAPI, extras ของ Docker image |
+| **[app/](app/)** | เว็บแอปที่ขึ้น AWS: Next.js ที่ **`app/frontend`**, FastAPI ที่ **`app/backend`**, extras ของ Docker image |
 | **[discussions/](discussions/)** | สถาปัตยกรรม, API, UX, หลักฐานเทสต์ (ไม่โหลดตอนรัน) |
 | **[documents/](documents/)** | กฎหมาย, PDF ต้นฉบับ, extracts งานวิจัย, แม่แบบ TOR |
 

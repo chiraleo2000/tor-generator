@@ -4,6 +4,8 @@
 #   docker compose -f docker-compose.pn.yml --env-file .env up -d --build
 #
 # Build contexts are relative to this file (app/infra/pn-ec2/).
+# ../../frontend → app/frontend (Next.js webapp). ../../backend → app/backend.
+# Do not use a leftover ./frontend folder at the repo root.
 
 name: ${COMPOSE_PROJECT_NAME:-tor-pn}
 
@@ -12,6 +14,7 @@ services:
     build:
       context: ../../frontend
       dockerfile: Dockerfile
+      # app/frontend — PN Compose file is under app/infra/pn-ec2/
       args:
         NEXT_PUBLIC_API_URL: /api/v1
         BACKEND_INTERNAL_URL: http://backend:4000/api/v1

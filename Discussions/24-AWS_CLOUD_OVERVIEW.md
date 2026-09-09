@@ -15,6 +15,7 @@
 | [27-AWS_CODE_AND_CUTOVER.md](27-AWS_CODE_AND_CUTOVER.md) | โค้ดที่ต้องปรับ ย้ายข้อมูล ตัดระบบเก่า |
 | [28](28-VERIFICATION-AND-MIGRATION.md) / [29](29-TBD-AWS-CLOUD-ONLY.md) | เกตตรวจ + TBD Cloud ล้วน / RAG สองแหล่ง |
 | โครงไฟล์ | `app/infra/aws/` (Terraform, IAM, ECS task, `.env` คลาวด์) |
+| [38-AWS-WEBAPP-DEPLOYMENT-PLAN.md](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) | **แผนขึ้น webapp** จาก `app/frontend` (เส้น PN/EC2 หรือ ECS) |
 
 [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md) ยังใช้ได้เมื่อต้องการ **แค่ Bedrock** บน EC2+Compose — **ไม่ใช่** เป้าหมายของชุด 24–27
 

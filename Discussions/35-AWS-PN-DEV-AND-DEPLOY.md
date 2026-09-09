@@ -1,5 +1,7 @@
 # 35 — พัฒนาและ Deploy PN บน AWS EC2 (MCP + Webapp + S3)
 
+**แผนขึ้น webapp ทั้งสองเส้นทาง (EC2 vs ECS):** [38-AWS-WEBAPP-DEPLOYMENT-PLAN.md](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) — อิมเมจ UI build จาก **`app/frontend`**
+
 คู่มือทีละขั้นสำหรับแพ็กเกจ **[`app/infra/pn-ec2/`](../app/infra/pn-ec2/)**  
 แผนต้นทุน: [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · รายการเครื่องมือ: [34](34-AWS-PN-TOOLS-LIST.md)  
 **คู่มือผู้ใช้ / งานที่ต้องทำเอง / Local→Cloud:** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md)  
