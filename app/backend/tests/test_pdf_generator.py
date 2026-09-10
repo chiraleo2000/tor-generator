@@ -15,8 +15,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.domain.section_profile import export_main_plan
-from app.export.docx_generator import TOR_SECTION_LABELS, TOR_SECTION_ORDER, TORContent
+from app.domain.tor_sections import TOR_SECTION_LABELS
+from app.export.docx_generator import TORContent
 from app.export.pdf_generator import PDFGenerator, _escape_html
+from app.export.render_plan import NumberingScheme
 
 
 # =============================================================================
@@ -126,23 +128,25 @@ class TestPDFGeneratorHTMLContent:
         html = self.generator._build_html(content)
         assert "กระทรวงการคลัง" in html
 
-    def test_html_contains_all_section_labels(self):
-        """All 13 TOR section labels appear in the generated HTML."""
-        content = TORContent(project_name="Test")
+    def test_html_contains_filled_section_labels(self):
+        """Filled TOR section labels appear in the generated HTML."""
+        sections = {key: f"เนื้อหา {label}" for key, label in export_main_plan("buy_goods")}
+        content = TORContent(project_name="Test", sections=sections)
         html = self.generator._build_html(content)
         for _key, label in export_main_plan(content.project_type):
             assert label in html, f"Section label '{label}' not found in HTML"
 
     def test_sections_in_correct_order(self):
-        """Sections appear in the correct numbered order."""
-        content = TORContent(project_name="Test")
+        """Filled sections appear in profile order."""
+        sections = {key: f"เนื้อหา {label}" for key, label in export_main_plan("buy_goods")}
+        content = TORContent(project_name="Test", sections=sections)
         html = self.generator._build_html(content)
         positions = []
-        for i, (_key, label) in enumerate(export_main_plan(content.project_type), start=1):
-            pos = html.find(f"{i}. {label}")
-            assert pos >= 0, f"Section {i}. {label} not found"
+        for _key, label in export_main_plan(content.project_type):
+            marker = f'<div class="section-heading">{label}</div>'
+            pos = html.find(marker)
+            assert pos >= 0, f"Section {label} not found"
             positions.append(pos)
-        # Verify ordering
         assert positions == sorted(positions)
 
     def test_html_contains_section_content(self):
@@ -154,11 +158,12 @@ class TestPDFGeneratorHTMLContent:
         html = self.generator._build_html(content)
         assert "เนื้อหาความเป็นมา" in html
 
-    def test_empty_section_shows_placeholder(self):
-        """Empty sections show the placeholder text."""
+    def test_empty_section_is_skipped(self):
+        """Empty sections are omitted; appendix divider remains."""
         content = TORContent(project_name="Test")
         html = self.generator._build_html(content)
-        assert "(ยังไม่ได้กรอกข้อมูล)" in html
+        assert "(ยังไม่ได้กรอกข้อมูล)" not in html
+        assert "ภาคผนวก" in html
 
     def test_html_contains_sub_sections(self):
         """Sub-sections are included in the HTML."""
@@ -166,6 +171,7 @@ class TestPDFGeneratorHTMLContent:
             project_name="Test",
             sections={"s4": "ขอบเขตงานหลัก"},
             sub_sections={"s4": {"4.1": "งานย่อยที่ 1", "4.2": "งานย่อยที่ 2"}},
+            use_thai_numerals=False,
         )
         html = self.generator._build_html(content)
         assert "4.1" in html
@@ -178,23 +184,24 @@ class TestPDFGeneratorHTMLContent:
         content = TORContent(
             project_name="Test",
             export_date=date(2024, 8, 15),
+            use_thai_numerals=False,
         )
         html = self.generator._build_html(content)
         # Should contain Buddhist Era year 2567
         assert "2567" in html
         assert "สิงหาคม" in html
 
-    def test_thai_numerals_in_sections(self):
-        """When use_thai_numerals=True, section numbers use Thai digits."""
+    def test_thai_numerals_in_sections_when_numbered(self):
+        """When numbered_consecutive and Thai numerals, section numbers use Thai digits."""
         content = TORContent(
             project_name="Test",
+            sections={"s1": "เนื้อหาความเป็นมา"},
+            numbering_scheme=NumberingScheme.NUMBERED_CONSECUTIVE,
             use_thai_numerals=True,
             export_date=date(2024, 1, 1),
         )
         html = self.generator._build_html(content)
-        # Section 1 should be "๑. ความเป็นมา"
         assert "๑. ความเป็นมา" in html
-        # Date should use Thai numerals
         assert "๒๕๖๗" in html
 
     def test_html_escapes_special_characters(self):
@@ -233,3 +240,14 @@ class TestPDFGeneratorMultiParagraph:
         # Should only have 2 paragraphs, not 4
         assert "<p>บรรทัด 1</p>" in html
         assert "<p>บรรทัด 2</p>" in html
+
+
+class TestPDFOfficialPageFormat:
+    def test_css_matches_docx_page_setup(self):
+        from app.export.pdf_generator import _DOCUMENT_CSS
+
+        assert "font-size: 16pt" in _DOCUMENT_CSS
+        assert "font-size: 18pt" in _DOCUMENT_CSS
+        assert "line-height: 1.0" in _DOCUMENT_CSS
+        assert "margin: 2.54cm 1.91cm 2.54cm 1.91cm" in _DOCUMENT_CSS
+        assert "TH Sarabun New" in _DOCUMENT_CSS

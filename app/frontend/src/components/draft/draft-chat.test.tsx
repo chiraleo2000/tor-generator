@@ -91,7 +91,7 @@ describe("DraftChat", () => {
     await waitFor(() => expect(onAllDrafted).toHaveBeenCalled());
     expect(onSectionDone).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("draft-edit-s1"));
-    expect(screen.getByTestId("draft-chat-input")).toHaveValue("แก้ไข หมวด 1: ");
+    expect(screen.getByTestId("draft-chat-input")).toHaveValue("แก้ไข 1. ความเป็นมา: ");
   });
 
   it("does not restart drafting when all 13 sections already exist", async () => {
@@ -213,7 +213,7 @@ describe("DraftChat", () => {
       )
     );
     fireEvent.change(screen.getByTestId("draft-chat-input"), {
-      target: { value: "แก้ไข หมวด 1: เพิ่มรายละเอียด" },
+      target: { value: "แก้ไข 1. ความเป็นมา: เพิ่มรายละเอียด" },
     });
     fireEvent.keyDown(screen.getByTestId("draft-chat-input"), { key: "Enter", shiftKey: false });
   });
@@ -259,7 +259,7 @@ describe("DraftChat", () => {
     });
     render(<DraftChat projectId="p-badges" onAllDrafted={vi.fn()} />);
     expect(await screen.findByTestId("draft-section-badge-s1")).toBeInTheDocument();
-    expect(screen.getByTestId("draft-section-badge-s2")).toHaveTextContent("○");
+    expect(screen.getByTestId("draft-section-badge-s2")).toHaveTextContent("02");
     fireEvent.click((await screen.findAllByTestId("draft-accept-s1"))[0]);
     expect(await screen.findByRole("alert")).toHaveTextContent("ส่งข้อความไม่สำเร็จจากเซิร์ฟเวอร์");
   });

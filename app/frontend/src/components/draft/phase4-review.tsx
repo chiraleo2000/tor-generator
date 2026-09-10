@@ -13,8 +13,9 @@ import { RichDraftText } from "@/components/draft/rich-draft-text";
 import { ReviewFindingBuckets } from "@/components/review/finding-buckets";
 import {
   TOR_SECTION_LABELS,
+  formatScopeSubHeading,
+  formatTorSectionHeading,
   labeledSectionBlocks,
-  scopeSubsectionTitle,
   type TorSectionKey,
 } from "@/lib/tor-sections";
 
@@ -154,21 +155,21 @@ function MergedTorPreview({ sections }: Readonly<{ sections: SectionPayload[] }>
       data-testid="phase4-merged-preview"
     >
       <h4 className="text-sm font-bold text-navy">ตัวอย่างเอกสารรวม (ก่อนส่งออก)</h4>
-      {sections.map((section, index) => {
+      {sections.map((section) => {
         const title =
           TOR_SECTION_LABELS[section.key as TorSectionKey] || section.title || section.key;
         const subs = (section.subs || []).filter((sub) => (sub.content || "").trim());
         return (
           <article key={section.key} className="border-b border-gray-100 pb-2 last:border-0">
             <h5 className="text-sm font-semibold text-navy">
-              {index + 1}. {title}
+              {formatTorSectionHeading(section.key, title)}
             </h5>
             {subs.length ? (
               <div className="mt-1 space-y-2 pl-2">
                 {subs.map((sub) => (
                   <div key={sub.key}>
-                    <p className="text-xs font-semibold text-foreground">
-                      {sub.key.replace("s4.", "4.")} {scopeSubsectionTitle(sub.key, sub.title)}
+                    <p className="font-mono text-xs font-semibold tabular-nums text-foreground">
+                      {formatScopeSubHeading(sub.key, sub.title)}
                     </p>
                     <RichDraftText text={sub.content || ""} className="text-muted-foreground" />
                   </div>

@@ -34,10 +34,10 @@ SCHEMA_VERSION = 2
 PROCUREMENT_TYPES: dict[str, str] = {
     "hire_develop": "จ้างพัฒนาระบบ",
     "hire_maintain": "จ้างบำรุงรักษา (MA)",
-    "lease_service": "เช่าบริการ/สื่อสาร",
+    "lease_service": "เช่าบริการ/สื่อสาร/ยานพาหนะ",
     "buy_goods": "จัดซื้อครุภัณฑ์/ฮาร์ดแวร์",
     "construction": "งานปรับปรุง/ก่อสร้าง",
-    "hire_consult": "จ้างที่ปรึกษา/สำรวจ/วิเคราะห์",
+    "hire_consult": "จ้างที่ปรึกษา/สำรวจ/วิเคราะห์/เฝ้าระวังไซเบอร์",
     "hire_service": "จ้างเหมาบริการงานเอกสาร",
 }
 
@@ -45,14 +45,15 @@ DEFAULT_PROCUREMENT_TYPE = "buy_goods"
 
 # Wording of the counterparty, per type. Real TORs are consistent about this
 # and mixing them ("ผู้ขาย" in a จ้าง document) is a common drafting defect.
+CONTRACTOR_HIRE = "ผู้รับจ้าง"
 CONTRACTOR_TERM: dict[str, str] = {
     "buy_goods": "ผู้ขาย",
-    "hire_develop": "ผู้รับจ้าง",
-    "hire_maintain": "ผู้รับจ้าง",
+    "hire_develop": CONTRACTOR_HIRE,
+    "hire_maintain": CONTRACTOR_HIRE,
     "lease_service": "ผู้ให้เช่า",
-    "hire_service": "ผู้รับจ้าง",
-    "hire_consult": "ผู้รับจ้าง",
-    "construction": "ผู้รับจ้าง",
+    "hire_service": CONTRACTOR_HIRE,
+    "hire_consult": CONTRACTOR_HIRE,
+    "construction": CONTRACTOR_HIRE,
 }
 
 OWNER_TERM: dict[str, str] = {
@@ -179,6 +180,75 @@ def section_number(section_key: str, procurement_type: str = DEFAULT_PROCUREMENT
 
 
 # ---------------------------------------------------------------------------
+# Semantic keys defined once (reused in profiles, hints, and legacy maps)
+# ---------------------------------------------------------------------------
+class Qual:
+    LEGAL = "qual.legal"
+    JV = "qual.jv"
+    NETWORTH = "qual.networth"
+    EXPERIENCE = "qual.experience"
+    PERSONNEL = "qual.personnel"
+    DEALER = "qual.dealer"
+    LICENSE = "qual.license"
+    DOCUMENTS = "qual.documents"
+
+
+class Scope:
+    ITEMS = "scope.items"
+    GENERAL_CONDITIONS = "scope.general_conditions"
+    SPECIFICATION = "scope.specification"
+    INSTALLATION = "scope.installation"
+    DELIVERY_ACCEPTANCE = "scope.delivery_acceptance"
+    TRAINING = "scope.training"
+    DOCUMENTS = "scope.documents"
+    AFTER_SALES = "scope.after_sales"
+    SYSTEM_OVERVIEW = "scope.system_overview"
+    FUNCTIONAL = "scope.functional"
+    INTEGRATION = "scope.integration"
+    LICENSES = "scope.licenses"
+    STANDARDS_SECURITY = "scope.standards_security"
+    TESTING = "scope.testing"
+    DELIVERABLE_DOCS = "scope.deliverable_docs"
+    PROJECT_TEAM = "scope.project_team"
+    SLA_WARRANTY = "scope.sla_warranty"
+    ASSET_LIST = "scope.asset_list"
+    CM = "scope.cm"
+    PM = "scope.pm"
+    SLA = "scope.sla"
+    HELPDESK = "scope.helpdesk"
+    SPARE_PARTS = "scope.spare_parts"
+    ONSITE_STAFF = "scope.onsite_staff"
+    REPORTING = "scope.reporting"
+    BACKUP = "scope.backup"
+    SERVICE_SPEC = "scope.service_spec"
+    PROVIDED_EQUIPMENT = "scope.provided_equipment"
+    AVAILABILITY = "scope.availability"
+    NOC = "scope.noc"
+    USAGE_REPORT = "scope.usage_report"
+    LEASE_MAINTENANCE = "scope.lease_maintenance"
+    LESSEE_RIGHTS = "scope.lessee_rights"
+    WORKLOAD = "scope.workload"
+    WORKFLOW = "scope.workflow"
+    QUALITY_STANDARD = "scope.quality_standard"
+    RESOURCES = "scope.resources"
+    CUSTODY = "scope.custody"
+    PROGRESS_REPORT = "scope.progress_report"
+    OUTPUT_DELIVERY = "scope.output_delivery"
+    METHODOLOGY = "scope.methodology"
+    POPULATION = "scope.population"
+    INSTRUMENT = "scope.instrument"
+    FIELDWORK = "scope.fieldwork"
+    ANALYSIS = "scope.analysis"
+    EXPERT_REVIEW = "scope.expert_review"
+    REPORTS = "scope.reports"
+    EXPERT_TEAM = "scope.expert_team"
+    WORKS = "scope.works"
+    DRAWINGS = "scope.drawings"
+    DEMOLITION = "scope.demolition"
+    SITE_ACCESS = "scope.site_access"
+    SUPERVISION = "scope.supervision"
+    HANDOVER = "scope.handover"
+
 # ข้อ ๓ คุณสมบัติของผู้ยื่นข้อเสนอ — subsections
 # ---------------------------------------------------------------------------
 # Real TORs open with the same nine statutory clauses, then add
@@ -187,44 +257,44 @@ def section_number(section_key: str, procurement_type: str = DEFAULT_PROCUREMENT
 # as the last subsection instead of a separate top-level section.
 
 QUALIFICATION_SUBSECTIONS: dict[str, str] = {
-    "qual.legal": "คุณสมบัติทั่วไปตามกฎหมายและการลงทะเบียนในระบบ e-GP",
-    "qual.jv": "กรณีกิจการร่วมค้า",
-    "qual.networth": "มูลค่าสุทธิของกิจการ ทุนจดทะเบียน หรือวงเงินสินเชื่อ",
-    "qual.experience": "ผลงานประเภทเดียวกันกับงานที่จัดซื้อจัดจ้าง",
-    "qual.personnel": "บุคลากรหลักในโครงการ",
-    "qual.dealer": "หนังสือแต่งตั้งตัวแทนจำหน่ายจากเจ้าของผลิตภัณฑ์",
-    "qual.license": "ใบอนุญาตประกอบกิจการตามกฎหมายเฉพาะ",
-    "qual.documents": "เอกสารและหลักฐานที่ผู้ยื่นข้อเสนอต้องนำมายื่น",
+    Qual.LEGAL: "คุณสมบัติทั่วไปตามกฎหมายและการลงทะเบียนในระบบ e-GP",
+    Qual.JV: "กรณีกิจการร่วมค้า",
+    Qual.NETWORTH: "มูลค่าสุทธิของกิจการ ทุนจดทะเบียน หรือวงเงินสินเชื่อ",
+    Qual.EXPERIENCE: "ผลงานประเภทเดียวกันกับงานที่จัดซื้อจัดจ้าง",
+    Qual.PERSONNEL: "บุคลากรหลักในโครงการ",
+    Qual.DEALER: "หนังสือแต่งตั้งตัวแทนจำหน่ายจากเจ้าของผลิตภัณฑ์",
+    Qual.LICENSE: "ใบอนุญาตประกอบกิจการตามกฎหมายเฉพาะ",
+    Qual.DOCUMENTS: "เอกสารและหลักฐานที่ผู้ยื่นข้อเสนอต้องนำมายื่น",
 }
 
 # Subsections used by each procurement type, in order.
 QUALIFICATION_BY_TYPE: dict[str, list[str]] = {
     "buy_goods": [
-        "qual.legal", "qual.jv", "qual.networth", "qual.experience",
-        "qual.dealer", "qual.documents",
+        Qual.LEGAL, Qual.JV, Qual.NETWORTH, Qual.EXPERIENCE,
+        Qual.DEALER, Qual.DOCUMENTS,
     ],
     "hire_develop": [
-        "qual.legal", "qual.jv", "qual.networth", "qual.experience",
-        "qual.personnel", "qual.documents",
+        Qual.LEGAL, Qual.JV, Qual.NETWORTH, Qual.EXPERIENCE,
+        Qual.PERSONNEL, Qual.DOCUMENTS,
     ],
     "hire_maintain": [
-        "qual.legal", "qual.jv", "qual.networth", "qual.experience",
-        "qual.personnel", "qual.documents",
+        Qual.LEGAL, Qual.JV, Qual.NETWORTH, Qual.EXPERIENCE,
+        Qual.PERSONNEL, Qual.DOCUMENTS,
     ],
     "lease_service": [
-        "qual.legal", "qual.jv", "qual.networth", "qual.license",
-        "qual.documents",
+        Qual.LEGAL, Qual.JV, Qual.NETWORTH, Qual.LICENSE,
+        Qual.DOCUMENTS,
     ],
     "hire_service": [
-        "qual.legal", "qual.jv", "qual.networth", "qual.experience",
-        "qual.documents",
+        Qual.LEGAL, Qual.JV, Qual.NETWORTH, Qual.EXPERIENCE,
+        Qual.DOCUMENTS,
     ],
     "hire_consult": [
-        "qual.legal", "qual.experience", "qual.personnel", "qual.documents",
+        Qual.LEGAL, Qual.EXPERIENCE, Qual.PERSONNEL, Qual.DOCUMENTS,
     ],
     "construction": [
-        "qual.legal", "qual.jv", "qual.networth", "qual.experience",
-        "qual.license", "qual.documents",
+        Qual.LEGAL, Qual.JV, Qual.NETWORTH, Qual.EXPERIENCE,
+        Qual.LICENSE, Qual.DOCUMENTS,
     ],
 }
 
@@ -234,116 +304,116 @@ QUALIFICATION_BY_TYPE: dict[str, list[str]] = {
 
 SCOPE_SUBSECTIONS: dict[str, str] = {
     # งานซื้อ
-    "scope.items": "รายการพัสดุที่จัดซื้อและจำนวน",
-    "scope.general_conditions": "เงื่อนไขทั่วไปของพัสดุ",
-    "scope.specification": "คุณลักษณะเฉพาะของพัสดุ",
-    "scope.installation": "เงื่อนไขการติดตั้งและสถานที่ติดตั้ง",
-    "scope.delivery_acceptance": "เงื่อนไขการส่งมอบและการตรวจรับ",
-    "scope.training": "การฝึกอบรมและการถ่ายทอดความรู้",
-    "scope.documents": "เอกสารและคู่มือที่ต้องส่งมอบ",
-    "scope.after_sales": "การบริการสนับสนุนและบำรุงรักษาระหว่างรับประกัน",
+    Scope.ITEMS: "รายการพัสดุที่จัดซื้อและจำนวน",
+    Scope.GENERAL_CONDITIONS: "เงื่อนไขทั่วไปของพัสดุ",
+    Scope.SPECIFICATION: "คุณลักษณะเฉพาะของพัสดุ",
+    Scope.INSTALLATION: "เงื่อนไขการติดตั้งและสถานที่ติดตั้ง",
+    Scope.DELIVERY_ACCEPTANCE: "เงื่อนไขการส่งมอบและการตรวจรับ",
+    Scope.TRAINING: "การฝึกอบรมและการถ่ายทอดความรู้",
+    Scope.DOCUMENTS: "เอกสารและคู่มือที่ต้องส่งมอบ",
+    Scope.AFTER_SALES: "การบริการสนับสนุนและบำรุงรักษาระหว่างรับประกัน",
     # งานจ้างพัฒนาระบบ
-    "scope.system_overview": "ภาพรวมและสถาปัตยกรรมของระบบที่ต้องการ",
-    "scope.functional": "ขอบเขตระบบงานและหน้าที่การทำงานที่ต้องพัฒนา",
-    "scope.integration": "การเชื่อมโยงระบบและการโอนย้ายข้อมูล",
-    "scope.licenses": "ครุภัณฑ์และลิขสิทธิ์ซอฟต์แวร์ที่ต้องจัดหา",
-    "scope.standards_security": "มาตรฐานและข้อกำหนดด้านความมั่นคงปลอดภัยสารสนเทศ",
-    "scope.testing": "การทดสอบระบบและเกณฑ์การยอมรับ",
-    "scope.deliverable_docs": "เอกสารระบบและซอร์สโค้ดที่ต้องส่งมอบ",
-    "scope.project_team": "บุคลากรประจำโครงการ",
-    "scope.sla_warranty": "การบำรุงรักษาและระดับการให้บริการระหว่างรับประกัน",
+    Scope.SYSTEM_OVERVIEW: "ภาพรวมและสถาปัตยกรรมของระบบที่ต้องการ",
+    Scope.FUNCTIONAL: "ขอบเขตระบบงานและหน้าที่การทำงานที่ต้องพัฒนา",
+    Scope.INTEGRATION: "การเชื่อมโยงระบบและการโอนย้ายข้อมูล",
+    Scope.LICENSES: "ครุภัณฑ์และลิขสิทธิ์ซอฟต์แวร์ที่ต้องจัดหา",
+    Scope.STANDARDS_SECURITY: "มาตรฐานและข้อกำหนดด้านความมั่นคงปลอดภัยสารสนเทศ",
+    Scope.TESTING: "การทดสอบระบบและเกณฑ์การยอมรับ",
+    Scope.DELIVERABLE_DOCS: "เอกสารระบบและซอร์สโค้ดที่ต้องส่งมอบ",
+    Scope.PROJECT_TEAM: "บุคลากรประจำโครงการ",
+    Scope.SLA_WARRANTY: "การบำรุงรักษาและระดับการให้บริการระหว่างรับประกัน",
     # งานจ้างบำรุงรักษา
-    "scope.asset_list": "รายการระบบและอุปกรณ์ที่ต้องบำรุงรักษา",
-    "scope.cm": "การบำรุงรักษาเชิงแก้ไข (Corrective Maintenance)",
-    "scope.pm": "การบำรุงรักษาเชิงป้องกัน (Preventive Maintenance) และรอบการเข้าดำเนินการ",
-    "scope.sla": "ระดับการให้บริการ เวลาตอบสนอง และเวลาแก้ไขให้แล้วเสร็จ",
-    "scope.helpdesk": "ศูนย์รับแจ้งเหตุขัดข้องและการบริหารจัดการปัญหา",
-    "scope.spare_parts": "อะไหล่ วัสดุสิ้นเปลือง และอุปกรณ์ทดแทนระหว่างซ่อม",
-    "scope.onsite_staff": "บุคลากรและการปฏิบัติงานร่วมกับเจ้าหน้าที่ของหน่วยงาน",
-    "scope.reporting": "การรายงานผลการปฏิบัติงาน",
-    "scope.backup": "การสำรองข้อมูลและการกู้คืนระบบ",
+    Scope.ASSET_LIST: "รายการระบบและอุปกรณ์ที่ต้องบำรุงรักษา",
+    Scope.CM: "การบำรุงรักษาเชิงแก้ไข",
+    Scope.PM: "การบำรุงรักษาเชิงป้องกันและรอบการเข้าดำเนินการ",
+    Scope.SLA: "ระดับการให้บริการ เวลาตอบสนอง และเวลาแก้ไขให้แล้วเสร็จ",
+    Scope.HELPDESK: "ศูนย์รับแจ้งเหตุขัดข้องและการบริหารจัดการปัญหา",
+    Scope.SPARE_PARTS: "อะไหล่ วัสดุสิ้นเปลือง และอุปกรณ์ทดแทนระหว่างซ่อม",
+    Scope.ONSITE_STAFF: "บุคลากรและการปฏิบัติงานร่วมกับเจ้าหน้าที่ของหน่วยงาน",
+    Scope.REPORTING: "การรายงานผลการปฏิบัติงาน",
+    Scope.BACKUP: "การสำรองข้อมูลและการกู้คืนระบบ",
     # งานเช่า
-    "scope.service_spec": "รายละเอียดบริการที่เช่าใช้",
-    "scope.provided_equipment": "อุปกรณ์และสื่อสัญญาณที่ผู้ให้เช่าต้องจัดหา",
-    "scope.availability": "ความพร้อมใช้งาน เส้นทางสำรอง และการสลับเส้นทาง",
-    "scope.noc": "ศูนย์รับแจ้งเหตุตลอด ๒๔ ชั่วโมงและการแจ้งเตือน",
-    "scope.usage_report": "ระบบรายงานและการตรวจสอบปริมาณการใช้งาน",
-    "scope.lease_maintenance": "การบำรุงรักษาระบบตลอดอายุสัญญาเช่า",
-    "scope.lessee_rights": "สิทธิของผู้เช่าระหว่างอายุสัญญา",
+    Scope.SERVICE_SPEC: "รายละเอียดบริการที่เช่าใช้",
+    Scope.PROVIDED_EQUIPMENT: "อุปกรณ์และสื่อสัญญาณที่ผู้ให้เช่าต้องจัดหา",
+    Scope.AVAILABILITY: "ความพร้อมใช้งาน เส้นทางสำรอง และการสลับเส้นทาง",
+    Scope.NOC: "ศูนย์รับแจ้งเหตุตลอด ๒๔ ชั่วโมงและการแจ้งเตือน",
+    Scope.USAGE_REPORT: "ระบบรายงานและการตรวจสอบปริมาณการใช้งาน",
+    Scope.LEASE_MAINTENANCE: "การบำรุงรักษาระบบตลอดอายุสัญญาเช่า",
+    Scope.LESSEE_RIGHTS: "สิทธิของผู้เช่าระหว่างอายุสัญญา",
     # งานจ้างบริการ
-    "scope.workload": "ปริมาณงานและหน่วยนับ",
-    "scope.workflow": "กระบวนการปฏิบัติงาน",
-    "scope.quality_standard": "มาตรฐานคุณภาพของผลงาน",
-    "scope.resources": "บุคลากร เครื่องมือ และสถานที่ปฏิบัติงาน",
-    "scope.custody": "การขนย้ายและการดูแลรักษาทรัพย์สินของผู้ว่าจ้าง",
-    "scope.progress_report": "การรายงานความคืบหน้า",
-    "scope.output_delivery": "การส่งมอบผลงานและรูปแบบสื่อบันทึกข้อมูล",
+    Scope.WORKLOAD: "ปริมาณงานและหน่วยนับ",
+    Scope.WORKFLOW: "กระบวนการปฏิบัติงาน",
+    Scope.QUALITY_STANDARD: "มาตรฐานคุณภาพของผลงาน",
+    Scope.RESOURCES: "บุคลากร เครื่องมือ และสถานที่ปฏิบัติงาน",
+    Scope.CUSTODY: "การขนย้ายและการดูแลรักษาทรัพย์สินของผู้ว่าจ้าง",
+    Scope.PROGRESS_REPORT: "การรายงานความคืบหน้า",
+    Scope.OUTPUT_DELIVERY: "การส่งมอบผลงานและรูปแบบสื่อบันทึกข้อมูล",
     # งานจ้างที่ปรึกษา/สำรวจ
-    "scope.methodology": "กรอบแนวคิดและระเบียบวิธีดำเนินงาน",
-    "scope.population": "กลุ่มเป้าหมาย ขนาดตัวอย่าง และอัตราตอบกลับขั้นต่ำ",
-    "scope.instrument": "เครื่องมือเก็บข้อมูลและการทดสอบความแม่นยำ",
-    "scope.fieldwork": "การเก็บรวบรวมและตรวจสอบความถูกต้องของข้อมูล",
-    "scope.analysis": "การวิเคราะห์ข้อมูลและการนำเสนอผล",
-    "scope.expert_review": "การประชุมและการรับฟังความเห็นผู้เชี่ยวชาญ",
-    "scope.reports": "รายงานตามลำดับขั้นและรูปแบบการส่งมอบ",
-    "scope.expert_team": "คณะผู้เชี่ยวชาญและปริมาณงาน (man-month)",
+    Scope.METHODOLOGY: "กรอบแนวคิดและระเบียบวิธีดำเนินงาน",
+    Scope.POPULATION: "กลุ่มเป้าหมาย ขนาดตัวอย่าง และอัตราตอบกลับขั้นต่ำ",
+    Scope.INSTRUMENT: "เครื่องมือเก็บข้อมูลและการทดสอบความแม่นยำ",
+    Scope.FIELDWORK: "การเก็บรวบรวมและตรวจสอบความถูกต้องของข้อมูล",
+    Scope.ANALYSIS: "การวิเคราะห์ข้อมูลและการนำเสนอผล",
+    Scope.EXPERT_REVIEW: "การประชุมและการรับฟังความเห็นผู้เชี่ยวชาญ",
+    Scope.REPORTS: "รายงานตามลำดับขั้นและรูปแบบการส่งมอบ",
+    Scope.EXPERT_TEAM: "คณะผู้เชี่ยวชาญและปริมาณงานเป็นคน-เดือน",
     # งานก่อสร้าง/ปรับปรุง
-    "scope.works": "รายการงานก่อสร้างหรือปรับปรุง",
-    "scope.drawings": "แบบรูปรายการและมาตรฐานวัสดุ",
-    "scope.demolition": "งานรื้อถอนและการจัดการพื้นที่",
-    "scope.site_access": "เงื่อนไขการเข้าปฏิบัติงานและความปลอดภัยในการทำงาน",
-    "scope.supervision": "การควบคุมงานและการตรวจสอบคุณภาพ",
-    "scope.handover": "การส่งมอบพื้นที่และแบบ As-built",
+    Scope.WORKS: "รายการงานก่อสร้างหรือปรับปรุง",
+    Scope.DRAWINGS: "แบบรูปรายการและมาตรฐานวัสดุ",
+    Scope.DEMOLITION: "งานรื้อถอนและการจัดการพื้นที่",
+    Scope.SITE_ACCESS: "เงื่อนไขการเข้าปฏิบัติงานและความปลอดภัยในการทำงาน",
+    Scope.SUPERVISION: "การควบคุมงานและการตรวจสอบคุณภาพ",
+    Scope.HANDOVER: "การส่งมอบพื้นที่และแบบตามที่สร้างจริง",
 }
 
 SCOPE_BY_TYPE: dict[str, list[str]] = {
     "buy_goods": [
-        "scope.items", "scope.general_conditions", "scope.specification",
-        "scope.installation", "scope.delivery_acceptance", "scope.training",
-        "scope.documents", "scope.after_sales",
+        Scope.ITEMS, Scope.GENERAL_CONDITIONS, Scope.SPECIFICATION,
+        Scope.INSTALLATION, Scope.DELIVERY_ACCEPTANCE, Scope.TRAINING,
+        Scope.DOCUMENTS, Scope.AFTER_SALES,
     ],
     "hire_develop": [
-        "scope.system_overview", "scope.functional", "scope.integration",
-        "scope.licenses", "scope.standards_security", "scope.testing",
-        "scope.deliverable_docs", "scope.training", "scope.project_team",
-        "scope.sla_warranty",
+        Scope.SYSTEM_OVERVIEW, Scope.FUNCTIONAL, Scope.INTEGRATION,
+        Scope.LICENSES, Scope.STANDARDS_SECURITY, Scope.TESTING,
+        Scope.DELIVERABLE_DOCS, Scope.TRAINING, Scope.PROJECT_TEAM,
+        Scope.SLA_WARRANTY,
     ],
     "hire_maintain": [
-        "scope.asset_list", "scope.cm", "scope.pm", "scope.sla",
-        "scope.helpdesk", "scope.spare_parts", "scope.onsite_staff",
-        "scope.reporting", "scope.backup",
+        Scope.ASSET_LIST, Scope.CM, Scope.PM, Scope.SLA,
+        Scope.HELPDESK, Scope.SPARE_PARTS, Scope.ONSITE_STAFF,
+        Scope.REPORTING, Scope.BACKUP,
     ],
     "lease_service": [
-        "scope.service_spec", "scope.provided_equipment", "scope.availability",
-        "scope.noc", "scope.usage_report", "scope.lease_maintenance",
-        "scope.lessee_rights",
+        Scope.SERVICE_SPEC, Scope.PROVIDED_EQUIPMENT, Scope.AVAILABILITY,
+        Scope.NOC, Scope.USAGE_REPORT, Scope.LEASE_MAINTENANCE,
+        Scope.LESSEE_RIGHTS,
     ],
     "hire_service": [
-        "scope.workload", "scope.workflow", "scope.quality_standard",
-        "scope.resources", "scope.custody", "scope.progress_report",
-        "scope.output_delivery",
+        Scope.WORKLOAD, Scope.WORKFLOW, Scope.QUALITY_STANDARD,
+        Scope.RESOURCES, Scope.CUSTODY, Scope.PROGRESS_REPORT,
+        Scope.OUTPUT_DELIVERY,
     ],
     "hire_consult": [
-        "scope.methodology", "scope.population", "scope.instrument",
-        "scope.fieldwork", "scope.analysis", "scope.expert_review",
-        "scope.reports", "scope.expert_team",
+        Scope.METHODOLOGY, Scope.POPULATION, Scope.INSTRUMENT,
+        Scope.FIELDWORK, Scope.ANALYSIS, Scope.EXPERT_REVIEW,
+        Scope.REPORTS, Scope.EXPERT_TEAM,
     ],
     "construction": [
-        "scope.works", "scope.drawings", "scope.demolition",
-        "scope.site_access", "scope.supervision", "scope.handover",
-        "scope.delivery_acceptance",
+        Scope.WORKS, Scope.DRAWINGS, Scope.DEMOLITION,
+        Scope.SITE_ACCESS, Scope.SUPERVISION, Scope.HANDOVER,
+        Scope.DELIVERY_ACCEPTANCE,
     ],
 }
 
 # Subsections that must not be left empty for the draft to count as complete.
 SCOPE_REQUIRED_BY_TYPE: dict[str, list[str]] = {
-    "buy_goods": ["scope.items", "scope.specification", "scope.delivery_acceptance"],
-    "hire_develop": ["scope.functional", "scope.deliverable_docs", "scope.testing"],
-    "hire_maintain": ["scope.asset_list", "scope.cm", "scope.pm", "scope.sla"],
-    "lease_service": ["scope.service_spec", "scope.availability", "scope.noc"],
-    "hire_service": ["scope.workload", "scope.workflow", "scope.quality_standard"],
-    "hire_consult": ["scope.methodology", "scope.population", "scope.reports"],
-    "construction": ["scope.works", "scope.drawings", "scope.handover"],
+    "buy_goods": [Scope.ITEMS, Scope.SPECIFICATION, Scope.DELIVERY_ACCEPTANCE],
+    "hire_develop": [Scope.FUNCTIONAL, Scope.DELIVERABLE_DOCS, Scope.TESTING],
+    "hire_maintain": [Scope.ASSET_LIST, Scope.CM, Scope.PM, Scope.SLA],
+    "lease_service": [Scope.SERVICE_SPEC, Scope.AVAILABILITY, Scope.NOC],
+    "hire_service": [Scope.WORKLOAD, Scope.WORKFLOW, Scope.QUALITY_STANDARD],
+    "hire_consult": [Scope.METHODOLOGY, Scope.POPULATION, Scope.REPORTS],
+    "construction": [Scope.WORKS, Scope.DRAWINGS, Scope.HANDOVER],
 }
 
 
@@ -648,71 +718,71 @@ SECTION_HINTS: dict[str, str] = {
 }
 
 SCOPE_HINTS: dict[str, str] = {
-    "scope.items": "บัญชีรายการพร้อมจำนวนและหน่วยนับ เรียงเป็นตาราง (ลำดับ / รายการ / จำนวน / หน่วย)",
-    "scope.general_conditions": "ของใหม่ ไม่ใช่ของใช้แล้ว (Used) ล้าสมัย (Obsolete) หรือปรับปรุงใหม่ (Reconditioned) ยังอยู่ในสายการผลิต ใช้กับระบบไฟฟ้าในประเทศไทยได้ และมีมาตรฐานรับรอง",
-    "scope.specification": "อ้างคุณลักษณะเฉพาะรายรายการในเอกสารแนบ และกำหนดให้ยื่นตารางเปรียบเทียบคุณลักษณะพร้อมแคตตาล็อกที่ทำแถบสีอ้างอิงหน้า",
-    "scope.installation": "สถานที่ติดตั้ง จำนวนจุด งานตั้งค่าที่ต้องทำ การเดินสายสัญญาณ การติดสติกเกอร์ทรัพย์สิน และสิทธิของหน่วยงานในการเปลี่ยนแปลงสถานที่ติดตั้ง",
-    "scope.delivery_acceptance": "เงื่อนไขการแจ้งส่งมอบล่วงหน้าเป็นลายลักษณ์อักษร วิธีตรวจรับ และเอกสารที่ต้องแนบตอนส่งมอบ",
-    "scope.training": "หลักสูตร จำนวนผู้เข้าอบรม จำนวนรุ่น สถานที่ และการที่คู่สัญญารับผิดชอบค่าใช้จ่ายทั้งหมด พร้อมแจ้งกำหนดล่วงหน้า",
-    "scope.documents": "คู่มือติดตั้ง คู่มือใช้งาน คู่มือผู้ดูแลระบบ จำนวนชุด รูปแบบเอกสารและสื่อบันทึกข้อมูล",
-    "scope.after_sales": "บริการสนับสนุนระหว่างรับประกัน รอบการบำรุงรักษาเชิงป้องกัน เวลาเข้าแก้ไข และค่าปรับกรณีไม่ปฏิบัติตาม",
-    "scope.system_overview": "สถาปัตยกรรมระบบเป้าหมาย จำนวนผู้ใช้ ปริมาณข้อมูล และสภาพแวดล้อมที่ต้องรองรับ",
-    "scope.functional": "แจกแจงโมดูลและหน้าที่การทำงานเป็นข้อย่อย ทุกข้อต้องตรวจรับได้",
-    "scope.integration": "ระบบปลายทางที่ต้องเชื่อมโยง รูปแบบการเชื่อมโยง (เช่น RESTful API) และขอบเขตการโอนย้ายข้อมูลเดิม",
-    "scope.licenses": "รายการลิขสิทธิ์ซอฟต์แวร์ จำนวนสิทธิ์ ระยะเวลา และเงื่อนไขการอัปเกรดระหว่างรับประกัน",
-    "scope.standards_security": "มาตรฐานที่ต้องผ่าน เช่น มาตรฐานเว็บไซต์ภาครัฐ OWASP Top 10 ISO/IEC 27001 และการประเมินช่องโหว่ก่อนขึ้นใช้งานจริง รวมถึงการคุ้มครองข้อมูลส่วนบุคคล",
-    "scope.testing": "แผนการทดสอบ ประเภทการทดสอบ (Functional, Integration, Performance, Security, UAT) และเกณฑ์การยอมรับ",
-    "scope.deliverable_docs": "เอกสารระบบที่ต้องส่งมอบ (System Document, Use Case, ER-Diagram, Data Dictionary) และซอร์สโค้ดฉบับสมบูรณ์ล่าสุดก่อนสิ้นสุดการรับประกัน",
-    "scope.project_team": "ตำแหน่ง จำนวนคน คุณวุฒิ และประสบการณ์ขั้นต่ำ พร้อมแบบฟอร์มประวัติบุคลากร",
-    "scope.sla_warranty": "เวลาเข้าดำเนินการ เวลาแก้ไขให้แล้วเสร็จ เวลาที่ยอมให้ระบบขัดข้องต่อเดือน และเจ้าหน้าที่ประจำ ณ หน่วยงาน",
-    "scope.asset_list": "ตารางอุปกรณ์หรือระบบงานที่รับผิดชอบ ระบุยี่ห้อ รุ่น จำนวน และรายการที่ไม่รวมอยู่ในการบำรุงรักษา",
-    "scope.cm": "นิยามการบำรุงรักษาแบบไม่มีกำหนดเวลาแน่นอน ขั้นตอนเมื่อได้รับแจ้ง และการจัดหาอุปกรณ์ทดแทนระหว่างซ่อม",
-    "scope.pm": "รอบการเข้าบำรุงรักษา (ทุก ๑ / ๓ / ๖ / ๑๒ เดือน) รายการตรวจสอบ การออกใบรับบริการ และเงื่อนไขรายการที่ต้องตัดระบบ",
-    "scope.sla": "เวลาเข้าถึงหน้างาน เวลาแก้ไขให้แล้วเสร็จ เวลาที่ยอมให้ขัดข้องต่อเดือน และค่าตัวถ่วงของอุปกรณ์แต่ละรายการ",
-    "scope.helpdesk": "ศูนย์รับแจ้งเหตุตลอด ๒๔ ชั่วโมง ช่องทางรับแจ้ง ข้อมูลที่ต้องบันทึก และการส่งต่อปัญหา",
-    "scope.spare_parts": "การบำรุงรักษาแบบรวมอะไหล่ รายการวัสดุสิ้นเปลืองที่รวมและไม่รวม และคุณภาพอะไหล่ทดแทน",
-    "scope.onsite_staff": "เจ้าหน้าที่ประจำ จำนวน คุณวุฒิ เวลาปฏิบัติงาน และการทำงานร่วมกับเจ้าหน้าที่ของหน่วยงาน",
-    "scope.reporting": "รายงานผลการปฏิบัติงานรายเดือนหรือราย ๓ เดือน แยกตามระบบ พร้อมสถิติปัญหาและวิธีแก้ไข",
-    "scope.backup": "รอบการสำรองข้อมูล สื่อบันทึก การส่งมอบสื่อสำรอง และขั้นตอนการกู้คืนที่ต้องได้รับความเห็นชอบก่อน",
-    "scope.service_spec": "ความเร็วหรือปริมาณบริการแยกรายจุด เงื่อนไขไม่จำกัดปริมาณข้อมูลและช่วงเวลา",
-    "scope.provided_equipment": "อุปกรณ์และสื่อสัญญาณที่ผู้ให้เช่าจัดหาโดยไม่คิดค่าบริการเพิ่ม และรายการที่หน่วยงานจัดหาเอง",
-    "scope.availability": "เส้นทางสำรองต่างชุมสาย การสลับเส้นทางอัตโนมัติ และแหล่งจ่ายไฟสำรองของอุปกรณ์",
-    "scope.noc": "ศูนย์รับแจ้งเหตุตลอด ๒๔ ชั่วโมงไม่เว้นวันหยุด เวลาตอบรับ และการแจ้งเตือนเชิงรุก",
-    "scope.usage_report": "ระบบรายงานปริมาณการใช้งานแบบออนไลน์ที่หน่วยงานเข้าดูได้ตลอดอายุสัญญา และรายงานสรุปรายเดือน",
-    "scope.lease_maintenance": "หน้าที่บำรุงรักษาอุปกรณ์และวงจรให้ใช้งานได้ดีตลอดอายุสัญญาโดยไม่คิดค่าใช้จ่ายเพิ่ม",
-    "scope.lessee_rights": "สิทธิขอปรับเพิ่มความเร็วชั่วคราว การย้ายจุดติดตั้งภายในสถานที่เดียวกัน และการเปลี่ยนอุปกรณ์เมื่อพบช่องโหว่",
-    "scope.workload": "ปริมาณงานทั้งหมดพร้อมหน่วยนับที่ตรวจนับได้ และวิธีคำนวณปริมาณ",
-    "scope.workflow": "ขั้นตอนการปฏิบัติงานเรียงตามลำดับ ตั้งแต่รับงานจนส่งมอบ",
-    "scope.quality_standard": "เกณฑ์คุณภาพที่วัดได้ เช่น ความละเอียดของไฟล์ รูปแบบการตั้งชื่อ และอัตราความผิดพลาดที่ยอมรับได้",
-    "scope.resources": "บุคลากร เครื่องมือ และสถานที่ปฏิบัติงานที่คู่สัญญาต้องจัดหาเอง",
-    "scope.custody": "การขนย้าย การรักษาความปลอดภัย และความรับผิดต่อทรัพย์สินหรือเอกสารของหน่วยงาน",
-    "scope.progress_report": "ความถี่และรูปแบบของรายงานความคืบหน้า",
-    "scope.output_delivery": "รูปแบบผลงาน จำนวนชุด สื่อบันทึกข้อมูล และสถานที่ส่งมอบ",
-    "scope.methodology": "กรอบแนวคิด ระเบียบวิธี และแผนการดำเนินงานที่ต้องได้รับความเห็นชอบก่อนเริ่มงาน",
-    "scope.population": "กลุ่มเป้าหมายตามหลักสถิติ จำนวนขั้นต่ำ และอัตราตอบกลับขั้นต่ำที่ใช้เป็นเงื่อนไขตรวจรับ",
-    "scope.instrument": "เครื่องมือเก็บข้อมูล เกณฑ์การให้คะแนนรายข้อ และกลไกทดสอบความแม่นยำ",
-    "scope.fieldwork": "วิธีเก็บข้อมูล การติดตาม และการตรวจสอบความถูกต้องของข้อมูลที่ได้รับ",
-    "scope.analysis": "วิธีวิเคราะห์ เครื่องมือทางสถิติที่ใช้ และรูปแบบการนำเสนอผล เช่น แดชบอร์ด",
-    "scope.expert_review": "จำนวนครั้งของการประชุม จำนวนผู้เชี่ยวชาญขั้นต่ำ และการที่คู่สัญญารับผิดชอบค่าตอบแทน",
-    "scope.reports": "รายงานขั้นต้น ขั้นกลาง ร่างฉบับสมบูรณ์ และฉบับสมบูรณ์ พร้อมจำนวนชุดและรูปแบบไฟล์",
-    "scope.expert_team": "ตำแหน่ง คุณวุฒิ ประสบการณ์ จำนวนคน และปริมาณงานเป็น man-month",
-    "scope.works": "รายการงานก่อสร้างหรือปรับปรุงพร้อมปริมาณงานตามแบบ",
-    "scope.drawings": "แบบรูปรายการ มาตรฐานวัสดุ และมาตรฐานฝีมือช่างที่อ้างอิง",
-    "scope.demolition": "ขอบเขตการรื้อถอน การขนย้ายวัสดุ และการจัดการเศษวัสดุ",
-    "scope.site_access": "เวลาเข้าปฏิบัติงาน การขออนุญาต มาตรการความปลอดภัย และการไม่รบกวนการปฏิบัติราชการ",
-    "scope.supervision": "ผู้ควบคุมงาน การรายงานความก้าวหน้า และการตรวจสอบคุณภาพงานแต่ละขั้น",
-    "scope.handover": "การส่งมอบพื้นที่ การทำความสะอาด และการส่งมอบแบบ As-built",
+    Scope.ITEMS: "บัญชีรายการพร้อมจำนวนและหน่วยนับ เรียงเป็นตาราง (ลำดับ / รายการ / จำนวน / หน่วย)",
+    Scope.GENERAL_CONDITIONS: "ของใหม่ ไม่ใช่ของใช้แล้ว ล้าสมัย หรือปรับปรุงใหม่ ยังอยู่ในสายการผลิต ใช้กับระบบไฟฟ้าในประเทศไทยได้ และมีมาตรฐานรับรอง",
+    Scope.SPECIFICATION: "อ้างคุณลักษณะเฉพาะรายรายการในเอกสารแนบ และกำหนดให้ยื่นตารางเปรียบเทียบคุณลักษณะพร้อมแคตตาล็อกที่ทำแถบสีอ้างอิงหน้า",
+    Scope.INSTALLATION: "สถานที่ติดตั้ง จำนวนจุด งานตั้งค่าที่ต้องทำ การเดินสายสัญญาณ การติดสติกเกอร์ทรัพย์สิน และสิทธิของหน่วยงานในการเปลี่ยนแปลงสถานที่ติดตั้ง",
+    Scope.DELIVERY_ACCEPTANCE: "เงื่อนไขการแจ้งส่งมอบล่วงหน้าเป็นลายลักษณ์อักษร วิธีตรวจรับ และเอกสารที่ต้องแนบตอนส่งมอบ",
+    Scope.TRAINING: "หลักสูตร จำนวนผู้เข้าอบรม จำนวนรุ่น สถานที่ และการที่คู่สัญญารับผิดชอบค่าใช้จ่ายทั้งหมด พร้อมแจ้งกำหนดล่วงหน้า",
+    Scope.DOCUMENTS: "คู่มือติดตั้ง คู่มือใช้งาน คู่มือผู้ดูแลระบบ จำนวนชุด รูปแบบเอกสารและสื่อบันทึกข้อมูล",
+    Scope.AFTER_SALES: "บริการสนับสนุนระหว่างรับประกัน รอบการบำรุงรักษาเชิงป้องกัน เวลาเข้าแก้ไข และค่าปรับกรณีไม่ปฏิบัติตาม",
+    Scope.SYSTEM_OVERVIEW: "สถาปัตยกรรมระบบเป้าหมาย จำนวนผู้ใช้ ปริมาณข้อมูล และสภาพแวดล้อมที่ต้องรองรับ",
+    Scope.FUNCTIONAL: "แจกแจงโมดูลและหน้าที่การทำงานเป็นข้อย่อย ทุกข้อต้องตรวจรับได้",
+    Scope.INTEGRATION: "ระบบปลายทางที่ต้องเชื่อมโยง รูปแบบการเชื่อมโยงผ่านส่วนต่อประสานโปรแกรม และขอบเขตการโอนย้ายข้อมูลเดิม",
+    Scope.LICENSES: "รายการลิขสิทธิ์ซอฟต์แวร์ จำนวนสิทธิ์ ระยะเวลา และเงื่อนไขการอัปเกรดระหว่างรับประกัน",
+    Scope.STANDARDS_SECURITY: "มาตรฐานที่ต้องผ่าน เช่น มาตรฐานเว็บไซต์ภาครัฐ OWASP Top 10 ISO/IEC 27001 และการประเมินช่องโหว่ก่อนขึ้นใช้งานจริง รวมถึงการคุ้มครองข้อมูลส่วนบุคคล",
+    Scope.TESTING: "แผนการทดสอบ ประเภทการทดสอบ (หน้าที่การทำงาน การเชื่อมโยง ประสิทธิภาพ ความมั่นคงปลอดภัย และการยอมรับโดยผู้ใช้) และเกณฑ์การยอมรับ",
+    Scope.DELIVERABLE_DOCS: "เอกสารระบบที่ต้องส่งมอบ (เอกสารระบบ กรณีใช้งาน แผนภาพความสัมพันธ์ข้อมูล พจนานุกรมข้อมูล) และซอร์สโค้ดฉบับสมบูรณ์ล่าสุดก่อนสิ้นสุดการรับประกัน",
+    Scope.PROJECT_TEAM: "ตำแหน่ง จำนวนคน คุณวุฒิ และประสบการณ์ขั้นต่ำ พร้อมแบบฟอร์มประวัติบุคลากร",
+    Scope.SLA_WARRANTY: "เวลาเข้าดำเนินการ เวลาแก้ไขให้แล้วเสร็จ เวลาที่ยอมให้ระบบขัดข้องต่อเดือน และเจ้าหน้าที่ประจำ ณ หน่วยงาน",
+    Scope.ASSET_LIST: "ตารางอุปกรณ์หรือระบบงานที่รับผิดชอบ ระบุยี่ห้อ รุ่น จำนวน และรายการที่ไม่รวมอยู่ในการบำรุงรักษา",
+    Scope.CM: "นิยามการบำรุงรักษาแบบไม่มีกำหนดเวลาแน่นอน ขั้นตอนเมื่อได้รับแจ้ง และการจัดหาอุปกรณ์ทดแทนระหว่างซ่อม",
+    Scope.PM: "รอบการเข้าบำรุงรักษา (ทุก ๑ / ๓ / ๖ / ๑๒ เดือน) รายการตรวจสอบ การออกใบรับบริการ และเงื่อนไขรายการที่ต้องตัดระบบ",
+    Scope.SLA: "เวลาเข้าถึงหน้างาน เวลาแก้ไขให้แล้วเสร็จ เวลาที่ยอมให้ขัดข้องต่อเดือน และค่าตัวถ่วงของอุปกรณ์แต่ละรายการ",
+    Scope.HELPDESK: "ศูนย์รับแจ้งเหตุตลอด ๒๔ ชั่วโมง ช่องทางรับแจ้ง ข้อมูลที่ต้องบันทึก และการส่งต่อปัญหา",
+    Scope.SPARE_PARTS: "การบำรุงรักษาแบบรวมอะไหล่ รายการวัสดุสิ้นเปลืองที่รวมและไม่รวม และคุณภาพอะไหล่ทดแทน",
+    Scope.ONSITE_STAFF: "เจ้าหน้าที่ประจำ จำนวน คุณวุฒิ เวลาปฏิบัติงาน และการทำงานร่วมกับเจ้าหน้าที่ของหน่วยงาน",
+    Scope.REPORTING: "รายงานผลการปฏิบัติงานรายเดือนหรือราย ๓ เดือน แยกตามระบบ พร้อมสถิติปัญหาและวิธีแก้ไข",
+    Scope.BACKUP: "รอบการสำรองข้อมูล สื่อบันทึก การส่งมอบสื่อสำรอง และขั้นตอนการกู้คืนที่ต้องได้รับความเห็นชอบก่อน",
+    Scope.SERVICE_SPEC: "ความเร็วหรือปริมาณบริการแยกรายจุด เงื่อนไขไม่จำกัดปริมาณข้อมูลและช่วงเวลา",
+    Scope.PROVIDED_EQUIPMENT: "อุปกรณ์และสื่อสัญญาณที่ผู้ให้เช่าจัดหาโดยไม่คิดค่าบริการเพิ่ม และรายการที่หน่วยงานจัดหาเอง",
+    Scope.AVAILABILITY: "เส้นทางสำรองต่างชุมสาย การสลับเส้นทางอัตโนมัติ และแหล่งจ่ายไฟสำรองของอุปกรณ์",
+    Scope.NOC: "ศูนย์รับแจ้งเหตุตลอด ๒๔ ชั่วโมงไม่เว้นวันหยุด เวลาตอบรับ และการแจ้งเตือนเชิงรุก",
+    Scope.USAGE_REPORT: "ระบบรายงานปริมาณการใช้งานแบบออนไลน์ที่หน่วยงานเข้าดูได้ตลอดอายุสัญญา และรายงานสรุปรายเดือน",
+    Scope.LEASE_MAINTENANCE: "หน้าที่บำรุงรักษาอุปกรณ์และวงจรให้ใช้งานได้ดีตลอดอายุสัญญาโดยไม่คิดค่าใช้จ่ายเพิ่ม",
+    Scope.LESSEE_RIGHTS: "สิทธิขอปรับเพิ่มความเร็วชั่วคราว การย้ายจุดติดตั้งภายในสถานที่เดียวกัน และการเปลี่ยนอุปกรณ์เมื่อพบช่องโหว่",
+    Scope.WORKLOAD: "ปริมาณงานทั้งหมดพร้อมหน่วยนับที่ตรวจนับได้ และวิธีคำนวณปริมาณ",
+    Scope.WORKFLOW: "ขั้นตอนการปฏิบัติงานเรียงตามลำดับ ตั้งแต่รับงานจนส่งมอบ",
+    Scope.QUALITY_STANDARD: "เกณฑ์คุณภาพที่วัดได้ เช่น ความละเอียดของไฟล์ รูปแบบการตั้งชื่อ และอัตราความผิดพลาดที่ยอมรับได้",
+    Scope.RESOURCES: "บุคลากร เครื่องมือ และสถานที่ปฏิบัติงานที่คู่สัญญาต้องจัดหาเอง",
+    Scope.CUSTODY: "การขนย้าย การรักษาความปลอดภัย และความรับผิดต่อทรัพย์สินหรือเอกสารของหน่วยงาน",
+    Scope.PROGRESS_REPORT: "ความถี่และรูปแบบของรายงานความคืบหน้า",
+    Scope.OUTPUT_DELIVERY: "รูปแบบผลงาน จำนวนชุด สื่อบันทึกข้อมูล และสถานที่ส่งมอบ",
+    Scope.METHODOLOGY: "กรอบแนวคิด ระเบียบวิธี และแผนการดำเนินงานที่ต้องได้รับความเห็นชอบก่อนเริ่มงาน",
+    Scope.POPULATION: "กลุ่มเป้าหมายตามหลักสถิติ จำนวนขั้นต่ำ และอัตราตอบกลับขั้นต่ำที่ใช้เป็นเงื่อนไขตรวจรับ",
+    Scope.INSTRUMENT: "เครื่องมือเก็บข้อมูล เกณฑ์การให้คะแนนรายข้อ และกลไกทดสอบความแม่นยำ",
+    Scope.FIELDWORK: "วิธีเก็บข้อมูล การติดตาม และการตรวจสอบความถูกต้องของข้อมูลที่ได้รับ",
+    Scope.ANALYSIS: "วิธีวิเคราะห์ เครื่องมือทางสถิติที่ใช้ และรูปแบบการนำเสนอผล เช่น แดชบอร์ด",
+    Scope.EXPERT_REVIEW: "จำนวนครั้งของการประชุม จำนวนผู้เชี่ยวชาญขั้นต่ำ และการที่คู่สัญญารับผิดชอบค่าตอบแทน",
+    Scope.REPORTS: "รายงานขั้นต้น ขั้นกลาง ร่างฉบับสมบูรณ์ และฉบับสมบูรณ์ พร้อมจำนวนชุดและรูปแบบไฟล์",
+    Scope.EXPERT_TEAM: "ตำแหน่ง คุณวุฒิ ประสบการณ์ จำนวนคน และปริมาณงานเป็นคน-เดือน",
+    Scope.WORKS: "รายการงานก่อสร้างหรือปรับปรุงพร้อมปริมาณงานตามแบบ",
+    Scope.DRAWINGS: "แบบรูปรายการ มาตรฐานวัสดุ และมาตรฐานฝีมือช่างที่อ้างอิง",
+    Scope.DEMOLITION: "ขอบเขตการรื้อถอน การขนย้ายวัสดุ และการจัดการเศษวัสดุ",
+    Scope.SITE_ACCESS: "เวลาเข้าปฏิบัติงาน การขออนุญาต มาตรการความปลอดภัย และการไม่รบกวนการปฏิบัติราชการ",
+    Scope.SUPERVISION: "ผู้ควบคุมงาน การรายงานความก้าวหน้า และการตรวจสอบคุณภาพงานแต่ละขั้น",
+    Scope.HANDOVER: "การส่งมอบพื้นที่ การทำความสะอาด และการส่งมอบแบบตามที่สร้างจริง",
 }
 
 QUALIFICATION_HINTS: dict[str, str] = {
-    "qual.legal": "คัดลอกชุดคุณสมบัติมาตรฐานตามพระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ ครบทุกข้อ แล้วต่อด้วยการลงทะเบียนในระบบจัดซื้อจัดจ้างภาครัฐด้วยอิเล็กทรอนิกส์",
-    "qual.jv": "เงื่อนไขสัดส่วนการเข้าร่วมค้า ผลงานของผู้เข้าร่วมค้าหลัก และการมอบอำนาจในการยื่นข้อเสนอ",
-    "qual.networth": "ระบุทางเลือกให้ครบ ทั้งงบแสดงฐานะการเงิน ทุนจดทะเบียนชำระแล้วตามบันไดวงเงิน วงเงินสินเชื่อจากสถาบันการเงิน และข้อยกเว้นตามที่กฎหมายกำหนด",
-    "qual.experience": "ระบุประเภทผลงานให้ตรงกับงานที่จัดซื้อจัดจ้าง มูลค่าขั้นต่ำต่อสัญญา จำนวนผลงาน จำนวนปีย้อนหลัง และต้องเป็นคู่สัญญาโดยตรงกับหน่วยงานของรัฐ",
-    "qual.personnel": "ตารางบุคลากรหลัก (ตำแหน่ง / คุณวุฒิ / ประสบการณ์ขั้นต่ำ / จำนวนคน) พร้อมกำหนดให้ยื่นแบบฟอร์มประวัติและเอกสารรับรอง",
-    "qual.dealer": "หนังสือแต่งตั้งตัวแทนจำหน่ายจากเจ้าของผลิตภัณฑ์ ระบุรายการที่ต้องมีหนังสือแต่งตั้ง และต้องระบุชื่อโครงการ",
-    "qual.license": "ใบอนุญาตประกอบกิจการตามกฎหมายเฉพาะ พร้อมขีดความสามารถขั้นต่ำที่ต้องแสดงหลักฐาน",
-    "qual.documents": "บัญชีเอกสารที่ต้องยื่น ระบุรูปแบบ (ต้นฉบับหรือสำเนารับรอง) จำนวนชุด อายุเอกสาร และผลของการยื่นไม่ครบ",
+    Qual.LEGAL: "คัดลอกชุดคุณสมบัติมาตรฐานตามพระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ ครบทุกข้อ แล้วต่อด้วยการลงทะเบียนในระบบจัดซื้อจัดจ้างภาครัฐด้วยอิเล็กทรอนิกส์",
+    Qual.JV: "เงื่อนไขสัดส่วนการเข้าร่วมค้า ผลงานของผู้เข้าร่วมค้าหลัก และการมอบอำนาจในการยื่นข้อเสนอ",
+    Qual.NETWORTH: "ระบุทางเลือกให้ครบ ทั้งงบแสดงฐานะการเงิน ทุนจดทะเบียนชำระแล้วตามบันไดวงเงิน วงเงินสินเชื่อจากสถาบันการเงิน และข้อยกเว้นตามที่กฎหมายกำหนด",
+    Qual.EXPERIENCE: "ระบุประเภทผลงานให้ตรงกับงานที่จัดซื้อจัดจ้าง มูลค่าขั้นต่ำต่อสัญญา จำนวนผลงาน จำนวนปีย้อนหลัง และต้องเป็นคู่สัญญาโดยตรงกับหน่วยงานของรัฐ",
+    Qual.PERSONNEL: "ตารางบุคลากรหลัก (ตำแหน่ง / คุณวุฒิ / ประสบการณ์ขั้นต่ำ / จำนวนคน) พร้อมกำหนดให้ยื่นแบบฟอร์มประวัติและเอกสารรับรอง",
+    Qual.DEALER: "หนังสือแต่งตั้งตัวแทนจำหน่ายจากเจ้าของผลิตภัณฑ์ ระบุรายการที่ต้องมีหนังสือแต่งตั้ง และต้องระบุชื่อโครงการ",
+    Qual.LICENSE: "ใบอนุญาตประกอบกิจการตามกฎหมายเฉพาะ พร้อมขีดความสามารถขั้นต่ำที่ต้องแสดงหลักฐาน",
+    Qual.DOCUMENTS: "บัญชีเอกสารที่ต้องยื่น ระบุรูปแบบ (ต้นฉบับหรือสำเนารับรอง) จำนวนชุด อายุเอกสาร และผลของการยื่นไม่ครบ",
 }
 
 
@@ -722,3 +792,209 @@ def hint_for(key: str) -> str:
     if key in QUALIFICATION_HINTS:
         return QUALIFICATION_HINTS[key]
     return SECTION_HINTS.get(key, "")
+
+
+# ---------------------------------------------------------------------------
+# Legacy s1–s13 compatibility (v1 → v2 migration)
+# ---------------------------------------------------------------------------
+# ``None`` means the legacy row has no home in v2 and is archived by the
+# migration script instead of being written back.
+
+LEGACY_SECTION_MAP: dict[str, tuple[str, str | None] | None] = {
+    "s1": ("background", None),
+    "s2": ("objective", None),
+    "s3": ("qualification", None),
+    "s4": ("scope", None),
+    "s5": ("schedule", None),
+    "s6": ("budget", None),
+    "s7": ("scope", Scope.INSTALLATION),
+    "s8": ("payment", None),
+    "s9": ("warranty", None),
+    "s10": ("penalty", None),
+    "s11": ("evaluation", None),
+    "s12": ("qualification", Qual.DOCUMENTS),
+    "s13": ("other_conditions", None),
+}
+
+# Legacy scope subsections. ``s4.2 ระบบงานปัจจุบัน`` is deliberately dropped:
+# it appears in none of the 12 example TORs.
+LEGACY_SCOPE_MAP: dict[str, str | None] = {
+    "s4.1": None,
+    "s4.2": None,
+    "s4.3": Scope.FUNCTIONAL,
+    "s4.4": Scope.SPECIFICATION,
+    "s4.5": Scope.LICENSES,
+    "s4.6": Scope.INTEGRATION,
+    "s4.7": Scope.STANDARDS_SECURITY,
+    "s4.8": Scope.DELIVERABLE_DOCS,
+    "s4.9": Scope.SLA,
+    "s4.10": Scope.PROJECT_TEAM,
+    "s4.11": Scope.PM,
+    "s4.12": Scope.WORKFLOW,
+    "s4.13": Scope.BACKUP,
+    "s4.14": Scope.STANDARDS_SECURITY,
+}
+
+# Old ``project_type`` values on the projects table.
+LEGACY_PROJECT_TYPE_MAP: dict[str, str] = {
+    "it": "hire_develop",
+    "construction": "construction",
+    "consulting": "hire_consult",
+    "general": "buy_goods",
+}
+
+
+def resolve_legacy(
+    section_key: str, sub_key: str | None, procurement_type: str
+) -> tuple[str, str | None] | None:
+    """Map a v1 (section_key, sub_key) row onto the v2 taxonomy.
+
+    Returns ``None`` when the content has no home in v2. A subsection that
+    does not exist for this procurement type collapses onto its parent.
+    """
+    raw_sub = (sub_key or "").strip()
+    if raw_sub:
+        target = LEGACY_SCOPE_MAP.get(raw_sub, "__unknown__")
+        if target == "__unknown__":
+            return ("scope", None)
+        if target is None:
+            return None
+        return ("scope", target if target in scope_subsections(procurement_type) else None)
+    mapped = LEGACY_SECTION_MAP.get(section_key)
+    if mapped is None:
+        return None
+    parent, sub = mapped
+    if sub and sub not in subsections_for(parent, procurement_type):
+        return (parent, None)
+    if parent not in section_order(procurement_type):
+        return ("other_conditions", None)
+    return (parent, sub)
+
+
+# ---------------------------------------------------------------------------
+# Thai numerals for headings
+# ---------------------------------------------------------------------------
+
+_THAI_DIGITS = "๐๑๒๓๔๕๖๗๘๙"
+
+
+def to_thai_numeral(value: int | str) -> str:
+    return "".join(_THAI_DIGITS[int(ch)] if ch.isdigit() else ch for ch in str(value))
+
+
+class TaxonomyEditError(ValueError):
+    """Raised when a taxonomy change would skip CORE sections or numbering."""
+
+
+def validate_taxonomy_edit(
+    procurement_types: dict[str, str] | None = None,
+    core: list[str] | None = None,
+    extra_by_type: dict[str, list[str]] | None = None,
+    closing: str | None = None,
+) -> None:
+    """Reject edits that drop CORE sections or produce non-contiguous numbers."""
+    types = procurement_types or PROCUREMENT_TYPES
+    core_list = list(core or CORE_SECTION_ORDER)
+    extras = extra_by_type or EXTRA_SECTIONS_BY_TYPE
+    close = closing if closing is not None else CLOSING_SECTION
+    missing_core = [key for key in CORE_SECTION_ORDER if key not in core_list]
+    if missing_core:
+        raise TaxonomyEditError(f"CORE_SECTION_ORDER missing {missing_core}")
+    for ptype in types:
+        order = [*core_list, *extras.get(ptype, []), close]
+        if len(order) != len(set(order)):
+            raise TaxonomyEditError(f"{ptype} has duplicate section keys")
+        for index, key in enumerate(order, start=1):
+            if order.index(key) + 1 != index:
+                raise TaxonomyEditError(f"{ptype} {key} numbering is not contiguous")
+
+
+def heading_number(
+    section_key: str,
+    procurement_type: str = DEFAULT_PROCUREMENT_TYPE,
+    sub_key: str | None = None,
+    use_thai_numerals: bool = True,
+) -> str:
+    """Display number for a heading, e.g. ``๔`` or ``๔.๓``."""
+    parent = section_number(section_key, procurement_type)
+    if not parent:
+        return ""
+    if sub_key:
+        subs = subsections_for(section_key, procurement_type)
+        index = subs.index(sub_key) + 1 if sub_key in subs else 0
+        if index:
+            raw = f"{parent}.{index}"
+            return to_thai_numeral(raw) if use_thai_numerals else raw
+    raw = str(parent)
+    return to_thai_numeral(raw) if use_thai_numerals else raw
+
+
+def heading_text(
+    section_key: str,
+    procurement_type: str = DEFAULT_PROCUREMENT_TYPE,
+    sub_key: str | None = None,
+    use_thai_numerals: bool = True,
+) -> str:
+    """Full heading line, e.g. ``๔.๓ การบำรุงรักษาเชิงป้องกัน ...``."""
+    number = heading_number(section_key, procurement_type, sub_key, use_thai_numerals)
+    label = subsection_label(sub_key) if sub_key else section_label(section_key, procurement_type)
+    return f"{number}. {label}" if not sub_key else f"{number} {label}"
+
+
+DOCUMENT_TITLE = "ขอบเขตของงาน (Terms of Reference : TOR)"
+DRAFT_DOCUMENT_TITLE = "ร่างขอบเขตของงาน (Terms of Reference : TOR)"
+
+
+# ---------------------------------------------------------------------------
+# Form input hints (consumed by the generated frontend mirror)
+# ---------------------------------------------------------------------------
+# field_key → (input type, options, legacy wizard field it maps to)
+
+FIELD_INPUT: dict[str, tuple[str, list[str], str | None]] = {
+    "budgetAmount": ("number", [], "budget"),
+    "referencePrice": ("text", [], None),
+    "installments": ("number", [], None),
+    "totalDuration": ("number", [], "duration_days"),
+    "noticeDays": ("number", [], None),
+    "location": ("textarea", [], "location"),
+    "deliveryPlace": ("text", [], None),
+    "vatIncluded": (
+        "select",
+        ["รวมภาษีมูลค่าเพิ่มและค่าใช้จ่ายทั้งปวงแล้ว", "ไม่รวมภาษีมูลค่าเพิ่ม"],
+        None,
+    ),
+    "procurementMethod": (
+        "select",
+        [
+            "ประกวดราคาอิเล็กทรอนิกส์ (e-bidding)",
+            "วิธีคัดเลือก",
+            "วิธีเฉพาะเจาะจง",
+            "วิธีประกาศเชิญชวนทั่วไป",
+            "วิธีตกลงราคา (ที่ปรึกษา)",
+        ],
+        None,
+    ),
+    "method": (
+        "select",
+        [
+            "เกณฑ์ราคา",
+            "เกณฑ์ราคาประกอบเกณฑ์อื่น (Price Performance)",
+            "เกณฑ์คุณภาพ",
+        ],
+        "evaluation_method",
+    ),
+    "lateRate": ("text", [], "penalty_rate"),
+    "period": ("text", [], "warranty"),
+    "unit": ("text", [], "ministry"),
+    "address": ("textarea", [], None),
+    "contact": ("textarea", [], None),
+}
+
+DEFAULT_FIELD_INPUT = "textarea"
+
+
+def field_input(field_key: str) -> tuple[str, list[str], str | None]:
+    return FIELD_INPUT.get(field_key, (DEFAULT_FIELD_INPUT, [], None))
+
+
+validate_taxonomy_edit()

@@ -1,7 +1,73 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
-> **รอบ 9 กันยายน 2026 — Section_Profile ตามประเภทงาน:** pytest `-m "not live_llm and not integration"` **2046 ผ่าน** / 25 ตัด · Vitest **309 ผ่าน** / 50 ไฟล์ · `pytest -m live_llm` **17/17** · Docker `tor-app` rebuild frontend+backend  
-> รอบตรวจรวมก่อนหน้าที่มี UI สามเครื่องมือ headed (7 กันยายน 2026 บ่าย · แอป v0.4.0): [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)
+> **รอบ 10 กันยายน 2026 — v0.6.0 intake/guardrail/thinking:** แก้ `fill-references` 400 หลัง analyze · เกณฑ์ guardrail ต่อหมวดไม่ให้คะแนน 0 เพราะหมวดอื่นว่าง · กู้เนื้อหาไทยจาก reasoning + sanitize คำอังกฤษแทนการทิ้งร่าง · unit ชุดแก้ **249 ผ่าน** · Docker backend rebuild · live SKK ยืนยัน fill-references **200** และ s1/s5 คะแนน 96/100 (รอบ live เต็มถูกหยุดตามคำสั่งก่อนจบ s8/s11/export)  
+> **รอบ 9 กันยายน 2026 ค่ำ — UI ร่าง TOR (เลขหมวดเทคนิค):** Docker rebuild `frontend` · health 200 · Vitest scoped **42 ผ่าน** / 4 ไฟล์ · bundle ไม่มี `หมวด N:` · มี `tabular-nums`/`รอร่าง`  
+> **รอบ 9 กันยายน 2026 เย็น — สไตล์ราชการ + Sonar + Docker:** pytest `-m "not live_llm and not integration"` **2059 ผ่าน** / 25 ตัด · Vitest **309 ผ่าน** / 50 ไฟล์ · Docker `tor-app` rebuild frontend+backend (healthy) · Amazon Quick skills อัปเดตสไตล์ราชการ · `pytest -m live_llm` **หยุดกลางคันตามคำสั่ง** (ECT ผ่าน 2 ข้อแรก แล้วยกเลิกตอนร่างครบหมวด)  
+> รอบเช้า 9 กันยายน 2026 — Section_Profile: pytest **2046** · Vitest **309** · live_llm **17/17** · Docker rebuild
+
+---
+
+## รอบ 10 กันยายน 2026 — v0.6.0 fill-references + per-section guardrail + thinking
+
+สาเหตุและแก้ (คนละเรื่องจากโมเดล/thinking ที่เปิดอยู่):
+
+| อาการ | สาเหตุ | แก้ |
+|--------|--------|-----|
+| `POST .../intake/fill-references` → 400 `ต้องวิเคราะห์ก่อน` ทันทีหลัง analyze 200 | คำขอ analyze ค้าง idle-in-transaction นานระหว่าง LLM แล้ว `analyzed=True` ไม่ถูก persist จริง | commit ก่อน LLM · ใช้ `_AnalyzeSubject` แยกจาก ORM · reload + commit หลัง `_apply_analyze_result` |
+| `quality_score=0` แม้ร่างยาวหลายร้อย–พันตัวอักษร | `rule_guardrail` ส่งแค่หมวดปัจจุบันเข้า Rule Engine ทั้งฉบับ → `SectionPresenceRule` halt เพราะหมวดบังคับอื่นว่าง | ตั้ง `_focus_section` · กฎ completeness/legal/consistency/payment/timeline/risk ข้ามหมวดอื่น · กรองคะแนนต่อหมวด |
+| ร่าง s8/s11 ว่างหลัง thinking | คำอังกฤษในร่างถูก drop ทั้งก้อน · หรือคำตอบไทยอยู่ใน `reasoning_content` แต่ `content` สั้น | `message_text` เลือก blob ไทยยาวสุด · `sanitize_unauthorized_english` แทนการทิ้งถ้ายังมีไทยพอ |
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest ชุดแก้ (completeness/orchestrator/intake/legal/llm/draft) | **249 ผ่าน** | โฮสต์ 10 ก.ย. 2026 |
+| Docker `up -d --build backend` | backend healthy `:4000` | รอบบ่าย |
+| Live SKK (หยุดตามคำสั่ง) | analyze 16/24 · **fill-references 200** · draft s1 score **96** · s5 score **100** · s8/s11 ค้างก่อนแพตช์ sanitize (รอบถัดไปหลัง rebuild) | `test-evidence/_round-2026-09-10-skk-quality-thinking.json` · `_round-2026-09-10-lm-studio-thinking.txt` |
+
+หมายเหตุ: รอบ live เต็มหลัง sanitize + confirm-phase4 **ถูกยกเลิกตามคำสั่งผู้ใช้** ก่อน push v0.6.0 — เกณฑ์ unit ของ guardrail ต่อหมวด (`quality_score >= 70` สำหรับ s1/s5/s8/s11) ผ่านแล้ว
+
+---
+
+## รอบ 9 กันยายน 2026 ค่ำ — UI หัวข้อหมวดเทคนิค (deploy + test)
+
+ปรับ Phase 3 / chat / Phase 4 ให้เลขหมวดเป็น mono `01`…`13` + ชื่อหัวข้อ (ไม่ใช้ `หมวด N:`) และ helper `formatTorSectionHeading`
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| Docker `up -d --build frontend` | build Next OK · frontend/backend healthy | `test-evidence/_round-2026-09-09-draft-ui-deploy.txt` |
+| Health | `:3000` 200 · `/health` 200 · amazon-quick `rag.reachable=true` | 同上 |
+| Vitest scoped (Node 24) | **42 ผ่าน** / 4 ไฟล์ | 同上 |
+| Bundle smoke `projects/[id]/draft` | มี `tabular-nums` + `รอร่าง` · ไม่มี `หมวด N:` ใน chunks | 同上 |
+
+---
+
+## รอบ 9 กันยายน 2026 เย็น — สไตล์ราชการ 16pt / Sonar / Skills / SKK
+
+แก้ false-positive YAML (IDE ผูก `services.yaml` เป็น Symfony ทั้งที่แคตตาล็อกจริงคือ `aws-services-catalog.yaml`) และลด Cognitive Complexity / duplicate string ตาม Sonar ใน `projects.py`, `section_profile.py`, `section_text.py`, `tor_taxonomy.py`, `docx_generator.py`, `pdf_generator.py`, `build_draft_hints.py`, `skk_quality_check.py`
+
+สแตก Docker `tor-app` + **mcp-rag** + **amazon-quick :8767** (`rag.reachable=true`) + LM Studio `http://127.0.0.1:1234`  
+โมเดลที่โหลด: `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` (มีโมเดลอื่นในสตูดิโอด้วย)
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest `-m "not live_llm and not integration"` | **2059 ผ่าน** / 25 ตัด · 4:21 นาที | `test-evidence/_round-2026-09-09-pm-pytest.txt` |
+| Vitest `run` | **309 ผ่าน** / 50 ไฟล์ · ~97 วินาที (Node จาก Sonar runtime v24) | `test-evidence/_round-2026-09-09-pm-vitest.txt` |
+| Docker health หลัง rebuild frontend+backend | frontend `:3000` 200 · backend `/health` healthy · amazon-quick `rag.reachable=true` · LM Studio `/v1/models` 200 | รอบเย็น |
+| Amazon Quick skills JSON | `tor-draft-compose` ห้ามป้ายวิซาร์ด/`### history`/คำอังกฤษต้องห้าม บังคับเลขไทย; `tor-review-compliance` ตรวจรูปแบบ 16pt/1.0/ขอบ 2.54/1.91 ซม.; `tor-structure.json` มี `official_export_style` | `app/infra/quick/agents-skills/` |
+
+### แพ็ก สกก. เทียบ TOR (4).docx
+
+สคริปต์ `app/backend/scripts/skk_quality_check.py` · โครงการ `422b25ff-e59e-4461-b647-4487f65f8157` · วิเคราะห์ 9/25 ช่อง · fill-references **400** (ยังต้องวิเคราะห์ก่อนดึงกฎในบางจังหวะ) · ร่าง s1/s5/s8/s11 สำเร็จ · ส่งออก DOCX สำเร็จ
+
+| เกณฑ์ | TOR (4) เดิม | ส่งออกใหม่ |
+|--------|--------------|-------------|
+| หัวข้อหมวด | `1. ความเป็นมา` (อารบิก) | **`๑. ความเป็นมา`** (เลขไทย) |
+| ป้ายวิซาร์ด | มี ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม | **ไม่มี** |
+| ตัวเนื้อ | 14pt · ไม่มี 1.5 · ขอบซ้าย 2.5 ซม. | **16pt · ระยะบรรทัด 1.0 · ขอบ 2.54/1.91 ซม.** |
+| ตารางงวดจ่าย | มี | มี |
+| คำอังกฤษตกค้าง | Server, Cyber Attack, Digital Government, Big Data, Public AI | เหลือ **Cyber Attack** ในฉบับส่งออก (โมเดลยังดึงจากแพ็กต้นทาง) |
+
+ร่างหมวด: s1 3205 · s5 6545 · s8 3964 · s11 5147 ตัวอักษร · ไม่มี scaffolding ในร่าง  
+หลักฐาน: `test-evidence/_round-2026-09-09-skk-quality.json` · `test-evidence/skk-quality-export.docx`
 
 ---
 

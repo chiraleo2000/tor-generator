@@ -1,0 +1,6 @@
+vitest run
+Test Files  50 passed (50)
+Tests  309 passed (309)
+Duration  97.26s
+Node: C:\Users\chira\.sonar\js\node-runtime\node.exe v24.11.0
+Date: 9 Sep 2026 evening

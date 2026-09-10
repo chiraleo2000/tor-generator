@@ -22,6 +22,33 @@
     "passing_threshold": 70,
     "note_th": "คะแนน < 70 เป็นคำเตือนเท่านั้น ไม่ล็อกการส่งขออนุมัติในแอป"
   },
+  "format_checks": {
+    "thai_section_numerals": "ค่าเริ่มต้นหัวข้อไม่มีเลขหมวด; โหมดมีเลขใช้เลขไทยต่อเนื่อง เช่น ๑. ความเป็นมา",
+    "no_wizard_scaffold": [
+      "ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม",
+      "ปัญหาที่พบ (ระบุตัวเลข/สถิติ)",
+      "### history",
+      "### problems",
+      "### budgetAmount"
+    ],
+    "no_english_leak": [
+      "Server",
+      "Cyber Attack",
+      "Digital Government",
+      "Big Data",
+      "Public AI",
+      "Deliverables",
+      "Price Only"
+    ],
+    "app_export": {
+      "font": "TH Sarabun New",
+      "body_pt": 16,
+      "heading_pt": 18,
+      "line_spacing": 1.0,
+      "margin_top_bottom_cm": 2.54,
+      "margin_left_right_cm": 1.91
+    }
+  },
   "finding_kinds": {
     "legal_violation": {
       "group_th": "กลุ่ม ก",

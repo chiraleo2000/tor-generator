@@ -39,8 +39,8 @@ def test_fallback_section_uses_intake_slots():
             "_project_intake": {"content": "โครงการกรมบัญชีกลาง", "status": "filled"},
         },
     )
-    assert "budgetAmount" in text
     assert "2,500,000" in text
+    assert "budgetAmount" not in text
     assert "พัฒนาระบบบริหารสัญญา" in fallback_scope_subsection(
         "s4.1", {"s4.1": {"content": "พัฒนาระบบบริหารสัญญา"}}
     )
@@ -95,7 +95,9 @@ def test_section_prompt_includes_this_project_intake_only():
     assert "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น" in prompt
     assert "เอกสารขั้นศูนย์ของโครงการนี้" in prompt
     assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in prompt
-    assert "1024" in prompt
+    assert "192" in prompt
+    assert "ข้อบังคับสาระและขอบเขต" in prompt
+    assert "ขยายรายละเอียด" not in prompt
     assert "หนึ่งร้อยถึงห้าร้อยคำ" not in prompt
 
 
@@ -106,7 +108,8 @@ async def test_edit_section_draft_includes_intake_slot():
     async def fake_stream(messages, **kwargs):
         assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
         assert kwargs["max_tokens"] >= 256
-        assert kwargs["disable_thinking"] is True
+        assert kwargs.get("enable_thinking") is True
+        assert kwargs.get("disable_thinking") is not True
         user = messages[1]["content"]
         assert "กรมบัญชีกลาง" in user
         assert "ให้สั้นลง" in user
@@ -138,10 +141,11 @@ async def test_draft_single_section_streams_llm_tokens():
     async def fake_stream(_messages, **kwargs):
         assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
         assert kwargs["max_tokens"] >= 256
-        assert kwargs["disable_thinking"] is True
+        assert kwargs.get("enable_thinking") is True
+        assert kwargs.get("disable_thinking") is not True
         yield "ร่าง"
         yield "จาก"
-        yield "LM Studio"
+        yield "ระบบท้องถิ่น"
 
     mock_llm.stream = fake_stream
     with patch(
@@ -158,7 +162,7 @@ async def test_draft_single_section_streams_llm_tokens():
                 {"s1": {"content": "กรมบัญชีกลางจัดซื้อระบบ", "status": "filled"}},
             )
         ]
-    assert tokens == ["ร่าง", "จาก", "LM Studio"]
+    assert tokens == ["ร่างจากระบบท้องถิ่น"]
 
 
 @pytest.mark.asyncio

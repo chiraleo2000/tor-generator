@@ -139,6 +139,17 @@ class IntakeTextBody(BaseModel):
     content: str = Field(..., min_length=20, max_length=INTAKE_TEXT_CHAR_LIMIT)
 
 
+@dataclass
+class _AnalyzeSubject:
+    """Detached stand-in so analyze_pack never lazy-loads during the LLM call."""
+
+    id: uuid.UUID
+    project_type: str | None
+    current_step: int | None
+    current_phase: int | None
+    analysis_json: dict[str, Any]
+
+
 def _ok(request: Request, data: Any) -> JSONResponse:
     payload = SuccessResponse(
         ok=True,
@@ -466,8 +477,8 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
                     {"role": "user", "content": work.user_prompt},
                 ],
                 temperature=0.2,
-                max_tokens=384,
-                disable_thinking=True,
+                max_tokens=4096,
+                enable_thinking=True,
             ):
                 parts_local.append(token)
                 await event_q.put(("token", {"text": token}))
@@ -692,24 +703,41 @@ async def intake_analyze(
     if not pack.strip():
         raise ValidationError(message="ยังไม่มีเอกสารให้วิเคราะห์", field="files")
 
+    # Copy fields, then commit *before* the LLM so this request does not hold an
+    # idle-in-transaction for several minutes (that left analyzed=False in DB
+    # while the HTTP body still said analyzed=True → fill-references 400).
+    subject = _AnalyzeSubject(
+        id=project.id,
+        project_type=project.project_type,
+        current_step=project.current_step,
+        current_phase=project.current_phase,
+        analysis_json=dict(project.analysis_json or {}),
+    )
+    await db.commit()
     result = await analyze_pack(
-        project,
+        subject,  # type: ignore[arg-type]
         pack,
         filenames,
         # Do not early-persist heuristics: that set analyzed=True and the UI
         # advanced to Phase 1 before the LLM finished reading the documents.
     )
-    analysis = _apply_analyze_result(project, result)
-    await db.flush()
+    suggested_type = subject.project_type
+    fresh = await load_project(db, subject.id)
+    if fresh is None:
+        raise NotFoundError(message=PROJECT_NOT_FOUND)
+    if suggested_type and fresh.project_type != suggested_type:
+        fresh.project_type = suggested_type
+    analysis = _apply_analyze_result(fresh, result)
+    await db.commit()
     return _ok(
         request,
         {
             "slot_map": analysis["slot_map"],
             "gap_questions": analysis.get("gap_questions") or [],
-            "coverage": coverage_table(analysis["slot_map"], _ptype(project)),
+            "coverage": coverage_table(analysis["slot_map"], _ptype(fresh)),
             "ready_to_compose": False,
             "analyzed": True,
-            "phase": project.current_phase,
+            "phase": fresh.current_phase,
             "standard_fill_keys": [],
         },
     )
@@ -947,6 +975,7 @@ async def intake_fill_references(
         project, current_user.id, as_standard=True
     )
     await db.flush()
+    await db.commit()
     return _ok(
         request,
         {
@@ -965,9 +994,12 @@ async def intake_confirm_phase4(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
     project = await _project(db, project_id, current_user)
-    if not is_ready_to_compose(project):
+    # Phase 3 already required confirm-ready. Re-checking slot facts here blocked
+    # Phase 4 when profile fact keys / slot status drifted after drafting.
+    analysis_flag = bool((project.analysis_json or {}).get("ready_to_compose"))
+    if not analysis_flag and not is_ready_to_compose(project):
         raise ValidationError(
-            message="ต้องยืนยันพร้อมร่างและครบช่องข้อเท็จจริงก่อน",
+            message="ต้องยืนยันพร้อมร่าง (ขั้นที่ ๒) ก่อนเข้าทบทวน",
             field="ready_to_compose",
         )
     if not body.confirm:

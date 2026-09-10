@@ -81,7 +81,7 @@ describe("Phase3Draft", () => {
     );
     expect(screen.getByTestId("phase3-draft")).toHaveTextContent("ร่างเนื้อหา");
     expect(screen.queryByText("เนื้อหาร่าง (จากเอกสารหรือระบบ)")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /หมวด 1: ความเป็นมา/ }));
+    fireEvent.click(screen.getByRole("button", { name: /ความเป็นมา/ }));
     expect(onExpand).toHaveBeenCalledWith("s1");
     fireEvent.click(screen.getByTestId("phase3-confirm"));
     expect(onConfirm).toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe("Phase3Draft", () => {
       />
     );
     expect(screen.getByText("รอร่าง")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /หมวด 1: ความเป็นมา/ }));
+    fireEvent.click(screen.getByRole("button", { name: /ความเป็นมา/ }));
     expect(onExpand).toHaveBeenCalledWith("");
   });
 
@@ -377,8 +377,8 @@ describe("Phase3Draft", () => {
     );
     expect(screen.getByText("บันทึกไม่สำเร็จ")).toBeInTheDocument();
     expect(screen.getByText("ร่างแล้ว")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /หมวด 99/ }));
-    fireEvent.click(screen.getByRole("button", { name: /หมวด 4/ }));
+    fireEvent.click(screen.getByRole("button", { name: /หมวดพิเศษ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /ขอบเขตของงาน/ }));
   });
 
   it("opens an unfilled subsection chip and saves on blur", () => {

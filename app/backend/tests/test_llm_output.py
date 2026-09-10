@@ -122,3 +122,25 @@ def test_stream_filter_drops_cot_until_thai():
     text = "".join(pieces)
     assert "thinking process" not in text.lower()
     assert "งวดงานและการจ่ายเงินแบ่งเป็นสี่งวด" in text
+
+
+def test_json_from_message_reads_reasoning_when_content_is_thai():
+    from types import SimpleNamespace
+
+    from app.providers.llm_output import json_from_message
+
+    payload = '{"slot_map": {"s1": {"status": "filled"}}}'
+    message = SimpleNamespace(
+        content="กำลังวิเคราะห์เอกสารจัดซื้อจัดจ้าง",
+        reasoning_content=f"think then {payload}",
+        reasoning=None,
+    )
+    assert json_from_message(message) == payload
+
+
+def test_json_from_text_extracts_object_inside_think_tags():
+    from app.providers.llm_output import json_from_text
+
+    payload = '{"ok": true}'
+    assert json_from_text(f"<think>plan</think>\n{payload}") == payload
+    assert json_from_text(f"<think>{payload}</think>") == payload

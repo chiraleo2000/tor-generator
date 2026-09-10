@@ -187,9 +187,6 @@ app/backend/agent-uploads/
 # Leftover IDE path — the Next.js app is app/frontend (see Discussions/38)
 /frontend/
 
-# Sample TOR PDFs used only to derive Section_Profile (hints already in app/backend)
-/documents/ตัวอย่าง TOR/
-
 # Local IDE / GitHub Actions / Kiro working trees (stay on disk, not in Git)
 .cursor/
 .github/

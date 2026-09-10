@@ -1,0 +1,45 @@
+# TOR output standardization — 10 Sep 2026
+
+## Corpus (Req 1)
+python app/backend/scripts/extract_corpus_standard.py
+- wrote documents/ตัวอย่าง TOR/corpus_standard.json and corpus_standard.md
+- readable=1 skipped=18 (scanned / empty text layer; skip-and-log)
+
+## Local pytest (app/backend)
+Passed (selected):
+- tests/test_tor_output_standardization.py (Properties 1–13, max_examples=100)
+- tests/test_docx_generator.py / test_pdf_generator.py
+- tests/test_official_tor_style.py
+- tests/test_property_export_format_consistency.py
+- tests/test_section_profile.py
+- tests/test_export_service.py / test_export_endpoint.py
+- tests/test_intake_heuristic.py / test_intake_service.py / test_intake_endpoints.py
+- tests/test_draft_chat_service.py / test_drafting_agents_base.py
+- tests/test_phase_gate.py / test_section_text.py / test_llm_tokens.py
+- tests/test_amazon_quick.py except HTTP missing-auth (WinError 10053 flake)
+
+Local generator smoke: numbering none → empty heading numbers; numbered_consecutive + Thai numerals → ๑./๒.; skip empty placeholder; appendix divider present; layout 16 / 1.0 / 2.54×1.91.
+
+## Sonar
+ReadLints on touched files under app/backend/app and app/frontend/src: no Blocker/Critical/Major remaining.
+Date regexes in this work stay [0-9]. No dangerouslySetInnerHTML.
+
+## Frontend unit tests
+Host node_modules is incomplete (no vitest). Docker frontend image build (Next.js 14) compiled the changed TSX, including phase4-export / step8-export numbering checkbox.
+
+## Redeploy
+docker compose -p tor-app --env-file .env up -d --build frontend backend
+- images rebuilt; postgres/redis/minio/mongo/neo4j/mcp-rag healthy
+- frontend http://127.0.0.1:3000 → 200
+- backend http://127.0.0.1:4000/health → 200 (postgres/redis/minio/mongo/neo4j up)
+
+## Live export verify
+Existing unsigned project correctly blocked: HITL “หมวด evaluation ยังรอการอนุมัติจากผู้ตรวจ”.
+
+Created hire_develop project, filled critical sections, human_confirmed HITL, then:
+- numbering_scheme=none → DOCX completed; 16pt; line 1.0; margins 2.54 / 1.91 cm; title ร่างขอบเขตของงาน; ภาคผนวก present; no 1. or ๑. heading prefixes
+- numbering_scheme=numbered_consecutive → same layout; Thai heading prefixes ๑. present; no Arabic 1. prefixes
+
+## Not verified in a browser
+Click-through of the export checkbox on /projects/[id]/draft (API + compiled UI cover the same payload).
+SKK full pack re-draft vs TOR (4).docx (needs LM Studio + pack files).

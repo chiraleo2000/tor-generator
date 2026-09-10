@@ -9,7 +9,7 @@ Requirements: 5.6, 12.1, 16.5
 
 from __future__ import annotations
 
-from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE, BaseDraftingAgent
+from app.orchestrator.agents.base import formal_register, BaseDraftingAgent
 
 
 class DocumentsDraftingAgent(BaseDraftingAgent):
@@ -19,11 +19,11 @@ class DocumentsDraftingAgent(BaseDraftingAgent):
     section_name_th = "เอกสารและหลักฐานที่ผู้เสนอราคาต้องนำมายื่น"
     section_name_en = "Documents"
 
-    def get_system_prompt(self) -> str:
+    def get_system_prompt(self, category: str | None = None) -> str:
         """Return the system prompt for Documents/Conditions section drafting."""
         return (
-            THAI_FORMAL_REGISTER_PREAMBLE
-            + "คุณกำลังร่างส่วน «เอกสารหลักฐานที่ต้องยื่น» (§12) "
+            formal_register(category, self.section_key)
+            + "คุณกำลังร่างส่วน «เอกสารหลักฐานที่ต้องยื่น» "
             "และ «เงื่อนไขอื่นๆ» (§13) ของเอกสาร TOR\n\n"
             "=== ส่วนที่ 1: เอกสารหลักฐานที่ต้องยื่น (§12) ===\n"
             "รายการเอกสารที่ผู้เสนอราคาต้องยื่นพร้อมข้อเสนอ:\n\n"
@@ -51,6 +51,7 @@ class DocumentsDraftingAgent(BaseDraftingAgent):
             "- ระเบียบกระทรวงการคลังฯ ข้อ 167-171 (หลักประกัน)\n"
             "- หลักประกันสัญญา 5% ของวงเงินตามสัญญา\n"
             "- หลักประกันผลงาน (ถ้ามี) ไม่เกิน 10%\n\n"
+            "ห้ามซ้ำคุณสมบัติจาก s3 หรือขอบเขตจาก s4 — มีเฉพาะรายการเอกสารที่ต้องยื่น\n\n"
             "=== ข้อกำหนดด้านรูปแบบ ===\n"
             "- เขียนเป็นรายการลำดับเลข (numbered list)\n"
             "- แยก 2 ส่วนชัดเจน (เอกสาร + เงื่อนไข)\n"

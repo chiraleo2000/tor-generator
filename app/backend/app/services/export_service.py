@@ -20,8 +20,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
+from app.domain.section_profile import STORAGE_TO_SEMANTIC
 from app.domain.section_text import section_plain_text
 from app.export.docx_generator import DOCXGenerator, TORContent
+from app.export.quality_gate import check_export_gates
+from app.export.render_plan import AppendixItem, coerce_numbering_scheme
 from app.models.project import Project
 from app.models.tor_section import TORSection
 from app.schemas.export import (
@@ -43,6 +46,20 @@ RETRY_DELAY_SECONDS = 30
 MAX_RETRIES = 1
 
 
+def _appendix_pairs(raw: object) -> tuple[tuple[str, str], ...]:
+    if not isinstance(raw, list):
+        return ()
+    pairs: list[tuple[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "")
+        body = str(item.get("content") or "")
+        if title.strip() or body.strip():
+            pairs.append((title, body))
+    return tuple(pairs)
+
+
 @dataclass(frozen=True)
 class ProjectExportSnapshot:
     """Scalar project fields copied before the request session closes."""
@@ -52,15 +69,22 @@ class ProjectExportSnapshot:
     ministry: str
     budget: int
     project_type: str
+    appendices: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_project(cls, project: Project) -> "ProjectExportSnapshot":
+        analysis = getattr(project, "analysis_json", None) or {}
+        extracted = getattr(project, "extracted_fields", None) or {}
+        appendices = _appendix_pairs(analysis.get("appendices")) or _appendix_pairs(
+            extracted.get("appendices")
+        )
         return cls(
             id=project.id,
             name=project.name or "",
             ministry=project.ministry or "",
             budget=int(project.budget or 0),
             project_type=project.project_type or "general",
+            appendices=appendices,
         )
 
 
@@ -76,14 +100,16 @@ class ExportJob:
         self,
         export_id: uuid.UUID,
         project_id: uuid.UUID,
-        use_thai_numerals: bool = False,
+        use_thai_numerals: bool = True,
         url_ttl_hours: int = 24,
+        numbering_scheme: str = "none",
     ) -> None:
         self.export_id = export_id
         self.project_id = project_id
         self.status: ExportStatus = "pending"
         self.use_thai_numerals = use_thai_numerals
         self.url_ttl_hours = url_ttl_hours
+        self.numbering_scheme = numbering_scheme
         self.files: list[ExportFileInfo] = []
         self.started_at: datetime = datetime.now(timezone.utc)
         self.completed_at: Optional[datetime] = None
@@ -137,8 +163,9 @@ class ExportService:
         db: AsyncSession,
         minio_client: Minio,
         project: Project,
-        use_thai_numerals: bool = False,
+        use_thai_numerals: bool = True,
         url_ttl_hours: int = 24,
+        numbering_scheme: str = "none",
         session_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> ExportJob:
         """Trigger document export for a project.
@@ -152,6 +179,7 @@ class ExportService:
             project: The project to export.
             use_thai_numerals: Whether to use Thai numerals in the document.
             url_ttl_hours: Download URL validity in hours (1-168).
+            numbering_scheme: Heading numbering mode (default titles only).
             session_factory: Opens a dedicated session for the background job.
 
         Returns:
@@ -171,6 +199,7 @@ class ExportService:
             project_id=snapshot.id,
             use_thai_numerals=use_thai_numerals,
             url_ttl_hours=url_ttl_hours,
+            numbering_scheme=numbering_scheme,
         )
         cls._jobs[snapshot.id] = job
         cls._jobs_by_id[export_id] = job
@@ -296,7 +325,10 @@ class ExportService:
         settings = get_settings()
 
         # Build TOR content from project sections
-        tor_content = await cls._build_tor_content(db, project, job.use_thai_numerals)
+        tor_content, approvals = await cls._build_tor_content(
+            db, project, job.use_thai_numerals, job.numbering_scheme
+        )
+        check_export_gates(tor_content, approvals).raise_if_blocked()
 
         # Generate DOCX
         docx_generator = DOCXGenerator()
@@ -369,31 +401,30 @@ class ExportService:
         db: AsyncSession,
         project: ProjectExportSnapshot,
         use_thai_numerals: bool,
-    ) -> TORContent:
+        numbering_scheme: str = "none",
+    ) -> tuple[TORContent, dict[str, bool]]:
         """Build TORContent from the project's TOR sections in the database."""
-        # Fetch all TOR sections for this project
         stmt = select(TORSection).where(TORSection.project_id == project.id)
         result = await db.execute(stmt)
         sections = result.scalars().all()
 
-        # Organize sections and sub-sections
         section_contents: dict[str, str] = {}
         sub_section_contents: dict[str, dict[str, str]] = {}
+        approvals: dict[str, bool] = {}
+        appendix_items = [
+            AppendixItem(title=title, content=body) for title, body in project.appendices
+        ]
 
         for section in sections:
-            if section.sub_key:
-                # This is a sub-section
-                if section.section_key not in sub_section_contents:
-                    sub_section_contents[section.section_key] = {}
-                sub_section_contents[section.section_key][section.sub_key] = (
-                    section.content or ""
-                )
-            else:
-                section_contents[section.section_key] = section_plain_text(
-                    section.content, section.section_key
-                )
+            cls._ingest_export_section(
+                section,
+                section_contents,
+                sub_section_contents,
+                approvals,
+                appendix_items,
+            )
 
-        return TORContent(
+        content = TORContent(
             project_name=project.name,
             ministry=project.ministry,
             budget=project.budget,
@@ -401,7 +432,33 @@ class ExportService:
             sections=section_contents,
             sub_sections=sub_section_contents,
             use_thai_numerals=use_thai_numerals,
+            numbering_scheme=coerce_numbering_scheme(numbering_scheme),
+            appendices=appendix_items,
         )
+        return content, approvals
+
+    @staticmethod
+    def _ingest_export_section(
+        section: TORSection,
+        section_contents: dict[str, str],
+        sub_section_contents: dict[str, dict[str, str]],
+        approvals: dict[str, bool],
+        appendix_items: list[AppendixItem],
+    ) -> None:
+        key = section.section_key or ""
+        if key in {"appendix", "appendices"}:
+            appendix_items.append(
+                AppendixItem(title=section.sub_key or "", content=section.content or "")
+            )
+            return
+        if section.sub_key:
+            bucket = sub_section_contents.setdefault(key, {})
+            bucket[section.sub_key] = section.content or ""
+            return
+        section_contents[key] = section_plain_text(section.content, key)
+        approved = bool(getattr(section, "is_approved", False))
+        approvals[key] = approved
+        approvals[STORAGE_TO_SEMANTIC.get(key, key)] = approved
 
     @classmethod
     async def _generate_pdf(cls, tor_content: TORContent) -> bytes:

@@ -25,12 +25,15 @@ from app.rag.kb_qa import draft_rag_top_k
 from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.services.intake_service import resolve_draft_section_key, slot_content
 from app.services.thai_draft import (
-    LENGTH_RULES,
-    TABLE_FORMAT_HINT,
+    SUBSTANCE_RULES,
     THAI_ONLY_RULES,
+    attach_thai_only,
+    detect_unauthorized_english,
     merge_scope_from_subs,
+    official_tor_style_block,
     scope_overview_from_subs,
     scope_sub_prompt,
+    section_boundary_hint,
 )
 
 logger = logging.getLogger("tor_app.draft_chat")
@@ -41,21 +44,24 @@ DRAFT_SYSTEM_PROMPT = (
     "พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ "
     "ใช้ข้อมูลจากช่องข้อมูลและบริบทกฎหมายที่ให้มาเท่านั้น "
     "ห้ามแต่งมาตราที่ไม่มีในบริบท "
-    "ให้ครบด้านวิธีจัดซื้อ ราคากลาง คุณสมบัติ ขอบเขต SLA งวดงาน ค่าปรับ "
-    "เกณฑ์คัดเลือก เอกสารยื่น และเงื่อนไขลิขสิทธิ์/ความลับ ตามแนวทางตัวอย่าง TOR "
+    "ให้ครบด้านวิธีจัดซื้อ ราคากลาง คุณสมบัติ ขอบเขตระดับการให้บริการ งวดงาน ค่าปรับ "
+    "เกณฑ์คัดเลือก เอกสารยื่น และเงื่อนไขลิขสิทธิ์หรือความลับ ตามแนวทางตัวอย่าง "
     "ขั้นที่ 2 ส่งเฉพาะเนื้อหาหมวดฉบับสมบูรณ์ตามรูปแบบเอกสารกำหนดขอบเขตงาน "
-    "ห้ามส่งบันทึกวิเคราะห์ ห้ามย่อจนขาดสาระ\n"
+    "ห้ามส่งบันทึกวิเคราะห์ ห้ามย่อจนขาดสาระ "
+    "ห้ามพิมพ์เลขนำหน้าชื่อหมวด (ทั้งเลขไทยและอารบิก) — ระบบส่งออกเป็นผู้ใส่หัวข้อ "
+    "ตัวเลขในเนื้อหา วันที่ และตารางใช้เลขไทยได้ "
+    "ห้ามพิมพ์ป้ายช่องข้อมูลหรือรหัสภาษาอังกฤษเป็นหัวข้อ\n"
     f"{THAI_ONLY_RULES}"
-    f"{LENGTH_RULES}"
+    f"{SUBSTANCE_RULES}"
 )
 
 EDIT_SYSTEM_PROMPT = (
     "คุณเป็นผู้เชี่ยวชาญร่างเอกสารกำหนดขอบเขตงานภาครัฐไทย "
     "แก้ไขร่างตามข้อเสนอแนะของผู้ใช้ รักษาภาษาราชการ "
     "ห้ามเปลี่ยนข้อเท็จจริงที่ให้มาแล้ว ห้ามแต่งมาตราใหม่ "
-    "คงความครบถ้วนและความยาวตามเอกสารตัวอย่าง เว้นแต่ผู้ใช้สั่งให้ย่อ\n"
+    "คงสาระครบถ้วนตามข้อมูลที่มี ห้ามเติมน้ำหรือซ้ำข้ามหมวด เว้นแต่ผู้ใช้สั่งให้ย่อ\n"
     f"{THAI_ONLY_RULES}"
-    f"{LENGTH_RULES}"
+    f"{SUBSTANCE_RULES}"
 )
 
 
@@ -85,8 +91,11 @@ def _section_prompt_context(
         f"ร่างหมวด ({label}) ประเภทงาน {profile.label}",
         "",
         THAI_ONLY_RULES,
-        TABLE_FORMAT_HINT,
+        official_tor_style_block(category, section_key),
     ]
+    boundary = section_boundary_hint(section_key)
+    if boundary:
+        parts.append(boundary)
     intake = slot_content(slot_map, "_project_intake").strip()
     if intake:
         parts.append(
@@ -100,11 +109,13 @@ def _section_prompt_context(
     if rag_context:
         parts.append(f"\nบริบทกฎหมาย/ระเบียบจากคลังความรู้:\n{rag_context}")
     if section_key == "s4":
-        listed = ", ".join(item.storage_key for item in profile.scope_subsections)
+        listed = "\n".join(f"- {item.title}" for item in profile.scope_subsections)
         parts.append(
-            "\nหมวดนี้ต้องร่างลงหัวข้อย่อยตามประเภทงานโดยตรง "
-            f"ขึ้นต้นแต่ละหัวข้อด้วย ### ตามรหัส ({listed}) "
-            "ห้ามรวมเป็นก้อนเดียวโดยไม่มี ### และห้ามใส่หัวข้อที่ไม่อยู่ในรายการ"
+            "\nหมวดนี้ต้องร่างตามหัวข้อย่อยของประเภทงาน "
+            "ใช้ชื่อหัวข้อย่อยตามรายการต่อไปนี้ ห้ามใส่เลขนำหน้าชื่อหัวข้อ "
+            "ห้ามใช้รหัสภาษาอังกฤษเป็นหัวข้อ:\n"
+            f"{listed}\n"
+            "ห้ามรวมเป็นก้อนเดียวโดยไม่มีหัวข้อย่อย และห้ามใส่หัวข้อที่ไม่อยู่ในรายการ"
         )
     else:
         from app.domain.section_fields import field_prompt_block
@@ -112,41 +123,30 @@ def _section_prompt_context(
         field_block = field_prompt_block(section_key)
         if field_block:
             parts.append(
-                "\nร่างเป็นภาษาไทยเท่านั้น ใส่เนื้อหาลงหัวข้อย่อยตามรหัส ### "
-                "ห้ามรวมเป็นก้อนเดียว และห้ามสร้างช่องรวม"
+                "\nร่างเป็นภาษาไทยราชการด้วยหัวข้อตามสาระของหมวด "
+                "ห้ามพิมพ์เลขนำหน้าชื่อหมวด ห้ามพิมพ์รหัสภาษาอังกฤษหรือป้ายช่องข้อมูลเป็นหัวข้อ"
             )
             parts.append(field_block)
         else:
             parts.append(
-                "\nร่างเนื้อหาเต็มสำหรับหมวดนี้เป็นภาษาไทยเท่านั้น "
-                "ให้ยาวและครบถ้วนเทียบเอกสารตัวอย่าง ไม่ต้องใส่หัวข้อหมวดซ้ำ"
+                "\nร่างเนื้อหาสำหรับหมวดนี้เป็นภาษาไทยเท่านั้น "
+                "ให้ครบสาระตามข้อมูลที่มี ไม่เติมน้ำ ไม่ซ้ำหมวดอื่น "
+                "ไม่ต้องใส่หัวข้อหมวดซ้ำ"
             )
-    parts.append(LENGTH_RULES)
+    parts.append(SUBSTANCE_RULES)
     return "\n".join(parts)
 
 
 def fallback_section_text(section_key: str, slot_map: dict[str, Any]) -> str:
     """Thai draft from intake slots when the LLM returns nothing or times out."""
-    from app.domain.section_fields import SECTION_FIELDS
-
     label = TOR_SECTION_LABELS.get(section_key, section_key)
     facts = slot_content(slot_map, section_key).strip()
     intake = slot_content(slot_map, "_project_intake").strip()
     body = facts or intake[:1200]
-    rows = SECTION_FIELDS.get(section_key) or []
-    if not rows:
-        return body or (
-            f"หมวด{label} ใช้ข้อมูลจากเอกสารขั้นที่ ๐ ของโครงการนี้ "
-            "เจ้าหน้าที่ควรตรวจและเติมรายละเอียดก่อนประกาศ"
-        )
-    chunks: list[str] = []
-    for key, thai in rows:
-        chunks.append(f"### {key}")
-        chunks.append(f"({thai})")
-        chunks.append(
-            body or f"ให้ระบุ{thai}ตามเอกสารอนุมัติและขอบเขตงานของโครงการนี้"
-        )
-    return "\n".join(chunks)
+    return body or (
+        f"หมวด{label} ใช้ข้อมูลจากเอกสารขั้นที่ ๐ ของโครงการนี้ "
+        "เจ้าหน้าที่ควรตรวจและเติมรายละเอียดก่อนประกาศ"
+    )
 
 
 def fallback_scope_subsection(
@@ -212,10 +212,9 @@ async def _s4_shared_rag(user_id: UUID | str | None) -> str:
     return pack
 
 
-async def _stream_llm_prompt(
-    system: str, user_prompt: str, *, max_tokens: int = DRAFT_MAX_TOKENS
-) -> AsyncIterator[str]:
-    """Stream one compose pass from the configured LLM (no analyze-then-compose)."""
+async def _collect_llm_text(
+    system: str, user_prompt: str, *, max_tokens: int
+) -> str:
     llm = ProviderFactory().get_llm("draft")  # NOSONAR python:S930
     max_out = clamp_max_tokens(
         user_prompt,
@@ -223,6 +222,7 @@ async def _stream_llm_prompt(
         context_window=GEMMA_CONTEXT_WINDOW,
         system=system,
     )
+    parts: list[str] = []
     async for token in llm.stream(
         [
             {"role": "system", "content": system},
@@ -230,9 +230,27 @@ async def _stream_llm_prompt(
         ],
         temperature=0.3,
         max_tokens=max_out,
-        disable_thinking=True,
+        enable_thinking=True,
     ):
-        yield token
+        parts.append(token)
+    return "".join(parts)
+
+
+async def _stream_llm_prompt(
+    system: str, user_prompt: str, *, max_tokens: int = DRAFT_MAX_TOKENS
+) -> AsyncIterator[str]:
+    """Stream one compose pass from the configured LLM (no analyze-then-compose)."""
+    system = attach_thai_only(system)
+    user_prompt = attach_thai_only(user_prompt)
+    text = await _collect_llm_text(system, user_prompt, max_tokens=max_tokens)
+    if detect_unauthorized_english(text):
+        logger.warning("draft contained unauthorized English; retrying once")
+        text = await _collect_llm_text(system, user_prompt, max_tokens=max_tokens)
+        if detect_unauthorized_english(text):
+            logger.warning("draft retry still contained unauthorized English; dropping")
+            return
+    if text:
+        yield text
 
 
 async def draft_single_section(
@@ -329,7 +347,7 @@ async def edit_section_draft(
     intake_block = f"\n\nข้อมูลจากขั้นวิเคราะห์:\n{intake[:8000]}" if intake else ""
     s4_hint = ""
     if section_key == "s4":
-        s4_hint = " คงรูปแบบ ### s4.N และใส่เนื้อหาลงหัวข้อย่อยโดยตรง"
+        s4_hint = " คงหัวข้อย่อยตามโปรไฟล์โดยไม่ใส่เลขนำหน้าชื่อ และใส่เนื้อหาลงหัวข้อย่อยโดยตรง"
     user_prompt = (
         f"หมวด {section_key.replace('s', '')} ({label})\n\n"
         f"ร่างปัจจุบัน:\n{current_draft[:24000]}"
@@ -343,7 +361,8 @@ async def edit_section_draft(
 
     field_block = field_prompt_block(section_key)
     if field_block:
-        user_prompt += "\n\nคงการแยกหัวข้อย่อย:\n" + field_block
+        user_prompt += "\n\n" + official_tor_style_block(None, section_key)
+        user_prompt += "\n\nสาระที่ต้องคงไว้ในเนื้อหา:\n" + field_block
     async for token in _stream_llm_prompt(
         EDIT_SYSTEM_PROMPT, user_prompt, max_tokens=DRAFT_MAX_TOKENS
     ):

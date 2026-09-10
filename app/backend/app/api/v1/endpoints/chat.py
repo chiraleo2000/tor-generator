@@ -499,7 +499,7 @@ async def _run_chat_llm(
                 messages,
                 temperature=0.2,
                 max_tokens=max_tokens,
-                disable_thinking=True,
+                enable_thinking=True,
             ):
                 parts_local.append(token)
                 await event_q.put(("token", {"text": token}))

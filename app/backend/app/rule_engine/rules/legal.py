@@ -15,7 +15,7 @@ import math
 import re
 
 from app.rule_engine.engine import Finding, Severity
-from app.rule_engine.rules.base import BaseRule
+from app.rule_engine.rules.base import BaseRule, applies_to_section
 
 # Required legal references that should appear in a compliant TOR
 REQUIRED_LEGAL_REFERENCES: list[str] = [
@@ -111,6 +111,8 @@ class VendorPaidUpCapitalRule(BaseRule):
         findings: list[Finding] = []
 
         budget = tor_document.get("budget")
+        if not (applies_to_section(tor_document, "s3") or applies_to_section(tor_document, "s6")):
+            return findings
         if budget is None:
             findings.append(
                 Finding(
@@ -222,6 +224,8 @@ class PenaltyRateRule(BaseRule):
         has_penalty_section = bool(s10_content and str(s10_content).strip())
 
         if penalty_rate is None and not has_penalty_section:
+            if not applies_to_section(tor_document, "s10"):
+                return findings
             findings.append(
                 Finding(
                     severity=Severity.ERROR,
@@ -408,10 +412,7 @@ class RequiredLegalReferencesRule(BaseRule):
 
         # Check for legal reference to พ.ร.บ. 2560
         findings.extend(self._check_legal_references(tor_document))
-
-        # Check for required clauses
         findings.extend(self._check_required_clauses(tor_document))
-
         return findings
 
     def _check_legal_references(self, tor_document: dict) -> list[Finding]:
@@ -421,6 +422,8 @@ class RequiredLegalReferencesRule(BaseRule):
         Accepts both full and abbreviated forms.
         """
         findings: list[Finding] = []
+        if not applies_to_section(tor_document, "s1"):
+            return findings
 
         # Collect all text content from the document
         all_text = ""
@@ -462,6 +465,8 @@ class RequiredLegalReferencesRule(BaseRule):
 
         for clause in REQUIRED_CLAUSES:
             section_key = clause["section"]
+            if not applies_to_section(tor_document, section_key):
+                continue
             content = tor_document.get(section_key, "")
 
             if not content or (isinstance(content, str) and not content.strip()):

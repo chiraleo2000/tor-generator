@@ -275,13 +275,16 @@ def test_apply_chat_answer_fills_s1_first():
     assert "กรมบัญชีกลาง" in slots["s1"]["content"]
 
 
-def test_apply_chat_answer_fills_only_remaining_fact():
+def test_apply_chat_answer_fills_location_when_asked():
     slots = empty_slot_map()
     for key in FACT_REQUIRED_SLOTS:
         slots[key] = {"content": "มีแล้ว", "status": "filled", "sources": []}
-    slots["s7"] = {"content": "", "status": "gap", "sources": []}
-    updated = apply_chat_answer_to_slots(slots, "ที่ทำการกรมบัญชีกลาง กรุงเทพมหานคร")
-    assert updated == ["s7"]
+    updated = apply_chat_answer_to_slots(
+        slots,
+        "ที่ทำการกรมบัญชีกลาง กรุงเทพมหานคร",
+        current_slot="s7",
+    )
+    assert "s7" in updated
     assert "กรมบัญชีกลาง" in slots["s7"]["content"]
 
 
@@ -294,7 +297,7 @@ def test_apply_chat_answer_does_not_overwrite_filled():
 
 def test_apply_chat_answer_prefers_asked_slot_over_weak_heuristic():
     slots = empty_slot_map()
-    for key in ("s1", "s2", "s5", "s6", "s7", "s4.1"):
+    for key in FACT_REQUIRED_SLOTS:
         slots[key] = {"content": "มีแล้ว", "status": "filled", "sources": []}
     updated = apply_chat_answer_to_slots(
         slots,
@@ -509,17 +512,17 @@ def test_analyze_prompt_chunks_splits_multi_file_markers():
 
 def test_next_asking_slot_continues_optional_after_facts():
     slots = empty_slot_map()
-    for key in ("s1", "s2", "s5", "s6", "s7", "s4.1"):
+    for key in FACT_REQUIRED_SLOTS:
         slots[key] = {"content": f"ข้อมูล{key}", "status": "filled", "sources": []}
     nxt = next_asking_slot(slots)
     assert nxt is not None
-    assert nxt not in {"s1", "s2", "s5", "s6", "s7", "s4.1"}
+    assert nxt not in FACT_REQUIRED_SLOTS
     assert nxt == "s3"
 
 
 def test_phase2_opening_offers_optional_after_facts():
     slots = empty_slot_map()
-    for key in ("s1", "s2", "s5", "s6", "s7", "s4.1"):
+    for key in FACT_REQUIRED_SLOTS:
         slots[key] = {"content": f"ข้อมูล{key}", "status": "filled", "sources": []}
     brief = build_phase2_opening(slots, [])
     assert "เติมช่องอื่นต่อได้" in brief

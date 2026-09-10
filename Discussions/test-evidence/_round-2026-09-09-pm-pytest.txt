@@ -1,0 +1,4 @@
+pytest -m "not live_llm and not integration"
+2059 passed, 25 deselected, 2 warnings in 261.27s (0:04:21)
+Python 3.14 · host · app/backend
+Date: 9 Sep 2026 evening (after official TOR style + Sonar complexity/duplication fixes)

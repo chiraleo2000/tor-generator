@@ -16,7 +16,7 @@
 | `ci/github-ecs-deploy.yml.example` | แบบ push-to-main (เปิดเมื่อ OIDC พร้อม) |
 | `app/infra/aws/ci/ecs-deploy.yml` | skeleton `workflow_dispatch` (ก๊อปไป `.github/workflows/` บนเครื่อง — `.github/` ไม่ขึ้น Git) |
 | `ecs/*.yml` + `config/cloud-app.yaml` | ค่า service/task/แอปแบบ YAML |
-| `config/aws-services-catalog.yaml` | แคตตาล็อกบริการ AWS ↔ ไฟล์โครง (skeleton / gated / TBD) |
+| `config/aws-services-catalog.yaml` | แคตตาล็อกบริการ AWS ↔ ไฟล์โครง (skeleton / gated / TBD). อย่าตั้งชื่อ `services.yaml` — IDE จะผูก schema Symfony ผิด |
 | `compose/docker-compose.cloud.yml` | ทดลองป้าย env คลาวด์บนเครื่อง |
 | `../mcp/` | โครง MCP RAG (`rag-sources.yaml` สำหรับ bind-mount, `servers.example.json` สำหรับ ECS JSON) |
 

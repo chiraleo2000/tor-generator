@@ -7,7 +7,7 @@ This is typically the longest and most detailed section, supporting up to
 
 from __future__ import annotations
 
-from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE, BaseDraftingAgent
+from app.orchestrator.agents.base import formal_register, BaseDraftingAgent
 
 
 class ScopeDraftingAgent(BaseDraftingAgent):
@@ -22,16 +22,16 @@ class ScopeDraftingAgent(BaseDraftingAgent):
         from app.domain.tor_draft_hints import hint_for
 
         profile = profile_for_project(category)
-        lines = []
-        for index, item in enumerate(profile.scope_subsections, start=1):
-            lines.append(f"4.{index} {item.title}")
+        lines = [f"- {item.title}" for item in profile.scope_subsections]
         listed = "\n".join(lines) if lines else "(ไม่มีหัวข้อย่อย)"
         hint = hint_for("s4", profile.category)
         return (
-            THAI_FORMAL_REGISTER_PREAMBLE
-            + "คุณกำลังร่างส่วน «ขอบเขตของงาน» ของเอกสาร TOR\n\n"
+            formal_register(category, self.section_key)
+            + "คุณกำลังร่างส่วน «ขอบเขตของงาน» ของเอกสารกำหนดขอบเขตงาน\n\n"
             f"ประเภทงาน: {profile.label}\n"
-            "เขียนเฉพาะหัวข้อย่อยต่อไปนี้ตามลำดับ ห้ามเพิ่มหัวข้อที่ไม่มีในรายการ:\n\n"
+            "เขียนเฉพาะหัวข้อย่อยต่อไปนี้ตามลำดับ ห้ามใส่เลขนำหน้าชื่อหัวข้อ "
+            "ห้ามเพิ่มหัวข้อที่ไม่มีในรายการ:\n"
+            "ห้ามเล่าความเป็นมา วัตถุประสงค์ งบ หรืองวดจ่าย — มีเฉพาะขอบเขต/สเปก/งาน:\n\n"
             f"{listed}\n\n"
             f"แนวทาง: {hint}\n\n"
             "=== ข้อกำหนดด้านรูปแบบ ===\n"
@@ -39,9 +39,10 @@ class ScopeDraftingAgent(BaseDraftingAgent):
             "- เขียนรายละเอียดทางเทคนิคให้ชัดเจน วัดผลได้\n"
             "- ใช้ตารางมาร์กดาวน์สำหรับรายการที่มีหลายแถว หัวคอลัมน์เป็นภาษาไทย\n"
             "- ระบุหน่วยนับ จำนวน และคุณลักษณะที่ชัดเจน\n"
-            "- ห้ามระบุยี่ห้อ/รุ่นเฉพาะ ยกเว้นจะมีคำว่า «หรือเทียบเท่า»\n"
+            "- ห้ามระบุยี่ห้อหรือรุ่นเฉพาะ ยกเว้นจะมีคำว่า «หรือเทียบเท่า»\n"
             "- ห้ามใช้คำกว้างที่ไม่สามารถตรวจสอบได้ เช่น «คุณภาพดี» «ทันสมัย»\n"
-            "- ห้ามใช้ป้าย As-Is หรือ To-Be\n"
+            "- ห้ามใช้ป้ายระบบงานปัจจุบันหรือระบบงานใหม่เป็นหัวข้อภาษาอังกฤษ\n"
+            "- ห้ามพิมพ์รหัสหัวข้อย่อยภาษาอังกฤษเป็นหัวข้อ\n"
             "- ต้องสอดคล้องกับวัตถุประสงค์ และงบประมาณ\n"
             "- เขียนเป็นภาษาไทยเท่านั้น\n"
         )

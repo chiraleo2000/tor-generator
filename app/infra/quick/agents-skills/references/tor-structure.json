@@ -126,8 +126,19 @@
     "consulting": "hire_consult",
     "general": "buy_goods"
   },
-  "fact_required_slots": ["s1", "s2", "s5", "s6", "s7", "first_required_scope"],
+  "fact_required_slots": ["s1", "s2", "s5", "s6", "first_required_scope"],
   "intake_slot_count_note": "จำนวนช่องแปรตาม Section_Profile ของหมวดใหญ่",
+  "wizard_field_keys_note_th": "รหัส history/problems/budgetAmount เป็นช่องในวิซาร์ดเท่านั้น ห้ามพิมพ์เป็นหัวข้อในเนื้อหา TOR ที่ร่างหรือส่งออก",
+  "official_export_style": {
+    "font": "TH Sarabun New",
+    "body_pt": 16,
+    "heading_pt": 18,
+    "line_spacing": 1.0,
+    "margin_top_bottom_cm": 2.54,
+    "margin_left_right_cm": 1.91,
+    "section_numerals": "none",
+    "language": "th-official"
+  },
   "app_phases": [
     {
       "phase": 0,

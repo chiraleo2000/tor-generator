@@ -10,8 +10,10 @@ from app.domain.section_profile import (
     category_for_project,
     is_scope_storage_key,
     profile_for_project,
+    scope_storage_key,
 )
 from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_LABELS, TOR_SECTION_ORDER
+from app.domain.tor_taxonomy import LEGACY_SCOPE_MAP
 
 _DEFAULT = profile_for_project("buy_goods")
 
@@ -38,6 +40,13 @@ FIRST_SCOPE_KEYS: frozenset[str] = frozenset(
     if profile_for_project(key).required_scope_keys()
 )
 
+# Legacy s4.x → profile storage keys (functional, deliverable_docs, …).
+_LEGACY_SCOPE_STORAGE: dict[str, str] = {
+    legacy: scope_storage_key(semantic)
+    for legacy, semantic in LEGACY_SCOPE_MAP.items()
+    if semantic
+}
+
 
 def slot_label(key: str, category: str | None = None) -> str:
     if category:
@@ -52,12 +61,19 @@ def is_scope_sub(key: str) -> bool:
 
 
 def slot_key_aliases(key: str) -> tuple[str, ...]:
-    """Legacy s4.1 maps onto the first required scope subsection of any profile."""
+    """Map legacy s4.x ↔ first-scope / semantic storage keys for fill checks."""
+    aliases: list[str] = [key]
     if key == "s4.1" or key in FIRST_SCOPE_KEYS:
-        return ("s4.1", *sorted(FIRST_SCOPE_KEYS))
+        aliases.extend(["s4.1", *sorted(FIRST_SCOPE_KEYS)])
     if key == "s4.2":
-        return ("s4.2", "s1")
-    return (key,)
+        aliases.extend(["s4.2", "s1"])
+    storage = _LEGACY_SCOPE_STORAGE.get(key)
+    if storage:
+        aliases.append(storage)
+    for legacy, mapped in _LEGACY_SCOPE_STORAGE.items():
+        if key == mapped:
+            aliases.append(legacy)
+    return tuple(dict.fromkeys(aliases))
 
 
 def fact_required_slots(category: str | None = None) -> frozenset[str]:
@@ -82,26 +98,83 @@ def empty_slot_keys(category: str | None = None) -> list[str]:
                 *intake_slot_order(category),
                 *TOR_SECTION_ORDER,
                 *SCOPE_SUBSECTIONS.keys(),
+                *_LEGACY_SCOPE_STORAGE.keys(),
             ]
         )
     )
 
 
+def extract_key_allowlist(category: str | None = None) -> frozenset[str]:
+    """Keys the heuristic may write — all profiles + legacy s4.x codes."""
+    keys: list[str] = list(empty_slot_keys(category))
+    for cat in (
+        "hire_develop",
+        "hire_maintain",
+        "lease_service",
+        "buy_goods",
+        "construction",
+        "hire_consult",
+        "hire_service",
+    ):
+        keys.extend(profile_for_project(cat).slot_order())
+    keys.extend(_LEGACY_SCOPE_STORAGE.keys())
+    keys.extend(_LEGACY_SCOPE_STORAGE.values())
+    return frozenset(keys)
+
+
+def _fill_if_blank(out: dict[str, str], key: str, body: str) -> bool:
+    text = (body or "").strip()
+    if not text or str(out.get(key) or "").strip():
+        return False
+    out[key] = text
+    return True
+
+
+def _apply_legacy_scope_remap(
+    found: dict[str, str], out: dict[str, str], allowed_scope: set[str]
+) -> None:
+    for legacy, storage in _LEGACY_SCOPE_STORAGE.items():
+        if storage not in allowed_scope:
+            continue
+        _fill_if_blank(out, storage, str(found.get(legacy) or ""))
+
+
+def _apply_mother_s4(
+    found: dict[str, str], out: dict[str, str], required: list[str], first_scope: str | None
+) -> None:
+    mother = str(found.get("s4") or "").strip()
+    if not mother:
+        return
+    if first_scope and _fill_if_blank(out, first_scope, mother):
+        return
+    for key in required:
+        if _fill_if_blank(out, key, mother):
+            return
+
+
+def _fold_as_is_into_background(
+    found: dict[str, str], out: dict[str, str], category: str | None
+) -> None:
+    as_is = str(found.get("s4.2") or "").strip()
+    if not as_is or category_for_project(category) not in CATEGORIES_WITHOUT_CURRENT_SYSTEM:
+        return
+    background = str(out.get("s1") or "").strip()
+    if as_is in background:
+        return
+    out["s1"] = f"{background}\n{as_is}".strip() if background else as_is
+
+
 def remap_extracted_slots(
     found: dict[str, str], category: str | None = None
 ) -> dict[str, str]:
-    """Copy legacy s4.1/s4.2 onto the profile's first scope / background as needed."""
+    """Map legacy s4.x / s4 blobs onto the profile's semantic scope storage keys."""
     profile = profile_for_project(category)
     out = dict(found)
     required = profile.required_scope_keys()
     first_scope = required[0] if required else None
-    summary = str(found.get("s4.1") or "").strip()
-    if first_scope and summary and not str(out.get(first_scope) or "").strip():
-        out[first_scope] = summary
-    as_is = str(found.get("s4.2") or "").strip()
-    cat = category_for_project(category)
-    if as_is and cat in CATEGORIES_WITHOUT_CURRENT_SYSTEM:
-        background = str(out.get("s1") or "").strip()
-        if as_is not in background:
-            out["s1"] = f"{background}\n{as_is}".strip() if background else as_is
+    _apply_legacy_scope_remap(found, out, set(profile.scope_storage_keys()))
+    if first_scope:
+        _fill_if_blank(out, first_scope, str(found.get("s4.1") or ""))
+    _apply_mother_s4(found, out, required, first_scope)
+    _fold_as_is_into_background(found, out, category)
     return out

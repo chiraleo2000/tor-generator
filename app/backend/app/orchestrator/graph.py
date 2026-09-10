@@ -382,7 +382,7 @@ async def _fallback_llm_draft(llm: Any, messages: list[dict], agent_timeout: flo
             ],
             temperature=0.3,
             max_tokens=max_out,
-            disable_thinking=True,
+            enable_thinking=True,
         )
         return response.content
 
@@ -751,6 +751,69 @@ async def llm_draft(state: TORDraftState) -> TORDraftState:
         }
 
 
+def _finding_applies_to_section(finding: Any, section: str) -> bool:
+    affected = getattr(finding, "affected_section", None)
+    if affected is None and isinstance(finding, dict):
+        affected = finding.get("affected_section")
+    affected = str(affected or "")
+    if not affected:
+        return True
+    if affected == "metadata":
+        return section in {"s3", "s6"}
+    return affected == section
+
+
+def _focus_validation_result(result: Any, section: str) -> Any:
+    """Score a per-section draft without treating other empty sections as a halt."""
+    if not section:
+        return result
+    if getattr(result, "halted", False) is True:
+        missing = dict(getattr(result, "missing_sections", None) or {})
+        if section not in missing:
+            from app.rule_engine.engine import ValidationResult
+
+            return ValidationResult(quality_score=100, is_valid=True, halted=False)
+        return result
+    categories = getattr(result, "categories", None)
+    if not isinstance(categories, list) or not categories:
+        return result
+    from app.rule_engine.engine import (
+        CategoryScore,
+        PASSING_THRESHOLD,
+        SEVERITY_DEDUCTIONS,
+        ValidationResult,
+    )
+
+    rebuilt: list = []
+    kept_all: list = []
+    for category in categories:
+        kept = [
+            finding
+            for finding in list(getattr(category, "findings", None) or [])
+            if _finding_applies_to_section(finding, section)
+        ]
+        score = 100.0
+        for finding in kept:
+            score -= SEVERITY_DEDUCTIONS.get(getattr(finding, "severity", None), 0.0)
+        rebuilt.append(
+            CategoryScore(
+                category=str(getattr(category, "category", "") or ""),
+                score=max(0.0, min(100.0, score)),
+                weight=float(getattr(category, "weight", 0) or 0),
+                findings=kept,
+            )
+        )
+        kept_all.extend(kept)
+    total = max(0, min(100, round(sum(item.score * item.weight for item in rebuilt))))
+    return ValidationResult(
+        quality_score=total,
+        categories=rebuilt,
+        findings=kept_all,
+        is_valid=total >= PASSING_THRESHOLD,
+        halted=False,
+    )
+
+
 async def rule_guardrail(state: TORDraftState) -> TORDraftState:
     """Run the Rule Engine on the generated draft to validate compliance.
 
@@ -784,8 +847,11 @@ async def rule_guardrail(state: TORDraftState) -> TORDraftState:
     )
 
     try:
-        # Construct tor_document from draft + existing sections and metadata
+        from app.rule_engine.rules.base import FOCUS_SECTION_KEY
+
         tor_document: dict = {}
+        if target_section:
+            tor_document[FOCUS_SECTION_KEY] = target_section
 
         # Include existing sections from user_input if available
         existing_sections = user_input.get("existing_sections", {})
@@ -808,6 +874,8 @@ async def rule_guardrail(state: TORDraftState) -> TORDraftState:
         # Create Rule Engine and validate
         engine = _create_rule_engine()
         result = engine.validate(tor_document)
+        if target_section:
+            result = _focus_validation_result(result, str(target_section))
 
         # Convert Finding objects to dicts for state
         from app.rule_engine.engine import finding_as_dict

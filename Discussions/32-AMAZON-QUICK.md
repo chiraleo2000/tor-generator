@@ -33,6 +33,8 @@ Local GPU testing stays on **LM Studio** (`LLM_PROVIDER=lm_studio`, `EMBEDDING_P
 
 Quick เรียก MCP `retrieve` เท่านั้น — ไม่แทนที่การอนุมัติโครงการหรือ export DOCX/PDF ของเว็บแอป
 
+สไตล์ร่าง (กันโครงร่างวิซาร์ดและคำอังกฤษ): อัปเดตใน `skill.json` / `SKILL.md` ของ `tor-draft-compose` และ `tor-review-compliance` เมื่อ 9 ก.ย. 2026 — เลขไทย, ห้าม `### history`, ห้าม Server/Cyber Attack/Digital Government, และระบุรูปแบบส่งออกของแอป (16pt / 1.0 / ขอบ 2.54/1.91 ซม.)
+
 ## Local vs Quick vs AWS cloud
 
 | Mode | Chat / draft LLM | Embeddings | Who calls retrieve |

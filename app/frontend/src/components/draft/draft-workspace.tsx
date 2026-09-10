@@ -160,6 +160,7 @@ export function DraftWorkspace() {
 
   async function requestStepperPhase(next: number) {
     if (!canSelectPhase(phase, unlocked, next)) {
+      setActionError(`ยังไป${phaseLabelTh(next)}ไม่ได้ — ทำขั้นก่อนหน้าให้ครบก่อน`);
       return;
     }
     if (next > phase && next !== 2) {
@@ -291,12 +292,17 @@ export function DraftWorkspace() {
     }
   }, [projectId]);
 
-  async function exportDocument(format: "docx" | "pdf") {
+  async function exportDocument(
+    format: "docx" | "pdf",
+    numberingScheme: "none" | "numbered_consecutive" = "none"
+  ) {
     setExporting(true);
     setActionError(null);
     setActionInfo("กำลังสร้างเอกสาร...");
     try {
-      await apiClient.post(`/projects/${projectId}/export`);
+      await apiClient.post(`/projects/${projectId}/export`, {
+        numbering_scheme: numberingScheme,
+      });
       const wait = await waitForExportReady(projectId);
       if (wait !== "completed") {
         setActionInfo(null);
@@ -374,6 +380,9 @@ export function DraftWorkspace() {
           phase={phase}
           onAnalyzed={() => persistPhase(1, Math.max(unlocked, 2))}
           onEnterQa={() => persistPhase(2, Math.max(unlocked, 2))}
+          onFactsReady={() => {
+            setUnlocked((prev) => Math.max(prev, 3));
+          }}
           onReady={() => {
             persistPhase(3, 3)
               .then(() => loadSections())
@@ -404,8 +413,25 @@ export function DraftWorkspace() {
           onDraftingChange={setChatDrafting}
           onBack={() => persistPhase(2, unlocked, { allowDowngrade: true })}
           onConfirm={async () => {
-            if (filledCount < sections.length) {
-              setActionError("ร่างให้ครบทุกหมวดตามประเภทงานก่อนเข้าทบทวน");
+            setActionError(null);
+            let latest = sections;
+            try {
+              const response = await apiClient.get(`/projects/${projectId}/sections`);
+              const payload = unwrapData<{ sections?: SectionPayload[] }>(response);
+              latest = payload.sections || [];
+              setSections(latest);
+            } catch {
+              // fall back to in-memory sections
+            }
+            const missing = latest
+              .filter((section) => !isSectionFilled(section))
+              .map((section) => section.key.replace(/^s/, ""));
+            if (missing.length > 0 || latest.length === 0) {
+              setActionError(
+                missing.length
+                  ? `ยังร่างไม่ครบ — ขาดหมวด ${missing.join(", ")} (บันทึกหมวดให้มีเนื้อหาก่อนเข้าทบทวน)`
+                  : "ยังโหลดหมวดเอกสารไม่สำเร็จ — ลองรีเฟรชแล้วกดอีกครั้ง"
+              );
               return;
             }
             const ok = await ask(PHASE_FORWARD_CONFIRM[4]);
@@ -413,11 +439,9 @@ export function DraftWorkspace() {
             setBusy(true);
             setActionError(null);
             try {
-              if (unlocked < 4) {
-                await apiClient.post(`/projects/${projectId}/intake/confirm-phase4`, {
-                  confirm: true,
-                });
-              }
+              await apiClient.post(`/projects/${projectId}/intake/confirm-phase4`, {
+                confirm: true,
+              });
               await persistPhase(4, 4);
             } catch (err: unknown) {
               setActionError(apiErrorMessage(err, "ไปทบทวนไม่สำเร็จ — ตรวจการยืนยันแล้วลองใหม่"));

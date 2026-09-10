@@ -22,12 +22,27 @@ from docx import Document
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from app.domain.section_profile import export_main_plan
-from app.export.docx_generator import (
-    TOR_SECTION_ORDER,
-    DOCXGenerator,
-    TORContent,
+# Storage keys used by the random generator (do not import tor_sections).
+_STORAGE_KEYS = (
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6",
+    "s7",
+    "s8",
+    "s9",
+    "s10",
+    "s11",
+    "s12",
+    "s13",
+    "s15",
+    "s16",
+    "s17",
 )
+from app.domain.section_profile import export_main_plan
+from app.export.docx_generator import DOCXGenerator, TORContent
 from app.export.pdf_generator import PDFGenerator
 
 
@@ -180,11 +195,11 @@ def _tor_content_strategy(draw):
     )
     use_thai_numerals = draw(st.booleans())
 
-    # Randomly fill some sections (at least 1, up to all 13)
-    num_sections_to_fill = draw(st.integers(min_value=1, max_value=13))
+    # Randomly fill some sections (at least 1, up to all storage keys)
+    num_sections_to_fill = draw(st.integers(min_value=1, max_value=len(_STORAGE_KEYS)))
     section_keys_to_fill = draw(
         st.lists(
-            st.sampled_from(TOR_SECTION_ORDER),
+            st.sampled_from(_STORAGE_KEYS),
             min_size=num_sections_to_fill,
             max_size=num_sections_to_fill,
             unique=True,
@@ -256,21 +271,21 @@ class TestExportFormatConsistency:
         html = pdf_gen._build_html(content)
         html_texts = _extract_text_from_html(html)
 
-        # Profile headings should be present in both outputs with consecutive numbers.
-        from app.export.thai_formatting import format_section_number
+        from app.export.export_plan import build_render_plan
 
-        for idx, (_section_key, label) in enumerate(
-            export_main_plan(content.project_type), start=1
-        ):
-            num_str = format_section_number(idx, content.use_thai_numerals)
-            heading_text = f"{num_str}. {label}"
-
+        plan = build_render_plan(content)
+        for section in plan.body:
+            heading_text = (
+                f"{section.number}. {section.label}" if section.number else section.label
+            )
             assert heading_text in docx_texts, (
                 f"Section heading '{heading_text}' missing from DOCX"
             )
             assert heading_text in html_texts, (
                 f"Section heading '{heading_text}' missing from PDF HTML"
             )
+        assert "ภาคผนวก" in docx_texts
+        assert "ภาคผนวก" in html_texts
 
     @given(content=_tor_content_strategy())
     @settings(max_examples=100, deadline=None)
@@ -416,53 +431,35 @@ class TestExportFormatConsistency:
 
         **Validates: Requirements 8.1, 8.2**
         """
-        from app.export.thai_formatting import format_section_number
+        from app.export.export_plan import build_render_plan
 
-        # PDF HTML preserves insertion order
+        plan = build_render_plan(content)
+        expected = [
+            f"{section.number}. {section.label}" if section.number else section.label
+            for section in plan.body
+        ]
+
         pdf_gen = PDFGenerator()
         html = pdf_gen._build_html(content)
-
-        # Extract section headings from HTML in order
-        heading_pattern = re.compile(
-            r'<div class="section-heading">(.+?)</div>'
-        )
+        heading_pattern = re.compile(r'<div class="section-heading">(.+?)</div>')
         html_headings = [
             m.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
             .replace("&quot;", '"').replace("&#x27;", "'")
             for m in heading_pattern.findall(html)
         ]
+        html_body = html_headings[: len(expected)]
 
-        # DOCX paragraphs in order - extract bold paragraphs that look like section headings
-        # Section headings match "N. <Thai label>" (not sub-section headings like "4.1")
         docx_gen = DOCXGenerator()
         docx_bytes = docx_gen.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
-
         docx_headings: list[str] = []
+        wanted = set(expected)
         for para in doc.paragraphs:
             text = para.text.strip()
-            if not text:
-                continue
-            # Section headings are bold and match pattern "N. <label>" where label
-            # contains Thai characters (distinguishes from sub-headings like "4.1")
-            runs = para.runs
-            if runs and runs[0].bold and re.match(
-                r"^[\d๐-๙]+\.\s+\S", text
-            ):
+            if text in wanted:
                 docx_headings.append(text)
-
-        expected = len(export_main_plan(content.project_type))
-        assert len(html_headings) == expected, (
-            f"Expected {expected} section headings in HTML, got {len(html_headings)}"
-        )
-        assert len(docx_headings) == expected, (
-            f"Expected {expected} section headings in DOCX, got {len(docx_headings)}"
-        )
-        assert html_headings == docx_headings, (
-            f"Section heading order differs:\n"
-            f"  HTML: {html_headings[:3]}...\n"
-            f"  DOCX: {docx_headings[:3]}..."
-        )
+        assert html_body == expected
+        assert docx_headings == expected
 
     @given(content=_tor_content_strategy())
     @settings(max_examples=100, deadline=None)

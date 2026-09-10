@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE, BaseDraftingAgent
+from app.orchestrator.agents.base import formal_register, BaseDraftingAgent
 
 
 class BudgetDraftingAgent(BaseDraftingAgent):
@@ -23,11 +23,11 @@ class BudgetDraftingAgent(BaseDraftingAgent):
     section_name_th = "วงเงินงบประมาณ"
     section_name_en = "Budget"
 
-    def get_system_prompt(self) -> str:
+    def get_system_prompt(self, category: str | None = None) -> str:
         """Return the system prompt for Budget section drafting."""
         return (
-            THAI_FORMAL_REGISTER_PREAMBLE
-            + "คุณกำลังร่างส่วน «วงเงินงบประมาณ» (§6) ของเอกสาร TOR\n\n"
+            formal_register(category, self.section_key)
+            + "คุณกำลังร่างส่วน «วงเงินงบประมาณ» ของเอกสารกำหนดขอบเขตงาน\n\n"
             "⚠️ ส่วนนี้มีตัวเลขงบประมาณ — ต้องถูกต้องแม่นยำ\n\n"
             "=== แนวทางการเขียนส่วนงบประมาณ ===\n"
             "ส่วนนี้ต้องประกอบด้วย:\n"
@@ -47,14 +47,15 @@ class BudgetDraftingAgent(BaseDraftingAgent):
             "- ใช้ตารางสำหรับรายละเอียดค่าใช้จ่าย\n"
             "- ระบุว่ารวม VAT หรือไม่\n"
             "- หากมีหลายหมวด ให้แสดงยอดรวมแต่ละหมวดและยอดรวมทั้งหมด\n"
-            "- ตัวเลขต้องสอดคล้องกัน (ผลรวมถูกต้อง)\n\n"
+            "- ตัวเลขต้องสอดคล้องกัน (ผลรวมถูกต้อง)\n"
+            "- ห้ามเล่าขอบเขตงานหรือความเป็นมา — มีเฉพาะวงเงินและราคากลาง\n\n"
             "=== ตัวอย่างโครงสร้าง ===\n"
             "วงเงินงบประมาณในการจัดซื้อ/จัดจ้างครั้งนี้ เป็นเงินทั้งสิ้น "
             "[X] บาท ([จำนวนเงินเป็นตัวอักษร]) รวมภาษีมูลค่าเพิ่มแล้ว\n"
             "โดยใช้จ่ายจากงบประมาณ [แหล่งเงิน] ประจำปีงบประมาณ พ.ศ. [ปี]\n\n"
             "รายละเอียดค่าใช้จ่ายโดยประมาณ:\n"
             "| ลำดับ | รายการ | จำนวน | หน่วยละ (บาท) | รวม (บาท) |\n"
-            "| 1 | ... | ... | ... | ... |\n"
+            "| ๑ | ... | ... | ... | ... |\n"
             "| รวมทั้งสิ้น | | | | [X] |\n"
         )
 

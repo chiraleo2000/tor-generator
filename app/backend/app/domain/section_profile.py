@@ -13,6 +13,8 @@ from typing import Any
 from app.domain import tor_taxonomy as tax
 
 SCHEMA_VERSION = 2
+SCOPE_SEMANTIC_PREFIX = "scope."
+S4_DOT_PREFIX = "s4."
 
 PROCUREMENT_CATEGORY_ORDER: list[str] = [
     "hire_develop",
@@ -27,10 +29,10 @@ PROCUREMENT_CATEGORY_ORDER: list[str] = [
 PROCUREMENT_CATEGORY_LABELS: dict[str, str] = {
     "hire_develop": "จ้างพัฒนาระบบ",
     "hire_maintain": "จ้างบำรุงรักษา (MA)",
-    "lease_service": "เช่าบริการ/สื่อสาร",
+    "lease_service": "เช่าบริการ/สื่อสาร/ยานพาหนะ",
     "buy_goods": "จัดซื้อครุภัณฑ์/ฮาร์ดแวร์",
     "construction": "งานปรับปรุง/ก่อสร้าง",
-    "hire_consult": "จ้างที่ปรึกษา/สำรวจ/วิเคราะห์",
+    "hire_consult": "จ้างที่ปรึกษา/สำรวจ/วิเคราะห์/เฝ้าระวังไซเบอร์",
     "hire_service": "จ้างเหมาบริการงานเอกสาร",
 }
 
@@ -79,10 +81,8 @@ LEGAL_REQUIRED_SEMANTIC: frozenset[str] = frozenset(
         "scope",
         "schedule",
         "budget",
-        "location",
         "payment",
         "evaluation",
-        "other_conditions",
     }
 )
 
@@ -157,7 +157,7 @@ class SectionProfile:
         return [item.storage_key for item in self.scope_subsections if item.required]
 
     def fact_required_keys(self) -> list[str]:
-        keys = ["s1", "s2", "s5", "s6", "s7"]
+        keys = ["s1", "s2", "s5", "s6"]
         required_scope = self.required_scope_keys()
         if required_scope:
             keys.append(required_scope[0])
@@ -233,18 +233,16 @@ def category_is_locked(*, current_step: int, current_phase: int) -> bool:
 
 
 def scope_storage_key(semantic: str) -> str:
-    short = semantic.removeprefix("scope.")
+    short = semantic.removeprefix(SCOPE_SEMANTIC_PREFIX)
     if len(short) > 20:
         return short[:20]
     return short
 
 
 def storage_to_semantic_scope(storage_key: str) -> str:
-    if storage_key.startswith("scope."):
+    if storage_key.startswith((SCOPE_SEMANTIC_PREFIX, S4_DOT_PREFIX)):
         return storage_key
-    if storage_key.startswith("s4."):
-        return storage_key
-    return f"scope.{storage_key}"
+    return f"{SCOPE_SEMANTIC_PREFIX}{storage_key}"
 
 
 def semantic_section_order(category: str) -> list[str]:
@@ -252,14 +250,8 @@ def semantic_section_order(category: str) -> list[str]:
     order: list[str] = []
     for item in tax.section_order(key):
         order.append(item)
-        if item == "schedule":
+        if item == "schedule" and "location" not in order:
             order.append("location")
-    if "other_conditions" not in order:
-        closing = tax.CLOSING_SECTION
-        if closing in order:
-            order.insert(order.index(closing), "other_conditions")
-        else:
-            order.append("other_conditions")
     return order
 
 
@@ -374,7 +366,7 @@ def subsection_title(storage_key: str, category: str | None = None, fallback: st
 def is_scope_storage_key(key: str) -> bool:
     if key in LEGACY_SCOPE_TITLES:
         return True
-    if key.startswith("s4.") or key.startswith("scope."):
+    if key.startswith((S4_DOT_PREFIX, SCOPE_SEMANTIC_PREFIX)):
         return True
     semantic = storage_to_semantic_scope(key)
     return semantic in tax.SCOPE_SUBSECTIONS
@@ -475,6 +467,20 @@ def ordered_scope_export(
     return ordered
 
 
+def subsection_export_plan(
+    section_key: str,
+    project_type: str | None,
+    sub_sections: dict[str, str],
+) -> list[tuple[str, str, str]]:
+    """Numbered subsection rows for DOCX/PDF export."""
+    if section_key == "s4":
+        return ordered_scope_export(project_type, sub_sections)
+    return [
+        (key, subsection_title(key, project_type, key), text)
+        for key, text in sub_sections.items()
+    ]
+
+
 def parse_section_ref(key: str, category: str | None = None) -> tuple[str, str | None] | None:
     """Map a client section id to (mother_storage_key, sub_key or None)."""
     text = str(key or "").strip()
@@ -483,11 +489,11 @@ def parse_section_ref(key: str, category: str | None = None) -> tuple[str, str |
     labels = all_main_storage_labels()
     if text in labels:
         return text, None
-    if text.startswith(("s4.", "4.")):
-        sub = text if text.startswith("s4.") else f"s4.{text[2:]}"
+    if text.startswith((S4_DOT_PREFIX, "4.")):
+        sub = text if text.startswith(S4_DOT_PREFIX) else f"{S4_DOT_PREFIX}{text[2:]}"
         return "s4", sub
     if is_scope_storage_key(text):
-        return "s4", scope_storage_key(text) if text.startswith("scope.") else text
+        return "s4", scope_storage_key(text) if text.startswith(SCOPE_SEMANTIC_PREFIX) else text
     if category:
         allowed_subs = set(profile_for_project(category).scope_storage_keys())
         if text in allowed_subs:

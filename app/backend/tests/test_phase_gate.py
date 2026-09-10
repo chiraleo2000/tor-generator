@@ -48,6 +48,20 @@ def test_analyzed_unlocks_qa_not_compose():
     assert can_set_phase(project, 3) is False
 
 
+def test_complete_facts_unlock_compose_without_confirm_flag():
+    slots = {
+        key: {"content": "ข้อมูลข้อเท็จจริง", "status": "filled"}
+        for key in ("s1", "s2", "s5", "s6", "s7", "items")
+    }
+    project = _project(
+        phase=2,
+        analysis={"analyzed": True, "slot_map": slots, "ready_to_compose": False},
+    )
+    project.project_type = "buy_goods"
+    assert intake_unlocked_phase(project) == 3
+    assert can_set_phase(project, 3) is True
+
+
 def test_ready_to_compose_unlocks_draft_phase_three():
     slots = {
         key: {"content": "ข้อมูลข้อเท็จจริง", "status": "filled"}

@@ -8,7 +8,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { streamSsePost } from "@/lib/chat-sse";
 import { useAuthStore } from "@/stores/auth-store";
-import { TOR_SECTION_LABELS } from "@/lib/tor-sections";
+import { TOR_SECTION_LABELS, formatScopeSubHeading, formatTorSectionHeading, sectionIndexPad } from "@/lib/tor-sections";
 import { cn } from "@/lib/utils";
 
 interface SectionStatus {
@@ -59,7 +59,7 @@ function phaseStatusCopy(
   if (phase === "drafting") {
     return {
       text: draftingLabel
-        ? `กำลังร่าง${draftingLabel}...`
+        ? `กำลังร่าง ${draftingLabel}...`
         : "กำลังร่าง... กรุณารอ",
       className: "mt-1.5 text-xs text-amber-700",
     };
@@ -81,15 +81,15 @@ function phaseStatusCopy(
 
 function sectionBadgeClass(status?: DraftMessage["status"]): string {
   if (status === "done") {
-    return "bg-green-100 text-green-800";
+    return "text-green-800";
   }
   if (status === "error") {
-    return "bg-red-100 text-red-800";
+    return "text-red-800";
   }
   if (status === "accepted") {
-    return "bg-brand-green text-white";
+    return "text-brand-green";
   }
-  return "bg-amber-100 text-amber-800";
+  return "text-amber-800";
 }
 
 function DraftChatMessage({
@@ -128,11 +128,11 @@ function DraftChatMessage({
           <div className="mb-2 flex items-center gap-2">
             <span
               className={cn(
-                "rounded-full px-2.5 py-0.5 text-[11px] font-bold",
+                "font-mono text-[11px] font-semibold tabular-nums tracking-wide",
                 sectionBadgeClass(msg.status)
               )}
             >
-              {msg.sectionKey}
+              {sectionIndexPad(msg.sectionKey)}
             </span>
             <span className="text-xs font-medium text-navy">{msg.sectionTitle}</span>
             {msg.status === "drafting" ? (
@@ -299,7 +299,7 @@ export function DraftChat({
       await streamSsePost(
         `${API_BASE}/projects/${projectId}/draft-chat/message`,
         {
-          content: `ร่างใหม่ หมวด ${sectionKey.replace("s", "")}`,
+          content: `ร่างใหม่ ${formatTorSectionHeading(sectionKey)}`,
           section_key: sectionKey,
         },
         token,
@@ -361,7 +361,7 @@ export function DraftChat({
           const messageId = `draft-${key}-${Date.now()}`;
           ids[key] = messageId;
           const title = typeof data.title === "string" ? data.title : sectionTitle(key);
-          setDraftingLabel(`หมวด ${key.replace("s", "")}: ${title}`);
+          setDraftingLabel(formatTorSectionHeading(key, title));
           setMessages((prev) => {
             const existing = prev.find(
               (row) => row.sectionKey === key && row.status === "drafting"
@@ -393,7 +393,7 @@ export function DraftChat({
             messageId = `draft-${key}-${Date.now()}`;
             ids[key] = messageId;
             const title = sectionTitle(key);
-            setDraftingLabel(`หมวด ${key.replace("s", "")}: ${title}`);
+            setDraftingLabel(formatTorSectionHeading(key, title));
             setMessages((prev) => [
               ...prev,
               {
@@ -453,7 +453,7 @@ export function DraftChat({
           const subKey = typeof data.sub_key === "string" ? data.sub_key : "";
           const title = typeof data.title === "string" ? data.title : subKey;
           if (subKey) {
-            setDraftingLabel(`หมวด 4 (${subKey} ${title})`);
+            setDraftingLabel(formatScopeSubHeading(subKey, title));
           }
           return;
         }
@@ -641,7 +641,7 @@ export function DraftChat({
 
   function handleEdit(sectionKey: string) {
     setCurrentEditSection(sectionKey);
-    setDraft(`แก้ไข หมวด ${sectionKey.replace("s", "")}: `);
+    setDraft(`แก้ไข ${formatTorSectionHeading(sectionKey)}: `);
   }
 
   const hint = phaseStatusCopy(phase, draftingLabel);
@@ -698,7 +698,7 @@ export function DraftChat({
             placeholder={
               phase === "drafting"
                 ? "กำลังร่าง... รอสักครู่"
-                : "พิมพ์ข้อเสนอแนะ เช่น 'แก้ไข หมวด 1: เพิ่มรายละเอียด...'"
+                : "พิมพ์ข้อเสนอแนะ เช่น 'แก้ไข 1. ความเป็นมา: เพิ่มรายละเอียด...'"
             }
             value={draft}
             disabled={busy || phase === "drafting"}
@@ -721,29 +721,29 @@ export function DraftChat({
           </Button>
         </div>
         {currentEditSection ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            กำลังแก้ไข: หมวด {currentEditSection}
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            กำลังแก้ไข · {formatTorSectionHeading(currentEditSection)}
           </p>
         ) : null}
       </div>
 
-      {/* Section sidebar (mini) */}
+      {/* Section index strip */}
       {sections.length > 0 ? (
         <div className="border-t px-4 py-2">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {sections.map((s) => (
               <span
                 key={s.section_key}
                 className={cn(
-                  "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                  "border px-1.5 py-0.5 font-mono text-[10px] tabular-nums tracking-wide",
                   s.has_content
-                    ? "bg-green-100 text-green-800"
-                    : "bg-gray-100 text-gray-500"
+                    ? "border-brand-green/30 bg-green-50 text-green-900"
+                    : "border-gray-200 text-muted-foreground"
                 )}
                 data-testid={`draft-section-badge-${s.section_key}`}
                 title={s.title}
               >
-                {s.has_content ? "✓" : "○"} {s.section_key.replace("s", "")}
+                {sectionIndexPad(s.section_key)}
               </span>
             ))}
           </div>

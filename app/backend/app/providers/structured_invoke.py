@@ -55,12 +55,17 @@ async def invoke_with_schema(
                     "content": "ตอบเป็น JSON object ตาม schema เท่านั้น ห้ามข้อความนำหรือท้าย",
                 }
             )
+        invoke_kwargs = {
+            key: value
+            for key, value in kwargs.items()
+            if key not in {"disable_thinking", "enable_thinking"}
+        }
         response = await llm.invoke(
             call_messages,
             json_schema=schema,
             json_schema_name=schema_name,
-            disable_thinking=True,
-            **kwargs,
+            enable_thinking=True,
+            **invoke_kwargs,
         )
         try:
             parsed = _parse_structured_payload(response.content or "")

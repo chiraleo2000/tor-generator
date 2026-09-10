@@ -18,6 +18,7 @@ import pytest
 
 from app.orchestrator.agents.registry import get_agent_for_section
 from app.orchestrator.graph import (
+    GUARDRAIL_THRESHOLD,
     MANDATORY_HUMAN_REVIEW_SECTIONS,
     _build_llm_messages,
     _build_rag_query,
@@ -373,7 +374,7 @@ class TestLlmDraft:
     async def test_uses_registered_section_agent(self):
         """llm_draft looks up get_agent_for_section('s1') and drafts through it."""
         mock_response = MagicMock(
-            content="ร่างจาก agent",
+            content="ร่างจากตัวแทนหมวด",
             usage={"total_tokens": 120},
         )
 
@@ -399,7 +400,7 @@ class TestLlmDraft:
                 result = await llm_draft(state)
 
         spy.assert_called_with("s1")
-        assert result["draft_content"] == "ร่างจาก agent"
+        assert result["draft_content"] == "ร่างจากตัวแทนหมวด"
         assert mock_llm.invoke.await_count == 2
 
     @pytest.mark.asyncio
@@ -567,6 +568,42 @@ class TestRuleGuardrail:
             assert call_args["project_type"] == "it"
             assert call_args["timeline_days"] == 180
             assert call_args["s6"] == "Budget content"
+            assert call_args["_focus_section"] == "s6"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("section_key", ["s1", "s5", "s8", "s11"])
+    async def test_real_engine_scores_long_single_section_above_threshold(
+        self, section_key: str
+    ):
+        body = (
+            "ความเป็นมาของโครงการตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ "
+            "พ.ศ. 2560 สำนักงานเศรษฐกิจการเกษตรมีภารกิจจัดทำข้อมูลภาวะเศรษฐกิจสังคม"
+            "ครัวเรือนและแรงงานเกษตรเพื่อประกอบการกำหนดนโยบาย "
+            "ระยะเวลาดำเนินการ 180 วัน นับถัดจากวันลงนามในสัญญา "
+            "งวดที่ 1 ชำระเงินในอัตราร้อยละ 40 ของจำนวนเงินในสัญญา "
+            "เมื่อส่งมอบงานและคณะกรรมการตรวจรับพัสดุได้ตรวจรับเรียบร้อยแล้ว "
+            "ใช้เกณฑ์ราคาประกอบเกณฑ์อื่น น้ำหนักรวม 100 คะแนน "
+        ) * 6
+        state: TORDraftState = {
+            "target_section": section_key,
+            "draft_content": body,
+            "user_input": {
+                "budget": 5_730_000,
+                "project_type": "hire_develop",
+            },
+            "draft_version": 1,
+            "retry_count": 0,
+            "max_retries": 3,
+        }
+        result = await rule_guardrail(state)
+        assert result["quality_score"] >= GUARDRAIL_THRESHOLD
+        assert result["guardrail_passed"] is True
+        assert result["retry_count"] == 0
+        assert result["quality_score"] > 0
+        assert not any(
+            item.get("rule_violated") == "COMPLETENESS_SECTION_MISSING"
+            for item in result["validation_findings"]
+        )
 
 
 # =============================================================================

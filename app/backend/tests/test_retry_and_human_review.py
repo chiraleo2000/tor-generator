@@ -326,7 +326,7 @@ class TestTimeoutConfiguration:
 
         async def slow_llm(*args, **kwargs):
             await asyncio.sleep(0.2)
-            return MagicMock(content="completed", usage={"total_tokens": 100})
+            return MagicMock(content="ร่างเสร็จแล้ว", usage={"total_tokens": 100})
 
         with patch("app.providers.factory.ProviderFactory") as mock_factory_cls:
             mock_factory = MagicMock()
@@ -348,7 +348,7 @@ class TestTimeoutConfiguration:
             result = await llm_draft(state)
 
         # Should succeed since the LLM finishes in 0.2s (well under 60s default)
-        assert result["draft_content"] == "completed"
+        assert result["draft_content"] == "ร่างเสร็จแล้ว"
         assert result.get("error") is None
 
 

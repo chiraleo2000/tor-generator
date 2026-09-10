@@ -13,7 +13,7 @@ Validates: Requirements 6.4
 from __future__ import annotations
 
 from app.rule_engine.engine import Finding, Severity
-from app.rule_engine.rules.base import BaseRule
+from app.rule_engine.rules.base import BaseRule, applies_to_section
 
 # Budget thresholds (in baht)
 HIGH_BUDGET_THRESHOLD: int = 100_000_000  # 100 million baht
@@ -48,6 +48,8 @@ class TimelineFeasibilityRule(BaseRule):
             List of findings. Empty if timeline is feasible.
         """
         findings: list[Finding] = []
+        if not applies_to_section(tor_document, "s5"):
+            return findings
 
         budget = tor_document.get("budget")
         timeline_days = tor_document.get("timeline_days")

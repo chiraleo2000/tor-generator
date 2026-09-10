@@ -221,6 +221,28 @@ def test_confirm_phase4_sets_phase_four(client, mock_officer_user):
     mock_db.commit.assert_awaited()
 
 
+def test_confirm_phase4_allows_flag_when_facts_drift(client, mock_officer_user):
+    """Phase 4 must not re-block on fact slots after confirm-ready already passed."""
+    project = _make_project(
+        analysis={"slot_map": empty_slot_map(), "ready_to_compose": True},
+        phase=3,
+    )
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = project
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    _override_db(mock_db)
+
+    response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/intake/confirm-phase4",
+        json={"confirm": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["phase4_confirmed"] is True
+    assert project.current_phase >= 4
+
+
 def test_confirm_phase4_requires_ready(client, mock_officer_user):
     project = _make_project(phase=3)
     mock_db = AsyncMock()
@@ -348,6 +370,8 @@ def test_analyze_with_pack_advances_phase(analyze_mock, client, mock_officer_use
     body = response.json()["data"]
     assert body["analyzed"] is True
     assert project.current_phase >= 1
+    assert (project.analysis_json or {}).get("analyzed") is True
+    assert mock_db.commit.await_count >= 2
     analyze_mock.assert_awaited()
 
 

@@ -5,6 +5,7 @@ from app.domain.section_profile import (
     PROCUREMENT_CATEGORY_ORDER,
     ProfileStatus,
     classify_category,
+    display_number,
     extra_legacy_scope_items,
     map_legacy_type,
     profile_export,
@@ -51,21 +52,23 @@ def test_goods_construction_service_omit_current_system():
 
 
 def test_legal_required_present_in_every_profile():
-    needed = {
-        "s1",
-        "s2",
-        "s3",
-        "s4",
-        "s5",
-        "s6",
-        "s7",
-        "s8",
-        "s11",
-        "s13",
-    }
+    needed = {"s1", "s2", "s3", "s4", "s5", "s6", "s8", "s11"}
+    from app.domain.tor_taxonomy import EXTRA_SECTIONS_BY_TYPE
+
     for category in PROCUREMENT_CATEGORY_ORDER:
-        keys = {item.storage_key for item in profile_for_project(category).main_sections if item.required}
-        assert needed <= keys, category
+        required = {
+            item.storage_key
+            for item in profile_for_project(category).main_sections
+            if item.required
+        }
+        keys = {item.storage_key for item in profile_for_project(category).main_sections}
+        assert needed <= required, category
+        assert "s7" in keys
+        assert "s7" not in required
+        if "other_conditions" in EXTRA_SECTIONS_BY_TYPE.get(category, []):
+            assert "s13" in keys
+        else:
+            assert "s13" not in required
 
 
 def test_scope_storage_keys_fit_db():
@@ -77,9 +80,8 @@ def test_scope_storage_keys_fit_db():
 
 def test_display_numbers_are_contiguous():
     profile = profile_for_project("hire_develop")
-    for index, _item in enumerate(profile.scope_subsections, start=1):
-        assert index == index
-
+    numbers = [display_number(index) for index in range(len(profile.scope_subsections))]
+    assert numbers == list(range(1, len(numbers) + 1))
 
 def test_legacy_extras_kept():
     extras = extra_legacy_scope_items(

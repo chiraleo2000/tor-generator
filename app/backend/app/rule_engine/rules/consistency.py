@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from app.rule_engine.engine import Finding, Severity
-from app.rule_engine.rules.base import BaseRule
+from app.rule_engine.rules.base import BaseRule, focus_section
 
 
 # Keywords indicating high-complexity scope that requires stronger qualifications
@@ -91,6 +91,8 @@ class BudgetScopeConsistencyRule(BaseRule):
             List of findings for budget-scope inconsistencies.
         """
         findings: list[Finding] = []
+        if focus_section(tor_document) not in {None, "s4", "s6"}:
+            return findings
         sections = tor_document.get("sections", tor_document)
         metadata = tor_document.get("metadata", {})
 
@@ -231,6 +233,8 @@ class TimelineDeliverablesConsistencyRule(BaseRule):
             List of findings for timeline-deliverables inconsistencies.
         """
         findings: list[Finding] = []
+        if focus_section(tor_document) not in {None, "s4", "s5", "s8"}:
+            return findings
         sections = tor_document.get("sections", tor_document)
         metadata = tor_document.get("metadata", {})
 
@@ -380,6 +384,8 @@ class QualificationsComplexityConsistencyRule(BaseRule):
             List of findings for qualifications-complexity inconsistencies.
         """
         findings: list[Finding] = []
+        if focus_section(tor_document) not in {None, "s3", "s4"}:
+            return findings
         sections = tor_document.get("sections", tor_document)
         metadata = tor_document.get("metadata", {})
 

@@ -9,10 +9,11 @@ import { MappingBox } from "@/components/brand/mapping-box";
 import { scopeSubsectionsFor } from "@/lib/tor-profiles";
 import {
   SECTION_FIELDS,
+  formatScopeSubHeading,
   isSectionFilled,
   parseSectionDraft,
   previewSectionDraft,
-  scopeSubsectionTitle,
+  sectionIndexPad,
   serializeSectionDraft,
   type SectionField,
 } from "@/lib/tor-sections";
@@ -32,10 +33,10 @@ function displayExtracted(value: unknown): string {
   return "";
 }
 
-function sectionCircleClass(filled: boolean, expanded: boolean): string {
-  if (filled) return "border-[#0f5c22] bg-brand-green text-white";
-  if (expanded) return "border-crimson bg-brand-orange text-navy";
-  return "border-gray-300 bg-gray-200 text-gray-700";
+function sectionIndexClass(filled: boolean, expanded: boolean): string {
+  if (filled) return "text-brand-green";
+  if (expanded) return "text-navy";
+  return "text-muted-foreground";
 }
 
 function previewText(sectionKey: string, content: string): string {
@@ -79,7 +80,9 @@ export function Phase3Draft({
 }>) {
   const [allDrafted, setAllDrafted] = useState(false);
   const filledCount = sections.filter((section) => isSectionFilled(section)).length;
-  const draftedEnough = allDrafted || (sections.length > 0 && filledCount >= sections.length);
+  // Require persisted section content — chat "all drafted" alone used to enable
+  // the button while confirm still blocked on empty filled flags.
+  const draftedEnough = sections.length > 0 && filledCount >= sections.length;
   const canReview = !projectId || draftedEnough;
 
   return (
@@ -105,9 +108,14 @@ export function Phase3Draft({
           </p>
         ) : null}
         {actionInfo ? <p className="mb-3 text-sm text-brand-green">{actionInfo}</p> : null}
-        {allDrafted ? (
+        {allDrafted && draftedEnough ? (
           <p className="mb-3 text-sm font-bold text-green-800" data-testid="phase3-all-drafted">
             ร่างครบทุกหมวดตามประเภทงานแล้ว — กดไปทบทวน (ขั้นที่ ๔) เพื่อตรวจกฎและส่งออก
+          </p>
+        ) : null}
+        {allDrafted && !draftedEnough ? (
+          <p className="mb-3 text-sm text-amber-800" data-testid="phase3-draft-pending-save">
+            ระบบร่างครบแล้ว แต่บางหมวดยังไม่มีเนื้อหาที่บันทึก — กดบันทึกหมวดหรือรอรีเฟรชรายการหมวดก่อนเข้าทบทวน
           </p>
         ) : null}
       </div>
@@ -128,7 +136,6 @@ export function Phase3Draft({
           <SectionCard
             key={section.key}
             section={section}
-            index={index}
             last={index === sections.length - 1}
             expanded={expanded === section.key}
             openSub={openSub}
@@ -162,7 +169,6 @@ export function Phase3Draft({
 
 function SectionCard({
   section,
-  index,
   last,
   expanded,
   openSub,
@@ -174,7 +180,6 @@ function SectionCard({
   onDraft,
 }: Readonly<{
   section: SectionPayload;
-  index: number;
   last: boolean;
   expanded: boolean;
   openSub: string;
@@ -191,58 +196,84 @@ function SectionCard({
   const values = parseFields(section.key, section.content);
   const [draft, setDraft] = useState(values);
   useEffect(() => {
-    setDraft(parseFields(section.key, section.content));
-  }, [section.content, section.key]);
+    const parsed = parseFields(section.key, section.content);
+    const fieldList = SECTION_FIELDS[section.key] || [];
+    const next = { ...parsed };
+    for (const field of fieldList) {
+      if (next[field.key]?.trim()) continue;
+      if (!field.mapField) continue;
+      const hint = displayExtracted(extracted[field.mapField]);
+      if (hint) next[field.key] = hint;
+    }
+    setDraft(next);
+  }, [section.content, section.key, extracted]);
 
   function suggested(mapField?: string) {
     if (!mapField) return "";
     return displayExtracted(extracted[mapField]);
   }
 
+  const filled = isSectionFilled(section);
+  const indexPad = sectionIndexPad(section.key);
+
   return (
-    <div className="flex gap-3.5">
-      <div className="flex w-9 shrink-0 flex-col items-center">
-        <div
+    <div className="flex gap-3">
+      <div className="flex w-10 shrink-0 flex-col items-center pt-3.5">
+        <span
           className={cn(
-            "z-[1] flex h-[34px] w-[34px] items-center justify-center rounded-full border-2 text-[13px] font-extrabold",
-            sectionCircleClass(section.filled, expanded)
+            "font-mono text-[11px] font-semibold tabular-nums tracking-wide",
+            sectionIndexClass(filled, expanded)
           )}
+          aria-hidden
         >
-          {section.filled ? "✓" : index + 1}
-        </div>
+          {indexPad}
+        </span>
         {!last ? (
-          <div className={cn("w-0.5 flex-1", section.filled ? "bg-brand-green" : "bg-gray-300")} />
+          <div
+            className={cn(
+              "mt-2 w-px flex-1",
+              filled ? "bg-brand-green/40" : "bg-gray-200"
+            )}
+          />
         ) : null}
       </div>
       <div
         className={cn(
-          "mb-3.5 flex-1 overflow-hidden rounded-[10px] border",
-          expanded ? "border-crimson shadow-[0_4px_14px_rgba(196,30,58,0.12)]" : "border-gray-200"
+          "mb-2 flex-1 overflow-hidden border-b",
+          expanded ? "border-navy/25 bg-slate-50/80" : "border-gray-100"
         )}
       >
         <button
           type="button"
-          className="flex w-full items-center justify-between bg-gray-50 px-4 py-3 text-left"
+          className="flex w-full items-start justify-between gap-3 px-1 py-3 text-left"
           onClick={onToggle}
+          aria-expanded={expanded}
         >
-          <div>
-            <h3 className="text-[14.5px] text-navy">
-              หมวด {section.key.replace("s", "")}: {section.title}
-            </h3>
-            <p className="text-[11.5px] text-muted-foreground">
-              {section.filled ? "ร่างแล้ว" : "รอร่าง"}
-            </p>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <h3 className="text-sm font-semibold text-navy">{section.title}</h3>
+              <span
+                className={cn(
+                  "text-[10px] tracking-wide text-muted-foreground",
+                  filled ? "text-brand-green" : ""
+                )}
+              >
+                {filled ? "ร่างแล้ว" : "รอร่าง"}
+              </span>
+            </div>
             <p
               data-testid={`section-preview-${section.key}`}
-              className="mt-1 line-clamp-2 text-[12px] text-navy"
+              className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground"
             >
               {previewText(section.key, section.content) || "รอระบบร่างจากข้อมูลที่คุยมา..."}
             </p>
           </div>
-          <span className="text-xs text-muted-foreground">{expanded ? "▴ ย่อ" : "▾ ขยาย"}</span>
+          <span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground">
+            {expanded ? "−" : "+"}
+          </span>
         </button>
         {expanded ? (
-          <div className="space-y-3 border-t p-4">
+          <div className="space-y-3 border-t border-gray-100 px-1 pb-4 pt-3">
             {section.big ? (
               <ScopeSubsectionEditor
                 subs={section.subs}
@@ -271,14 +302,14 @@ function SectionCard({
               >
                 ร่างด้วยระบบอัจฉริยะ
               </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-testid={`save-section-${section.key}`}
-                  onClick={() => onSave(section.key, serializeSectionDraft(draft), false)}
-                >
-                  บันทึกหมวดนี้
-                </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid={`save-section-${section.key}`}
+                onClick={() => onSave(section.key, serializeSectionDraft(draft), false)}
+              >
+                บันทึกหมวดนี้
+              </Button>
             </div>
           </div>
         ) : null}
@@ -318,24 +349,23 @@ function ScopeSubsectionEditor({
   return (
     <div className="space-y-3" data-testid="scope-subsection-editor">
       <p className="text-xs text-muted-foreground">
-        หมวด ๔ เติมลงหัวข้อย่อยโดยตรง ({filledN}/{chips.length} หัวข้อมีเนื้อหา) —
-        แก้ไขในช่องด้านล่างได้เลย ขั้นที่ ๔ จะรวมเป็นเอกสารเดียวตอนส่งออก
+        ขอบเขตงาน — หัวข้อย่อย ({filledN}/{chips.length} มีเนื้อหา) · รวมเป็นเอกสารเดียวตอนส่งออก
       </p>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1">
         {chips.map((sub) => (
           <button
             key={sub.key}
             type="button"
             className={cn(
-              "rounded-md border px-2.5 py-1 text-[11.5px] font-semibold",
+              "border px-2 py-0.5 font-mono text-[11px] tabular-nums",
               sub.filled
-                ? "border-green-300 bg-green-50 text-green-800"
-                : "border-gray-200 bg-gray-100",
-              openSub === sub.key ? "ring-2 ring-navy" : ""
+                ? "border-brand-green/30 bg-green-50 text-green-900"
+                : "border-gray-200 bg-white text-muted-foreground",
+              openSub === sub.key ? "border-navy text-navy" : ""
             )}
             onClick={() => onOpenSub(openSub === sub.key ? "" : sub.key)}
           >
-            {sub.key.replace("s4.", "4.")} {scopeSubsectionTitle(sub.key, sub.title)}
+            {formatScopeSubHeading(sub.key, sub.title)}
           </button>
         ))}
       </div>
@@ -347,14 +377,14 @@ function ScopeSubsectionEditor({
           return (
             <div
               key={sub.key}
-              className="rounded-lg border-l-[3px] border-navy bg-gray-50 p-3"
+              className="border-l-2 border-navy/40 bg-white py-2 pl-3"
               data-testid={`scope-sub-${sub.key}`}
             >
-              <Label>
-                {sub.key.replace("s4.", "4.")} {scopeSubsectionTitle(sub.key, sub.title)}
+              <Label className="font-mono text-xs tabular-nums">
+                {formatScopeSubHeading(sub.key, sub.title)}
               </Label>
               {sub.content ? (
-                <div className="mt-1 mb-2 rounded border bg-white p-2">
+                <div className="mt-1 mb-2 border bg-slate-50/80 p-2">
                   <RichDraftText text={sub.content} />
                 </div>
               ) : null}

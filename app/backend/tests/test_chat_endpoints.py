@@ -220,7 +220,8 @@ def test_chat_sse_streams_tokens(client, mock_officer_user, monkeypatch):
     retrieve.assert_awaited()
     assert retrieve.await_args.kwargs["top_k"] == chat_rag_top_k()
     assert captured["max_tokens"] == CHAT_MAX_TOKENS
-    assert captured["disable_thinking"] is True
+    assert captured.get("enable_thinking") is True
+    assert captured.get("disable_thinking") is not True
     assert "ข้อความเนื้อหา" in captured["messages"][0]["content"]
 
 

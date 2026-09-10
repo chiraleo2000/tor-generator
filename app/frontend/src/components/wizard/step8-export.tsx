@@ -31,6 +31,7 @@ export function Step8Export() {
     exportId: null,
     errorMessage: null,
   });
+  const [numberedHeadings, setNumberedHeadings] = React.useState(false);
 
   const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -104,7 +105,9 @@ export function Step8Export() {
     setExportState({ status: "pending", exportId: null, errorMessage: null });
 
     try {
-      const response = await apiClient.post(`/projects/${projectId}/export`);
+      const response = await apiClient.post(`/projects/${projectId}/export`, {
+        numbering_scheme: numberedHeadings ? "numbered_consecutive" : "none",
+      });
       const data = response.data?.data || response.data;
       const exportId = data?.export_id || null;
       const status = (data?.status as ExportStatus) || "pending";
@@ -189,6 +192,15 @@ export function Step8Export() {
                 เมื่อพร้อมแล้ว กดปุ่มด้านล่างเพื่อสร้างเอกสาร TOR
                 ในรูปแบบ Word และ PDF
               </p>
+              <label className="mb-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  data-testid="export-numbered-headings"
+                  checked={numberedHeadings}
+                  onChange={(event) => setNumberedHeadings(event.target.checked)}
+                />
+                <span>ใส่เลขหมวดต่อเนื่อง (๑. ๒. ๓. …)</span>
+              </label>
               <Button
                 onClick={handleTriggerExport}
                 size="lg"
@@ -330,8 +342,7 @@ export function Step8Export() {
       <div className="rounded-md border bg-muted/50 p-4">
         <p className="text-sm text-muted-foreground">
           <strong>หมายเหตุ:</strong> เอกสารที่ส่งออกจะใช้รูปแบบเอกสารราชการ —
-          ฟอนต์ TH Sarabun New ขนาด 14pt, หัวข้อ 16pt, ขอบกระดาษ 2.5 ซม.
-          วันที่ในรูปแบบ พ.ศ. สามารถส่งออกซ้ำได้หากมีการแก้ไขเนื้อหา TOR
+          ฟอนต์ TH Sarabun New ขนาด 16pt ระยะบรรทัด 1.0, หัวข้อ 18pt, ขอบบน/ล่าง 2.54 ซม. ซ้าย/ขวา 1.91 ซม. หัวข้อเป็นชื่อหมวดโดยไม่มีเลขนำหน้า (เลือกใส่เลขต่อเนื่องได้) วันที่ในรูปแบบ พ.ศ. สามารถส่งออกซ้ำได้หากมีการแก้ไขเนื้อหา TOR
         </p>
       </div>
     </div>

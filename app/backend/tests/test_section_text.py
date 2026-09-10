@@ -10,4 +10,4 @@ def test_section_plain_text_flattens_json_fields():
     text = section_plain_text(raw, "s1")
     assert "ระบบเดิมล้าสมัย" in text
     assert "ซ่อมบ่อย" in text
-    assert "ประวัติ" in text
+    assert "ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม" not in text

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.tor/aws-infra-catalog.schema.json",
+  "title": "TOR AWS services catalog",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "region": { "type": "string" },
+    "deployment_mode": { "type": "string" },
+    "llm": { "type": "string" },
+    "embeddings": { "type": "string" },
+    "services": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "status": { "type": "string" },
+          "terraform": { "type": "string" },
+          "notes": { "type": "string" },
+          "env": { "type": ["string", "array"] },
+          "flag": { "type": "string" },
+          "json": { "type": ["string", "array"] },
+          "yaml": { "type": ["string", "array"] },
+          "ci": { "type": "string" },
+          "names": { "type": "array", "items": { "type": "string" } },
+          "buckets": { "type": "array", "items": { "type": "string" } },
+          "hostname": { "type": "string" },
+          "when": { "type": "string" },
+          "iam": { "type": "string" },
+          "task_env": { "type": "string" }
+        }
+      }
+    },
+    "tbd_no_files_yet": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

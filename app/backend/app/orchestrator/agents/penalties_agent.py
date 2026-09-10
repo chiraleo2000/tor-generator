@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE, BaseDraftingAgent
+from app.orchestrator.agents.base import formal_register, BaseDraftingAgent
 
 
 class PenaltiesDraftingAgent(BaseDraftingAgent):
@@ -22,11 +22,11 @@ class PenaltiesDraftingAgent(BaseDraftingAgent):
     section_name_th = "อัตราค่าปรับ"
     section_name_en = "Penalties"
 
-    def get_system_prompt(self) -> str:
+    def get_system_prompt(self, category: str | None = None) -> str:
         """Return the system prompt for Penalties/Warranty section drafting."""
         return (
-            THAI_FORMAL_REGISTER_PREAMBLE
-            + "คุณกำลังร่างส่วน «อัตราค่าปรับ» (§10) ของเอกสาร TOR\n\n"
+            formal_register(category, self.section_key)
+            + "คุณกำลังร่างส่วน «อัตราค่าปรับ» ของเอกสารกำหนดขอบเขตงาน\n\n"
             "⚠️ ส่วนนี้มีข้อกำหนดทางกฎหมายเข้มงวด — ต้องอ้างอิงให้ถูกต้อง\n\n"
             "=== อัตราค่าปรับ (§10) ===\n"
             "ข้อกำหนดทางกฎหมาย:\n"
@@ -42,7 +42,8 @@ class PenaltiesDraftingAgent(BaseDraftingAgent):
             "- ระบุอัตราค่าปรับเป็นเปอร์เซ็นต์ต่อวัน\n"
             "- ระบุสูตรคำนวณค่าปรับ\n"
             "- ระบุระยะเวลารับประกัน\n"
-            "- ระบุเงื่อนไขการบอกเลิกสัญญาที่ชัดเจน\n\n"
+            "- ระบุเงื่อนไขการบอกเลิกสัญญาที่ชัดเจน\n"
+            "- ห้ามซ้ำขอบเขตงานหรืองวดส่งมอบ — มีเฉพาะอัตราและเงื่อนไขค่าปรับ\n\n"
             "=== ตัวอย่างโครงสร้าง ===\n"
             "10. อัตราค่าปรับ\n"
             "  10.1 กรณีผู้รับจ้างส่งมอบงานล่าช้ากว่ากำหนดตามสัญญา "

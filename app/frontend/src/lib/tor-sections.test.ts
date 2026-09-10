@@ -6,11 +6,14 @@ import {
   SCOPE_SUBSECTIONS,
   TOR_SECTION_LABELS,
   TOR_SECTION_ORDER,
+  formatScopeSubHeading,
+  formatTorSectionHeading,
   isSectionFilled,
   labeledSectionBlocks,
   parseSectionDraft,
   previewSectionDraft,
   scopeSubsectionTitle,
+  sectionIndexPad,
   serializeSectionDraft,
 } from "./tor-sections";
 
@@ -25,6 +28,14 @@ describe("canonical TOR sections", () => {
     );
     expect(DOC_CLASSES.find((item) => item.id === "charter")?.label).toContain("เอกสารโครงการ");
     expect(PHASE0_CHECKLIST).toContain("รายงานการประชุม");
+  });
+
+  it("formats technical section headings without the หมวด prefix", () => {
+    expect(formatTorSectionHeading("s1")).toBe("1. ความเป็นมา");
+    expect(formatTorSectionHeading("s10")).toBe("10. อัตราค่าปรับ");
+    expect(sectionIndexPad("s1")).toBe("01");
+    expect(sectionIndexPad("s10")).toBe("10");
+    expect(formatScopeSubHeading("s4.1")).toContain("4.1");
   });
 
   it("maps a combined body blob into the first subsection field", () => {

@@ -86,19 +86,16 @@ class TestSectionPresenceRule:
             rule.validate(incomplete_tor_document)
 
         halt = exc_info.value
-        assert "s3" in halt.missing_sections
-        assert "s5" in halt.missing_sections
-        assert "s6" in halt.missing_sections
-        assert "s8" in halt.missing_sections
-        assert "s11" in halt.missing_sections
-        assert "s13" in halt.missing_sections
+        present = set(incomplete_tor_document["sections"])
+        expected_missing = set(TOR_REQUIRED_SECTIONS) - present
+        assert set(halt.missing_sections) == expected_missing
         assert "s9" not in halt.missing_sections
         assert "s10" not in halt.missing_sections
         assert "s12" not in halt.missing_sections
 
     def test_missing_single_section_raises_halt(self, complete_tor_document: dict):
-        """Even one missing section raises MissingSectionsHalt."""
-        del complete_tor_document["sections"]["s13"]
+        """Even one missing required section raises MissingSectionsHalt."""
+        del complete_tor_document["sections"]["s5"]
         rule = SectionPresenceRule()
 
         with pytest.raises(MissingSectionsHalt) as exc_info:
@@ -106,7 +103,7 @@ class TestSectionPresenceRule:
 
         halt = exc_info.value
         assert halt.missing_sections == {
-            "s13": TOR_REQUIRED_SECTIONS["s13"]
+            "s5": TOR_REQUIRED_SECTIONS["s5"]
         }
         assert len(halt.findings) == 1
         assert halt.findings[0].severity == Severity.ERROR
@@ -151,6 +148,31 @@ class TestSectionPresenceRule:
         rule = SectionPresenceRule()
         with pytest.raises(MissingSectionsHalt):
             rule.validate(doc)
+
+
+    def test_focus_section_skips_other_missing_required(self):
+        rule = SectionPresenceRule()
+        findings = rule.validate(
+            {
+                "_focus_section": "s1",
+                "project_type": "hire_develop",
+                "s1": "ความเป็นมาของโครงการจัดซื้อจัดจ้างภาครัฐตามระเบียบที่เกี่ยวข้อง",
+            }
+        )
+        assert findings == []
+
+    def test_focus_section_still_halts_when_target_empty(self):
+        rule = SectionPresenceRule()
+        with pytest.raises(MissingSectionsHalt) as exc_info:
+            rule.validate(
+                {
+                    "_focus_section": "s1",
+                    "project_type": "hire_develop",
+                    "s1": "   ",
+                }
+            )
+        assert "s1" in exc_info.value.missing_sections
+        assert "s3" not in exc_info.value.missing_sections
 
 
 # --- Tests: RequiredSubsectionsRule ---
@@ -587,8 +609,9 @@ class TestEngineHaltingOnMissingSections:
         result = engine.validate(incomplete_tor_document)
 
         assert result.halted is True
-        # The incomplete doc is missing s3, s5, s6, s8, s9, s10, s11, s12, s13
-        expected_missing = {"s3", "s5", "s6", "s8", "s11", "s13"}
+        expected_missing = set(TOR_REQUIRED_SECTIONS) - set(
+            incomplete_tor_document["sections"]
+        )
         assert set(result.missing_sections.keys()) == expected_missing
 
     def test_engine_full_integration_all_rules(self, complete_tor_document: dict):

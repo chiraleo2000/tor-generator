@@ -33,6 +33,18 @@ describe("phase-gate", () => {
     expect(canSelectPhase(2, 2, 4)).toBe(false);
   });
 
+  it("unlocks draft (phase 3) when fact coverage is already complete", () => {
+    expect(
+      intakeUnlockedPhase(
+        { analysisJson: { analyzed: true } },
+        [
+          { key: "s1", label: "ความเป็นมา", status: "filled", filled: true, fact_required: true },
+          { key: "s2", label: "วัตถุประสงค์", status: "filled", filled: true, fact_required: true },
+        ]
+      )
+    ).toBe(3);
+  });
+
   it("unlocks draft (phase 3) only after ready_to_compose", () => {
     expect(
       intakeUnlockedPhase({

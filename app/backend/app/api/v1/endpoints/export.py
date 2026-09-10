@@ -99,6 +99,7 @@ async def trigger_export(
         project=project,
         use_thai_numerals=body.use_thai_numerals,
         url_ttl_hours=body.url_ttl_hours,
+        numbering_scheme=body.numbering_scheme,
         session_factory=getattr(request.app.state, "db_session_factory", None),
     )
 

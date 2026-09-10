@@ -18,22 +18,30 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-from app.domain.section_profile import export_main_plan, ordered_scope_export, subsection_title
-from app.domain.tor_sections import TOR_SECTION_LABELS, TOR_SECTION_ORDER
-from app.export.thai_formatting import (
-    format_section_number,
-    format_thai_date,
+from app.export.format_config import (
+    BODY_FONT_SIZE_PT,
+    FONT_NAME,
+    FONT_NAME_FALLBACK,
+    HEADER_FONT_SIZE_PT,
+    HEADING_FONT_SIZE_PT,
+    LINE_SPACING,
+    PAGE_HEIGHT_CM,
+    PAGE_MARGIN_LEFT_RIGHT_CM,
+    PAGE_MARGIN_TOP_BOTTOM_CM,
+    PAGE_WIDTH_CM,
+    SUBHEADING_FONT_SIZE_PT,
+    TITLE_BLOCK_NAME,
+    apply_format,
 )
+from app.export.render_plan import AppendixItem, NumberingScheme
+from app.export.thai_formatting import format_thai_date
 
-# Font constants
-FONT_NAME = "TH Sarabun New"
-FONT_NAME_FALLBACK = "TH SarabunPSK"
-BODY_FONT_SIZE = Pt(14)
-HEADING_FONT_SIZE = Pt(16)
-HEADER_FONT_SIZE = Pt(12)
-
-# Page margin (2.5 cm all around)
-PAGE_MARGIN = Cm(2.5)
+BODY_FONT_SIZE = Pt(BODY_FONT_SIZE_PT)
+HEADING_FONT_SIZE = Pt(HEADING_FONT_SIZE_PT)
+SUBHEADING_FONT_SIZE = Pt(SUBHEADING_FONT_SIZE_PT)
+HEADER_FONT_SIZE = Pt(HEADER_FONT_SIZE_PT)
+PAGE_MARGIN_TOP_BOTTOM = Cm(PAGE_MARGIN_TOP_BOTTOM_CM)
+PAGE_MARGIN_LEFT_RIGHT = Cm(PAGE_MARGIN_LEFT_RIGHT_CM)
 W_RFONTS = "w:rFonts"
 
 
@@ -49,7 +57,9 @@ class TORContent:
         sections: Dict mapping section_key to content text.
         sub_sections: Dict mapping section_key to sub-section dict (sub_key → content).
         export_date: Date to display on the document (defaults to today).
-        use_thai_numerals: Whether to use Thai numerals for section numbering.
+        use_thai_numerals: Whether to use Thai numerals for dates and numbered headings.
+        numbering_scheme: ``none`` (product default) or ``numbered_consecutive``.
+        appendices: Optional appendix items; empty list is valid.
     """
 
     project_name: str = ""
@@ -59,7 +69,9 @@ class TORContent:
     sections: dict[str, str] = field(default_factory=dict)
     sub_sections: dict[str, dict[str, str]] = field(default_factory=dict)
     export_date: date | datetime | None = None
-    use_thai_numerals: bool = False
+    use_thai_numerals: bool = True
+    numbering_scheme: NumberingScheme | str = NumberingScheme.NONE
+    appendices: list[AppendixItem] = field(default_factory=list)
 
 
 class DOCXGenerator:
@@ -75,10 +87,6 @@ class DOCXGenerator:
         )
         docx_bytes = generator.generate(content)
     """
-
-    def __init__(self) -> None:
-        """Initialize the generator."""
-        pass
 
     def generate(self, content: TORContent) -> bytes:
         """Generate a DOCX file from TOR content.
@@ -97,7 +105,11 @@ class DOCXGenerator:
         self._add_page_numbers(doc)
         self._add_title(doc, content)
         self._add_document_info(doc, content)
-        self._add_sections(doc, content)
+        from app.export.export_plan import build_render_plan
+
+        plan = build_render_plan(content)
+        self._add_sections(doc, plan)
+        self._add_appendices(doc, plan)
 
         # Write to bytes buffer
         buffer = io.BytesIO()
@@ -110,54 +122,42 @@ class DOCXGenerator:
         section = doc.sections[0]
         section.orientation = WD_ORIENT.PORTRAIT
 
-        # A4 size
-        section.page_width = Cm(21.0)
-        section.page_height = Cm(29.7)
+        def set_page() -> None:
+            section.page_width = Cm(PAGE_WIDTH_CM)
+            section.page_height = Cm(PAGE_HEIGHT_CM)
 
-        # 2.5cm margins on all sides
-        section.top_margin = PAGE_MARGIN
-        section.bottom_margin = PAGE_MARGIN
-        section.left_margin = PAGE_MARGIN
-        section.right_margin = PAGE_MARGIN
+        def set_margins() -> None:
+            section.top_margin = PAGE_MARGIN_TOP_BOTTOM
+            section.bottom_margin = PAGE_MARGIN_TOP_BOTTOM
+            section.left_margin = PAGE_MARGIN_LEFT_RIGHT
+            section.right_margin = PAGE_MARGIN_LEFT_RIGHT
+
+        apply_format({"page": set_page, "margins": set_margins})
+
+    def _apply_line_spacing(self, paragraph) -> None:
+        paragraph.paragraph_format.line_spacing = LINE_SPACING
 
     def _set_default_font(self, doc: Document) -> None:
-        """Set the default document font to TH Sarabun New 14pt."""
+        """Set the default document font to TH Sarabun New 16pt with single line spacing."""
         style = doc.styles["Normal"]
         font = style.font
         font.name = FONT_NAME
         font.size = BODY_FONT_SIZE
+        style.paragraph_format.line_spacing = LINE_SPACING
 
-        # Set the East Asian / complex script font for Thai support
-        rpr = style.element.get_or_add_rPr()
-        rfonts = rpr.find(qn(W_RFONTS))
-        if rfonts is None:
-            rfonts = OxmlElement(W_RFONTS)
-            rpr.append(rfonts)
-        rfonts.set(qn("w:ascii"), FONT_NAME)
-        rfonts.set(qn("w:hAnsi"), FONT_NAME)
-        rfonts.set(qn("w:cs"), FONT_NAME)
-        rfonts.set(qn("w:eastAsia"), FONT_NAME)
+        self._bind_rfonts(style.element.get_or_add_rPr(), FONT_NAME, FONT_NAME)
 
-        # Also configure heading styles
         for heading_level in range(1, 4):
             style_name = f"Heading {heading_level}"
-            if style_name in doc.styles:
-                h_style = doc.styles[style_name]
-                h_font = h_style.font
-                h_font.name = FONT_NAME
-                h_font.size = HEADING_FONT_SIZE
-                h_font.bold = True
-                h_font.color.rgb = RGBColor(0, 0, 0)
-
-                h_rpr = h_style.element.get_or_add_rPr()
-                h_rfonts = h_rpr.find(qn(W_RFONTS))
-                if h_rfonts is None:
-                    h_rfonts = OxmlElement(W_RFONTS)
-                    h_rpr.append(h_rfonts)
-                h_rfonts.set(qn("w:ascii"), FONT_NAME)
-                h_rfonts.set(qn("w:hAnsi"), FONT_NAME)
-                h_rfonts.set(qn("w:cs"), FONT_NAME)
-                h_rfonts.set(qn("w:eastAsia"), FONT_NAME)
+            if style_name not in doc.styles:
+                continue
+            h_style = doc.styles[style_name]
+            h_font = h_style.font
+            h_font.name = FONT_NAME
+            h_font.size = HEADING_FONT_SIZE
+            h_font.bold = True
+            h_font.color.rgb = RGBColor(0, 0, 0)
+            self._bind_rfonts(h_style.element.get_or_add_rPr(), FONT_NAME, FONT_NAME)
 
     def _add_header(self, doc: Document, content: TORContent) -> None:
         """Add document header with ministry/organization name."""
@@ -201,8 +201,9 @@ class DOCXGenerator:
         title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title_para.space_before = Pt(0)
         title_para.space_after = Pt(12)
+        self._apply_line_spacing(title_para)
 
-        run = title_para.add_run("ร่างขอบเขตของงาน")
+        run = title_para.add_run(TITLE_BLOCK_NAME)
         run.bold = True
         run.font.name = FONT_NAME
         run.font.size = HEADING_FONT_SIZE
@@ -213,6 +214,7 @@ class DOCXGenerator:
             subtitle_para = doc.add_paragraph()
             subtitle_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             subtitle_para.space_after = Pt(6)
+            self._apply_line_spacing(subtitle_para)
             run = subtitle_para.add_run(content.project_name)
             run.bold = True
             run.font.name = FONT_NAME
@@ -227,6 +229,7 @@ class DOCXGenerator:
         info_para = doc.add_paragraph()
         info_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         info_para.space_after = Pt(12)
+        self._apply_line_spacing(info_para)
         run = info_para.add_run(date_str)
         run.font.name = FONT_NAME
         run.font.size = BODY_FONT_SIZE
@@ -235,68 +238,79 @@ class DOCXGenerator:
         # Separator line
         doc.add_paragraph("─" * 60)
 
-    def _add_sections(self, doc: Document, content: TORContent) -> None:
-        """Add TOR sections in Section_Profile order with consecutive numbering."""
-        section_num = 1
-        for section_key, section_label in export_main_plan(content.project_type):
-            section_content = content.sections.get(section_key, "")
-
-            num_str = format_section_number(section_num, content.use_thai_numerals)
-            heading_text = f"{num_str}. {section_label}"
-
+    def _add_sections(self, doc: Document, plan) -> None:
+        """Add TOR sections from the shared RenderPlan."""
+        for section in plan.body:
+            heading_text = (
+                f"{section.number}. {section.label}" if section.number else section.label
+            )
             heading_para = doc.add_paragraph()
-            heading_para.space_before = Pt(12)
-            heading_para.space_after = Pt(6)
+            heading_para.space_before = Pt(8)
+            heading_para.space_after = Pt(4)
+            self._apply_line_spacing(heading_para)
             run = heading_para.add_run(heading_text)
             run.bold = True
             run.font.name = FONT_NAME
             run.font.size = HEADING_FONT_SIZE
             self._set_run_font_cs(run)
 
-            # Section body — if subsections exist, show only numbered subs (avoid duplicate blob)
-            sub_sections = content.sub_sections.get(section_key, {})
-            if section_content and not sub_sections:
-                self._add_section_content(doc, section_content, content.use_thai_numerals)
-            elif not section_content and not sub_sections:
-                # Placeholder for empty sections
-                placeholder_para = doc.add_paragraph()
-                placeholder_run = placeholder_para.add_run("(ยังไม่ได้กรอกข้อมูล)")
-                placeholder_run.font.name = FONT_NAME
-                placeholder_run.font.size = BODY_FONT_SIZE
-                placeholder_run.italic = True
-                placeholder_run.font.color.rgb = RGBColor(128, 128, 128)
-                self._set_run_font_cs(placeholder_run)
+            if section.content:
+                self._write_content_blocks(doc, section.content, first_line_indent_cm=1.25)
+            for sub in section.subsections:
+                sub_heading = f"{sub.number} {sub.label}".strip()
+                self._add_sub_heading(doc, sub_heading)
+                if sub.content:
+                    self._write_content_blocks(doc, sub.content, left_indent_cm=1.5)
 
-            if sub_sections:
-                self._add_sub_sections(
-                    doc,
-                    section_num,
-                    sub_sections,
-                    content.use_thai_numerals,
-                    content.project_type,
-                    section_key,
-                )
+    def _add_appendices(self, doc: Document, plan) -> None:
+        divider = doc.add_paragraph()
+        divider.space_before = Pt(16)
+        divider.space_after = Pt(8)
+        self._apply_line_spacing(divider)
+        run = divider.add_run("ภาคผนวก")
+        run.bold = True
+        run.font.name = FONT_NAME
+        run.font.size = HEADING_FONT_SIZE
+        self._set_run_font_cs(run)
+        for item in plan.appendices:
+            heading_para = doc.add_paragraph()
+            heading_para.space_before = Pt(8)
+            heading_para.space_after = Pt(4)
+            self._apply_line_spacing(heading_para)
+            label = item.number if not item.title else f"{item.number} {item.title}".strip()
+            run = heading_para.add_run(label)
+            run.bold = True
+            run.font.name = FONT_NAME
+            run.font.size = HEADING_FONT_SIZE
+            self._set_run_font_cs(run)
+            if item.content:
+                self._write_content_blocks(doc, item.content, first_line_indent_cm=1.25)
 
-            section_num += 1
-
-    def _add_section_content(
-        self, doc: Document, text: str, _use_thai_numerals: bool
+    def _write_content_blocks(
+        self,
+        doc: Document,
+        text: str,
+        *,
+        first_line_indent_cm: float | None = None,
+        left_indent_cm: float | None = None,
     ) -> None:
-        """Add section body text, including markdown pipe tables as real tables."""
         from app.services.thai_draft import split_content_blocks
 
         for kind, payload in split_content_blocks(text):
             if kind == "table" and isinstance(payload, list):
                 self._add_markdown_table(doc, payload)
                 continue
-            paragraphs = str(payload).strip().split("\n")
-            for para_text in paragraphs:
-                para_text = para_text.strip()
-                if not para_text:
+            for para_text in str(payload).strip().split("\n"):
+                cleaned = para_text.strip()
+                if not cleaned:
                     continue
                 para = doc.add_paragraph()
-                para.paragraph_format.first_line_indent = Cm(1.25)
-                run = para.add_run(para_text)
+                if first_line_indent_cm is not None:
+                    para.paragraph_format.first_line_indent = Cm(first_line_indent_cm)
+                if left_indent_cm is not None:
+                    para.paragraph_format.left_indent = Cm(left_indent_cm)
+                self._apply_line_spacing(para)
+                run = para.add_run(cleaned)
                 run.font.name = FONT_NAME
                 run.font.size = BODY_FONT_SIZE
                 self._set_run_font_cs(run)
@@ -313,92 +327,44 @@ class DOCXGenerator:
                 cell = table.rows[r_idx].cells[c_idx]
                 cell.text = ""
                 para = cell.paragraphs[0]
+                self._apply_line_spacing(para)
                 run = para.add_run(cell_text)
                 run.font.name = FONT_NAME
                 run.font.size = BODY_FONT_SIZE
                 run.bold = r_idx == 0
                 self._set_run_font_cs(run)
 
-    def _add_sub_sections(
-        self,
-        doc: Document,
-        parent_num: int,
-        sub_sections: dict[str, str],
-        use_thai_numerals: bool,
-        project_type: str | None = None,
-        section_key: str = "s4",
-    ) -> None:
-        """Add sub-sections with consecutive 4.1, 4.2 numbering from the profile."""
-        from app.services.thai_draft import split_content_blocks
+    def _add_sub_heading(self, doc: Document, heading: str) -> None:
+        sub_heading_para = doc.add_paragraph()
+        sub_heading_para.space_before = Pt(4)
+        sub_heading_para.space_after = Pt(2)
+        sub_heading_para.paragraph_format.left_indent = Cm(1.0)
+        self._apply_line_spacing(sub_heading_para)
+        run = sub_heading_para.add_run(heading)
+        run.bold = True
+        run.font.name = FONT_NAME
+        run.font.size = SUBHEADING_FONT_SIZE
+        self._set_run_font_cs(run)
 
-        if section_key == "s4":
-            plan = ordered_scope_export(project_type, sub_sections)
-        else:
-            plan = [
-                (key, subsection_title(key, project_type, key), text)
-                for key, text in sub_sections.items()
-            ]
-
-        for index, (_sub_key, title, sub_content) in enumerate(plan, start=1):
-            sub_num_str = format_section_number(
-                f"{parent_num}.{index}", use_thai_numerals
-            )
-            heading = f"{sub_num_str} {title}".strip()
-
-            sub_heading_para = doc.add_paragraph()
-            sub_heading_para.space_before = Pt(6)
-            sub_heading_para.space_after = Pt(3)
-            sub_heading_para.paragraph_format.left_indent = Cm(1.0)
-
-            run = sub_heading_para.add_run(heading)
-            run.bold = True
-            run.font.name = FONT_NAME
-            run.font.size = BODY_FONT_SIZE
-            self._set_run_font_cs(run)
-
-            if not sub_content:
-                continue
-            for kind, payload in split_content_blocks(sub_content):
-                if kind == "table" and isinstance(payload, list):
-                    self._add_markdown_table(doc, payload)
-                    continue
-                for para_text in str(payload).strip().split("\n"):
-                    para_text = para_text.strip()
-                    if not para_text:
-                        continue
-                    para = doc.add_paragraph()
-                    para.paragraph_format.left_indent = Cm(1.5)
-                    run = para.add_run(para_text)
-                    run.font.name = FONT_NAME
-                    run.font.size = BODY_FONT_SIZE
-                    self._set_run_font_cs(run)
-
-    def _parse_sub_key(self, key: str) -> tuple[int, ...]:
-        """Parse a sub-section key like 's4.1' / '4.1' into a sortable tuple."""
-        cleaned = key.replace("s", "").replace(".", " ")
-        parts = cleaned.split()
-        result = []
-        for part in parts:
-            try:
-                result.append(int(part))
-            except ValueError:
-                result.append(0)
-        return tuple(result)
-
-    def _set_run_font_cs(self, run) -> None:
-        """Set the complex script (cs) font on a run for proper Thai rendering."""
-        rpr = run._r.get_or_add_rPr()
+    @staticmethod
+    def _bind_rfonts(rpr, ascii_name: str, east_asia: str) -> None:
         rfonts = rpr.find(qn(W_RFONTS))
         if rfonts is None:
             rfonts = OxmlElement(W_RFONTS)
             rpr.append(rfonts)
-        rfonts.set(qn("w:cs"), FONT_NAME)
+        rfonts.set(qn("w:ascii"), ascii_name)
+        rfonts.set(qn("w:hAnsi"), ascii_name)
+        rfonts.set(qn("w:cs"), east_asia)
+        rfonts.set(qn("w:eastAsia"), east_asia)
 
-        # Also set cs size to match
+    def _set_run_font_cs(self, run) -> None:
+        """Set Thai-capable fonts on a run (primary + fallback)."""
+        rpr = run._r.get_or_add_rPr()
+        primary = FONT_NAME or FONT_NAME_FALLBACK
+        self._bind_rfonts(rpr, primary, FONT_NAME)
         sz_cs = rpr.find(qn("w:szCs"))
         if sz_cs is None:
             sz_cs = OxmlElement("w:szCs")
             rpr.append(sz_cs)
-        # python-docx uses half-points for font size
         if run.font.size:
             sz_cs.set(qn("w:val"), str(int(run.font.size.pt * 2)))

@@ -56,7 +56,10 @@ async def test_draft_invokes_fake_llm_with_rag_and_feedback():
     assert "วิเคราะห์" in analyze_messages[0]["content"]
     messages = llm.invoke.await_args.args[0]
     assert messages[0]["role"] == "system"
-    assert messages[0]["content"] == "system-prompt"
+    assert "system-prompt" in messages[0]["content"]
+    from app.services.thai_draft import THAI_ONLY_RULES
+
+    assert THAI_ONLY_RULES in messages[0]["content"]
     user = messages[1]["content"]
     assert "โครงการทดสอบ" in user
     assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in user
@@ -66,6 +69,30 @@ async def test_draft_invokes_fake_llm_with_rag_and_feedback():
     max_out = llm.invoke.await_args.kwargs.get("max_tokens")
     assert max_out <= DRAFT_MAX_TOKENS
     assert max_out >= 256
+    assert llm.invoke.await_args.kwargs.get("enable_thinking") is True
+    assert llm.invoke.await_args.kwargs.get("disable_thinking") is not True
+
+
+@pytest.mark.asyncio
+async def test_draft_sanitizes_english_instead_of_dropping_thai():
+    thai = (
+        "การจ่ายเงินค่าจ้างแบ่งออกเป็นสามงวด ดังนี้ งวดที่ ๑ ชำระเงินในอัตราร้อยละ ๔๐ "
+        "ของจำนวนเงินในสัญญา เมื่อผู้รับจ้างส่งมอบงานงวดที่ ๑ และคณะกรรมการตรวจรับพัสดุ"
+        "ได้ตรวจรับเรียบร้อยแล้ว ตาม Deliverables ที่กำหนดในสัญญาจ้างพัฒนาระบบ"
+    )
+    llm = AsyncMock()
+    llm.invoke = AsyncMock(
+        return_value=LLMResponse(
+            content=thai,
+            model="fake-llm",
+            usage={"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        )
+    )
+    text = await _TinyAgent().draft(llm, {"project_name": "โครงการทดสอบ"})
+    assert "Deliverables" not in text
+    assert "ผลงานส่งมอบ" in text
+    assert "คณะกรรมการตรวจรับพัสดุ" in text
+    assert llm.invoke.await_count == 3
 
 
 def test_background_agent_prompt_uses_thai_preamble():
@@ -73,7 +100,9 @@ def test_background_agent_prompt_uses_thai_preamble():
     assert prompt.startswith(THAI_FORMAL_REGISTER_PREAMBLE)
     assert "ความเป็นมา" in prompt
     assert "300-800" not in prompt
-    assert "1024" in prompt
+    assert "ข้อบังคับสาระและขอบเขต" in prompt
+    assert "ขยายรายละเอียด" not in prompt
+    assert "ต้องมีหลายย่อหน้า" not in prompt
 
 
 def test_format_user_input_handles_empty_and_nested():

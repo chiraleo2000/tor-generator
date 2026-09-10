@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./aws-infra.schema.json
 # Cloud-only runtime knobs (no secrets). Copy values into ECS task env / SSM.
 # Policy: Discussions/29-TBD-AWS-CLOUD-ONLY.md and 30-DEV-ASSIGNMENT-MCP-AND-AWS.md
 

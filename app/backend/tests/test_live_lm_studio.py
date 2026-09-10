@@ -72,11 +72,21 @@ def test_live_gemma_chat_tiny_prompt():
     result = client.chat.completions.create(
         model=DEFAULT_CHAT_MODEL,
         messages=[{"role": "user", "content": "ตอบคำเดียว: สวัสดี"}],
-        max_tokens=16,
+        max_tokens=512,
         temperature=0,
+        extra_body={
+            "enable_thinking": True,
+            "chat_template_kwargs": {"enable_thinking": True},
+        },
     )
-    content = (result.choices[0].message.content or "").strip()
-    assert content, "Gemma returned an empty chat completion"
+    message = result.choices[0].message
+    content = (message.content or "").strip()
+    reasoning = str(
+        getattr(message, "reasoning_content", None)
+        or getattr(message, "reasoning", None)
+        or ""
+    ).strip()
+    assert content or reasoning, "Gemma returned empty content and thinking"
 
 
 @pytest.mark.integration

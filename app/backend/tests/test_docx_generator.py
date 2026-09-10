@@ -16,16 +16,19 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
+from app.domain.section_profile import export_main_plan
+from app.domain.tor_sections import TOR_SECTION_LABELS, TOR_SECTION_ORDER
 from app.export.docx_generator import (
     BODY_FONT_SIZE,
     FONT_NAME,
     HEADING_FONT_SIZE,
-    PAGE_MARGIN,
-    TOR_SECTION_LABELS,
-    TOR_SECTION_ORDER,
+    LINE_SPACING,
+    PAGE_MARGIN_LEFT_RIGHT,
+    PAGE_MARGIN_TOP_BOTTOM,
     DOCXGenerator,
     TORContent,
 )
+from app.export.render_plan import NumberingScheme
 from app.export.thai_formatting import (
     buddhist_era_to_gregorian,
     format_currency_thai,
@@ -224,14 +227,14 @@ class TestDOCXPageSetup:
         docx_bytes = self.generator.generate(content)
         self.doc = Document(io.BytesIO(docx_bytes))
 
-    def test_margins_are_2_5_cm(self):
+    def test_margins_moderate_2_54_top_bottom_1_91_left_right(self):
         section = self.doc.sections[0]
         # Allow small tolerance for rounding
         tolerance = Cm(0.01)
-        assert abs(section.top_margin - PAGE_MARGIN) <= tolerance
-        assert abs(section.bottom_margin - PAGE_MARGIN) <= tolerance
-        assert abs(section.left_margin - PAGE_MARGIN) <= tolerance
-        assert abs(section.right_margin - PAGE_MARGIN) <= tolerance
+        assert abs(section.top_margin - PAGE_MARGIN_TOP_BOTTOM) <= tolerance
+        assert abs(section.bottom_margin - PAGE_MARGIN_TOP_BOTTOM) <= tolerance
+        assert abs(section.left_margin - PAGE_MARGIN_LEFT_RIGHT) <= tolerance
+        assert abs(section.right_margin - PAGE_MARGIN_LEFT_RIGHT) <= tolerance
 
     def test_page_is_a4(self):
         section = self.doc.sections[0]
@@ -256,6 +259,21 @@ class TestDOCXFontSetup:
     def test_normal_style_font_size(self):
         style = self.doc.styles["Normal"]
         assert style.font.size == BODY_FONT_SIZE
+        assert style.font.size == Pt(16)
+
+    def test_title_heading_font_size(self):
+        heading_runs = [
+            run
+            for para in self.doc.paragraphs
+            for run in para.runs
+            if run.bold and run.font.size == HEADING_FONT_SIZE
+        ]
+        assert heading_runs
+        assert HEADING_FONT_SIZE == Pt(18)
+
+    def test_normal_style_line_spacing(self):
+        style = self.doc.styles["Normal"]
+        assert style.paragraph_format.line_spacing == LINE_SPACING
 
 
 class TestDOCXContent:
@@ -281,12 +299,11 @@ class TestDOCXContent:
         full_text = "\n".join(p.text for p in doc.paragraphs)
         assert "โครงการพัฒนาระบบ" in full_text
 
-    def test_all_13_sections_present(self):
-        content = TORContent(project_name="Test")
+    def test_filled_sections_present(self):
+        sections = {key: f"เนื้อหา {label}" for key, label in export_main_plan("buy_goods")}
+        content = TORContent(project_name="Test", sections=sections)
         docx_bytes = self.generator.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
-
-        from app.domain.section_profile import export_main_plan
 
         full_text = "\n".join(p.text for p in doc.paragraphs)
         for _key, label in export_main_plan(content.project_type):
@@ -307,13 +324,14 @@ class TestDOCXContent:
         assert "ด้วยกระทรวงดิจิทัลมีความประสงค์จัดทำระบบ" in full_text
         assert "เพื่อพัฒนาระบบสารสนเทศ" in full_text
 
-    def test_empty_sections_show_placeholder(self):
+    def test_empty_sections_are_skipped(self):
         content = TORContent(project_name="Test", sections={})
         docx_bytes = self.generator.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
 
         full_text = "\n".join(p.text for p in doc.paragraphs)
-        assert "(ยังไม่ได้กรอกข้อมูล)" in full_text
+        assert "(ยังไม่ได้กรอกข้อมูล)" not in full_text
+        assert "ภาคผนวก" in full_text
 
     def test_sub_sections_rendered(self):
         content = TORContent(
@@ -340,23 +358,43 @@ class TestDOCXThaiNumerals:
     def setup_method(self):
         self.generator = DOCXGenerator()
 
-    def test_arabic_numerals_by_default(self):
-        content = TORContent(project_name="Test", use_thai_numerals=False)
+    def test_thai_numerals_when_numbered(self):
+        content = TORContent(
+            project_name="Test",
+            sections={"s1": "เนื้อหาความเป็นมาของโครงการจัดซื้อจัดจ้างภาครัฐ"},
+            numbering_scheme=NumberingScheme.NUMBERED_CONSECUTIVE,
+        )
         docx_bytes = self.generator.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
 
         full_text = "\n".join(p.text for p in doc.paragraphs)
-        # Should have "1. ความเป็นมา"
+        assert "๑. ความเป็นมา" in full_text
+
+    def test_arabic_numerals_when_configured(self):
+        content = TORContent(
+            project_name="Test",
+            sections={"s1": "เนื้อหาความเป็นมาของโครงการจัดซื้อจัดจ้างภาครัฐ"},
+            numbering_scheme=NumberingScheme.NUMBERED_CONSECUTIVE,
+            use_thai_numerals=False,
+        )
+        docx_bytes = self.generator.generate(content)
+        doc = Document(io.BytesIO(docx_bytes))
+
+        full_text = "\n".join(p.text for p in doc.paragraphs)
         assert "1. ความเป็นมา" in full_text
 
-    def test_thai_numerals_when_configured(self):
-        content = TORContent(project_name="Test", use_thai_numerals=True)
+    def test_default_headings_have_no_numbers(self):
+        content = TORContent(
+            project_name="Test",
+            sections={"s1": "เนื้อหาความเป็นมาของโครงการจัดซื้อจัดจ้างภาครัฐ"},
+            use_thai_numerals=True,
+        )
         docx_bytes = self.generator.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
 
         full_text = "\n".join(p.text for p in doc.paragraphs)
-        # Should have "๑. ความเป็นมา"
-        assert "๑. ความเป็นมา" in full_text
+        assert "ความเป็นมา" in full_text
+        assert "๑. ความเป็นมา" not in full_text
 
 
 class TestDOCXDateFormatting:
@@ -369,6 +407,7 @@ class TestDOCXDateFormatting:
         content = TORContent(
             project_name="Test",
             export_date=date(2024, 8, 15),
+            use_thai_numerals=False,
         )
         docx_bytes = self.generator.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
@@ -424,14 +463,14 @@ class TestDOCXSectionOrder:
             assert key in TOR_SECTION_LABELS
 
     def test_sections_appear_in_order(self):
-        """Sections in the generated document appear in correct order."""
+        """Filled sections in the generated document appear in profile order."""
         generator = DOCXGenerator()
-        content = TORContent(project_name="Test")
+        sections = {key: f"เนื้อหา {label}" for key, label in export_main_plan("buy_goods")}
+        content = TORContent(project_name="Test", sections=sections)
         docx_bytes = generator.generate(content)
         doc = Document(io.BytesIO(docx_bytes))
 
         full_text = "\n".join(p.text for p in doc.paragraphs)
-        # Check that section 1 appears before section 2, etc.
         pos_s1 = full_text.find("ความเป็นมา")
         pos_s2 = full_text.find("วัตถุประสงค์")
         pos_s3 = full_text.find("คุณสมบัติของผู้ยื่นข้อเสนอ")

@@ -55,26 +55,41 @@ export function useConfirmPhase() {
   const resolver = useRef<((ok: boolean) => void) | null>(null);
 
   const close = useCallback((ok: boolean) => {
-    resolver.current?.(ok);
+    const resolve = resolver.current;
     resolver.current = null;
     setMessage(null);
+    resolve?.(ok);
   }, []);
 
   const ask = useCallback((text: string) => {
     return new Promise<boolean>((resolve) => {
+      // A new ask() must settle any previous pending confirm (e.g. dialog was
+      // dismissed by a remount) so callers never hang forever.
+      const previous = resolver.current;
+      if (previous) {
+        resolver.current = null;
+        previous(false);
+      }
       resolver.current = resolve;
       setMessage(text);
     });
   }, []);
 
+  const onOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) close(false);
+    },
+    [close]
+  );
+
+  const onConfirm = useCallback(() => close(true), [close]);
+
   const dialog = (
     <ConfirmPhaseDialog
       open={message !== null}
       title={message || ""}
-      onOpenChange={(open) => {
-        if (!open) close(false);
-      }}
-      onConfirm={() => close(true)}
+      onOpenChange={onOpenChange}
+      onConfirm={onConfirm}
     />
   );
 

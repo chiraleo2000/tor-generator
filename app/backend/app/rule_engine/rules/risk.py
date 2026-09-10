@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.rule_engine.engine import KIND_LEGAL, KIND_RISK, Finding, Severity
-from app.rule_engine.rules.base import BaseRule
+from app.rule_engine.rules.base import BaseRule, applies_to_section
 
 _VAGUE = (
     "ตามความเหมาะสม",
@@ -247,6 +247,8 @@ class ProcurementMethodRule(BaseRule):
     """High-budget TOR should state the procurement method."""
 
     def validate(self, tor_document: dict) -> list[Finding]:
+        if not (applies_to_section(tor_document, "s1") or applies_to_section(tor_document, "s6")):
+            return []
         budget = tor_document.get("budget")
         text = _joined_text(tor_document)
         if not isinstance(budget, (int, float)) or budget < 500_000:

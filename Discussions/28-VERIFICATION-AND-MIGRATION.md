@@ -1,20 +1,20 @@
-# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.5.0
+# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.6.0
 
 เอกสารฉบับเดียว (Combined_Report) ตาม `.kiro/specs/local-llm-verification-aws-migration-plan/`  
 ลำดับ: **(A) Verification** → **(B) Verification_Gate** → **(C) AWS Migration Plan** → **(D) Stability & Scale**
 
-ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · `test-evidence/_round-2026-09-09-summary.txt` · `test-evidence/_round-2026-09-09-live-llm.txt` (live_llm 17/17) · รอบ UI headed คู่: `test-evidence/_round-2026-09-07pm-summary.txt`
+ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · `test-evidence/_round-2026-09-10-skk-quality-thinking.json` · `test-evidence/_round-2026-09-09-live-llm.txt` (live_llm 17/17) · รอบ UI headed คู่: `test-evidence/_round-2026-09-07pm-summary.txt`
 
 ---
 
-## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.5.0
+## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.6.0
 
 ### 0. ส่วนหัว
 
 | ฟิลด์ | ค่า |
 |-------|-----|
-| วันที่ทดสอบ | **9 กันยายน 2026** (unit 2046 + Vitest 309 + `live_llm` 17/17 + Docker rebuild) · รอบ UI headed คู่ **7 กันยายน 2026 บ่าย** |
-| เวอร์ชันแอป | v0.5.0 |
+| วันที่ทดสอบ | **10 กันยายน 2026** (fix fill-references/guardrail/thinking recovery · unit ชุดแก้ 249 · Docker backend) · พื้นฐาน **9 ก.ย.** unit 2046 + Vitest 309 + `live_llm` 17/17 · รอบ UI headed คู่ **7 ก.ย. 2026 บ่าย** |
+| เวอร์ชันแอป | v0.6.0 |
 | สแตก | Docker Compose โปรเจกต์ `tor-app` รวม **mcp-rag :8765** |
 | Local LLM | LM Studio `http://127.0.0.1:1234/v1` (จาก backend ใช้ `host.docker.internal`) |
 | ผู้จัดทำ | Verification_Author (รอบอัปเดตเอกสาร 4 ก.ย. 2026; เกตเดิม 31 ส.ค. ยังอยู่ด้านล่าง) |

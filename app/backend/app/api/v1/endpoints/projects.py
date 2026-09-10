@@ -66,7 +66,13 @@ from app.schemas.project import (
 )
 from app.schemas.responses import MetaInfo, SuccessResponse
 from app.services.audit_service import AuditService, get_client_ip
-from app.services.intake_service import can_set_phase, clamp_draft_phase
+from app.services.intake_service import (
+    can_set_phase,
+    clamp_draft_phase,
+    is_ready_to_compose,
+    ready_criteria_met,
+    slot_map_of,
+)
 
 logger = logging.getLogger("tor_app.projects")
 
@@ -95,6 +101,19 @@ def _row_has_content(row: TORSection | None) -> bool:
     return bool(str(row.content or "").strip() or str(row.ai_draft or "").strip())
 
 
+def _scope_section_is_filled(
+    parent: TORSection | None,
+    scope: dict[str, TORSection],
+    allowed: set[str],
+) -> bool:
+    has_sub = any(
+        _row_has_content(row)
+        for sub_key, row in scope.items()
+        if sub_key in allowed or sub_key.startswith("s4.")
+    )
+    return _row_has_content(parent) or has_sub
+
+
 def missing_submit_sections(
     rows: list[TORSection],
     project_type: str | None = None,
@@ -103,22 +122,17 @@ def missing_submit_sections(
     profile = profile_for_project(project_type)
     by_key, subs = _index_tor_sections(rows)
     missing: list[dict[str, str]] = []
+    allowed_scope = set(profile.scope_storage_keys())
+    required_scope = profile.required_scope_keys()
     for item in profile.main_sections:
         if not item.required:
             continue
         key = item.storage_key
         parent = by_key.get(key)
         if key == "s4":
-            scope = subs.get("s4") or {}
-            allowed = set(profile.scope_storage_keys())
-            has_sub = any(
-                _row_has_content(row)
-                for sub_key, row in scope.items()
-                if sub_key in allowed or sub_key.startswith("s4.")
-            )
-            if _row_has_content(parent) or has_sub:
+            if _scope_section_is_filled(parent, subs.get("s4") or {}, allowed_scope):
                 continue
-            first = profile.required_scope_keys()[0] if profile.required_scope_keys() else "s4"
+            first = required_scope[0] if required_scope else "s4"
             missing.append({"section_key": "s4", "sub_key": first})
             continue
         if not _row_has_content(parent):
@@ -149,6 +163,8 @@ def _scope_sub_payload(
     for sub in profile.scope_subsections:
         sub_row = scope_map.get(sub.storage_key) or scope_map.get(sub.semantic_key)
         content = (sub_row.content if sub_row else "") or ""
+        if not str(content).strip() and sub_row is not None:
+            content = str(getattr(sub_row, "ai_draft", None) or "")
         items.append(
             {
                 "key": sub.storage_key,
@@ -929,9 +945,18 @@ async def patch_project_phase(
     project = await _owned_project(project_id, current_user, db)
     if not can_set_phase(project, body.phase):
         raise ValidationError(
-            message="ต้องวางข้อความหรืออัปโหลดเอกสารในขั้นที่ ๐ ก่อน จึงจะร่างได้",
+            message=(
+                "ยังไปขั้นนี้ไม่ได้ — ทำขั้นก่อนหน้าให้ครบก่อน "
+                "(ขั้นที่ ๓ ต้องมีข้อเท็จจริงบังคับครบหรือกดยืนยันพร้อมร่าง)"
+            ),
             field="phase",
         )
+    if body.phase >= 3 and not is_ready_to_compose(project):
+        # Persist unlock when officer advances after facts are already complete.
+        if ready_criteria_met(slot_map_of(project), project.project_type):
+            analysis = dict(project.analysis_json or {})
+            analysis["ready_to_compose"] = True
+            project.analysis_json = analysis
     project.current_phase = body.phase
     await db.flush()
     await db.refresh(project)
@@ -969,6 +994,8 @@ def _section_list_item(
     title: str,
 ) -> dict:
     content = (row.content if row else "") or ""
+    if not str(content).strip() and row is not None:
+        content = str(getattr(row, "ai_draft", None) or "")
     if key != "s4":
         content = _normalize_parent_content(key, content, row)
     filled = bool(str(content or "").strip())

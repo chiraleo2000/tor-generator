@@ -1,7 +1,8 @@
 """Shared LLM token budgets for TOR draft, KB Q&A, and TOR review.
 
 OpenAI-compatible APIs expose max_tokens (completion cap), not min_tokens.
-Draft still uses DRAFT_MIN_TOKENS in section prompts. KB chat no longer
+Draft uses DRAFT_MIN_TOKENS as a soft floor in substance prompts (not a
+verbosity target). KB chat no longer
 enforces a minimum length (CHAT_MIN_TOKENS is unused).
 
 google/gemma-4-e4b allows a 131072-token context. Draft and review may request
@@ -19,9 +20,9 @@ EMBEDDING_MAX_TOKENS = 2_048
 
 # Bedrock / PageIndex path: cap completions so Phase 3 cannot sit on one 131k decode.
 SECTION_MAX_TOKENS = 8_192
-SECTION_MIN_TOKENS = 1_024
+SECTION_MIN_TOKENS = 192
 SCOPE_SUB_MAX_TOKENS = 2_048
-SCOPE_SUB_MIN_TOKENS = 256
+SCOPE_SUB_MIN_TOKENS = 96
 DRAFT_MAX_TOKENS = SECTION_MAX_TOKENS
 DRAFT_MIN_TOKENS = SECTION_MIN_TOKENS
 CHAT_MAX_TOKENS = 32_768

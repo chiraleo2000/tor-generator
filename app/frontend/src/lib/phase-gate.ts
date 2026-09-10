@@ -1,4 +1,6 @@
-import type { Project } from "@/types";
+﻿import type { Project } from "@/types";
+import type { CoverageRow } from "@/components/draft/phase1-coverage";
+import { factTopicsComplete } from "@/lib/intake-complete";
 
 type SlotLike = { status?: string; content?: string };
 
@@ -16,13 +18,18 @@ function hasBeenAnalyzed(analysis: Record<string, unknown>): boolean {
 
 /** Highest selectable phase: 0 before analyze, 2 after analyze, 3 compose, 4 confirmed. */
 export function intakeUnlockedPhase(
-  project: Pick<Project, "analysisJson" | "extractedFields">
+  project: Pick<Project, "analysisJson" | "extractedFields">,
+  coverage?: CoverageRow[]
 ): number {
   const analysis = asRecord(project.analysisJson);
   if (analysis.phase4_confirmed === true) {
     return 4;
   }
   if (analysis.ready_to_compose === true) {
+    return 3;
+  }
+  // Mirror backend: facts complete unlocks compose even before confirm-ready is stored.
+  if (coverage?.length && factTopicsComplete(coverage)) {
     return 3;
   }
   if (hasBeenAnalyzed(analysis)) {

@@ -293,3 +293,45 @@ def test_amazon_quick_http_rejects_missing_auth(monkeypatch) -> None:
         server.shutdown()
         server.server_close()
 
+
+def test_amazon_quick_skills_follow_official_tor_style() -> None:
+    root = REPO_APP / "infra" / "quick" / "agents-skills"
+    skills = {}
+    for name in (
+        "tor-kb-retrieve",
+        "tor-draft-intake",
+        "tor-draft-compose",
+        "tor-review-compliance",
+    ):
+        payload = json.loads(
+            (root / "skills" / name / "skill.json").read_text(encoding="utf-8")
+        )
+        skills[name] = payload
+        assert payload["name"] == name
+        assert "instructions" in payload
+    compose = skills["tor-draft-compose"]["instructions"]
+    assert "ขึ้นต้นแต่ละหัวข้อด้วยบรรทัด ### ตามรหัส" not in compose
+    assert "ห้ามพิมพ์หัวข้อโครงร่าง" in compose
+    assert "16pt" in compose
+    assert "เลขไทย" in compose
+    assert "Digital Government" in compose
+    review = skills["tor-review-compliance"]["instructions"]
+    assert "เลขไทย" in review
+    assert "s4.1/s4.8 ตายตัว" in review
+    structure = json.loads(
+        (root / "references" / "tor-structure.json").read_text(encoding="utf-8")
+    )
+    assert structure["official_export_style"]["body_pt"] == 16
+    assert structure["official_export_style"]["line_spacing"] == 1.0
+    assert structure["official_export_style"]["margin_top_bottom_cm"] == 2.54
+    assert structure["official_export_style"]["margin_left_right_cm"] == 1.91
+    assert structure["official_export_style"]["section_numerals"] == "none"
+    assert "s7" not in structure["fact_required_slots"]
+    rules = json.loads(
+        (root / "references" / "compliance-rules.json").read_text(encoding="utf-8")
+    )
+    assert rules["format_checks"]["app_export"]["body_pt"] == 16
+    assert rules["format_checks"]["app_export"]["line_spacing"] == 1.0
+    assert rules["format_checks"]["app_export"]["margin_top_bottom_cm"] == 2.54
+    assert rules["format_checks"]["app_export"]["margin_left_right_cm"] == 1.91
+

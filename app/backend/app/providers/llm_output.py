@@ -49,6 +49,39 @@ _COT_STARTERS = (
 _DECIDE_AFTER = 24
 
 
+def json_from_text(text: str | None) -> str:
+    """Return a JSON object/array blob from model output, including thinking text."""
+    if not text or not str(text).strip():
+        return ""
+    raw = str(text)
+    if looks_like_json(raw):
+        return raw.strip()
+    blob = _extract_json_blob(raw)
+    if blob:
+        return blob
+    cleaned = strip_thinking(raw)
+    if looks_like_json(cleaned):
+        return cleaned.strip()
+    return _extract_json_blob(cleaned) or ""
+
+
+def json_from_message(message: object) -> str:
+    """Prefer JSON from content or reasoning so thinking-on structured calls still parse."""
+    for attr in ("content", "reasoning_content", "reasoning"):
+        found = json_from_text(getattr(message, attr, None))
+        if found:
+            return found
+    extra = getattr(message, "model_extra", None)
+    if not isinstance(extra, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning", "content"):
+        value = extra.get(key)
+        found = json_from_text(value if isinstance(value, str) else None)
+        if found:
+            return found
+    return ""
+
+
 def looks_like_json(text: str) -> bool:
     sample = (text or "").strip()
     if not sample or sample[0] not in "{[":
@@ -125,6 +158,11 @@ def visible_answer(text: str | None) -> str:
 
 def _thai_count(text: str) -> int:
     return sum(1 for char in text if "\u0e00" <= char <= "\u0e7f")
+
+
+def thai_char_count(text: str | None) -> int:
+    """Count Thai letters in model output (for preferring a real answer)."""
+    return _thai_count(text or "")
 
 
 def _thai_ratio(text: str) -> float:

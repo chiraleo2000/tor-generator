@@ -1,0 +1,26 @@
+# Deploy + UI smoke — 9 Sep 2026 evening (draft section heading cleanup)
+
+## Deploy
+docker compose -p tor-app --env-file .env up -d --build frontend
+- frontend image rebuilt (Next.js 14.2.35 build OK)
+- backend/mcp-rag also rebuilt as dependents (healthy)
+
+## Health
+- frontend http://127.0.0.1:3000 -> 200 (healthy)
+- backend http://127.0.0.1:4000/health -> 200 healthy
+- amazon-quick http://127.0.0.1:8767/health -> 200 rag.reachable=true
+
+## Vitest (Node 24 alpine, scoped)
+src/lib/tor-sections.test.ts
+src/components/draft/phase3-draft.test.tsx
+src/components/draft/draft-chat.test.tsx
+src/components/draft/phase4-review.test.tsx
+Result: 4 files / 42 tests passed
+
+## Bundle smoke (projects/[id]/draft page chunk)
+bytes=84825
+tabular-nums=6 font-mono=8
+status pending/done present
+title ความเป็นมา present
+edit prefix แก้ไข 1. present
+heading pattern หมวด N: absent from static chunks

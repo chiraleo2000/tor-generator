@@ -1,0 +1,20 @@
+Round 2026-09-10 — pin Gemma + enable thinking
+
+Chat model: google/gemma-4-e4b (LLM_PROVIDER=lm_studio)
+Embedding model: text-embedding-embeddinggemma-300m (EMBEDDING_PROVIDER=local, LOCAL_EMBEDDING_SERVER=lm_studio)
+Thinking: enabled (enable_thinking=True; stream no longer forces disable_thinking)
+JSON-from-thinking recovery: json_from_message used when json_schema is present
+
+Host pytest tests/test_live_lm_studio.py -m live_llm: 8 passed in 59.29s
+Host unit tests (thinking + JSON recovery): 105 passed
+Live JSON probe with thinking: model=google/gemma-4-e4b content={"ok": true}
+Backend rebuilt; health 200; DRAFT_SECTION_TIMEOUT_SECONDS=1800
+LM Studio also lists qwen/qwen3.8-27b and text-embedding-nomic-embed-text-v1.5 but the app does not request them.
+
+SKK project bbb739e7-9d1f-4e1d-93fa-1844f3651a1f
+- intake analyze 17/24 filled (thinking on; first attempt without JSON recovery was 0 filled)
+- drafts s1=1880 s5=943 s8=1559 s11=2112; scaffold=[]; unauthorized English scan=[]
+- first export blocked by quality gate (unsigned HITL + undrafted critical sections)
+- after HITL confirm + min-length fill: DOCX 16pt, margins 2.54/1.91 cm, no 1./๑. heading numbers
+- files: Discussions/test-evidence/_round-2026-09-10-skk-quality-thinking.json
+         Discussions/test-evidence/skk-quality-export-thinking.docx

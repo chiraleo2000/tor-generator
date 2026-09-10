@@ -11,7 +11,7 @@ import {
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
-import { analysisMappingReady } from "@/lib/intake-complete";
+import { analysisMappingReady, factTopicsComplete } from "@/lib/intake-complete";
 
 function isIntakeErrorMessage(text: string): boolean {
   return /ไม่สำเร็จ|ยังไม่ครบ|อย่างน้อย|ต้อง/.test(text);
@@ -36,12 +36,14 @@ export function IntakeChatPanel({
   onAnalyzed,
   onEnterQa,
   onReady,
+  onFactsReady,
 }: Readonly<{
   projectId: string;
   phase: number;
   onAnalyzed: () => void;
   onEnterQa: () => void;
   onReady: () => void;
+  onFactsReady?: () => void;
 }>) {
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
   const [gaps, setGaps] = useState<string[]>([]);
@@ -61,12 +63,16 @@ export function IntakeChatPanel({
   const refreshCoverage = useCallback(async () => {
     const response = await apiClient.get(`/projects/${projectId}/intake/coverage`);
     const payload = unwrapData<CoveragePayload>(response);
-    setCoverage(payload.coverage || []);
+    const rows = payload.coverage || [];
+    setCoverage(rows);
     setGaps(payload.gap_questions || []);
     setReady(Boolean(payload.ready_to_compose));
     if (payload.has_material) setHasPack(true);
+    if (payload.ready_to_compose || factTopicsComplete(rows)) {
+      onFactsReady?.();
+    }
     return payload;
-  }, [projectId]);
+  }, [projectId, onFactsReady]);
 
   const advanceAfterAnalyze = useCallback(async () => {
     if (advancedRef.current) return;
@@ -192,13 +198,18 @@ export function IntakeChatPanel({
   }
 
   async function confirmReady() {
+    setMessage(null);
     const confirmed = await ask(PHASE_FORWARD_CONFIRM[3]);
-    if (!confirmed) return;
+    if (!confirmed) {
+      setMessage("ยังไม่ได้ยืนยัน — กดปุ่มอีกครั้งแล้วกดปุ่มยืนยันในกล่องโต้ตอบ");
+      return;
+    }
     setBusy(true);
     try {
       await apiClient.post(`/projects/${projectId}/intake/confirm-ready`, {
         confirm: true,
       });
+      setReady(true);
       onReady();
     } catch (err: unknown) {
       setMessage(apiErrorMessage(err, "ยังไม่ครบช่องข้อเท็จจริงที่บังคับ หรือยังไม่ได้ยืนยัน"));

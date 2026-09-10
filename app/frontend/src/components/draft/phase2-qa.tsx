@@ -133,16 +133,28 @@ export function Phase2Qa({
         </div>
       ) : null}
       {coverage.length ? <CoverageTable coverage={coverage} gaps={[]} /> : null}
-      <Button
-        type="button"
-        className="mt-1"
-        data-testid="intake-confirm-ready"
-        disabled={busy || !factReady}
-        onClick={onConfirmReady}
-      >
-        ครบแล้ว — ไปร่าง (ขั้นที่ ๓)
-      </Button>
-      {ready ? <p className="mt-2 text-sm text-green-800">ยืนยันพร้อมร่างแล้ว</p> : null}
+      <div className="sticky bottom-3 z-20 rounded-lg border border-navy/20 bg-white/95 p-3 shadow-sm backdrop-blur">
+        <Button
+          type="button"
+          className="w-full sm:w-auto"
+          data-testid="intake-confirm-ready"
+          disabled={busy || !factReady}
+          onClick={onConfirmReady}
+        >
+          ครบแล้ว — ไปร่าง (ขั้นที่ ๓)
+        </Button>
+        {!factReady ? (
+          <p className="mt-2 text-xs text-amber-800">
+            ปุ่มจะเปิดเมื่อข้อเท็จจริงบังคับครบ — ตอนนี้ยังขาด {missingFacts.length} ช่อง
+            {missingFacts.length ? ` (${missingFacts.map((row) => row.label).slice(0, 4).join(", ")})` : ""}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-brand-green">
+            ข้อเท็จจริงหลักครบแล้ว — กดปุ่มเพื่อยืนยันแล้วเข้าขั้นร่าง
+          </p>
+        )}
+        {ready ? <p className="mt-2 text-sm text-green-800">ยืนยันพร้อมร่างแล้ว</p> : null}
+      </div>
       <DraftConversation
         projectId={projectId}
         mode="intake"

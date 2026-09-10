@@ -11,37 +11,46 @@ interface DialogProps {
 
 function Dialog({ open, onOpenChange, children }: Readonly<DialogProps>) {
   const dialogRef = React.useRef<HTMLDialogElement>(null);
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  // Open/close only when `open` flips — do not close during listener refresh,
+  // or chat re-renders will dismiss the confirm dialog while ask() is pending.
+  React.useLayoutEffect(() => {
+    const node = dialogRef.current;
+    if (!node) return;
+    if (open) {
+      if (!node.open) {
+        node.showModal();
+      }
+      return;
+    }
+    if (node.open) {
+      node.close();
+    }
+  }, [open]);
 
   React.useLayoutEffect(() => {
     const node = dialogRef.current;
-    if (!open || !node) {
-      return;
-    }
-    if (!node.open) {
-      node.showModal();
-    }
+    if (!open || !node) return;
 
     const handleCancel = (event: Event) => {
       event.preventDefault();
-      onOpenChange(false);
+      onOpenChangeRef.current(false);
     };
     const handleBackdropClick = (event: MouseEvent) => {
       if (event.target === node) {
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
       }
     };
 
     node.addEventListener("cancel", handleCancel);
     node.addEventListener("click", handleBackdropClick);
-
     return () => {
       node.removeEventListener("cancel", handleCancel);
       node.removeEventListener("click", handleBackdropClick);
-      if (node.open) {
-        node.close();
-      }
     };
-  }, [open, onOpenChange]);
+  }, [open]);
 
   if (!open) {
     return null;
@@ -50,7 +59,7 @@ function Dialog({ open, onOpenChange, children }: Readonly<DialogProps>) {
   return (
     <dialog
       ref={dialogRef}
-      className="z-50 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border bg-background shadow-lg backdrop:bg-black/50"
+      className="fixed left-1/2 top-1/2 z-[100] w-[min(100%-2rem,32rem)] max-h-[90vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/50"
       aria-modal="true"
     >
       <div className="p-6">{children}</div>

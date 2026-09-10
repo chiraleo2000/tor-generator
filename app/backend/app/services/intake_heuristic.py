@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import re
 
-from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, INTAKE_SLOT_ORDER
+from app.domain.slots import (
+    FACT_REQUIRED_SLOTS,
+    INTAKE_SLOT_LABELS,
+    extract_key_allowlist,
+)
+from app.domain.section_profile import LEGACY_SCOPE_TITLES, profile_for_project
+from app.domain.tor_sections import SCOPE_SUBSECTIONS
 
 # ASCII [0-9] only: Python \d also matches Thai digits ๐-๙.
 _ASCII_DIGIT = r"[0-9]"  # NOSONAR python:S6353
@@ -41,9 +47,12 @@ _STAFF_COST_DEV_HEADING = "ค่าใช้จ่ายบุคลากร�
 _DELIVERY_PLAN_HEADING = "แผนการส่งมอบงาน"
 _SCOPE_OF_WORK_HEADING = "ขอบเขตของงาน"
 _PROJECT_TYPE_LABEL = "ประเภทโครงการ"
+_EQUIPMENT_LIST_HEADING = "รายการครุภัณฑ์คอมพิวเตอร์"
+_SECURITY_TOPIC = "ความมั่นคงปลอดภัย"
+_HARDWARE_TOPIC = "ฮาร์ดแวร์"
 
 _CODE_MARK = re.compile(
-    rf"\((s{_ASCII_DIGIT}+(?:\.{_ASCII_DIGIT}+)?)\)\s*[:：]",
+    rf"\((s{_ASCII_DIGIT}+(?:\.{_ASCII_DIGIT}+)?|[a-z][a-z0-9_]{{1,32}})\)\s*[:：]",
     re.IGNORECASE,
 )
 
@@ -95,7 +104,7 @@ _FACT_ALIASES: dict[str, tuple[str, ...]] = {
         "ระบบงานปัจจุบัน",
     ),
     "s4.4": (
-        "รายการครุภัณฑ์คอมพิวเตอร์",
+        _EQUIPMENT_LIST_HEADING,
         "ข้อกำหนดด้านฮาร์ดแวร์",
         "คอมพิวเตอร์แท็บเล็ต",
     ),
@@ -125,16 +134,120 @@ _FACT_ALIASES: dict[str, tuple[str, ...]] = {
     "s11": (_SELECT_CRITERIA_HEADING, "หลักเกณฑ์การพิจารณา", "การพิจารณาคัดเลือก"),
     "s4.14": (_SECURITY_HEADING, "PDPA", "คุ้มครองข้อมูลส่วนบุคคล"),
     "s13": (_OWNERSHIP_HEADING, _EXIT_STRATEGY_HEADING, "เงื่อนไขอื่น", _EXPECTED_BENEFIT_HEADING),
+    # Semantic storage keys (Section_Profile) — same Thai headings as TOR prose.
+    "functional": (
+        "ขอบเขตระบบงานและหน้าที่การทำงาน",
+        "หน้าที่การทำงานที่ต้องพัฒนา",
+        "ขอบเขตระบบงาน",
+        "งานหลักและกิจกรรม",
+        _SCOPE_METHOD_HEADING,
+        _SCOPE_DEV_HEADING,
+    ),
+    "testing": (
+        "การทดสอบระบบและเกณฑ์การยอมรับ",
+        "การทดสอบระบบ",
+        "เกณฑ์การยอมรับ",
+        "แผนการทดสอบ",
+        "UAT",
+    ),
+    "deliverable_docs": (
+        "เอกสารระบบและซอร์สโค้ด",
+        "เอกสารที่ต้องส่งมอบ",
+        "ผลงานส่งมอบ",
+        "ซอร์สโค้ด",
+        _DELIVERY_PLAN_HEADING,
+        _WORK_PLAN_HEADING,
+    ),
+    "integration": (
+        "การเชื่อมโยงระบบและการโอนย้ายข้อมูล",
+        "การเชื่อมโยงระบบ",
+        "จุดเชื่อมโยงระบบ",
+        "การโอนย้ายข้อมูล",
+    ),
+    "items": (
+        "รายการครุภัณฑ์",
+        "รายละเอียดคุณลักษณะเฉพาะ",
+        "รายการสิ่งของ",
+        "คุณลักษณะเฉพาะ",
+    ),
+    "specification": (
+        "ข้อกำหนดด้านเทคนิค",
+        "ข้อกำหนดด้านฮาร์ดแวร์",
+        _EQUIPMENT_LIST_HEADING,
+    ),
+    "licenses": (
+        "ลิขสิทธิ์ซอฟต์แวร์",
+        "ข้อกำหนดด้านซอฟต์แวร์",
+        _SOFTWARE_LIST_HEADING,
+        _SOFTWARE_PROPOSED_HEADING,
+    ),
+    "standards_security": (
+        _SECURITY_HEADING,
+        _SECURITY_TOPIC,
+        "มาตรฐานและข้อกำหนด",
+        "PDPA",
+    ),
+    "project_team": (
+        "บุคลากรประจำโครงการ",
+        "ทีมงานโครงการ",
+        _STAFF_COST_DEV_HEADING,
+        "บุคลากร ทีมงาน",
+    ),
+    "training": (
+        "การฝึกอบรมและการถ่ายทอดความรู้",
+        "การฝึกอบรม",
+        "ถ่ายทอดความรู้",
+    ),
+    "system_overview": (
+        "ภาพรวมและสถาปัตยกรรม",
+        "สถาปัตยกรรมของระบบ",
+        "ภาพรวมระบบ",
+    ),
+    "asset_list": (
+        "รายการทรัพย์สินที่ต้องบำรุงรักษา",
+        "รายการครุภัณฑ์ที่จ้างบำรุงรักษา",
+        "ขอบเขตทรัพย์สิน",
+    ),
+    "service_spec": (
+        "ขอบเขตและข้อกำหนดการให้บริการ",
+        "รายละเอียดบริการที่เช่า",
+        "ข้อกำหนดการให้บริการ",
+    ),
+    "methodology": (
+        "วิธีการดำเนินงาน",
+        "แนวทางการดำเนินงาน",
+        "ระเบียบวิธี",
+    ),
+    "workload": (
+        "ปริมาณงาน",
+        "ขอบเขตปริมาณงาน",
+        "รายละเอียดปริมาณงาน",
+    ),
+    "works": (
+        "รายการงานก่อสร้าง",
+        "รายละเอียดงานปรับปรุง",
+        "ขอบเขตงานก่อสร้าง",
+    ),
 }
 
 # Cap noisy heading captures for fact slots (forms often lack clean stop markers).
 _FACT_BODY_CAPS: dict[str, int] = {
-    "s1": 3500,
-    "s2": 2500,
-    "s5": 220,
-    "s6": 280,
-    "s7": 200,
-    "s4.1": 8000,
+    "s1": 5000,
+    "s2": 3500,
+    "s5": 400,
+    "s6": 500,
+    "s7": 400,
+    "s4.1": 12000,
+    "functional": 12000,
+    "items": 12000,
+    "deliverable_docs": 8000,
+    "testing": 6000,
+    "specification": 8000,
+    "methodology": 8000,
+    "works": 8000,
+    "service_spec": 8000,
+    "workload": 6000,
+    "asset_list": 8000,
 }
 
 _QUAL_HINT = re.compile(
@@ -352,7 +465,7 @@ def repair_misplaced_slots(slot_map: dict) -> dict:
 def _segments_by_code(text: str) -> dict[str, str]:
     matches = list(_CODE_MARK.finditer(text))
     segments: dict[str, str] = {}
-    allowed = set(INTAKE_SLOT_ORDER)
+    allowed = extract_key_allowlist()
     for index, match in enumerate(matches):
         key = match.group(1).lower()
         if key not in allowed:
@@ -369,6 +482,20 @@ def _heading_catalog() -> list[tuple[str, str]]:
     headings: list[tuple[str, str]] = [
         (key, label) for key, label in INTAKE_SLOT_LABELS.items() if label
     ]
+    headings.extend((key, title) for key, title in LEGACY_SCOPE_TITLES.items() if title)
+    headings.extend((key, title) for key, title in SCOPE_SUBSECTIONS.items() if title)
+    for cat in (
+        "hire_develop",
+        "hire_maintain",
+        "lease_service",
+        "buy_goods",
+        "construction",
+        "hire_consult",
+        "hire_service",
+    ):
+        for key, title in profile_for_project(cat).slot_labels().items():
+            if title:
+                headings.append((key, title))
     for key, aliases in _FACT_ALIASES.items():
         headings.extend((key, alias) for alias in aliases)
     headings.sort(key=lambda item: len(item[1]), reverse=True)
@@ -408,7 +535,7 @@ _NEXT_SECTION = re.compile(
     rf"(?:{_RATIONALE_HEADING}|{_PURPOSE_HEADING}|เป้าหมาย|ตัวชี้วัด|{_SCOPE_HEADING}|"
     rf"{_CURRENT_SYSTEM_HEADING}|รายละเอียดของระบบงานใหม่|{_CURRENT_SYSTEM_DETAIL_HEADING}|"
     rf"{_DURATION_HEADING}|{_WORK_PLAN_HEADING}|{_EXPENSE_HEADING}|งบประมาณรวม|{_EXPECTED_BENEFIT_HEADING}|"
-    rf"คุณสมบัติ|{_SELECT_CRITERIA_HEADING}|ความมั่นคงปลอดภัย|{_OWNERSHIP_HEADING}|{_EXIT_STRATEGY_HEADING}|"
+    rf"คุณสมบัติ|{_SELECT_CRITERIA_HEADING}|{_SECURITY_TOPIC}|{_OWNERSHIP_HEADING}|{_EXIT_STRATEGY_HEADING}|"
     rf"{_SCOPE_DEV_HEADING}|แผนการส่งมอบ|สอดคล้องกับแผน|"
     rf"รายการครุภัณฑ์|{_SOFTWARE_LIST_HEADING}|{_STAFF_COST_HEADING}|"
     r"ข้อกำหนดทั่วไป|การบันทึกและนำเข้า|การประมวลผล|การให้บริการ|"
@@ -468,7 +595,7 @@ _AGENCY_RE = re.compile(
     r"กรม(?!ของ)[ก-๙]{2,40})"
 )
 _PROJECT_NAME_RE = re.compile(r"ชื่อโครงการ[.\s…]*([^\n]+)")
-_PLACE_LINE_RE = re.compile(r"(?:ชื่อสถานที่ตั้ง|สถานที่ตั้ง)[\s\n]*([^\n]+)")
+_PLACE_LINE_RE = re.compile(r"(?:ชื่อสถานที่ตั้ง|สถานที่ตั้ง)\s*([^\n]+)")
 _PENALTY_RE = re.compile(r"ค่าปรับ[^\n]{0,80}")
 _ACCEPTANCE_CRITERIA = "เกณฑ์ตรวจรับ"
 _BLOCK_MARKERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
@@ -502,13 +629,13 @@ _BLOCK_MARKERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     ),
     (
         "s4.4",
-        ("รายการครุภัณฑ์คอมพิวเตอร์", "คอมพิวเตอร์แท็บเล็ต แบบที่"),
+        (_EQUIPMENT_LIST_HEADING, "คอมพิวเตอร์แท็บเล็ต แบบที่"),
         (_SOFTWARE_LIST_HEADING, _STAFF_COST_HEADING, _SCOPE_HEADING, "ซอฟต์แวร์"),
     ),
     (
         "s4.5",
         (_SOFTWARE_PROPOSED_HEADING, _SOFTWARE_LIST_HEADING),
-        (_STAFF_COST_HEADING, _SCOPE_HEADING, "ฮาร์ดแวร์"),
+        (_STAFF_COST_HEADING, _SCOPE_HEADING, _HARDWARE_TOPIC),
     ),
     (
         "s8",
@@ -518,12 +645,12 @@ _BLOCK_MARKERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     (
         "s3",
         (_BIDDER_QUAL_HEADING, "คุณสมบัติของผู้เสนอราคา"),
-        (_SELECT_CRITERIA_HEADING, _ACCEPTANCE_CRITERIA, "ความมั่นคงปลอดภัย"),
+        (_SELECT_CRITERIA_HEADING, _ACCEPTANCE_CRITERIA, _SECURITY_TOPIC),
     ),
     (
         "s11",
         (_SELECT_CRITERIA_HEADING, "หลักเกณฑ์การพิจารณา", _ACCEPTANCE_CRITERIA),
-        ("ความมั่นคงปลอดภัย", _OWNERSHIP_HEADING),
+        (_SECURITY_TOPIC, _OWNERSHIP_HEADING),
     ),
     (
         "s4.14",
@@ -733,7 +860,7 @@ def _extract_block_markers(raw: str, found: dict[str, str]) -> None:
 def _enrich_scope_hardware_software(scope: str, found: dict[str, str]) -> None:
     if _has_any(scope, "Kubernetes", "คลาวด์", "Containerized"):
         _fill_if_empty(found, "s4.4", scope)
-    if _has_any(scope, "แท็บเล็ต", "ฮาร์ดแวร์", "เครื่องแม่ข่าย"):
+    if _has_any(scope, "แท็บเล็ต", _HARDWARE_TOPIC, "เครื่องแม่ข่าย"):
         _fill_if_empty(found, "s4.4", scope)
     if _has_any(scope, "RAG", "OCR", "Chatbot", "ซอฟต์แวร์", "ลิขสิทธิ์", "Web Application"):
         _fill_if_empty(found, "s4.5", scope)
@@ -812,3 +939,43 @@ def extract_unstructured_slots(text: str) -> dict[str, str]:
     _extract_block_markers(raw, found)
     _enrich_scope_subs(raw, found)
     return {key: value for key, value in found.items() if value}
+
+
+_DEV_PACK_MARKERS = (
+    "พัฒนาระบบ",
+    "จ้างพัฒนา",
+    "ระบบสารสนเทศ",
+    "เว็บไซต์",
+    "เว็บแอป",
+    "web application",
+    "software development",
+)
+_HW_PACK_MARKERS = (
+    "เครื่องแม่ข่าย",
+    "เครื่องคอมพิวเตอร์",
+    "แท็บเล็ต",
+    _HARDWARE_TOPIC,
+    "ครุภัณฑ์คอมพิวเตอร์",
+    "server",
+    "hardware",
+    "tablet",
+)
+_GOODS_ONLY_TYPES = frozenset({"buy_goods", "general", ""})
+
+
+def pack_mixes_develop_and_hardware(text: str) -> bool:
+    raw = text or ""
+    lowered = raw.lower()
+    has_dev = any(marker in raw or marker in lowered for marker in _DEV_PACK_MARKERS)
+    has_hw = any(marker in raw or marker in lowered for marker in _HW_PACK_MARKERS)
+    return has_dev and has_hw
+
+
+def suggest_procurement_category(text: str, current: str | None = None) -> str | None:
+    """Prefer hire_develop when a pack mixes system development with servers/hardware."""
+    if not pack_mixes_develop_and_hardware(text):
+        return None
+    mapped = (current or "").strip()
+    if mapped in _GOODS_ONLY_TYPES:
+        return "hire_develop"
+    return None

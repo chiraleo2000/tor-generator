@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 ExportFormat = Literal["docx", "pdf"]
 ExportStatus = Literal["pending", "generating", "completed", "failed"]
+NumberingSchemeName = Literal["none", "numbered_consecutive"]
 
 
 # ---------------------------------------------------------------------------
@@ -32,8 +33,12 @@ class ExportRequest(BaseModel):
     """Request body for POST /projects/{id}/export."""
 
     use_thai_numerals: bool = Field(
-        default=False,
-        description="Use Thai numerals (๑, ๒, ๓) instead of Arabic (1, 2, 3) for section numbering",
+        default=True,
+        description="Use Thai numerals (๑, ๒, ๓) instead of Arabic (1, 2, 3) for dates and numbered headings",
+    )
+    numbering_scheme: NumberingSchemeName = Field(
+        default="none",
+        description="Heading numbering: none (titles only, product default) or numbered_consecutive",
     )
     url_ttl_hours: int = Field(
         default=24,

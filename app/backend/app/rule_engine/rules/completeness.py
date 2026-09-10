@@ -8,7 +8,7 @@ from __future__ import annotations
 from app.domain.section_profile import MissingSectionProfile, profile_for_project, require_profile
 from app.domain.tor_sections import CRITICAL_SECTIONS_MIN_LENGTH, MINIMUM_CONTENT_LENGTH
 from app.rule_engine.engine import Finding, Severity
-from app.rule_engine.rules.base import BaseRule
+from app.rule_engine.rules.base import BaseRule, focus_section
 
 TOR_REQUIRED_SECTIONS: dict[str, str] = {
     item.storage_key: item.title
@@ -57,8 +57,11 @@ class SectionPresenceRule(BaseRule):
             ) from exc
 
         sections = _sections(tor_document)
+        focus = focus_section(tor_document)
         for item in profile.main_sections:
             if not item.required:
+                continue
+            if focus and item.storage_key != focus:
                 continue
             content = sections.get(item.storage_key)
             empty = content is None or (isinstance(content, str) and content.strip() == "")
@@ -90,6 +93,8 @@ class SectionPresenceRule(BaseRule):
 class RequiredSubsectionsRule(BaseRule):
     def validate(self, tor_document: dict) -> list[Finding]:
         findings: list[Finding] = []
+        if focus_section(tor_document) not in {None, "s4"}:
+            return findings
         profile = profile_for_project(_category(tor_document) or "buy_goods")
         sections = _sections(tor_document)
         s4_content = sections.get("s4")
@@ -125,7 +130,10 @@ class MinimumContentRule(BaseRule):
         findings: list[Finding] = []
         profile = profile_for_project(_category(tor_document) or "buy_goods")
         sections = _sections(tor_document)
+        focus = focus_section(tor_document)
         for item in profile.main_sections:
+            if focus and item.storage_key != focus:
+                continue
             content = sections.get(item.storage_key)
             if content is None:
                 continue

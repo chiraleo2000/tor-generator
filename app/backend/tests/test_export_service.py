@@ -114,6 +114,10 @@ async def test_generate_and_upload_completes_job():
         patch("app.services.export_service.DOCXGenerator", return_value=docx),
         patch.object(ExportService, "_generate_pdf", new_callable=AsyncMock, return_value=b"pdf-bytes"),
         patch.object(ExportService, "_upload_to_minio"),
+        patch(
+            "app.services.export_service.check_export_gates",
+            return_value=MagicMock(raise_if_blocked=MagicMock()),
+        ),
     ):
         await ExportService._generate_and_upload(db, minio, _snapshot(), job)
 

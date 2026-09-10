@@ -166,3 +166,47 @@ def test_repair_moves_qualifications_out_of_duration():
     assert fixed["s5"]["status"] == "gap"
     assert "นิติบุคคล" in fixed["s3"]["content"]
     assert fixed["s3"]["status"] == "filled"
+
+
+def test_extract_reads_semantic_scope_codes_and_headings():
+    text = (
+        "(functional): พัฒนาโมดูลลงทะเบียนและรายงานผล\n"
+        "การทดสอบระบบและเกณฑ์การยอมรับ\n"
+        "ต้องผ่าน UAT และทดสอบความปลอดภัยก่อนขึ้นระบบจริง\n"
+        "งวดงานและการจ่ายเงิน\n"
+        "แบ่ง 3 งวด\n"
+    )
+    found = extract_slot_contents(text)
+    assert "โมดูลลงทะเบียน" in found.get("functional", "")
+    assert "UAT" in found.get("testing", "") or "UAT" in found.get("s4.8", "")
+
+
+def test_remap_legacy_s4_onto_hire_develop_scope():
+    from app.domain.slots import remap_extracted_slots
+
+    remapped = remap_extracted_slots(
+        {
+            "s4.3": "งานหลักพัฒนาระบบลงทะเบียน",
+            "s4.8": "ส่งมอบซอร์สโค้ดและคู่มือ",
+            "s4.6": "เชื่อมโยง API กับระบบเดิม",
+            "s4.1": "สรุปขอบเขตจ้างพัฒนา",
+        },
+        "hire_develop",
+    )
+    assert "พัฒนาระบบลงทะเบียน" in remapped["functional"]
+    assert "ซอร์สโค้ด" in remapped["deliverable_docs"]
+    assert "API" in remapped["integration"]
+    assert remapped["functional"]
+
+
+def test_mixed_develop_and_hardware_pack_suggests_hire_develop():
+    from app.services.intake_heuristic import suggest_procurement_category
+
+    skk = (
+        "โครงการพัฒนาระบบสารสนเทศของสกก. จ้างพัฒนาเว็บแอปพลิเคชัน "
+        "พร้อมจัดหาเครื่องแม่ข่ายและแท็บเล็ตสำหรับเจ้าหน้าที่"
+    )
+    assert suggest_procurement_category(skk, "buy_goods") == "hire_develop"
+    goods = "จัดซื้อเครื่องคอมพิวเตอร์และครุภัณฑ์โต๊ะเก้าอี้ จำนวน 20 ชุด"
+    assert suggest_procurement_category(goods, "buy_goods") is None
+

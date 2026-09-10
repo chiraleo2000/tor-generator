@@ -24,7 +24,11 @@ from app.domain.slots import (
     slot_key_aliases,
     slot_label,
 )
-from app.domain.section_profile import LEGACY_SCOPE_TITLES, profile_for_project
+from app.domain.section_profile import (
+    LEGACY_SCOPE_TITLES,
+    category_is_locked,
+    profile_for_project,
+)
 from app.domain.tor_sections import (
     MANDATORY_HUMAN_REVIEW_SECTIONS,
     SCOPE_SUBSECTIONS,
@@ -48,6 +52,7 @@ from app.services.intake_heuristic import (
     guess_slot_for_answer,
     overlay_filled_slots,
     repair_misplaced_slots,
+    suggest_procurement_category,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +82,8 @@ ANALYZE_PROMPT = """คุณเป็นผู้ช่วยจัดทำ TO
 {
   "slot_map": {
     "s1": {"content": "...", "status": "filled", "sources": ["ชื่อไฟล์"]},
-    "s4.1": {"content": "...", "status": "gap", "sources": []}
+    "functional": {"content": "...", "status": "filled", "sources": ["ชื่อไฟล์"]},
+    "items": {"content": "...", "status": "gap", "sources": []}
   },
   "gap_questions": ["คำถามที่ยังขาดข้อมูลข้อเท็จจริง"]
 }
@@ -87,7 +93,9 @@ status ได้เฉพาะ filled | gap | reference_only
 s1 ความเป็นมา/ชื่อโครงการ/ประเภทงาน (พัฒนา บำรุงรักษา ที่ปรึกษา) — ไม่ใส่คุณสมบัติบริษัท
 s2 วัตถุประสงค์ — เป้าหมายของงาน ไม่ใช่วงเงิน
 s3 คุณสมบัติของผู้เสนอราคา — นิติบุคคล e-GP ผู้ทิ้งงาน ทุนจดทะเบียน มูลค่าสุทธิ ผลงาน OEM
-s4 ขอบเขตของงาน (สรุปรวม) และหัวข้อย่อยตามประเภทงานที่ระบุในรายการด้านล่างเท่านั้น
+s4 ขอบเขตของงาน (สรุปรวม) และหัวข้อย่อยตามประเภทงานในรายการด้านล่างเท่านั้น
+  ใช้รหัสหัวข้อย่อยตามประเภทงาน เช่น functional / testing / deliverable_docs / items / specification
+  ห้ามใช้แค่ s4.1 ถ้าประเภทงานมีรหัส semantic แล้ว
 s5 ระยะเวลาดำเนินการเท่านั้น — จำนวนวัน/เดือน/ปี ห้ามใส่คุณสมบัติผู้เสนอราคา
 s6 วงเงินงบประมาณ ราคากลาง วิธีคำนวณราคากลาง และวิธีจัดซื้อจัดจ้าง
 s7 สถานที่ดำเนินการ
@@ -107,8 +115,8 @@ s13 เงื่อนไขอื่น ๆ ลิขสิทธิ์ NDA ข
 - ราคากลางถ้ามีในเอกสารให้ใส่ s6 พร้อมวิธีคำนวณ ห้ามปนกับคุณสมบัติผู้เสนอราคา
 - อย่าสวมข้อความกฎหมาย/ระเบียบเป็นข้อเท็จจริงโครงการ — ใส่ reference_only
 - ข้อความเรื่องนิติบุคคล/ทุนจดทะเบียน/ผลงาน → s3 เท่านั้น ไม่ใช่ s5
-- คัดลอกข้อความจากเอกสารให้ยาวพอใช้ร่างต่อได้ ห้ามสรุปจนหายสาระ
-- เติมทุกช่องที่เอกสารมีข้อมูลจริงให้ filled ให้มากที่สุด ไม่หยุดแค่ข้อเท็จจริงหลัก
+- คัดลอกข้อความจากเอกสารให้ยาวพอใช้ร่างต่อได้ ห้ามสรุปจนหายสาระ — ตารางและรายการข้อย่อยให้เก็บครบ
+- เติมทุกช่องในรายการประเภทงานที่เอกสารมีข้อมูลจริงให้ filled ให้มากที่สุด รวมหัวข้อย่อยขอบเขตงานทั้งหมด
 - ห้ามสร้างหัวข้อ «ระบบงานปัจจุบัน» ถ้าไม่มีในรายการหัวข้อย่อยของประเภทงานนี้
 - ชิ้นนี้เป็นส่วนหนึ่งของเอกสารยาว: เติมเฉพาะข้อมูลที่ปรากฏในชิ้นนี้ ไม่ต้องเว้นช่องที่ยังไม่มีในชิ้นนี้
 """
@@ -162,6 +170,17 @@ INTAKE_CHAT_SYSTEM = (
 )
 
 
+def _slot_preview(slot_map: dict[str, Any], key: str) -> str:
+    content = str((slot_map.get(key) or {}).get("content") or "").strip()
+    if content:
+        return content
+    for alias in slot_key_aliases(key):
+        preview = str((slot_map.get(alias) or {}).get("content") or "").strip()
+        if preview:
+            return preview
+    return ""
+
+
 def coverage_table(
     slot_map: dict[str, Any], category: str | None = None
 ) -> list[dict[str, Any]]:
@@ -170,15 +189,8 @@ def coverage_table(
     rows = []
     for key in intake_slot_order(category):
         slot = slot_map.get(key) or {}
-        content = str(slot.get("content") or "").strip()
         status = slot.get("status") or "gap"
         filled = _slot_is_filled(slot_map, key)
-        preview = content
-        if not preview:
-            for alias in slot_key_aliases(key):
-                preview = str((slot_map.get(alias) or {}).get("content") or "").strip()
-                if preview:
-                    break
         rows.append(
             {
                 "key": key,
@@ -186,11 +198,10 @@ def coverage_table(
                 "status": "filled" if filled else status,
                 "filled": filled,
                 "fact_required": key in facts,
-                "preview": preview[:180],
+                "preview": _slot_preview(slot_map, key)[:180],
             }
         )
     return rows
-
 
 def _slot_is_filled(slot_map: dict[str, Any], key: str) -> bool:
     for alias in slot_key_aliases(key):
@@ -736,6 +747,12 @@ def intake_unlocked_phase(project: Project) -> int:
         return 4
     if is_ready_to_compose(project):
         return 3
+    # Facts already complete but officer has not pressed confirm-ready yet —
+    # still unlock compose so a stuck UI / silent dialog cannot block Phase 3.
+    if has_been_analyzed(project) and ready_criteria_met(
+        slot_map_of(project), getattr(project, "project_type", None)
+    ):
+        return 3
     if has_been_analyzed(project):
         return 2
     return 0
@@ -807,6 +824,34 @@ def _slot_map_from_paste(
     return slot_map
 
 
+def _normalized_llm_slot(value: dict[str, Any]) -> dict[str, Any]:
+    status = value.get("status")
+    if status not in {"filled", "gap", "reference_only"}:
+        status = "gap"
+    sources = value.get("sources")
+    return {
+        "content": str(value.get("content") or ""),
+        "status": status,
+        "sources": sources if isinstance(sources, list) else [],
+    }
+
+
+def _apply_remapped_llm_fills(
+    slot_map: dict[str, Any], remapped_text: dict[str, str]
+) -> None:
+    for key, content in remapped_text.items():
+        if key not in slot_map or not content.strip():
+            continue
+        current = slot_map[key]
+        if str(current.get("content") or "").strip():
+            continue
+        slot_map[key] = {
+            "content": content,
+            "status": "filled",
+            "sources": list(current.get("sources") or []),
+        }
+
+
 def _slot_map_from_llm_payload(
     payload: dict[str, Any], category: str | None = None
 ) -> dict[str, Any]:
@@ -823,28 +868,9 @@ def _slot_map_from_llm_payload(
     for key, value in incoming.items():
         if key not in slot_map or not isinstance(value, dict):
             continue
-        status = value.get("status")
-        if status not in {"filled", "gap", "reference_only"}:
-            status = "gap"
-        sources = value.get("sources")
-        slot_map[key] = {
-            "content": str(value.get("content") or ""),
-            "status": status,
-            "sources": sources if isinstance(sources, list) else [],
-        }
-    for key, content in remapped_text.items():
-        if key not in slot_map or not content.strip():
-            continue
-        current = slot_map[key]
-        if str(current.get("content") or "").strip():
-            continue
-        slot_map[key] = {
-            "content": content,
-            "status": "filled",
-            "sources": list(current.get("sources") or []),
-        }
+        slot_map[key] = _normalized_llm_slot(value)
+    _apply_remapped_llm_fills(slot_map, remapped_text)
     return slot_map
-
 
 def _gap_questions_from_slots(
     slot_map: dict[str, Any],
@@ -956,11 +982,14 @@ def _analyze_completion_tokens(user: str, system: str) -> int:
 def _unfilled_slot_keys(
     slot_map: dict[str, Any], category: str | None = None
 ) -> list[str]:
-    return [
-        key
-        for key in intake_slot_order(category)
-        if not _slot_is_filled(slot_map, key)
-    ]
+    """Unfilled keys with fact/required-scope first so LLM chunks prioritize them."""
+    order = intake_slot_order(category)
+    facts = fact_required_slots(category)
+    required_scope = set(profile_for_project(category).required_scope_keys())
+    missing = [key for key in order if not _slot_is_filled(slot_map, key)]
+    priority = [key for key in missing if key in facts or key in required_scope]
+    rest = [key for key in missing if key not in priority]
+    return [*priority, *rest]
 
 
 def _should_run_analyze_llm(pack_text: str) -> bool:
@@ -992,10 +1021,11 @@ async def _llm_analyze_one_chunk(
     labels_map = intake_slot_labels(category)
     if focus_slots:
         labels = [
-            f"{key} {labels_map.get(key, key)}" for key in focus_slots[:16]
+            f"{key} {labels_map.get(key, key)}" for key in focus_slots[:40]
         ]
         focus = (
-            "ช่องที่ยังว่าง — หาข้อมูลในชิ้นนี้แล้วเติมเฉพาะช่องเหล่านี้ถ้ามี:\n"
+            "ช่องที่ยังว่าง — หาข้อมูลในชิ้นนี้แล้วเติมเฉพาะช่องเหล่านี้ถ้ามี "
+            "(คัดลอกข้อความยาวพอใช้ร่าง รวมตาราง/ข้อย่อย):\n"
             + "\n".join(labels)
             + "\n\n"
         )
@@ -1087,6 +1117,12 @@ async def analyze_pack(
     3. Merge LLM fills first, then fill remaining empty slots from heuristics
        (document text patterns — not template boilerplate).
     """
+    suggested = suggest_procurement_category(pack_text, getattr(project, "project_type", None))
+    if suggested and not category_is_locked(
+        current_step=int(getattr(project, "current_step", 1) or 1),
+        current_phase=int(getattr(project, "current_phase", 0) or 0),
+    ):
+        project.project_type = suggested
     category = _project_category(project)
     heuristic_map = repair_misplaced_slots(
         _slot_map_from_paste(pack_text, filenames, category)
@@ -1338,6 +1374,63 @@ async def _upsert_section_text(
         row.content = stripped
 
 
+async def _upsert_main_sections(
+    db: AsyncSession,
+    project_id: UUID,
+    slot_map: dict[str, Any],
+    profile,
+) -> None:
+    for item in profile.main_sections:
+        if item.storage_key == "s4":
+            continue
+        await _upsert_section_text(
+            db, project_id, item.storage_key, None, slot_content(slot_map, item.storage_key)
+        )
+
+
+async def _upsert_profile_scope(
+    db: AsyncSession,
+    project_id: UUID,
+    slot_map: dict[str, Any],
+    profile,
+    first_scope: str | None,
+) -> None:
+    for item in profile.scope_subsections:
+        text = slot_content(slot_map, item.storage_key)
+        if not text.strip() and item.storage_key == first_scope:
+            text = slot_content(slot_map, "s4.1")
+        if not text.strip():
+            continue
+        await _upsert_section_text(db, project_id, "s4", item.storage_key, text)
+
+
+async def _upsert_legacy_scope_sections(
+    db: AsyncSession,
+    project_id: UUID,
+    slot_map: dict[str, Any],
+    profile,
+) -> None:
+    allowed = set(profile.scope_storage_keys())
+    for sub_key in LEGACY_SCOPE_TITLES:
+        if sub_key in allowed:
+            continue
+        text = slot_content(slot_map, sub_key)
+        if not text.strip():
+            continue
+        await _upsert_section_text(db, project_id, "s4", sub_key, text)
+
+
+def _scope_overview_text(slot_map: dict[str, Any], first_scope: str | None) -> str:
+    overview = slot_content(slot_map, first_scope).strip() if first_scope else ""
+    if not overview:
+        overview = slot_content(slot_map, "s4.1").strip()
+    if not overview:
+        return ""
+    if len(overview) > 360:
+        overview = overview[:360].rstrip() + "…"
+    return f"{overview}\n\n(รายละเอียดครบในหัวข้อย่อยขอบเขตงาน)"
+
+
 async def apply_slot_map_to_sections(
     db: AsyncSession,
     project_id: UUID,
@@ -1350,38 +1443,13 @@ async def apply_slot_map_to_sections(
     overview so Phase 4 export does not duplicate the full body.
     """
     profile = profile_for_project(project_type)
-    for item in profile.main_sections:
-        if item.storage_key == "s4":
-            continue
-        await _upsert_section_text(
-            db, project_id, item.storage_key, None, slot_content(slot_map, item.storage_key)
-        )
     first_scope = profile.required_scope_keys()[0] if profile.required_scope_keys() else None
-    for item in profile.scope_subsections:
-        text = slot_content(slot_map, item.storage_key)
-        if not text.strip() and item.storage_key == first_scope:
-            text = slot_content(slot_map, "s4.1")
-        if not text.strip():
-            continue
-        await _upsert_section_text(db, project_id, "s4", item.storage_key, text)
-    for sub_key, _title in LEGACY_SCOPE_TITLES.items():
-        if sub_key in profile.scope_storage_keys():
-            continue
-        text = slot_content(slot_map, sub_key)
-        if not text.strip():
-            continue
-        await _upsert_section_text(db, project_id, "s4", sub_key, text)
-    overview = ""
-    if first_scope:
-        overview = slot_content(slot_map, first_scope).strip()
-    if not overview:
-        overview = slot_content(slot_map, "s4.1").strip()
+    await _upsert_main_sections(db, project_id, slot_map, profile)
+    await _upsert_profile_scope(db, project_id, slot_map, profile, first_scope)
+    await _upsert_legacy_scope_sections(db, project_id, slot_map, profile)
+    overview = _scope_overview_text(slot_map, first_scope)
     if overview:
-        if len(overview) > 360:
-            overview = overview[:360].rstrip() + "…"
-        overview = f"{overview}\n\n(รายละเอียดครบในหัวข้อย่อยขอบเขตงาน)"
         await _upsert_section_text(db, project_id, "s4", None, overview)
-
 
 def resolve_draft_section_key(text: str) -> str | None:
     """Map a spoken Phase 3 request onto s1–s13. Longer numbers first."""

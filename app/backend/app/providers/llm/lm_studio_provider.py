@@ -16,7 +16,9 @@ from app.llm_tokens import DEFAULT_MAX_TOKENS
 from app.providers.base import LLMProvider, LLMResponse
 from app.providers.llm_output import (
     ThinkingStreamFilter,
+    json_from_message,
     messages_with_output_contract,
+    thai_char_count,
     visible_answer,
 )
 
@@ -60,19 +62,40 @@ def thinking_request_kwargs(kwargs: dict) -> dict:
     return payload
 
 
+def _raw_message_blobs(message: object) -> list[str]:
+    blobs: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: object) -> None:
+        if not isinstance(value, str):
+            return
+        text = value.strip()
+        if not text or text in seen:
+            return
+        seen.add(text)
+        blobs.append(value)
+
+    for attr in ("content", "reasoning_content", "reasoning"):
+        add(getattr(message, attr, None))
+    extra = getattr(message, "model_extra", None)
+    if isinstance(extra, dict):
+        for key in ("content", "reasoning_content", "reasoning"):
+            add(extra.get(key))
+    return blobs
+
+
 def message_text(message: object) -> str:
-    """Visible final answer only; recover Thai/JSON from reasoning if content is empty."""
-    content = getattr(message, "content", None)
-    visible = visible_answer(content) if isinstance(content, str) else ""
-    if visible:
-        return visible
-    for attr in ("reasoning_content", "reasoning"):
-        value = getattr(message, attr, None)
-        if isinstance(value, str) and value.strip():
-            recovered = visible_answer(value)
-            if recovered:
-                return recovered
-    return ""
+    """Prefer the longest Thai final answer across content and reasoning fields."""
+    scored: list[tuple[int, int, str]] = []
+    for blob in _raw_message_blobs(message):
+        visible = visible_answer(blob)
+        if not visible:
+            continue
+        scored.append((thai_char_count(visible), len(visible), visible))
+    if not scored:
+        return ""
+    scored.sort(reverse=True)
+    return scored[0][2]
 
 
 def delta_text(delta: object) -> str:
@@ -201,7 +224,7 @@ class LMStudioLocalProvider(LLMProvider):
         stream_kwargs = dict(kwargs)
         if "disable_thinking" in stream_kwargs or "enable_thinking" in stream_kwargs:
             return stream_kwargs
-        stream_kwargs["disable_thinking"] = True
+        stream_kwargs["enable_thinking"] = True
         return stream_kwargs
 
     async def invoke(
@@ -244,9 +267,14 @@ class LMStudioLocalProvider(LLMProvider):
 
             choice = response.choices[0]
             usage = response.usage
+            content = message_text(choice.message)
+            if kwargs.get("json_schema"):
+                recovered = json_from_message(choice.message)
+                if recovered:
+                    content = recovered
 
             return LLMResponse(
-                content=message_text(choice.message),
+                content=content,
                 model=response.model or self._model_name,
                 usage={
                     "prompt_tokens": usage.prompt_tokens if usage else 0,

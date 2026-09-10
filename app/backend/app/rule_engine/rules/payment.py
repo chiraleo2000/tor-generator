@@ -12,7 +12,7 @@ Validates: Requirements 6.3
 from __future__ import annotations
 
 from app.rule_engine.engine import Finding, Severity
-from app.rule_engine.rules.base import BaseRule
+from app.rule_engine.rules.base import BaseRule, applies_to_section
 
 # Legal boundaries for individual payment installments
 MIN_INSTALLMENT_PERCENT: float = 5.0
@@ -48,6 +48,8 @@ class PaymentScheduleRule(BaseRule):
             List of findings. Empty if payment schedule is valid.
         """
         findings: list[Finding] = []
+        if not applies_to_section(tor_document, "s8"):
+            return findings
 
         installments = tor_document.get("payment_installments")
 

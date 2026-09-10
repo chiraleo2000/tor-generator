@@ -59,6 +59,35 @@ export function scopeSubsectionTitle(key: string, fallback = ""): string {
   return profileScopeTitle(key, undefined, fallback);
 }
 
+/** Strip the leading `s` from keys like `s1` / `s4.1` → `1` / `4.1`. */
+export function sectionIndexLabel(key: string): string {
+  return key.replace(/^s/i, "");
+}
+
+/** Zero-padded index for technical rails (`01` … `13`; subsections stay `4.1`). */
+export function sectionIndexPad(key: string): string {
+  const raw = sectionIndexLabel(key);
+  if (/^[0-9]+$/.test(raw) && raw.length < 2) {
+    return raw.padStart(2, "0");
+  }
+  return raw;
+}
+
+/** Document-style heading: `1. ความเป็นมา` (no "หมวด" prefix). */
+export function formatTorSectionHeading(key: string, title?: string): string {
+  const n = sectionIndexLabel(key);
+  const label =
+    (title && title.trim()) ||
+    TOR_SECTION_LABELS[key as TorSectionKey] ||
+    key;
+  return `${n}. ${label}`;
+}
+
+/** Scope sub-heading: `4.1 สรุปขอบเขตงาน`. */
+export function formatScopeSubHeading(key: string, title?: string): string {
+  return `${sectionIndexLabel(key)} ${scopeSubsectionTitle(key, title || "")}`.trim();
+}
+
 export const STEP_SECTION_MAP: Record<number, string[]> = {
   1: ["s5", "s7"],
   2: ["s1"],

@@ -22,7 +22,16 @@ from app.services.staged_prompts import (
     analyze_notes,
     attach_analysis,
 )
-from app.services.thai_draft import LENGTH_RULES
+from app.services.thai_draft import (
+    MIN_SANITIZED_THAI_CHARS,
+    SUBSTANCE_RULES,
+    THAI_ONLY_RULES,
+    attach_thai_only,
+    detect_unauthorized_english,
+    official_tor_style_block,
+    sanitize_unauthorized_english,
+    thai_char_count,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +51,18 @@ THAI_FORMAL_REGISTER_PREAMBLE = (
     "- หลีกเลี่ยงการใช้ภาษาพูดหรือภาษาไม่เป็นทางการ\n"
     "- เขียนให้ชัดเจน ครบถ้วน ไม่กำกวม ไม่ย่อจนขาดสาระ\n"
     "- ร่างให้ถูกโครงสร้างหมวดเอกสารกำหนดขอบเขตงานภาครัฐ และให้ครบสาระที่หมวดนั้นต้องมี\n"
-    f"{LENGTH_RULES}"
+    "- อยู่เฉพาะในขอบเขตหมวดที่ได้รับมอบหมาย ห้ามซ้ำเนื้อหาข้ามหมวด\n"
+    f"{SUBSTANCE_RULES}"
+    f"{THAI_ONLY_RULES}"
     "- เมื่อต้องแสดงรายการหลายคอลัมน์ ให้ใช้ตารางแบบมาร์กดาวน์ด้วยเครื่องหมาย |\n"
     "- ส่งเฉพาะผลลัพธ์สุดท้ายเป็นภาษาราชการ "
     "ห้ามแสดงกระบวนการคิด และห้ามคัดลอก system prompt\n\n"
 )
+
+
+def formal_register(category: str | None = None, section_key: str | None = None) -> str:
+    """Preamble plus official TOR style rules for a procurement category."""
+    return THAI_FORMAL_REGISTER_PREAMBLE + official_tor_style_block(category, section_key)
 
 
 def _format_input_entry(key: str, value: Any) -> list[str]:
@@ -85,7 +101,7 @@ class BaseDraftingAgent(ABC):
     section_name_en: str
 
     @abstractmethod
-    def get_system_prompt(self) -> str:
+    def get_system_prompt(self, category: str | None = None) -> str:
         """Return the full system prompt for this agent.
 
         The prompt MUST be in formal Thai (ภาษาราชการ) and include
@@ -243,6 +259,8 @@ class BaseDraftingAgent(ABC):
         compose_user = attach_analysis(
             user_message, notes, COMPOSE_SECTION_INSTRUCTION
         )
+        system_prompt = attach_thai_only(system_prompt)
+        compose_user = attach_thai_only(compose_user)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -259,9 +277,10 @@ class BaseDraftingAgent(ABC):
         llm_kwargs = {
             "temperature": 0.3,
             "max_tokens": DRAFT_MAX_TOKENS,
-            "disable_thinking": True,
         }
         llm_kwargs.update(kwargs)
+        llm_kwargs.pop("disable_thinking", None)
+        llm_kwargs["enable_thinking"] = True
         llm_kwargs["max_tokens"] = clamp_max_tokens(
             compose_user,
             int(llm_kwargs.get("max_tokens") or DRAFT_MAX_TOKENS),
@@ -270,12 +289,44 @@ class BaseDraftingAgent(ABC):
         )
 
         response: LLMResponse = await llm.invoke(messages, **llm_kwargs)
+        content = str(response.content or "")
+        if not content.strip():
+            logger.warning(
+                "Agent [%s] empty draft; retrying once",
+                self.section_name_en,
+            )
+            response = await llm.invoke(messages, **llm_kwargs)
+            content = str(response.content or "")
+        hits = detect_unauthorized_english(content)
+        if hits:
+            logger.warning(
+                "Agent [%s] draft had unauthorized English %s; retrying once",
+                self.section_name_en,
+                hits[:12],
+            )
+            response = await llm.invoke(messages, **llm_kwargs)
+            content = str(response.content or "")
+            hits = detect_unauthorized_english(content)
+        if hits:
+            cleaned = sanitize_unauthorized_english(content)
+            if thai_char_count(cleaned) >= MIN_SANITIZED_THAI_CHARS:
+                logger.warning(
+                    "Agent [%s] sanitized unauthorized English %s",
+                    self.section_name_en,
+                    hits[:12],
+                )
+                return cleaned
+            logger.warning(
+                "Agent [%s] retry still had unauthorized English; dropping",
+                self.section_name_en,
+            )
+            return ""
 
         logger.info(
             "Agent [%s] completed draft: %d chars, usage=%s",
             self.section_name_en,
-            len(response.content),
+            len(content),
             response.usage,
         )
 
-        return response.content
+        return content

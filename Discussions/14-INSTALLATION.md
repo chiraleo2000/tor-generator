@@ -242,7 +242,7 @@ npm run test:e2e:headed
 
 หลังแก้ UI ให้ rebuild อิมเมจ frontend ก่อนรัน E2E — Playwright ยิงไปที่คอนเทนเนอร์ ไม่ใช่ `next dev`
 
-ตรวจล่าสุด (**9 ก.ย. 2026** · v0.5.0) กับสแตก Docker (`tor-app` + Mongo + Neo4j + **mcp-rag** + **amazon-quick**) — rebuild frontend+backend แล้ว `live_llm` **17/17** (ECT ตามโปรไฟล์ hire_develop 15 หมวด · TOR ประกอบ 78 · Jaccard 0.7744); unit pytest **2046** · Vitest **309** · รอบ UI headed ล่าสุดยังเป็น **7 ก.ย. 2026 บ่าย** — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายใน `13-USER_GUIDELINE.md` และจับคู่เคสใน `18-TEST_EVIDENCE.md`
+ตรวจล่าสุด (**10 ก.ย. 2026** · v0.6.0) กับสแตก Docker (`tor-app` + Mongo + Neo4j + **mcp-rag** + **amazon-quick**) — แก้ persist `analyzed` หลัง analyze, เกณฑ์ guardrail ต่อหมวด, กู้ร่างจาก thinking; พื้นฐาน **9 ก.ย.** `live_llm` **17/17** · unit pytest **2046** · Vitest **309** · รอบ UI headed ล่าสุดยังเป็น **7 ก.ย. 2026 บ่าย** — ภาพหน้าจออยู่ใน `discussions/test-evidence/` อธิบายใน `13-USER_GUIDELINE.md` และจับคู่เคสใน `18-TEST_EVIDENCE.md`
 
 ถ่ายภาพหน้าจอเพิ่มสำหรับคู่มือ: `npm run test:e2e:guide` (`e2e/guide-shots.spec.ts` ไม่รวมในชุด E2E หลัก)
 

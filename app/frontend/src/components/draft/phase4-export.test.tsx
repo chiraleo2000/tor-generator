@@ -10,8 +10,18 @@ describe("Phase4Export", () => {
     );
     fireEvent.click(screen.getByTestId("export-docx"));
     fireEvent.click(screen.getByTestId("export-pdf"));
-    expect(onExport).toHaveBeenCalledWith("docx");
-    expect(onExport).toHaveBeenCalledWith("pdf");
+    expect(onExport).toHaveBeenCalledWith("docx", "none");
+    expect(onExport).toHaveBeenCalledWith("pdf", "none");
+  });
+
+  it("sends numbered_consecutive when the checkbox is on", async () => {
+    const onExport = vi.fn().mockResolvedValue(undefined);
+    render(
+      <Phase4Export exporting={false} error={null} info={null} onExport={onExport} />
+    );
+    fireEvent.click(screen.getByTestId("export-numbered-headings"));
+    fireEvent.click(screen.getByTestId("export-docx"));
+    expect(onExport).toHaveBeenCalledWith("docx", "numbered_consecutive");
   });
 
   it("shows progress, success, and error states", () => {
