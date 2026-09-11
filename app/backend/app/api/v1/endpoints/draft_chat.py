@@ -513,7 +513,10 @@ async def _draft_new_s4_sub(work: _S4Work, sub_key: str, title: str) -> AsyncIte
         async with admit(work.redis, "llm", f"{work.request_id}-{sub_key}"):
             async with asyncio.timeout(SECTION_TIMEOUT_SECONDS):
                 async for token in draft_scope_subsection(
-                    sub_key, work.slot_map, user_id=work.user_id
+                    sub_key,
+                    work.slot_map,
+                    user_id=work.user_id,
+                    category=work.project_type,
                 ):
                     parts.append(token)
                     yield _sse(
@@ -543,6 +546,11 @@ async def _draft_new_s4_sub(work: _S4Work, sub_key: str, title: str) -> AsyncIte
         )
         return
     text = "".join(parts).strip()
+    if not text:
+        return
+    from app.services.thai_draft import polish_scope_subsection_draft
+
+    text = polish_scope_subsection_draft(text, sub_key)
     if not text:
         return
     work.collected[sub_key] = text
@@ -726,7 +734,14 @@ async def _publish_section_done(
     label = TOR_SECTION_LABELS.get(section_key, section_key)
     _publish_draft_sse(
         job.project_id,
-        _section_done_event(section_key, label, text, drafted_count),
+        _section_done_event(
+            section_key,
+            label,
+            text,
+            drafted_count,
+            total=len(_mains(job.project_type)),
+            project_type=job.project_type,
+        ),
         drop_ok=False,
     )
 
@@ -1287,16 +1302,27 @@ async def draft_chat_status(
         if ai_drafted:
             drafted_count += 1
         status_list.append(row_data)
-    sections_complete = drafted_count == len(mains)
+    total = len(mains)
+    drafted_count = min(drafted_count, total)
+    sections_complete = drafted_count == total and total > 0
     payload: dict[str, Any] = {
         "sections": status_list,
         "drafted_count": drafted_count,
-        "total": len(mains),
+        "total": total,
         "all_drafted": sections_complete,
     }
     if job:
         payload["job_status"] = job["status"]
-        payload["total"] = job["total"] or payload["total"]
-        payload["drafted_count"] = max(drafted_count, job["drafted_count"])
+        job_total = int(job.get("total") or 0) or total
+        # While a job runs, show the higher of DB vs Redis progress.
+        # After done/failed, DB is authoritative — redraft must not inflate the count.
+        if job["status"] in ("running", "queued"):
+            payload["total"] = job_total
+            payload["drafted_count"] = min(
+                job_total, max(drafted_count, int(job.get("drafted_count") or 0))
+            )
+        else:
+            payload["total"] = total
+            payload["drafted_count"] = drafted_count
         payload["all_drafted"] = sections_complete
     return _ok(request, payload)

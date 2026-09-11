@@ -325,6 +325,48 @@ def test_status_counts_drafted_sections(client, mock_officer_user):
     assert data["sections"][0]["human_confirmed"] is True
 
 
+def test_status_hire_develop_total_is_14_and_done_job_does_not_inflate(
+    client, mock_officer_user
+):
+    project = _make_project(analysis=_ready_analysis())
+    project.project_type = "hire_develop"
+    mock_db = AsyncMock()
+    project_result = MagicMock()
+    project_result.scalar_one_or_none.return_value = project
+    rows = []
+    for key in _main_keys("hire_develop"):
+        row = MagicMock()
+        row.section_key = key
+        row.content = f"เนื้อหา {key} อย่างน้อยยี่สิบตัวอักษรพอ"
+        row.ai_draft = row.content
+        row.is_approved = False
+        rows.append(row)
+    sections_result = MagicMock()
+    sections_result.scalars.return_value.all.return_value = rows
+    s4_result = MagicMock()
+    s4_result.scalars.return_value.all.return_value = [
+        MagicMock(
+            sub_key=key,
+            content=f"หัวข้อย่อย {key} อย่างน้อยยี่สิบตัวอักษร",
+            ai_draft=f"ร่าง {key} อย่างน้อยยี่สิบตัวอักษร",
+        )
+        for key in _scope_keys("hire_develop")
+    ]
+    mock_db.execute = AsyncMock(side_effect=[project_result, sections_result, s4_result])
+    _override_db(mock_db)
+
+    with patch(
+        "app.api.v1.endpoints.draft_chat.get_job",
+        new_callable=AsyncMock,
+        return_value={"status": "done", "drafted_count": 99, "total": 13},
+    ):
+        response = client.get(f"/api/v1/projects/{PROJECT_ID}/draft-chat/status")
+    data = response.json()["data"]
+    assert data["total"] == 14
+    assert data["drafted_count"] == 14
+    assert data["all_drafted"] is True
+
+
 def test_status_partial_s4_is_not_fully_drafted(client, mock_officer_user):
 
     project = _make_project(analysis=_ready_analysis())

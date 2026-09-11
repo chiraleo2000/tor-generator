@@ -232,10 +232,10 @@ MINIO_USE_IAM=true
 
 ```bash
 # จากราก repo
-python documents/exports/build_pn_aws_dataset.py --version 0.5.0
+python documents/exports/build_pn_aws_dataset.py --version 0.6.1
 ```
 
-ได้ `documents/exports/tor-pn-aws-dataset-v0.5.0.zip` — แตกแล้วตั้ง:
+ได้ `documents/exports/tor-pn-aws-dataset-v0.6.1.zip` — แตกแล้วตั้ง:
 
 ```env
 PN_DATASET_LOCAL_PATH=/path/to/extracted/rag-pdfs

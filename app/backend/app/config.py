@@ -122,6 +122,7 @@ class Settings(BaseSettings):
     chat_rag_top_k: int = 96
     chat_max_context_chunks: int = 96
     draft_rag_top_k: int = 8
+    review_rag_top_k: int = 64
     rag_sources: Literal["local", "custom", "both"] = "both"
     mcp_rag_enabled: bool = False
     mcp_rag_config_path: str = ""

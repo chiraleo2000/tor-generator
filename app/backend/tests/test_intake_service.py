@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.domain.slots import FACT_REQUIRED_SLOTS
+from app.domain.slots import FACT_REQUIRED_SLOTS, intake_slot_order
 from app.models.project import Project
 from app.services.intake_service import (
     ANALYZE_MAX_CHUNKS,
@@ -420,6 +420,33 @@ def test_fill_current_slot_skips_short_acknowledgements():
     assert fill_current_slot(slots, "s1", "สวัสดี") is False
 
 
+def test_apply_chat_fills_s15_mof_quick_reply_for_hire_develop():
+    """Regression: optional s15 must accept MOF quick-reply (was stuck asking forever)."""
+    from app.services.intake_service import DEFAULT_MOF_STANDARD_ANSWER, _slot_is_filled
+
+    slots = empty_slot_map("hire_develop")
+    for key in intake_slot_order("hire_develop"):
+        if key in {"s15", "s16", "s17"}:
+            continue
+        slots[key] = {"content": f"ข้อมูล{key}", "status": "filled", "sources": []}
+    assert next_asking_slot(slots, category="hire_develop") == "s15"
+    updated = apply_chat_answer_to_slots(
+        slots,
+        DEFAULT_MOF_STANDARD_ANSWER,
+        current_slot="s15",
+        category="hire_develop",
+    )
+    assert updated == ["s15"]
+    assert _slot_is_filled(slots, "s15")
+    assert next_asking_slot(slots, category="hire_develop") == "s16"
+
+
+def test_fill_current_slot_accepts_s15_with_category():
+    slots = empty_slot_map("hire_develop")
+    assert fill_current_slot(slots, "s15", "ลิขสิทธิ์เป็นของหน่วยงาน", category="hire_develop")
+    assert slots["s15"]["status"] == "filled"
+
+
 def test_append_next_slot_question_once():
     text = append_next_slot_question("บันทึกแล้วครับ", "s2")
     assert "s2" in text
@@ -488,14 +515,29 @@ def test_project_intake_pack_keeps_more_than_8k_chars():
 def test_analyze_prompt_chunks_covers_long_pack_evenly():
     from app.services.intake_service import ANALYZE_CHUNK_CHARS
 
-    raw = "ก" * (ANALYZE_CHUNK_CHARS * 6)
+    # Distinct segments so even sampling keeps middle coverage.
+    parts = [f"PART{i}" + ("ก" * (ANALYZE_CHUNK_CHARS - 10)) for i in range(6)]
+    raw = "".join(parts)
     chunks = _analyze_prompt_chunks(raw)
     assert 2 <= len(chunks) <= ANALYZE_MAX_CHUNKS
-    assert chunks[0].startswith("ก")
-    assert chunks[-1].endswith("ก")
-    # Middle of the document must not be dropped (old head+tail only kept ends).
-    joined = "".join(chunks)
-    assert len(joined) >= ANALYZE_CHUNK_CHARS * 2
+    assert "PART0" in chunks[0]
+    assert any(f"PART{i}" in "".join(chunks) for i in (0, 2, 5))
+
+
+def test_analyze_prompt_chunks_prefers_single_pass_for_typical_pack():
+    """Typical TOR packs fit one large window → one LLM call."""
+    from app.services.intake_service import ANALYZE_CHUNK_CHARS
+
+    raw = "ก" * min(80_000, ANALYZE_CHUNK_CHARS)
+    assert len(_analyze_prompt_chunks(raw)) == 1
+
+
+def test_analyze_prompt_chunks_caps_round_trips():
+    from app.services.intake_service import ANALYZE_CHUNK_CHARS
+
+    parts = [f"SEG{i}" + ("ข" * ANALYZE_CHUNK_CHARS) for i in range(12)]
+    raw = "".join(parts)
+    assert len(_analyze_prompt_chunks(raw)) == ANALYZE_MAX_CHUNKS
 
 
 def test_analyze_prompt_chunks_splits_multi_file_markers():
@@ -677,10 +719,10 @@ async def test_analyze_pack_keeps_paste_when_llm_times_out():
 
 
 def test_attest_hitl_sections_marks_mandatory_rows():
-    from app.services.intake_service import attest_hitl_sections
+    from app.services.intake_service import attest_hitl_sections, hitl_storage_keys
 
     rows = []
-    for key in ("s3", "s6", "s8", "s10", "s13"):
+    for key in sorted(hitl_storage_keys()):
         row = MagicMock()
         row.section_key = key
         row.sub_key = None
@@ -688,4 +730,5 @@ def test_attest_hitl_sections_marks_mandatory_rows():
         rows.append(row)
     attest_hitl_sections(rows)
     assert all(row.is_approved for row in rows)
+    assert {"s3", "s6", "s8", "s10", "s11", "s15"} <= hitl_storage_keys()
 

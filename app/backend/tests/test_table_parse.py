@@ -91,8 +91,8 @@ def test_merge_scope_and_sub_prompt_are_thai():
     from app.services.thai_draft import merge_scope_from_subs, scope_sub_prompt
 
     merged = merge_scope_from_subs({"s4.1": "วิเคราะห์ความต้องการและพัฒนาโมดูล", "s4.2": ""})
-    assert "๔.1" in merged or "๔." in merged
     assert "วิเคราะห์ความต้องการ" in merged
+    assert "๔.1" not in merged
     prompt = scope_sub_prompt(
         "s4.8",
         {"s4.8": {"content": "ส่งมอบคู่มือ", "status": "filled"}},

@@ -315,23 +315,32 @@ def test_amazon_quick_skills_follow_official_tor_style() -> None:
     assert "16pt" in compose
     assert "เลขไทย" in compose
     assert "Digital Government" in compose
+    assert "ownership" in compose.lower()
+    assert "1. / 1.1" in compose
     review = skills["tor-review-compliance"]["instructions"]
     assert "เลขไทย" in review
     assert "s4.1/s4.8 ตายตัว" in review
+    assert "เกณฑ์กลาง ICT" in review
+    assert "ownership" in review.lower()
     structure = json.loads(
         (root / "references" / "tor-structure.json").read_text(encoding="utf-8")
     )
+    assert structure["version"] == "0.6.1"
     assert structure["official_export_style"]["body_pt"] == 16
     assert structure["official_export_style"]["line_spacing"] == 1.0
     assert structure["official_export_style"]["margin_top_bottom_cm"] == 2.54
     assert structure["official_export_style"]["margin_left_right_cm"] == 1.91
     assert structure["official_export_style"]["section_numerals"] == "none"
     assert "s7" not in structure["fact_required_slots"]
+    assert "hire_develop_storage_keys" in structure["sections"]["s4"]
     rules = json.loads(
         (root / "references" / "compliance-rules.json").read_text(encoding="utf-8")
     )
+    assert rules["version"] == "0.6.1"
     assert rules["format_checks"]["app_export"]["body_pt"] == 16
     assert rules["format_checks"]["app_export"]["line_spacing"] == 1.0
     assert rules["format_checks"]["app_export"]["margin_top_bottom_cm"] == 2.54
     assert rules["format_checks"]["app_export"]["margin_left_right_cm"] == 1.91
+    assert len(rules["standards_review_queries"]) >= 8
+    assert "scope_ownership" in {item["id"] for item in rules["deterministic_checks"]}
 

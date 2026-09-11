@@ -51,12 +51,14 @@ class DraftSectionRequest(BaseModel):
     """Request body for POST /projects/{id}/draft-section.
 
     Triggers AI-assisted drafting of a specific TOR section via the Orchestrator.
+    Scope subsections may use storage keys (e.g. testing, licenses) or
+    additional_context.focus_sub_key with section_key=s4.
     """
 
     section_key: str = Field(
         ...,
-        description="Target TOR section key (e.g., 's1', 's4', 's4.1')",
-        pattern=r"^s([1-9]|1[0-3])(\.[0-9]{1,2})?$",
+        description="Target TOR section key (e.g., 's1', 's4', 'testing', 'licenses')",
+        pattern=r"^(s(1[0-7]|[1-9])(\.[0-9]{1,2})?|[a-z][a-z0-9_]{1,40})$",
     )
     additional_context: dict[str, Any] | None = Field(
         default=None,

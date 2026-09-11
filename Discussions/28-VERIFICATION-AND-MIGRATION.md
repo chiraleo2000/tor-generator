@@ -1,23 +1,23 @@
-# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.6.0
+# รายงานตรวจสอบ Local LLM และแผนย้าย AWS — TOR Generator v0.6.1
 
 เอกสารฉบับเดียว (Combined_Report) ตาม `.kiro/specs/local-llm-verification-aws-migration-plan/`  
 ลำดับ: **(A) Verification** → **(B) Verification_Gate** → **(C) AWS Migration Plan** → **(D) Stability & Scale**
 
-ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · `test-evidence/_round-2026-09-10-skk-quality-thinking.json` · `test-evidence/_round-2026-09-09-live-llm.txt` (live_llm 17/17) · รอบ UI headed คู่: `test-evidence/_round-2026-09-07pm-summary.txt`
+ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · รอบ **11 ก.ย. 2026** (v0.6.1) · `test-evidence/_round-2026-09-10-skk-quality-thinking.json` · `test-evidence/_round-2026-09-09-live-llm.txt` (live_llm 17/17) · รอบ UI headed คู่: `test-evidence/_round-2026-09-07pm-summary.txt`
 
 ---
 
-## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.6.0
+## (A) หลักฐานการตรวจสอบบน Local LLM — TOR Generator v0.6.1
 
 ### 0. ส่วนหัว
 
 | ฟิลด์ | ค่า |
 |-------|-----|
-| วันที่ทดสอบ | **10 กันยายน 2026** (fix fill-references/guardrail/thinking recovery · unit ชุดแก้ 249 · Docker backend) · พื้นฐาน **9 ก.ย.** unit 2046 + Vitest 309 + `live_llm` 17/17 · รอบ UI headed คู่ **7 ก.ย. 2026 บ่าย** |
-| เวอร์ชันแอป | v0.6.0 |
-| สแตก | Docker Compose โปรเจกต์ `tor-app` รวม **mcp-rag :8765** |
+| วันที่ทดสอบ | **11 กันยายน 2026** (v0.6.1 scope ownership + deep review + Amazon Quick · live_llm 8/8 · Docker UI) · พื้นฐาน **10 ก.ย.** v0.6.0 fill-references/guardrail · **9 ก.ย.** unit 2046 + Vitest 309 + `live_llm` 17/17 |
+| เวอร์ชันแอป | v0.6.1 |
+| สแตก | Docker Compose โปรเจกต์ `tor-app` รวม **mcp-rag :8765** + **amazon-quick :8767** |
 | Local LLM | LM Studio `http://127.0.0.1:1234/v1` (จาก backend ใช้ `host.docker.internal`) |
-| ผู้จัดทำ | Verification_Author (รอบอัปเดตเอกสาร 4 ก.ย. 2026; เกตเดิม 31 ส.ค. ยังอยู่ด้านล่าง) |
+| ผู้จัดทำ | Verification_Author (รอบอัปเดตเอกสาร 11 ก.ย. 2026; เกตเดิม 31 ส.ค. ยังอยู่ด้านล่าง) |
 
 | โมเดล | ค่า |
 |--------|-----|

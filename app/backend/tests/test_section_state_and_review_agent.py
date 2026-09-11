@@ -911,7 +911,7 @@ class TestReviewAgentAssessment:
         )
         assert "เอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น" in body
         assert "วงเงินสองล้านห้าแสน" in body
-        assert "กฎหมายและระเบียบจากคลังกลาง" in body
+        assert "กฎหมาย ระเบียบ และมาตรฐานจากคลังกลาง" in body
         assert "พ.ร.บ. การจัดซื้อจัดจ้าง" in body
 
     def test_review_message_keeps_long_section_body(self):

@@ -116,6 +116,30 @@ def test_format_user_input_handles_empty_and_nested():
     assert "โครงการ" in text
 
 
+def test_build_user_message_includes_current_draft_fields():
+    agent = _TinyAgent()
+    message = agent.build_user_message(
+        {
+            "project_name": "โครงการทดสอบ",
+            "current_draft_fields": {
+                "mainObj": "เพื่อพัฒนาระบบ",
+                "users": "",
+                "kpi": "ร้อยละ 100",
+            },
+            "revision_instruction": "เติมกลุ่มผู้ใช้ให้ครบ",
+            "redraft": True,
+        },
+        [],
+    )
+    assert "ร่างปัจจุบันในหมวดนี้" in message
+    assert "เพื่อพัฒนาระบบ" in message
+    assert "(ว่าง — ต้องเติม)" in message
+    assert "เติมกลุ่มผู้ใช้ให้ครบ" in message
+    assert "โหมดร่างใหม่" in message
+    assert "ห้ามคัดลอกร่างเดิม" in message
+    assert "focus_sub_key" not in message
+
+
 def test_registry_prompts_and_unknown_section():
     listed = list_available_agents()
     assert len(listed) == 14

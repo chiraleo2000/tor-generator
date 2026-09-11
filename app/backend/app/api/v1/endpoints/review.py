@@ -69,9 +69,10 @@ def _slot_map_snippets(analysis: dict) -> list[str]:
 
 
 def _project_requirements_text(project: Project) -> str:
-    parts: list[str] = []
+    from app.llm_tokens import REVIEW_REQUIREMENTS_CHARS
     from app.services.intake_service import project_intake_pack
 
+    parts: list[str] = []
     intake = project_intake_pack(project)
     if intake:
         parts.append(intake)
@@ -79,7 +80,7 @@ def _project_requirements_text(project: Project) -> str:
     extra = str(getattr(project, "custom_requirements_text", None) or "").strip()
     if extra:
         parts.append(extra[:16000])
-    return "\n".join(parts)[:24000]
+    return "\n".join(parts)[:REVIEW_REQUIREMENTS_CHARS]
 
 
 def _finding_response(finding: Finding) -> FindingResponse:
@@ -102,12 +103,12 @@ def _findings_response(findings: list[Finding], rag_text: str = "") -> list[Find
     return [_finding_response(item) for item in findings]
 
 
-async def _law_review_context() -> str:
-    """Global พ.ร.บ./ระเบียบ only — never another project's Phase 0 files."""
+async def _law_review_context(project_type: str | None = None) -> str:
+    """Global พ.ร.บ./ระเบียบ/มาตรฐาน only — never another project's Phase 0 files."""
     try:
         from app.rag.law_review import law_review_context
 
-        return await law_review_context()
+        return await law_review_context(project_type)
     except Exception:
         return ""
 
@@ -222,7 +223,7 @@ async def run_review(
             details=str(exc),
         ) from exc
 
-    legal_context = await _law_review_context()
+    legal_context = await _law_review_context(project.project_type)
     findings_response = _findings_response(validation_result.findings, legal_context)
 
     # Build category scores response
@@ -356,7 +357,7 @@ async def review_comment(
                 "budget": project.budget,
                 "project_type": project.project_type,
                 "requirements": _project_requirements_text(project),
-                "legal_context": await _law_review_context(),
+                "legal_context": await _law_review_context(project.project_type),
             },
             findings=findings,
         )
@@ -668,7 +669,9 @@ async def validate_tor(
             if f.affected_section == body.section_key
         ]
 
-    findings_response = _findings_response(findings, await _law_review_context())
+    findings_response = _findings_response(
+        findings, await _law_review_context(project.project_type)
+    )
 
     response_data = ValidateResponse(
         project_id=project_id,

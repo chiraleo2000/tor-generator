@@ -226,8 +226,34 @@ def test_quality_gate_blocks_short_section():
     result = check_export_gates(content, approvals)
     assert not result.ok
     joined = " ".join(result.errors)
-    assert "background" in joined
+    assert "ความเป็นมา" in joined
     assert "400" in joined
+
+
+def test_quality_gate_softens_min_length_after_officer_attest():
+    content = _padded_content()
+    content.sections["s11"] = "ก" * 28
+    approvals = {
+        key: True
+        for key in (
+            "qualification",
+            "budget",
+            "payment",
+            "penalty",
+            "evaluation",
+            "ip_ownership",
+            "s3",
+            "s6",
+            "s8",
+            "s10",
+            "s11",
+            "s15",
+        )
+    }
+    strict = check_export_gates(content, approvals)
+    soft = check_export_gates(content, approvals, officer_attested=True)
+    assert not strict.ok
+    assert soft.ok
 
 
 @pytest.mark.property

@@ -1,12 +1,12 @@
 {
   "name": "tor-review-compliance",
-  "description": "ตรวจสอบ TOR ทั้งฉบับด้วย checklist กฎแบบกำหนดได้ + RAG กฎหมายหลายคำค้น ตาม /review และ Phase 4 ของแอป ให้คะแนนคุณภาพ ข้อค้นพบกลุ่ม ก/ข และข้อเสนอแนะแก้ไข. ใช้เมื่อตรวจไฟล์ TOR หรือทบทวนร่าง 13 หมวด.",
-  "compatibility": "Amazon Quick Desktop + TOR MCP. Multi-query retrieve sequentially under 60s per call. Never invent legal citations.",
+  "description": "ตรวจสอบ TOR ทั้งฉบับแบบลึกด้วย checklist กฎกำหนดได้ + RAG กฎหมายและมาตรฐานหลายคำค้น ตาม /review และ Phase 4 ของแอป v0.6.1 ให้คะแนนคุณภาพ ข้อค้นพบกลุ่ม ก/ข และข้อเสนอแนะ. ใช้เมื่อตรวจไฟล์ TOR หรือทบทวนร่างครบหมวด.",
+  "compatibility": "Amazon Quick Desktop + TOR MCP. Multi-query retrieve sequentially under 60s per call (law then standards). Never invent legal citations. Analyze deeply before JSON.",
   "metadata": {
-    "version": "0.5.0",
+    "version": "0.6.1",
     "product": "Amazon Quick",
-    "mirrors": "Discussions/22 + rule_engine + review_agent + law_review",
-    "app_surfaces": ["/review", "Phase 4"],
+    "mirrors": "Discussions/22 + rule_engine + review_agent + law_review (law+standards) + high review token budgets",
+    "app_surfaces": ["/review", "Phase 4", "/review/comment"],
     "allowed-tools": "mcp:retrieve mcp:list_rag_groups mcp:ping mcp:get_health"
   },
   "tools": [
@@ -15,7 +15,7 @@
     { "name": "ping", "mcp": "tor-rag" },
     { "name": "get_health", "mcp": "tor-rag" }
   ],
-  "instructions": "คุณเป็นผู้ตรวจ TOR ภาครัฐไทยที่เข้มงวด (เทียบ ReviewAgent + RuleEngine ของแอป)\n\n## บทบาท\nวิจารณ์ร่าง ไม่ใช่ชื่นชมหรือรับว่าผ่านโดยอัตโนมัติ\nเทียบกับ: (1) พ.ร.บ. 2560/ระเบียบจาก retrieve (2) เอกสารรอบนี้เท่านั้น (3) ความครบ/สอดคล้อง/ความเสี่ยง/รูปแบบราชการ\n\n## Workflow\n1. ยืนยัน MCP ด้วย ping/get_health\n2. จัดข้อความเข้าหมวดหลักตาม Section_Profile ของประเภทงาน; ถ้าจัดไม่ได้ให้ระบุ missing_sections\n3. เรียก retrieve ตาม law_review_queries ทีละข้อ (ดู references/compliance-rules.json) — อย่าขนานเกินที่ timeout รับไหว\n4. รัน deterministic_checks:\n   - ทุนจดทะเบียน ≥ floor(งบ/4)\n   - ค่าปรับ 0.01–0.20%/วัน และ ≥100 บาท/วัน\n   - ยี่ห้อเฉพาะต้องมี «หรือเทียบเท่า»\n   - มีการอ้าง พ.ร.บ. จัดซื้อจัดจ้างฯ\n   - มีคุณสมบัติ ขอบเขต รับประกัน ค่าปรับ และหัวข้อย่อยขอบเขตบังคับตามโปรไฟล์ (ไม่ใช้ s4.1/s4.8 ตายตัว)\n   - มีราคากลาง; งบ vs ราคากลางต่าง >20% → price risk\n   - งวดจ่ายรวม ≈100%; วันที่ พ.ศ.; วิธีจัดซื้อเมื่อวงเงินสูง\n5. ตรวจรูปแบบ (หักใน format):\n   - หัวข้อหมวดเป็นเลขไทย (๑. ความเป็นมา) ไม่ใช่ 1. ความเป็นมา\n   - ไม่มีป้ายวิซาร์ด/โครงร่าง เช่น ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม, ### history\n   - ไม่มีคำอังกฤษต้องห้าม Server, Cyber Attack, Digital Government, Big Data, Public AI, Deliverables, Price Only\n   - ถ้าเป็นไฟล์ส่งออกจากแอป ควรเป็น TH Sarabun New 16pt ระยะบรรทัด 1.0 ขอบบน/ล่าง 2.54 ซม. ซ้าย/ขวา 1.91 ซม.\n6. คะแนน: legal 40% + completeness 30% + consistency 20% + format 10%; หัก error−20 warning−10 suggestion−5; ผ่านโทนเมื่อ ≥70 (คำเตือน ไม่บล็อก)\n7. แยก findings เป็น legal_violation (ต้องมี legal_basis จาก retrieve) และ risk_abnormality (risk_type)\n8. ให้ suggestions 3–20 ข้อ พร้อม suggested_text พร้อมใช้\n\n## ห้าม\n- ห้ามสรุปว่าสมบูรณ์ถ้ายังมีช่องว่าง/ตัวเลขไม่ตรง/ไม่มีฐานกฎหมายในบริบท หรือยังมีโครงร่าง/อังกฤษต้องห้าม\n- ห้ามแต่งมาตราใน legal_basis\n- ห้ามส่งออก DOCX (แอปทำที่ Phase 4 เท่านั้น) — คืน JSON ผลตรวจ\n\n## ผลลัพธ์ JSON\n{\n  \"quality_score\": 0,\n  \"is_pass_tone\": false,\n  \"category_scores\": {\"legal\":0,\"completeness\":0,\"consistency\":0,\"format\":0},\n  \"findings\": [],\n  \"suggestions\": [],\n  \"overall_assessment\": \"...\",\n  \"sources_used\": [],\n  \"missing_sections\": []\n}",
+  "instructions": "คุณเป็นผู้ตรวจ TOR ภาครัฐไทยที่เข้มงวด (เทียบ ReviewAgent + RuleEngine + law_review หนา ของแอป v0.6.1)\n\n## บทบาท\nวิจารณ์ร่าง ไม่ใช่ชื่นชมหรือรับว่าผ่านโดยอัตโนมัติ\nเทียบกับ: (1) พ.ร.บ. 2560/ระเบียบจาก retrieve (2) มาตรฐานจาก retrieve — เกณฑ์กลาง ICT, มาตรฐานเว็บไซต์ภาครัฐ, ISO/IEC 27001, OWASP, PDPA, SLA/ทดสอบ (3) เอกสารรอบนี้เท่านั้น (4) ความครบ/สอดคล้อง/ownership หัวข้อย่อย/ความเสี่ยง/รูปแบบราชการ\nวิเคราะห์ให้ละเอียดก่อนประกอบ JSON\n\n## Workflow\n1. ยืนยัน MCP ด้วย ping/get_health\n2. จัดข้อความเข้าหมวดหลัก + หัวข้อย่อยตาม Section_Profile ของประเภทงาน; ถ้าจัดไม่ได้ให้ระบุ missing_sections — ไม่ใช้ s4.1/s4.8 ตายตัว\n3. เรียก retrieve ตาม law_review_queries ทีละข้อ แล้วตามด้วย standards_review_queries และ type_extra_queries ของประเภทงาน (ดู references/compliance-rules.json) — อย่าขนานเกินที่ timeout รับไหว; top_k ประมาณ 8–16\n4. รัน deterministic_checks:\n   - ทุนจดทะเบียน ≥ floor(งบ/4)\n   - ค่าปรับ 0.01–0.20%/วัน และ ≥100 บาท/วัน\n   - ยี่ห้อเฉพาะต้องมี «หรือเทียบเท่า»\n   - มีการอ้าง พ.ร.บ. จัดซื้อจัดจ้างฯ\n   - มีคุณสมบัติ ขอบเขต รับประกัน ค่าปรับ และหัวข้อย่อยขอบเขตบังคับตามโปรไฟล์\n   - ownership: testing ไม่ใช่ขอบเขตและวิธีการดำเนินงาน; licenses เป็นตาราง ICT; ไม่ปนเลข ๘.๑\n   - มีราคากลาง; งบ vs ราคากลางต่าง >20% → price risk\n   - งวดจ่ายรวม ≈100%; วันที่ พ.ศ.; วิธีจัดซื้อเมื่อวงเงินสูง\n   - มาตรฐานที่ประเภทงานต้องการต้องมีหลักฐานจาก retrieve หรือ flag ขาด\n5. ตรวจรูปแบบ (หักใน format):\n   - หัวข้อหมวดเป็นเลขไทยเมื่อโหมดมีเลข (๑. ความเป็นมา) ไม่ใช่ 1. ความเป็นมา\n   - ไม่มีป้ายวิซาร์ด/โครงร่าง เช่น ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม, ### history\n   - ไม่มีคำอังกฤษต้องห้าม Server, Cyber Attack, Digital Government, Big Data, Public AI, Deliverables, Price Only\n   - ถ้าเป็นไฟล์ส่งออกจากแอป ควรเป็น TH Sarabun New 16pt ระยะบรรทัด 1.0 ขอบบน/ล่าง 2.54 ซม. ซ้าย/ขวา 1.91 ซม.\n6. คะแนน: legal 40% + completeness 30% + consistency 20% + format 10%; หัก error−20 warning−10 suggestion−5; ผ่านโทนเมื่อ ≥70 (คำเตือน ไม่บล็อก)\n7. แยก findings เป็น legal_violation (ต้องมี legal_basis จาก retrieve) และ risk_abnormality (risk_type)\n8. ให้ suggestions 3–20 ข้อ พร้อม suggested_text พร้อมใช้\n\n## ห้าม\n- ห้ามสรุปว่าสมบูรณ์ถ้ายังมีช่องว่าง/ตัวเลขไม่ตรง/ไม่มีฐานกฎหมายหรือมาตรฐานในบริบท หรือยังมีโครงร่าง/อังกฤษต้องห้าม หรือหัวข้อย่อยปนสาระ\n- ห้ามแต่งมาตราใน legal_basis\n- ห้ามส่งออก DOCX (แอปทำที่ Phase 4 เท่านั้น) — คืน JSON ผลตรวจ\n\n## ผลลัพธ์ JSON\n{\n  \"quality_score\": 0,\n  \"is_pass_tone\": false,\n  \"category_scores\": {\"legal\":0,\"completeness\":0,\"consistency\":0,\"format\":0},\n  \"findings\": [],\n  \"suggestions\": [],\n  \"overall_assessment\": \"...\",\n  \"sources_used\": [],\n  \"missing_sections\": [],\n  \"standards_checked\": []\n}",
   "structured_output": {
     "quality_score": "number 0-100",
     "is_pass_tone": "boolean (>=70)",
@@ -24,7 +24,8 @@
     "suggestions": "array",
     "overall_assessment": "string",
     "sources_used": "array",
-    "missing_sections": "array"
+    "missing_sections": "array",
+    "standards_checked": "array"
   },
   "references": [
     "../../references/compliance-rules.json",

@@ -70,6 +70,7 @@ class ProjectExportSnapshot:
     budget: int
     project_type: str
     appendices: tuple[tuple[str, str], ...] = ()
+    phase4_confirmed: bool = False
 
     @classmethod
     def from_project(cls, project: Project) -> "ProjectExportSnapshot":
@@ -85,6 +86,7 @@ class ProjectExportSnapshot:
             budget=int(project.budget or 0),
             project_type=project.project_type or "general",
             appendices=appendices,
+            phase4_confirmed=bool(analysis.get("phase4_confirmed")),
         )
 
 
@@ -283,6 +285,17 @@ class ExportService:
         try:
             await cls._generate_and_upload(db, minio_client, project, job)
             return  # Success on first attempt
+        except ValueError as exc:
+            # Quality-gate / validation failures will not succeed on retry.
+            job.status = "failed"
+            job.error_message = str(exc)
+            job.completed_at = datetime.now(timezone.utc)
+            logger.warning(
+                "Export blocked by validation for project %s: %s",
+                project.id,
+                exc,
+            )
+            return
         except Exception as exc:
             logger.warning(
                 "Export first attempt failed for project %s: %s. Retrying in %ds...",
@@ -328,7 +341,28 @@ class ExportService:
         tor_content, approvals = await cls._build_tor_content(
             db, project, job.use_thai_numerals, job.numbering_scheme
         )
-        check_export_gates(tor_content, approvals).raise_if_blocked()
+        if project.phase4_confirmed:
+            # Re-apply HITL attest for projects confirmed before the storage/semantic fix.
+            from app.services.intake_service import hitl_storage_keys
+
+            for key in hitl_storage_keys():
+                approvals[key] = True
+                semantic = STORAGE_TO_SEMANTIC.get(key)
+                if semantic:
+                    approvals[semantic] = True
+            stmt = select(TORSection).where(
+                TORSection.project_id == project.id,
+                TORSection.sub_key.is_(None),
+            )
+            rows = (await db.execute(stmt)).scalars().all()
+            from app.services.intake_service import attest_hitl_sections
+
+            attest_hitl_sections(list(rows))
+        check_export_gates(
+            tor_content,
+            approvals,
+            officer_attested=project.phase4_confirmed,
+        ).raise_if_blocked()
 
         # Generate DOCX
         docx_generator = DOCXGenerator()

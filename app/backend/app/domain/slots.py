@@ -12,7 +12,12 @@ from app.domain.section_profile import (
     profile_for_project,
     scope_storage_key,
 )
-from app.domain.tor_sections import SCOPE_SUBSECTIONS, TOR_SECTION_LABELS, TOR_SECTION_ORDER
+from app.domain.tor_sections import (
+    EXTRA_SECTION_ORDER,
+    SCOPE_SUBSECTIONS,
+    TOR_SECTION_LABELS,
+    TOR_SECTION_ORDER,
+)
 from app.domain.tor_taxonomy import LEGACY_SCOPE_MAP
 
 _DEFAULT = profile_for_project("buy_goods")
@@ -97,6 +102,7 @@ def empty_slot_keys(category: str | None = None) -> list[str]:
             [
                 *intake_slot_order(category),
                 *TOR_SECTION_ORDER,
+                *EXTRA_SECTION_ORDER,
                 *SCOPE_SUBSECTIONS.keys(),
                 *_LEGACY_SCOPE_STORAGE.keys(),
             ]

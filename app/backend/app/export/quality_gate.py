@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.domain.section_profile import SEMANTIC_TO_STORAGE, category_for_project
+from app.domain.tor_sections import TOR_SECTION_LABELS
 from app.domain.tor_taxonomy import (
     CRITICAL_SECTIONS_MIN_LENGTH,
     MANDATORY_HUMAN_REVIEW_SECTIONS,
+    MINIMUM_CONTENT_LENGTH,
+    section_label,
 )
 
 BASELINE_MIN_LENGTH = dict(CRITICAL_SECTIONS_MIN_LENGTH)
@@ -29,6 +32,15 @@ class GateResult:
         raise ValueError("; ".join(self.errors))
 
 
+def _label(semantic: str) -> str:
+    storage = SEMANTIC_TO_STORAGE.get(semantic, semantic)
+    return (
+        TOR_SECTION_LABELS.get(storage)
+        or section_label(semantic)
+        or semantic
+    )
+
+
 def _char_count(content, semantic: str) -> int:
     storage = SEMANTIC_TO_STORAGE.get(semantic, semantic)
     text = str((getattr(content, "sections", None) or {}).get(storage) or "")
@@ -38,8 +50,18 @@ def _char_count(content, semantic: str) -> int:
     return len(text.strip())
 
 
-def check_export_gates(content, approvals: dict[str, bool] | None = None) -> GateResult:
-    """Block export when critical sections are short or HITL is unsigned."""
+def check_export_gates(
+    content,
+    approvals: dict[str, bool] | None = None,
+    *,
+    officer_attested: bool = False,
+) -> GateResult:
+    """Block export when critical sections are short or HITL is unsigned.
+
+    After Phase-4 officer confirm (``officer_attested``), min-length uses the
+    baseline floor so a reviewed short draft does not soft-lock export; HITL
+    still requires approval flags (normally set by attest_hitl_sections).
+    """
     approvals = approvals or {}
     errors: list[str] = []
     category = category_for_project(getattr(content, "project_type", None))
@@ -50,9 +72,11 @@ def check_export_gates(content, approvals: dict[str, bool] | None = None) -> Gat
         if semantic not in present:
             continue
         count = _char_count(content, semantic)
-        if count < minimum:
+        threshold = MINIMUM_CONTENT_LENGTH if officer_attested else minimum
+        if count < threshold:
             errors.append(
-                f"หมวด {semantic} มี {count} อักขระ ต่ำกว่าเกณฑ์ขั้นต่ำ {minimum}"
+                f"หมวด{_label(semantic)} มี {count} อักขระ "
+                f"ต่ำกว่าเกณฑ์ขั้นต่ำ {threshold} — กลับไปขั้นที่ ๓ กดร่างใหม่ให้ครบ"
             )
     for semantic in MANDATORY_HUMAN_REVIEW_SECTIONS:
         if semantic not in present:
@@ -60,7 +84,10 @@ def check_export_gates(content, approvals: dict[str, bool] | None = None) -> Gat
         storage = SEMANTIC_TO_STORAGE.get(semantic, semantic)
         approved = bool(approvals.get(semantic) or approvals.get(storage))
         if not approved:
-            errors.append(f"หมวด {semantic} ยังรอการอนุมัติจากผู้ตรวจ")
+            errors.append(
+                f"หมวด{_label(semantic)} ยังรอการอนุมัติจากผู้ตรวจ "
+                "— กดยืนยันเข้าทบทวนในขั้นที่ ๔ อีกครั้ง"
+            )
     return GateResult(ok=not errors, errors=errors)
 
 

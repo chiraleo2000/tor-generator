@@ -1089,6 +1089,10 @@ async def put_project_section(
         from app.domain.section_fields import persist_section_fields
 
         content = persist_section_fields(main_key, content or "")
+    elif (sub_key or "").removeprefix("scope.").strip() in {"licenses", "s4.5"}:
+        from app.services.thai_draft import normalize_license_ict_table
+
+        content = normalize_license_ict_table(content or "")
 
     existing_stmt = select(TORSection).where(
         TORSection.project_id == project_id,

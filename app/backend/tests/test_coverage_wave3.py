@@ -1011,10 +1011,12 @@ def test_drafting_helpers():
     from app.api.v1.endpoints.drafting import (
         _as_slot_map,
         _draft_from_state,
+        _focus_sub_key,
         _persist_keys_for_section,
         _template_payload,
         _user_input_for_draft,
     )
+    from app.schemas.drafting import DraftSectionRequest
 
     assert _persist_keys_for_section("s4.1") == ("s4", "s4.1")
     assert _persist_keys_for_section("4.2")[0] == "s4"
@@ -1032,6 +1034,28 @@ def test_drafting_helpers():
     slots["s4.1"] = {"content": "ขอบเขต", "status": "filled", "sources": []}
     user_input = _user_input_for_draft(project, [], body, slots, {})
     assert "scope_subslots" in user_input
+    redraft_body = SimpleNamespace(
+        section_key="s2",
+        additional_context={
+            "redraft": True,
+            "revision_instruction": "เติม KPI",
+            "current_draft_fields": {"mainObj": "เดิม"},
+        },
+    )
+    redraft_input = _user_input_for_draft(project, [], redraft_body, slots, {})
+    assert "ต่างจากร่างเดิมอย่างมีสาระ" in redraft_input["revision_instruction"]
+    assert "เติม KPI" in redraft_input["revision_instruction"]
+    assert _focus_sub_key(DraftSectionRequest(section_key="testing")) == "testing"
+    assert (
+        _focus_sub_key(
+            DraftSectionRequest(
+                section_key="s4",
+                additional_context={"focus_sub_key": "licenses"},
+            )
+        )
+        == "licenses"
+    )
+    assert _focus_sub_key(DraftSectionRequest(section_key="s4")) is None
     content, score, findings, rag_failed, error = _draft_from_state(
         {"best_draft_content": "สำรอง", "best_draft_score": 80, "rag_retrieval_failed": False}
     )
@@ -1039,7 +1063,6 @@ def test_drafting_helpers():
     assert score == 80
     content, *_rest = _draft_from_state({"draft_content": "หลัก", "quality_score": 70})
     assert content == "หลัก"
-
 
 @pytest.mark.asyncio
 async def test_save_draft_section_and_persist_s4():

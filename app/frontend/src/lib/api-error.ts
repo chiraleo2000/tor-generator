@@ -40,7 +40,7 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
     response?: { data?: { error?: { message?: unknown } } };
   };
   if (record.code === "ECONNABORTED" || /timeout/i.test(record.message ?? "")) {
-    return "หมดเวลารอโมเดล — วางข้อความที่มีรหัสช่อง เช่น (s1): แล้วกดวิเคราะห์อีกครั้ง";
+    return "หมดเวลารอโมเดลตอนวิเคราะห์ — ตรวจ LM Studio แล้วกดเริ่มวิเคราะห์อีกครั้ง";
   }
   const network = networkFailureMessage(err);
   if (network) {

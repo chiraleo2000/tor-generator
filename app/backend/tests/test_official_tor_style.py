@@ -52,6 +52,20 @@ def test_background_prompt_bans_meta_headings():
     assert "จึงมีความจำเป็นต้อง" in prompt
 
 
+def test_objectives_prompt_requires_json_fields():
+    from app.orchestrator.agents.objectives_agent import ObjectivesDraftingAgent
+
+    prompt = ObjectivesDraftingAgent().get_system_prompt("hire_develop")
+    assert '"mainObj"' in prompt
+    assert '"users"' in prompt
+    assert '"kpi"' in prompt
+    assert "กลุ่มผู้ใช้" in prompt or "users" in prompt
+    assert "ตัวชี้วัด" in prompt
+    block = official_tor_style_block("hire_develop", "s2")
+    assert "mainObj" in block
+    assert "kpi" in block
+
+
 def test_substance_rules_and_style_block_anti_dupe():
     assert "ข้อบังคับสาระและขอบเขต" in SUBSTANCE_RULES
     assert "ห้ามคัดลอกย่อหน้าจากหมวดอื่น" in SUBSTANCE_RULES

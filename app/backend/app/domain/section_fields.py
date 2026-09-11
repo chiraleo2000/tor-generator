@@ -85,6 +85,12 @@ def field_prompt_block(section_key: str) -> str:
     ]
     for index, (_key, label) in enumerate(rows, start=1):
         lines.append(f"- ต้องมีสาระข้อ {index} ในเนื้อหา แต่ห้ามคัดลอกป้ายนี้เป็นหัวข้อ: {label}")
+    if len(rows) >= 2:
+        keys = ", ".join(f'"{key}"' for key, _label in rows)
+        lines.append(
+            f"ตอบเป็น JSON ล้วนด้วยคีย์ {keys} ให้ครบทุกคีย์ที่มีสาระในเอกสาร "
+            "ห้ามปล่อยคีย์ว่างถ้าเอกสารต้นทางมีข้อมูล"
+        )
     from app.domain.tor_draft_hints import hint_for
 
     hint = hint_for(section_key)

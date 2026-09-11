@@ -108,12 +108,89 @@ describe("Phase3Draft", () => {
       />
     );
     fireEvent.click(screen.getByTestId("draft-ai-s3"));
-    expect(onDraft).toHaveBeenCalledWith("s3");
+    expect(onDraft).toHaveBeenCalledWith("s3", undefined);
     expect(screen.queryByTestId("hitl-confirm-s3")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("save-section-s3"));
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
+  it("opens a feedback prompt before redrafting a filled section", async () => {
+    const onDraft = vi.fn().mockResolvedValue({
+      sectionKey: "s1",
+      draftContent: JSON.stringify({ body: "ร่างที่แก้แล้ว" }),
+    });
+    render(
+      <Phase3Draft
+        sections={[s1]}
+        expanded="s1"
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={onDraft}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByTestId("draft-ai-s1")).toHaveTextContent("ขอร่างใหม่จากข้อมูลที่กรอก");
+    fireEvent.click(screen.getByTestId("draft-ai-s1"));
+    expect(onDraft).not.toHaveBeenCalled();
+    expect(screen.getByTestId("redraft-prompt-s1")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("redraft-prompt-s1-input"), {
+      target: { value: "ทำให้สั้นลงและชัดเจนขึ้น" },
+    });
+    fireEvent.click(screen.getByTestId("redraft-prompt-s1-submit"));
+    expect(onDraft).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        redraft: true,
+        user_feedback: "ทำให้สั้นลงและชัดเจนขึ้น",
+        current_draft_fields: expect.objectContaining({
+          body: expect.stringContaining("โครงการจัดซื้อ"),
+        }),
+      })
+    );
+  });
+
+  it("opens feedback prompt for an open scope subsection", () => {
+    const onDraft = vi.fn();
+    render(
+      <Phase3Draft
+        sections={[s4]}
+        expanded="s4"
+        openSub="s4.1"
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={onDraft}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByTestId("draft-ai-sub-s4.1")).toHaveTextContent("ขอร่างใหม่หัวข้อนี้");
+    fireEvent.click(screen.getByTestId("draft-ai-sub-s4.1"));
+    expect(onDraft).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId("redraft-prompt-sub-s4.1-input"), {
+      target: { value: "เน้นเฉพาะโมดูลที่ตรวจรับได้" },
+    });
+    fireEvent.click(screen.getByTestId("redraft-prompt-sub-s4.1-submit"));
+    expect(onDraft).toHaveBeenCalledWith(
+      "s4.1",
+      expect.objectContaining({
+        focus_sub_key: "s4.1",
+        user_feedback: "เน้นเฉพาะโมดูลที่ตรวจรับได้",
+        redraft: true,
+      })
+    );
+  });
   it("opens a scope subsection and reports errors while busy", () => {
     const onOpenSub = vi.fn();
     const onBack = vi.fn();

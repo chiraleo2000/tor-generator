@@ -28,11 +28,19 @@ DRAFT_MIN_TOKENS = SECTION_MIN_TOKENS
 CHAT_MAX_TOKENS = 32_768
 CHAT_MIN_TOKENS = 0
 
-# Review packs a large TOR + พ.ร.บ. + Phase 0 in one user-facing run.
+# Review packs a large TOR + พ.ร.บ./มาตรฐาน + Phase 0 in one user-facing run.
 REVIEW_MAX_TOKENS = GEMMA_CONTEXT_WINDOW
 REVIEW_CONTEXT_WINDOW = GEMMA_CONTEXT_WINDOW
-# Suggestion JSON must stay short; a huge completion cap makes Gemma leave the schema.
-REVIEW_SUGGESTION_MAX_TOKENS = 8_192
+# Deep analyze pass before JSON/comment — use most of the remaining window.
+REVIEW_ANALYZE_MAX_TOKENS = 65_536
+# Suggestion JSON needs room for long suggested_text; clamp still protects the window.
+REVIEW_SUGGESTION_MAX_TOKENS = 32_768
+# Review LLM calls read the full packed TOR + heavy law/standards RAG.
+REVIEW_TIMEOUT_SECONDS = 900.0
+# Prompt packing budgets (chars ≈ 2× tokens via estimate_tokens).
+REVIEW_LEGAL_CONTEXT_CHARS = 90_000
+REVIEW_REQUIREMENTS_CHARS = 60_000
+REVIEW_CUSTOM_REQUIREMENTS_CHARS = 32_000
 
 DEFAULT_MAX_TOKENS = DRAFT_MAX_TOKENS
 

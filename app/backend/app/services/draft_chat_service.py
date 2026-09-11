@@ -46,10 +46,14 @@ DRAFT_SYSTEM_PROMPT = (
     "ห้ามแต่งมาตราที่ไม่มีในบริบท "
     "ให้ครบด้านวิธีจัดซื้อ ราคากลาง คุณสมบัติ ขอบเขตระดับการให้บริการ งวดงาน ค่าปรับ "
     "เกณฑ์คัดเลือก เอกสารยื่น และเงื่อนไขลิขสิทธิ์หรือความลับ ตามแนวทางตัวอย่าง "
+    "ก่อนร่างแต่ละหัวข้อ จำแนกสาระจากเอกสารต้นทางว่าเป็นของหัวข้อนั้นจริงหรือไม่ "
+    "ห้ามยกทั้งหมวดหรือทั้งตารางไปวางผิดหัวข้อ "
     "ขั้นที่ 2 ส่งเฉพาะเนื้อหาหมวดฉบับสมบูรณ์ตามรูปแบบเอกสารกำหนดขอบเขตงาน "
     "ห้ามส่งบันทึกวิเคราะห์ ห้ามย่อจนขาดสาระ "
-    "ห้ามพิมพ์เลขนำหน้าชื่อหมวด (ทั้งเลขไทยและอารบิก) — ระบบส่งออกเป็นผู้ใส่หัวข้อ "
+    "ห้ามพิมพ์เลขนำหน้าชื่อหมวดหรือข้อย่อย (ทั้งเลขไทยและอารบิก เช่น ๘.๑ 8.1.2) "
+    "— ระบบส่งออกเป็นผู้ใส่หัวข้อ "
     "ตัวเลขในเนื้อหา วันที่ และตารางใช้เลขไทยได้ "
+    "ตารางใช้มาร์กดาวน์คอลัมน์เดียวชุด ห้ามพิมพ์ [Table N] ห้ามซ้ำแถวหัวตาราง "
     "ห้ามพิมพ์ป้ายช่องข้อมูลหรือรหัสภาษาอังกฤษเป็นหัวข้อ\n"
     f"{THAI_ONLY_RULES}"
     f"{SUBSTANCE_RULES}"
@@ -240,6 +244,8 @@ async def _stream_llm_prompt(
     system: str, user_prompt: str, *, max_tokens: int = DRAFT_MAX_TOKENS
 ) -> AsyncIterator[str]:
     """Stream one compose pass from the configured LLM (no analyze-then-compose)."""
+    from app.services.thai_draft import sanitize_unauthorized_english, thai_char_count
+
     system = attach_thai_only(system)
     user_prompt = attach_thai_only(user_prompt)
     text = await _collect_llm_text(system, user_prompt, max_tokens=max_tokens)
@@ -247,8 +253,18 @@ async def _stream_llm_prompt(
         logger.warning("draft contained unauthorized English; retrying once")
         text = await _collect_llm_text(system, user_prompt, max_tokens=max_tokens)
         if detect_unauthorized_english(text):
-            logger.warning("draft retry still contained unauthorized English; dropping")
-            return
+            cleaned = sanitize_unauthorized_english(text)
+            if thai_char_count(cleaned) >= 40:
+                logger.warning(
+                    "draft retry still had English; using sanitized Thai (%s chars)",
+                    len(cleaned),
+                )
+                text = cleaned
+            else:
+                logger.warning(
+                    "draft retry still contained unauthorized English; dropping"
+                )
+                return
     if text:
         yield text
 
@@ -290,10 +306,20 @@ async def draft_scope_subsection(
     slot_map: dict[str, Any],
     user_id: UUID | str | None = None,
     category: str | None = None,
+    *,
+    current_draft: str | None = None,
+    user_feedback: str | None = None,
 ) -> AsyncIterator[str]:
     """Draft one scope subsection from the LLM into its own content block."""
     rag_context = await _s4_shared_rag(user_id)
-    prompt = scope_sub_prompt(sub_key, slot_map, rag_context, category)
+    prompt = scope_sub_prompt(
+        sub_key,
+        slot_map,
+        rag_context,
+        category,
+        current_draft=current_draft,
+        user_feedback=user_feedback,
+    )
     async for token in _stream_llm_prompt(
         DRAFT_SYSTEM_PROMPT, prompt, max_tokens=SCOPE_SUB_MAX_TOKENS
     ):
@@ -323,7 +349,9 @@ async def collect_scope_subsection_drafts(
             parts.append(token)
         text = "".join(parts).strip()
         if text:
-            out[sub_key] = text
+            from app.services.thai_draft import polish_scope_subsection_draft
+
+            out[sub_key] = polish_scope_subsection_draft(text, sub_key)
     return out
 
 

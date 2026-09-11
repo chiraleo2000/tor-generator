@@ -1,11 +1,11 @@
 {
   "name": "tor-kb-retrieve",
-  "description": "ค้นคลังความรู้จัดซื้อจัดจ้างภาครัฐไทยผ่าน Amazon Quick MCP (retrieve / list_rag_groups) สำหรับตอบคำถามระเบียบ ราคากลาง ค่าปรับ คุณสมบัติ หรือหาบริบทก่อนร่าง/ตรวจ TOR. ใช้เมื่อผู้ใช้ถามกฎหมาย/ระเบียบ หรือต้องการแหล่งอ้างอิงก่อนเขียน TOR.",
+  "description": "ค้นคลังความรู้จัดซื้อจัดจ้างภาครัฐไทยผ่าน Amazon Quick MCP (retrieve / list_rag_groups) สำหรับตอบคำถามระเบียบ ราคากลาง ค่าปรับ คุณสมบัติ มาตรฐาน ICT/ความมั่นคงปลอดภัย หรือหาบริบทก่อนร่าง/ตรวจ TOR. ใช้เมื่อผู้ใช้ถามกฎหมาย/ระเบียบ/มาตรฐาน หรือต้องการแหล่งอ้างอิง.",
   "compatibility": "Amazon Quick Desktop + TOR MCP connector on :8767 or HTTPS /mcp. Tools time out at 60s.",
   "metadata": {
-    "version": "0.5.0",
+    "version": "0.6.1",
     "product": "Amazon Quick",
-    "mirrors": "Discussions/23-WORKFLOW_KB_QA.md + app/infra/quick/mcp_server.py",
+    "mirrors": "Discussions/23-WORKFLOW_KB_QA.md + app/infra/quick/mcp_server.py + law_review query packs",
     "allowed-tools": "mcp:retrieve mcp:list_rag_groups mcp:ping mcp:get_health"
   },
   "tools": [
@@ -14,12 +14,12 @@
     { "name": "ping", "mcp": "tor-rag" },
     { "name": "get_health", "mcp": "tor-rag" }
   ],
-  "instructions": "คุณเป็นผู้ช่วยค้นคลังความรู้ TOR ภาครัฐไทย\n\n## งาน\n1. ตรวจสุขภาพ connector ด้วย ping หรือ get_health\n2. ถ้าผู้ใช้ไม่ระบุกลุ่มคลัง ให้ list_rag_groups แล้วเลือก procurement-th เป็นค่าเริ่มต้น (หรือกลุ่มที่ผู้ใช้ระบุ)\n3. เรียก retrieve(query, top_k≈8–16, rag_group=...) ด้วยคำถามภาษาไทยที่ชัด\n4. สรุปคำตอบจาก snippet ที่ได้เท่านั้น พร้อมชื่อ source_document เป็นภาษาราชการไทย — ห้ามแปลเป็นอังกฤษ\n5. ถ้าไม่มีข้อมูลในคลัง ให้บอกตรง ๆ ว่าไม่พบ — ห้ามแต่งมาตรา\n\n## ข้อจำกัด Amazon Quick\n- Tool call ต้องจบภายใน 60 วินาที\n- อย่าเรียก retrieve ซ้ำซ้อนเกินจำเป็น\n- OpenAPI twin คืน object แบนเดียว (ไม่มี array) — อ่านข้อความจากฟิลด์ที่คืนมา\n\n## รูปแบบคำตอบ\n- ย่อหน้าสรุปภาษาราชการ\n- รายการแหล่งอ้างอิง (ชื่อเอกสาร)\n- ถ้าเป็นคำถามเพื่อร่าง TOR ให้แนะนำช่องที่เกี่ยวข้อง (เช่น s6 ราคากลาง, s10 ค่าปรับ) และย้ำว่าเนื้อหา TOR ใช้เลขไทย ห้ามป้ายวิซาร์ด/คำอังกฤษต้องห้าม",
+  "instructions": "คุณเป็นผู้ช่วยค้นคลังความรู้ TOR ภาครัฐไทย\n\n## งาน\n1. ตรวจสุขภาพ connector ด้วย ping หรือ get_health\n2. ถ้าผู้ใช้ไม่ระบุกลุ่มคลัง ให้ list_rag_groups แล้วเลือก procurement-th เป็นค่าเริ่มต้น (หรือกลุ่มที่ผู้ใช้ระบุ)\n3. เรียก retrieve(query, top_k≈8–16, rag_group=...) ด้วยคำถามภาษาไทยที่ชัด — แยกคำค้นกฎหมายกับมาตรฐานเมื่อคำถามกว้าง\n4. สรุปคำตอบจาก snippet ที่ได้เท่านั้น พร้อมชื่อ source_document เป็นภาษาราชการไทย — ห้ามแปลเป็นอังกฤษ\n5. ถ้าไม่มีข้อมูลในคลัง ให้บอกตรง ๆ ว่าไม่พบ — ห้ามแต่งมาตรา\n\n## ข้อจำกัด Amazon Quick\n- Tool call ต้องจบภายใน 60 วินาที\n- อย่าเรียก retrieve ซ้ำซ้อนเกินจำเป็น; ถ้าต้องการหลายมุม ให้เรียกทีละ query\n- OpenAPI twin คืน object แบนเดียว (ไม่มี array) — อ่านข้อความจากฟิลด์ที่คืนมา\n\n## รูปแบบคำตอบ\n- ย่อหน้าสรุปภาษาราชการ\n- รายการแหล่งอ้างอิง (ชื่อเอกสาร)\n- ถ้าเป็นคำถามเพื่อร่าง/ตรวจ TOR ให้แนะนำช่องที่เกี่ยวข้อง (เช่น s6 ราคากลาง, s10 ค่าปรับ, testing, licenses, standards_security) และย้ำว่าเนื้อหา TOR ใช้เลขไทย ห้ามป้ายวิซาร์ด/คำอังกฤษต้องห้าม",
   "structured_output": {
     "answer": "string",
     "source_documents": "comma-separated document names (no JSON arrays for OpenAPI twin)",
     "rag_group": "string",
     "confidence": "high|medium|low",
-    "related_slots": "comma-separated slot keys e.g. s6,s10"
+    "related_slots": "comma-separated slot keys e.g. s6,s10,testing,licenses"
   }
 }

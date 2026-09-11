@@ -24,8 +24,12 @@ from typing import Any
 
 from app.llm_tokens import (
     REVIEW_CONTEXT_WINDOW,
+    REVIEW_CUSTOM_REQUIREMENTS_CHARS,
+    REVIEW_LEGAL_CONTEXT_CHARS,
     REVIEW_MAX_TOKENS,
+    REVIEW_REQUIREMENTS_CHARS,
     REVIEW_SUGGESTION_MAX_TOKENS,
+    REVIEW_TIMEOUT_SECONDS,
     clamp_max_tokens,
     estimate_tokens,
 )
@@ -38,9 +42,8 @@ from app.schemas.llm_structured import ReviewSuggestionsResult, json_schema_for
 from app.services.staged_prompts import (
     COMPOSE_REVIEW_COMMENT,
     COMPOSE_REVIEW_INSTRUCTION,
-    REVIEW_ANALYZE_SYSTEM,
-    analyze_notes,
     attach_analysis,
+    review_analyze_notes,
 )
 
 logger = logging.getLogger(__name__)
@@ -173,13 +176,21 @@ REVIEW_SYSTEM_PROMPT = (
     "หน้าที่คือวิจารณ์ร่าง ไม่ใช่ชื่นชมหรือรับทุกอย่างว่าผ่าน\n\n"
     "=== บทบาทของคุณ ===\n"
     "วิเคราะห์เอกสาร TOR ทั้งฉบับเทียบกับ:\n"
-    "1. พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ และระเบียบที่เกี่ยวข้อง (คลังกลาง)\n"
-    "2. เอกสารที่เจ้าหน้าที่อัปโหลดหรือวางในขั้นที่ ๐ ของโครงการนี้เท่านั้น ห้ามใช้เอกสารโครงการอื่น\n"
-    "3. ความสอดคล้องระหว่างหมวด ความครบถ้วน ความชัดเจน ราคา/ต้นทุนผิดปกติ\n\n"
+    "1. พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ "
+    "ระเบียบกระทรวงการคลัง และชิ้นกฎหมายจากคลังกลาง\n"
+    "2. มาตรฐานและเกณฑ์ที่เกี่ยวข้องจากคลังกลาง "
+    "(เช่น เกณฑ์กลาง ICT / ครุภัณฑ์คอมพิวเตอร์ มาตรฐานเว็บไซต์ภาครัฐ "
+    "ISO/IEC 27001 OWASP PDPA SLA การทดสอบและตรวจรับระบบ)\n"
+    "3. เอกสารที่เจ้าหน้าที่อัปโหลดหรือวางในขั้นที่ ๐ ของโครงการนี้เท่านั้น "
+    "ห้ามใช้เอกสารโครงการอื่น\n"
+    "4. ความสอดคล้องระหว่างหมวด ความครบถ้วน ความชัดเจน ราคา/ต้นทุนผิดปกติ\n\n"
     "แยกประเด็นเป็นสองกลุ่ม:\n"
-    "- legal_violation: ผิด พ.ร.บ./ระเบียบ/กฎเกณฑ์ ต้องมี legal_basis จากบริบทกฎหมายที่ให้มา ห้ามแต่งมาตรา\n"
-    "- risk_abnormality: ความเสี่ยงจากภาษาคลุมเครือ ราคา/ต้นทุนผิดปกติ หรือเนื้อหาขัดกัน (risk_type = vague|price|cost|content)\n"
-    "ห้ามสรุปว่าสมบูรณ์ถ้ายังมีช่องว่าง ตัวเลขไม่ตรง หรือไม่สอดคล้องกฎหมาย\n"
+    "- legal_violation: ผิด พ.ร.บ./ระเบียบ/มาตรฐานบังคับ "
+    "ต้องมี legal_basis จากบริบทที่ให้มา ห้ามแต่งมาตรา\n"
+    "- risk_abnormality: ความเสี่ยงจากภาษาคลุมเครือ ราคา/ต้นทุนผิดปกติ "
+    "หรือเนื้อหาขัดกัน (risk_type = vague|price|cost|content)\n"
+    "ห้ามสรุปว่าสมบูรณ์ถ้ายังมีช่องว่าง ตัวเลขไม่ตรง ไม่สอดคล้องกฎหมาย "
+    "หรือขาดมาตรฐานที่บริบทระบุว่าต้องมี\n"
     "ตอบเป็นภาษาไทยราชการเท่านั้น\n"
     "ขั้นที่ 2 ประกอบ JSON จากบันทึกวิเคราะห์ขั้นที่ 1 ที่แนบในข้อความผู้ใช้ "
     "suggested_text ต้องพร้อมใช้และครบถ้วนตามรูปแบบหมวดนั้น\n\n"
@@ -194,7 +205,7 @@ REVIEW_SYSTEM_PROMPT = (
     '    "suggested_text": "ข้อความที่แนะนำให้แก้ไข",\n'
     '    "predicted_score_improvement": 1.0,\n'
     '    "finding_kind": "legal_violation|risk_abnormality",\n'
-    '    "legal_basis": "ชื่อกฎหมาย/ระเบียบ มาตรา หรือข้อ (ว่างได้ถ้าเป็นความเสี่ยง)",\n'
+    '    "legal_basis": "ชื่อกฎหมาย/ระเบียบ/มาตรฐาน มาตรา หรือข้อ (ว่างได้ถ้าเป็นความเสี่ยง)",\n'
     '    "risk_type": "vague|price|cost|content"\n'
     "  }\n"
     "] }\n"
@@ -204,8 +215,8 @@ REVIEW_SYSTEM_PROMPT = (
     "- predicted_score_improvement: 0.5-10.0\n"
     "- current_text: คัดลอกข้อความจริงจากเอกสาร (ไม่เกิน 200 ตัวอักษร)\n"
     "- suggested_text: ให้ข้อความทดแทนที่สมบูรณ์ พร้อมใช้งาน ยาวครบถ้วนตามภาษาราชการ\n"
-    "- กลุ่ม ก (legal_violation) ต้องพยายามใส่ legal_basis จากชิ้นกฎหมายในบริบท\n"
-    "- เน้นช่องว่างเทียบกฎหมาย ความต้องการโครงการ ราคากลาง วิธีจัดซื้อ และค่าปรับ\n"
+    "- กลุ่ม ก (legal_violation) ต้องพยายามใส่ legal_basis จากชิ้นกฎหมาย/มาตรฐานในบริบท\n"
+    "- เน้นช่องว่างเทียบกฎหมาย มาตรฐาน ความต้องการโครงการ ราคากลาง วิธีจัดซื้อ และค่าปรับ\n"
     "- ตอบเป็น JSON เท่านั้น ไม่มีข้อความอื่นนอก JSON\n"
 )
 
@@ -727,7 +738,8 @@ class ReviewAgent:
     ) -> bool:
         packed = self._compose_review_user_message(sections, project_metadata, extra)
         used = estimate_tokens(REVIEW_SYSTEM_PROMPT) + estimate_tokens(packed)
-        return used + 2048 < REVIEW_CONTEXT_WINDOW
+        # Reserve a large completion budget for the analyze + JSON passes.
+        return used + 16_384 < REVIEW_CONTEXT_WINDOW
 
     def _compose_review_user_message(
         self,
@@ -738,8 +750,9 @@ class ReviewAgent:
         body = self._build_review_user_message(sections, project_metadata)
         if not extra:
             return body
+        clipped = extra[:REVIEW_CUSTOM_REQUIREMENTS_CHARS]
         return (
-            f"{body}\n\n=== ข้อกำหนดเพิ่มเติมของโครงการ ===\n{extra[:16000]}\n\n"
+            f"{body}\n\n=== ข้อกำหนดเพิ่มเติมของโครงการ ===\n{clipped}\n\n"
             "ตรวจสอบว่า TOR สอดคล้องกับข้อกำหนดเพิ่มเติมเหล่านี้ด้วย "
             "โดยให้คำแนะนำหมวด compliance หรือ completeness"
         )
@@ -754,7 +767,7 @@ class ReviewAgent:
         user_message = self._compose_review_user_message(
             sections, project_metadata, extra
         )
-        notes = await analyze_notes(llm, user_message, REVIEW_ANALYZE_SYSTEM)
+        notes = await review_analyze_notes(llm, user_message)
         compose_user = attach_analysis(
             user_message, notes, COMPOSE_REVIEW_INSTRUCTION
         )
@@ -779,7 +792,7 @@ class ReviewAgent:
                     temperature=0.2,
                     max_tokens=max_out,
                 ),
-                timeout=45.0,
+                timeout=REVIEW_TIMEOUT_SECONDS,
             )
             import json
 
@@ -821,12 +834,12 @@ class ReviewAgent:
         req = str(project_metadata.get("requirements") or "").strip()
         if req:
             parts.append("=== ความต้องการและเอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น ===")
-            parts.append(req[:24000])
+            parts.append(req[:REVIEW_REQUIREMENTS_CHARS])
             parts.append("")
         legal = str(project_metadata.get("legal_context") or "").strip()
         if legal:
-            parts.append("=== กฎหมายและระเบียบจากคลังกลาง ===")
-            parts.append(legal[:20000])
+            parts.append("=== กฎหมาย ระเบียบ และมาตรฐานจากคลังกลาง ===")
+            parts.append(legal[:REVIEW_LEGAL_CONTEXT_CHARS])
             parts.append("")
 
         # Full TOR sections — keep long official drafts; cap only runaway blobs
@@ -845,9 +858,9 @@ class ReviewAgent:
         # Analysis instruction
         parts.append(
             "=== คำสั่ง ===\n"
-            "วิจารณ์ร่างอย่างเข้มงวด เทียบกฎหมายและความต้องการโครงการ "
+            "วิจารณ์ร่างอย่างเข้มงวด เทียบกฎหมาย มาตรฐาน และความต้องการโครงการ "
             "ห้ามรับทุกอย่างว่าผ่าน ให้คำแนะนำเป็น JSON ตาม system prompt\n"
-            "เน้นช่องว่าง ตัวเลขไม่ตรง และหมวดที่ยังไม่ครบ"
+            "เน้นช่องว่างด้านมาตรฐาน ตัวเลขไม่ตรง และหมวดที่ยังไม่ครบ"
         )
 
         return "\n".join(parts)
@@ -867,14 +880,14 @@ class ReviewAgent:
         body += (
             f"\n=== คำถามเจ้าหน้าที่ ===\n{question.strip()}\n"
             "ตอบเป็นภาษาไทยราชการ ประเมินว่าร่างยังขาดอะไร "
-            "เทียบกฎหมายและความต้องการโครงการ แล้วเสนอวิธีแก้เป็นข้อ ๆ "
+            "เทียบกฎหมาย มาตรฐาน และความต้องการโครงการ แล้วเสนอวิธีแก้เป็นข้อ ๆ "
             "ห้ามสรุปว่าผ่านถ้ายังมีช่องว่าง"
         )
         system = (
             THAI_FORMAL_REGISTER_PREAMBLE
             + "คุณเป็นผู้ตรวจ TOR ที่เข้มงวด ห้ามรับทุกอย่างว่าผ่าน ตอบภาษาไทยเท่านั้น"
         )
-        notes = await analyze_notes(llm, body, REVIEW_ANALYZE_SYSTEM)
+        notes = await review_analyze_notes(llm, body)
         compose_body = attach_analysis(body, notes, COMPOSE_REVIEW_COMMENT)
         max_out = clamp_max_tokens(
             compose_body,

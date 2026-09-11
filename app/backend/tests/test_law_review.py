@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.rag.law_review import (
+    STANDARDS_REVIEW_QUERIES,
+    _queries_for,
     collect_law_review_chunks,
     format_law_chunks,
     law_review_context,
@@ -44,3 +46,12 @@ async def test_collect_law_review_chunks_dedupes_and_skips_errors():
         AsyncMock(return_value=out),
     ):
         assert "ราคากลาง" in await law_review_context()
+
+
+def test_queries_include_standards_and_project_type():
+    base = _queries_for(None)
+    assert any("ISO/IEC 27001" in q for q in STANDARDS_REVIEW_QUERIES)
+    assert any("เกณฑ์กลาง" in q for q in base)
+    typed = _queries_for("hire_develop")
+    assert len(typed) > len(base)
+    assert any("UAT" in q for q in typed)

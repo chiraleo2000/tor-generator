@@ -216,11 +216,11 @@ def _suggestion_as_finding(suggestion: Any, rag_text: str) -> dict[str, Any]:
     return finding_as_dict(finding, aliases=True)
 
 
-async def _law_context() -> str:
+async def _law_context(project_type: str | None = None) -> str:
     try:
         from app.rag.law_review import law_review_context
 
-        return await law_review_context()
+        return await law_review_context(project_type)
     except Exception:
         return ""
 

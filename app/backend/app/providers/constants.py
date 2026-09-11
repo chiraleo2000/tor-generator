@@ -77,6 +77,7 @@ AI_OVERLAY_FIELDS = (
     "chat_rag_top_k",
     "chat_max_context_chunks",
     "draft_rag_top_k",
+    "review_rag_top_k",
     "rag_sources",
     "mcp_rag_enabled",
     "mcp_rag_config_path",

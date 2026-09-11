@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "TOR Structure — mirrors app/backend domain model",
-  "version": "0.5.0",
-  "source": "app/backend/app/domain/{tor_sections,section_fields,slots}.py",
+  "version": "0.6.1",
+  "source": "app/backend/app/domain/{tor_taxonomy,section_profile,section_fields,slots}.py",
   "sections": {
     "s1": {
       "label_th": "ความเป็นมา",
+      "substance_th": "บริบทหน่วยงาน/ปัญหา — ปิดด้วย «จึงมีความจำเป็นต้อง…»",
       "fields": [
         { "key": "history", "label_th": "ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม" },
         { "key": "problems", "label_th": "ปัญหาที่พบ (ระบุตัวเลข/สถิติ)" },
@@ -15,6 +16,7 @@
     },
     "s2": {
       "label_th": "วัตถุประสงค์",
+      "substance_th": "ขึ้นต้นด้วย «เพื่อ» วัดผลได้",
       "fields": [
         { "key": "mainObj", "label_th": "วัตถุประสงค์หลัก (ชัดเจน วัดผลได้)" },
         { "key": "users", "label_th": "กลุ่มผู้ใช้งานเป้าหมาย" },
@@ -33,11 +35,31 @@
     },
     "s4": {
       "label_th": "ขอบเขตของงาน",
-      "subsections_note_th": "หัวข้อย่อยแปรตาม Procurement_Category จาก Section_Profile ไม่ใช้ s4.1–s4.14 ตายตัว ห้ามใส่ระบบงานปัจจุบันในจัดซื้อครุภัณฑ์ ก่อสร้าง และจ้างเหมาเอกสาร",
-      "profile_source": "app/backend/app/domain/section_profiles.json",
+      "subsections_note_th": "หัวข้อย่อยแปรตาม Procurement_Category จาก Section_Profile ไม่ใช้ s4.1–s4.14 ตายตัว ห้ามใส่ระบบงานปัจจุบันใน buy_goods / construction / hire_service",
+      "profile_source": "app/backend/app/domain/tor_taxonomy.py SCOPE_BY_TYPE",
+      "ownership_rules_th": [
+        "แต่ละหัวข้อย่อยเป็นเจ้าของสาระตนเอง — ห้ามคัดลอกทั้งก้อนจากหัวข้ออื่น",
+        "ลำดับข้อย่อยใช้ 1. / 1.1 / 1.2 เท่านั้น — ห้ามเลขหมวดต้นทาง ๘.๑ / 8.1",
+        "testing ห้ามเป็นขอบเขตและวิธีการดำเนินงาน / ข้อกำหนดทั่วไป",
+        "licenses ต้องเป็นตารางมาร์กดาวน์เกณฑ์กลาง ICT (| คั่นคอลัมน์)",
+        "functional เป็นเจ้าของขอบเขตและวิธีการดำเนินงาน — ห้ามปนแผนทดสอบละเอียด"
+      ],
+      "hire_develop_storage_keys": [
+        "system_overview",
+        "functional",
+        "integration",
+        "licenses",
+        "standards_security",
+        "testing",
+        "deliverable_docs",
+        "training",
+        "project_team",
+        "sla_warranty"
+      ],
       "legacy_subsections": {
-        "s4.1": "สรุปขอบเขตงาน",
-        "s4.2": "ระบบงานปัจจุบัน"
+        "s4.1": "สรุปขอบเขตงาน (legacy → ไม่บังคับ)",
+        "s4.5": "licenses",
+        "s4.8": "deliverable_docs (ไม่ใช่ testing)"
       }
     },
     "s5": {
@@ -127,8 +149,19 @@
     "general": "buy_goods"
   },
   "fact_required_slots": ["s1", "s2", "s5", "s6", "first_required_scope"],
+  "hitl_sections": ["s3", "s6", "s8", "s10", "s13"],
   "intake_slot_count_note": "จำนวนช่องแปรตาม Section_Profile ของหมวดใหญ่",
   "wizard_field_keys_note_th": "รหัส history/problems/budgetAmount เป็นช่องในวิซาร์ดเท่านั้น ห้ามพิมพ์เป็นหัวข้อในเนื้อหา TOR ที่ร่างหรือส่งออก",
+  "banned_english": [
+    "Server",
+    "Cyber Attack",
+    "Digital Government",
+    "Big Data",
+    "Public AI",
+    "Deliverables",
+    "Price Only",
+    "Price-Performance"
+  ],
   "official_export_style": {
     "font": "TH Sarabun New",
     "body_pt": 16,
@@ -137,6 +170,7 @@
     "margin_top_bottom_cm": 2.54,
     "margin_left_right_cm": 1.91,
     "section_numerals": "none",
+    "subsection_outline": "1. / 1.1 / 1.2",
     "language": "th-official"
   },
   "app_phases": [
@@ -158,12 +192,12 @@
     {
       "phase": 3,
       "name_th": "ร่างเนื้อหา",
-      "gate_out": "all profile mother sections filled → confirm phase 4"
+      "gate_out": "all profile mother sections filled → confirm phase 4; scope subs keep ownership"
     },
     {
       "phase": 4,
       "name_th": "ทบทวนและส่งออก",
-      "gate_out": "profile sections filled for submit; score ≥70 is warning only"
+      "gate_out": "deep review (law+standards RAG) then export; score ≥70 is warning only"
     }
   ]
 }

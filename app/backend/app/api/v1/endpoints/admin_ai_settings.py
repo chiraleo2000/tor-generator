@@ -165,6 +165,7 @@ class AiSettingsUpdate(BaseModel):
     chat_rag_top_k: int | None = None
     chat_max_context_chunks: int | None = None
     draft_rag_top_k: int | None = None
+    review_rag_top_k: int | None = None
     rag_sources: str | None = None
 
 

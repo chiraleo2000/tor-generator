@@ -104,6 +104,22 @@ def draft_rag_top_k() -> int:
     )
 
 
+REVIEW_RAG_TOP_K = 64
+
+
+def review_rag_top_k() -> int:
+    """pgvector top-n per query for end-of-flow TOR review (law + standards)."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    return _clamp_int(
+        getattr(settings, "review_rag_top_k", REVIEW_RAG_TOP_K),
+        default=REVIEW_RAG_TOP_K,
+        low=16,
+        high=128,
+    )
+
+
 def diversify_chunks(chunks: list[Any]) -> list[Any]:
     """Round-robin by source document so one PDF does not crowd the prompt."""
     buckets: dict[str, list[Any]] = {}

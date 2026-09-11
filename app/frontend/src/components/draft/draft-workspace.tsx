@@ -36,15 +36,22 @@ const EXPORT_WAIT_MESSAGE: Record<"failed" | "timeout", string> = {
 
 async function waitForExportReady(
   projectId: string
-): Promise<"completed" | "failed" | "timeout"> {
+): Promise<{ status: "completed" | "failed" | "timeout"; error?: string }> {
   for (let attempt = 0; attempt < 66; attempt += 1) {
     const statusRes = await apiClient.get(`/projects/${projectId}/export/status`);
-    const status = unwrapData<{ status?: string }>(statusRes).status;
-    if (status === "completed") return "completed";
-    if (status === "failed") return "failed";
+    const payload = unwrapData<{ status?: string; error_message?: string | null }>(
+      statusRes
+    );
+    if (payload.status === "completed") return { status: "completed" };
+    if (payload.status === "failed") {
+      return {
+        status: "failed",
+        error: payload.error_message || EXPORT_WAIT_MESSAGE.failed,
+      };
+    }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  return "timeout";
+  return { status: "timeout", error: EXPORT_WAIT_MESSAGE.timeout };
 }
 
 export function DraftWorkspace() {
@@ -79,6 +86,32 @@ export function DraftWorkspace() {
     const payload = unwrapData<{ sections?: SectionPayload[] }>(response);
     setSections(payload.sections || []);
   }, [projectId]);
+
+  function patchSectionsWithDraft(
+    prev: SectionPayload[],
+    sectionKey: string,
+    draftContent: string
+  ): SectionPayload[] {
+    const filled = Boolean(draftContent.trim());
+    return prev.map((section) => {
+      if (section.key === sectionKey) {
+        return { ...section, content: draftContent, filled: filled || section.filled };
+      }
+      if (!section.subs?.length) return section;
+      const hit = section.subs.some((sub) => sub.key === sectionKey);
+      if (!hit) return section;
+      const subs = section.subs.map((sub) =>
+        sub.key === sectionKey
+          ? { ...sub, content: draftContent, filled }
+          : sub
+      );
+      return {
+        ...section,
+        subs,
+        filled: section.filled || subs.some((sub) => sub.filled),
+      };
+    });
+  }
 
   useEffect(() => {
     if (!projectId) return;
@@ -185,7 +218,10 @@ export function DraftWorkspace() {
     await loadSections();
   }
 
-  async function draftSection(key: string) {
+  async function draftSection(
+    key: string,
+    context?: Record<string, unknown>
+  ): Promise<{ sectionKey: string; draftContent: string } | null> {
     setBusy(true);
     setActionError(null);
     setActionInfo("รอคิวระบบอัจฉริยะ...");
@@ -210,16 +246,41 @@ export function DraftWorkspace() {
         .catch(() => undefined);
     }, 500);
     try {
-      await apiClient.post(
-        `/projects/${projectId}/draft-section`,
-        { section_key: key },
-        { headers: { "X-AI-Request-Id": requestId }, timeout: 900_000 }
+      const body: { section_key: string; additional_context?: Record<string, unknown> } = {
+        section_key: key,
+      };
+      if (context && Object.keys(context).length > 0) {
+        body.additional_context = context;
+      }
+      const response = await apiClient.post(`/projects/${projectId}/draft-section`, body, {
+        headers: { "X-AI-Request-Id": requestId },
+        timeout: 900_000,
+      });
+      const payload = unwrapData<{
+        section_key?: string;
+        draft_content?: string;
+      }>(response);
+      const sectionKey = String(payload.section_key || key);
+      const draftContent = String(payload.draft_content || "");
+      if (draftContent.trim()) {
+        // Paint immediately — do not wait for a second GET /sections round-trip.
+        setSections((prev) => patchSectionsWithDraft(prev, sectionKey, draftContent));
+      }
+      await loadSections().catch(() => undefined);
+      // Re-apply after reload so a racing blur-save of the old text cannot win.
+      if (draftContent.trim()) {
+        setSections((prev) => patchSectionsWithDraft(prev, sectionKey, draftContent));
+      }
+      setActionInfo(
+        context?.redraft || context?.focus_sub_key
+          ? "ร่างใหม่สำเร็จ — อัปเดตบนหน้าจอแล้ว"
+          : "ร่างด้วยระบบอัจฉริยะสำเร็จ — อัปเดตบนหน้าจอแล้ว"
       );
-      await loadSections();
-      setActionInfo("ร่างด้วยระบบอัจฉริยะสำเร็จ — ตรวจข้อความแล้วบันทึก");
+      return draftContent.trim() ? { sectionKey, draftContent } : null;
     } catch (err: unknown) {
       setActionError(apiErrorMessage(err, "ร่างด้วยระบบอัจฉริยะไม่สำเร็จ"));
       setActionInfo(null);
+      return null;
     } finally {
       window.clearInterval(poll);
       setBusy(false);
@@ -304,9 +365,9 @@ export function DraftWorkspace() {
         numbering_scheme: numberingScheme,
       });
       const wait = await waitForExportReady(projectId);
-      if (wait !== "completed") {
+      if (wait.status !== "completed") {
         setActionInfo(null);
-        setActionError(EXPORT_WAIT_MESSAGE[wait]);
+        setActionError(wait.error || EXPORT_WAIT_MESSAGE[wait.status === "timeout" ? "timeout" : "failed"]);
         return;
       }
       const download = await apiClient.get(

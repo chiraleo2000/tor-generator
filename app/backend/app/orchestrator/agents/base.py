@@ -143,9 +143,56 @@ class BaseDraftingAgent(ABC):
         """
         parts: list[str] = []
 
+        draft_fields = user_input.get("current_draft_fields")
+        revision = user_input.get("revision_instruction")
+        is_redraft = bool(user_input.get("redraft"))
+        base_input = {
+            key: value
+            for key, value in user_input.items()
+            if key
+            not in {
+                "current_draft_fields",
+                "revision_instruction",
+                "redraft",
+                "focus_sub_key",
+                "current_draft",
+                "user_feedback",
+                "human_feedback",
+            }
+        }
+
         # Section: User input
         parts.append("=== ข้อมูลจากผู้ใช้ ===")
-        parts.append(self._format_user_input(user_input))
+        parts.append(self._format_user_input(base_input))
+
+        if isinstance(draft_fields, dict) and any(
+            str(value or "").strip() for value in draft_fields.values()
+        ):
+            parts.append(
+                "\n=== ร่างปัจจุบันในหมวดนี้ "
+                "(ต้องคงสาระที่ผู้ใช้แก้แล้ว และเติมส่วนที่ยังว่างให้ครบจากเอกสารขั้นที่ ๐) ==="
+            )
+            for key, value in draft_fields.items():
+                text = str(value or "").strip()
+                parts.append(f"[{key}]\n{text or '(ว่าง — ต้องเติม)'}")
+        feedback_text = str(
+            user_input.get("user_feedback") or user_input.get("human_feedback") or ""
+        ).strip()
+        if feedback_text:
+            parts.append(
+                "\n=== ความคิดเห็นจากผู้ใช้ (ต้องปฏิบัติตามอย่างเคร่งครัด — แก้เฉพาะหมวดนี้) ==="
+            )
+            parts.append(feedback_text)
+        if is_redraft:
+            parts.append(
+                "\n=== โหมดร่างใหม่ ===\n"
+                "เขียนข้อความใหม่ทั้งหมดของหมวดนี้ให้ต่างจากร่างปัจจุบันอย่างชัดเจน "
+                "ห้ามคัดลอกร่างเดิมมาวางซ้ำทั้งก้อน หรือแก้เพียงคำสองคำ "
+                "ห้ามแก้หมวดอื่น"
+            )
+        if revision and str(revision).strip():
+            parts.append("\n=== คำสั่งปรับปรุงร่าง ===")
+            parts.append(str(revision).strip())
 
         # Section: RAG context (if available)
         if rag_chunks:
@@ -175,8 +222,8 @@ class BaseDraftingAgent(ABC):
                 if correction:
                     parts.append(f"  แนวทางแก้ไข: {correction}")
 
-        # Section: Human feedback (on re-draft request)
-        if human_feedback:
+        # Section: Human feedback (on re-draft request) — skip if already shown above
+        if human_feedback and str(human_feedback).strip() != feedback_text:
             parts.append("\n=== ความคิดเห็นจากผู้ตรวจสอบ ===")
             parts.append(human_feedback)
 
@@ -273,9 +320,11 @@ class BaseDraftingAgent(ABC):
             self.section_key,
         )
 
-        # Set reasonable defaults for drafting
+        # Set reasonable defaults for drafting; bump temperature on redraft
+        # so the model does not parrot the prior draft verbatim.
+        redraft = bool(isinstance(user_input, dict) and user_input.get("redraft"))
         llm_kwargs = {
-            "temperature": 0.3,
+            "temperature": 0.55 if redraft else 0.3,
             "max_tokens": DRAFT_MAX_TOKENS,
         }
         llm_kwargs.update(kwargs)

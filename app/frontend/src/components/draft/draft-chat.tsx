@@ -202,7 +202,8 @@ export function DraftChat({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftedCount, setDraftedCount] = useState(0);
-  const [totalSections] = useState(13);
+  const [totalSections, setTotalSections] = useState(13);
+  const totalSectionsRef = useRef(13);
   const [phase, setPhase] = useState<"idle" | "drafting" | "reviewing" | "complete">("idle");
   const [currentEditSection, setCurrentEditSection] = useState<string | null>(null);
   const [draftingLabel, setDraftingLabel] = useState<string | null>(null);
@@ -223,6 +224,13 @@ export function DraftChat({
     onDraftingChange?.(busy || phase === "drafting");
   }, [busy, phase, onDraftingChange]);
 
+  const applyProgress = useCallback((drafted: number, total: number) => {
+    const safeTotal = Math.max(1, total || totalSectionsRef.current || 13);
+    totalSectionsRef.current = safeTotal;
+    setTotalSections(safeTotal);
+    setDraftedCount(Math.min(safeTotal, Math.max(0, drafted)));
+  }, []);
+
   const refreshStatus = useCallback(async () => {
     try {
       const response = await apiClient.get(
@@ -238,7 +246,8 @@ export function DraftChat({
       const rows = Array.isArray(data.sections) ? data.sections : [];
       setSections(rows);
       sectionsRef.current = rows;
-      setDraftedCount(Number(data.drafted_count) || 0);
+      const total = Number(data.total) || rows.length || 13;
+      applyProgress(Number(data.drafted_count) || 0, total);
       const running = data.job_status === "running" || data.job_status === "queued";
       if (running) {
         setPhase((prev) => (prev === "complete" ? prev : "drafting"));
@@ -253,7 +262,7 @@ export function DraftChat({
     } catch {
       return false;
     }
-  }, [projectId, onAllDrafted]);
+  }, [projectId, onAllDrafted, applyProgress]);
 
   useEffect(() => {
     if (phase !== "drafting") return;
@@ -420,10 +429,15 @@ export function DraftChat({
           const content = typeof data.content === "string" ? data.content : "";
           const count = Number(data.drafted_count);
           if (Number.isFinite(count) && count > 0) {
-            setDraftedCount((prev) => Math.max(prev, count));
-          } else {
-            setDraftedCount((prev) => Math.min(totalSections, prev + 1));
+            const eventTotal = Number(data.total);
+            applyProgress(
+              count,
+              Number.isFinite(eventTotal) && eventTotal > 0
+                ? eventTotal
+                : totalSectionsRef.current
+            );
           }
+          // Redraft/revision events omit drafted_count — do not bump the counter.
           const existingId = ids[key];
           if (!existingId) {
             const messageId = `draft-${key}-done`;
@@ -472,7 +486,13 @@ export function DraftChat({
         if (event === "all_done") {
           const count = Number(data.drafted_count);
           if (Number.isFinite(count) && count > 0) {
-            setDraftedCount((prev) => Math.max(prev, count));
+            const eventTotal = Number(data.total);
+            applyProgress(
+              count,
+              Number.isFinite(eventTotal) && eventTotal > 0
+                ? eventTotal
+                : totalSectionsRef.current
+            );
           }
           setDraftingLabel(null);
           return;

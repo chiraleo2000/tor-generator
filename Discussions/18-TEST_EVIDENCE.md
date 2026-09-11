@@ -1,9 +1,30 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
+> **รอบ 11 กันยายน 2026 — v0.6.1 scope ownership + deep review + Amazon Quick:** focused redraft หัวข้อย่อยขอบเขตทุกคีย์ · กันเนื้อหาผิดหัวข้อ + fallback `1./1.1` · licenses ตาราง ICT · ขั้นตรวจท้ายงบ token/RAG หนา (law+standards) · Amazon Quick agents/skills **v0.6.1** · unit review/amazon-quick ผ่าน · live_llm LM Studio **8/8** · Docker frontend+backend healthy · UI `:3000` 200  
 > **รอบ 10 กันยายน 2026 — v0.6.0 intake/guardrail/thinking:** แก้ `fill-references` 400 หลัง analyze · เกณฑ์ guardrail ต่อหมวดไม่ให้คะแนน 0 เพราะหมวดอื่นว่าง · กู้เนื้อหาไทยจาก reasoning + sanitize คำอังกฤษแทนการทิ้งร่าง · unit ชุดแก้ **249 ผ่าน** · Docker backend rebuild · live SKK ยืนยัน fill-references **200** และ s1/s5 คะแนน 96/100 (รอบ live เต็มถูกหยุดตามคำสั่งก่อนจบ s8/s11/export)  
 > **รอบ 9 กันยายน 2026 ค่ำ — UI ร่าง TOR (เลขหมวดเทคนิค):** Docker rebuild `frontend` · health 200 · Vitest scoped **42 ผ่าน** / 4 ไฟล์ · bundle ไม่มี `หมวด N:` · มี `tabular-nums`/`รอร่าง`  
 > **รอบ 9 กันยายน 2026 เย็น — สไตล์ราชการ + Sonar + Docker:** pytest `-m "not live_llm and not integration"` **2059 ผ่าน** / 25 ตัด · Vitest **309 ผ่าน** / 50 ไฟล์ · Docker `tor-app` rebuild frontend+backend (healthy) · Amazon Quick skills อัปเดตสไตล์ราชการ · `pytest -m live_llm` **หยุดกลางคันตามคำสั่ง** (ECT ผ่าน 2 ข้อแรก แล้วยกเลิกตอนร่างครบหมวด)  
 > รอบเช้า 9 กันยายน 2026 — Section_Profile: pytest **2046** · Vitest **309** · live_llm **17/17** · Docker rebuild
+
+---
+
+## รอบ 11 กันยายน 2026 — v0.6.1 focused scope + deep review + Amazon Quick
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest review / tokens / law_review / amazon_quick | ผ่าน (รวม `test_amazon_quick` **11**) | โฮสต์ 11 ก.ย. 2026 |
+| `pytest -m live_llm` (`test_live_lm_studio.py`) | **8 ผ่าน** | LM Studio `:1234` |
+| Docker `up -d --build frontend backend` | healthy · UI `:3000` 200 · `/health` healthy | รอบเช้า |
+| Amazon Quick agents-skills | **v0.6.1** ownership + standards RAG queries | `app/infra/quick/agents-skills/` |
+
+หัวใจของรอบนี้:
+
+| อาการเดิม | แก้ |
+|-----------|-----|
+| ขอร่างใหม่หัวข้อย่อยแล้วยังได้เนื้อหาผิดหัวข้อ (ยกหมวดวิธีการดำเนินงานมาวาง) | discard wrong-owner draft + polish/fallback ทุกคีย์ขอบเขต |
+| licenses เป็น TSV/ข้อความ ไม่เป็นตาราง | normalize ตารางมาร์กดาวน์เกณฑ์กลาง ICT |
+| ขั้นตรวจท้าย RAG/token บาง | law+standards multi-query · analyze 65k · suggestion 32k · timeout 900s |
+| Amazon Quick skills ค้าง v0.5.x สไตล์ | sync agents/skills/references กับแอป v0.6.1 |
 
 ---
 

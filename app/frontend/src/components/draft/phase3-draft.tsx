@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,6 +43,71 @@ function previewText(sectionKey: string, content: string): string {
   return previewSectionDraft(sectionKey, content);
 }
 
+type DraftResult = { sectionKey: string; draftContent: string } | null | void;
+
+function RedraftPromptPanel({
+  open,
+  busy,
+  value,
+  onChange,
+  onCancel,
+  onSubmit,
+  testId,
+}: Readonly<{
+  open: boolean;
+  busy: boolean;
+  value: string;
+  onChange: (next: string) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+  testId: string;
+}>) {
+  if (!open) return null;
+  return (
+    <div
+      className="mt-2 space-y-2 border border-navy/25 bg-slate-50/90 p-3"
+      data-testid={testId}
+    >
+      <Label htmlFor={`${testId}-input`}>ความคิดเห็น</Label>
+      <p className="text-xs text-muted-foreground">
+        พิมพ์สิ่งที่ต้องการให้แก้ในหัวข้อนี้เท่านั้น ระบบจะส่งร่างเดิมพร้อมความคิดเห็นไปให้โมเดลของหัวข้อนี้
+      </p>
+      <Textarea
+        id={`${testId}-input`}
+        data-testid={`${testId}-input`}
+        className="mt-1"
+        rows={3}
+        value={value}
+        disabled={busy}
+        placeholder="เช่น ปรับให้เป็นตารางมาร์กดาวน์คอลัมน์เดียว ลบหัวตารางซ้ำ และใส่คำว่า ใช้ ในเกณฑ์กลาง ICT"
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          data-testid={`${testId}-cancel`}
+          onClick={onCancel}
+        >
+          ยกเลิก
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || !value.trim()}
+          data-testid={`${testId}-submit`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onSubmit}
+        >
+          ส่งให้ร่างใหม่
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function Phase3Draft({
   sections,
   expanded,
@@ -71,7 +136,10 @@ export function Phase3Draft({
   onExpand: (key: string) => void;
   onOpenSub: (key: string) => void;
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
-  onDraft: (key: string) => void;
+  onDraft: (
+    key: string,
+    context?: Record<string, unknown>
+  ) => void | Promise<DraftResult>;
   onBack: () => void;
   onConfirm: () => Promise<void>;
   projectId?: string;
@@ -188,13 +256,19 @@ function SectionCard({
   onToggle: () => void;
   onOpenSub: (key: string) => void;
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
-  onDraft: (key: string) => void;
+  onDraft: (
+    key: string,
+    context?: Record<string, unknown>
+  ) => void | Promise<DraftResult>;
 }>) {
   const fields = SECTION_FIELDS[section.key] || [
     { key: "body", label: section.title, type: "textarea" as const },
   ];
   const values = parseFields(section.key, section.content);
   const [draft, setDraft] = useState(values);
+  const [scopeDrafts, setScopeDrafts] = useState<Record<string, string>>({});
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [feedback, setFeedback] = useState("");
   useEffect(() => {
     const parsed = parseFields(section.key, section.content);
     const fieldList = SECTION_FIELDS[section.key] || [];
@@ -208,13 +282,99 @@ function SectionCard({
     setDraft(next);
   }, [section.content, section.key, extracted]);
 
+  useEffect(() => {
+    setPromptOpen(false);
+    setFeedback("");
+  }, [section.key, openSub]);
+
   function suggested(mapField?: string) {
     if (!mapField) return "";
     return displayExtracted(extracted[mapField]);
   }
 
+  function draftContext(
+    focusSub?: string,
+    userFeedback?: string
+  ): Record<string, unknown> | undefined {
+    const note = (userFeedback || "").trim();
+    if (section.big) {
+      const focus = (focusSub || openSub || "").trim();
+      if (focus) {
+        const text = String(scopeDrafts[focus] || "").trim();
+        return {
+          focus_sub_key: focus,
+          current_draft_fields: { [focus]: text },
+          current_draft: text,
+          redraft: Boolean(text) || Boolean(note),
+          user_feedback: note || undefined,
+          revision_instruction: note
+            ? "แก้ไขเฉพาะหัวข้อย่อยนี้ตามความคิดเห็นผู้ใช้ — ห้ามแก้หัวข้ออื่น"
+            : text
+              ? "ร่างใหม่เฉพาะหัวข้อย่อยนี้เท่านั้น ตามกฎเจ้าของสาระ — ห้ามแก้หัวข้อย่อยอื่น"
+              : "ร่างเฉพาะหัวข้อย่อยนี้จากเอกสารขั้นที่ ๐ ตามกฎเจ้าของสาระ ห้ามดึงหัวข้ออื่นมาปน",
+        };
+      }
+      const hasContent = Object.values(scopeDrafts).some((value) =>
+        String(value || "").trim()
+      );
+      if (!hasContent && !note) return undefined;
+      return {
+        current_draft_fields: scopeDrafts,
+        redraft: true,
+        user_feedback: note || undefined,
+        revision_instruction: note
+          ? "แก้ไขเฉพาะหมวดขอบเขตตามความคิดเห็นผู้ใช้"
+          : "คงสาระที่ผู้ใช้แก้ในแต่ละข้อย่อยไว้ แล้วเติมส่วนที่ยังว่างจากเอกสารขั้นที่ ๐ ให้ครบ",
+      };
+    }
+    const hasContent = Object.values(draft).some((value) => String(value || "").trim());
+    if (!hasContent && !note) return undefined;
+    return {
+      current_draft_fields: draft,
+      redraft: true,
+      user_feedback: note || undefined,
+      revision_instruction: note
+        ? "แก้ไขเฉพาะหมวดนี้ตามความคิดเห็นผู้ใช้ ส่งร่างใหม่ทั้งก้อนของหมวดนี้เท่านั้น"
+        : "ต้องเขียนร่างใหม่ให้ต่างจากร่างเดิมอย่างมีสาระ ห้ามคืนข้อความเดิมทั้งก้อน คงสาระที่ผู้ใช้แก้แล้วไว้",
+    };
+  }
+
+  async function runDraft(focus?: string, userFeedback?: string) {
+    const target = (focus || "").trim();
+    const ctx = draftContext(target || undefined, userFeedback);
+    const result = await onDraft(target || section.key, ctx);
+    if (!result?.draftContent) return;
+    setPromptOpen(false);
+    setFeedback("");
+    if (section.big && result.sectionKey) {
+      setScopeDrafts((prev) => ({ ...prev, [result.sectionKey]: result.draftContent }));
+      return;
+    }
+    const parsed = parseFields(section.key, result.draftContent);
+    if (Object.keys(parsed).length) {
+      setDraft((prev) => ({ ...prev, ...parsed }));
+    } else {
+      setDraft((prev) => ({ ...prev, body: result.draftContent }));
+    }
+  }
+
   const filled = isSectionFilled(section);
   const indexPad = sectionIndexPad(section.key);
+  const focusedSub = section.big ? (openSub || "").trim() : "";
+  const hasEditableContent = section.big
+    ? Boolean(
+        (focusedSub && String(scopeDrafts[focusedSub] || "").trim()) ||
+          (!focusedSub &&
+            Object.values(scopeDrafts).some((value) => String(value || "").trim()))
+      )
+    : Object.values(draft).some((value) => String(value || "").trim());
+  const draftButtonLabel = promptOpen
+    ? "ปิดช่องความคิดเห็น"
+    : hasEditableContent
+      ? focusedSub
+        ? "ขอร่างใหม่หัวข้อย่อยนี้"
+        : "ขอร่างใหม่จากข้อมูลที่กรอก"
+      : "ร่างด้วยระบบอัจฉริยะ";
 
   return (
     <div className="flex gap-3">
@@ -278,8 +438,11 @@ function SectionCard({
               <ScopeSubsectionEditor
                 subs={section.subs}
                 openSub={openSub}
+                busy={busy}
                 onOpenSub={onOpenSub}
                 onSave={onSave}
+                onDraft={onDraft}
+                onDraftsChange={setScopeDrafts}
               />
             ) : (
               <StandardSectionFields
@@ -298,9 +461,16 @@ function SectionCard({
                 size="sm"
                 disabled={busy}
                 data-testid={`draft-ai-${section.key}`}
-                onClick={() => onDraft(section.key)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (!hasEditableContent) {
+                    void runDraft(focusedSub);
+                    return;
+                  }
+                  setPromptOpen((prev) => !prev);
+                }}
               >
-                ร่างด้วยระบบอัจฉริยะ
+                {draftButtonLabel}
               </Button>
               <Button
                 size="sm"
@@ -311,6 +481,20 @@ function SectionCard({
                 บันทึกหมวดนี้
               </Button>
             </div>
+            <RedraftPromptPanel
+              open={promptOpen}
+              busy={busy}
+              value={feedback}
+              testId={`redraft-prompt-${section.key}`}
+              onChange={setFeedback}
+              onCancel={() => {
+                setPromptOpen(false);
+                setFeedback("");
+              }}
+              onSubmit={() => {
+                void runDraft(focusedSub, feedback);
+              }}
+            />
           </div>
         ) : null}
       </div>
@@ -321,13 +505,22 @@ function SectionCard({
 function ScopeSubsectionEditor({
   subs,
   openSub,
+  busy,
   onOpenSub,
   onSave,
+  onDraft,
+  onDraftsChange,
 }: Readonly<{
   subs: SectionPayload["subs"];
   openSub: string;
+  busy: boolean;
   onOpenSub: (key: string) => void;
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
+  onDraft: (
+    key: string,
+    context?: Record<string, unknown>
+  ) => void | Promise<DraftResult>;
+  onDraftsChange?: (drafts: Record<string, string>) => void;
 }>) {
   const chips = subs || scopeSubsectionsFor().map((item) => ({
     key: item.key,
@@ -337,19 +530,60 @@ function ScopeSubsectionEditor({
   }));
   const contentSig = chips.map((sub) => `${sub.key}:${sub.content || ""}`).join("|");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [promptKey, setPromptKey] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const skipBlurSave = useRef(false);
   useEffect(() => {
     const next: Record<string, string> = {};
     for (const sub of chips) {
       next[sub.key] = sub.content || "";
     }
     setDrafts(next);
+    onDraftsChange?.(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- รีเฟรชเมื่อลายเซ็นเนื้อหาจากเอพีไอเปลี่ยน
   }, [contentSig]);
+  useEffect(() => {
+    setPromptKey("");
+    setFeedback("");
+  }, [openSub]);
   const filledN = chips.filter((sub) => sub.filled).length;
+
+  function applyLocalDraft(subKey: string, content: string) {
+    setDrafts((prev) => {
+      const next = { ...prev, [subKey]: content };
+      onDraftsChange?.(next);
+      return next;
+    });
+  }
+
+  async function submitRedraft(subKey: string, text: string, note: string) {
+    skipBlurSave.current = true;
+    try {
+      const result = await onDraft(subKey, {
+        focus_sub_key: subKey,
+        current_draft_fields: { [subKey]: text },
+        current_draft: text,
+        redraft: true,
+        user_feedback: note.trim(),
+        revision_instruction:
+          "แก้ไขเฉพาะหัวข้อย่อยนี้ตามความคิดเห็นผู้ใช้ — ห้ามแก้หัวข้อย่อยอื่น",
+      });
+      if (result?.draftContent) {
+        applyLocalDraft(result.sectionKey || subKey, result.draftContent);
+      }
+      setPromptKey("");
+      setFeedback("");
+    } finally {
+      window.setTimeout(() => {
+        skipBlurSave.current = false;
+      }, 500);
+    }
+  }
+
   return (
     <div className="space-y-3" data-testid="scope-subsection-editor">
       <p className="text-xs text-muted-foreground">
-        ขอบเขตงาน — หัวข้อย่อย ({filledN}/{chips.length} มีเนื้อหา) · รวมเป็นเอกสารเดียวตอนส่งออก
+        ขอบเขตงาน — หัวข้อย่อย ({filledN}/{chips.length} มีเนื้อหา) · กด«ขอร่างใหม่หัวข้อนี้»แล้วพิมพ์ความคิดเห็นก่อนส่ง
       </p>
       <div className="flex flex-wrap gap-1">
         {chips.map((sub) => (
@@ -374,6 +608,8 @@ function ScopeSubsectionEditor({
           const expanded = openSub === sub.key || (!openSub && sub.filled);
           if (!expanded && openSub) return null;
           if (!openSub && !sub.filled) return null;
+          const text = drafts[sub.key] ?? sub.content ?? "";
+          const hasText = Boolean(String(text).trim());
           return (
             <div
               key={sub.key}
@@ -383,19 +619,81 @@ function ScopeSubsectionEditor({
               <Label className="font-mono text-xs tabular-nums">
                 {formatScopeSubHeading(sub.key, sub.title)}
               </Label>
-              {sub.content ? (
+              {text.trim() ? (
                 <div className="mt-1 mb-2 border bg-slate-50/80 p-2">
-                  <RichDraftText text={sub.content} />
+                  <RichDraftText text={text} />
                 </div>
               ) : null}
               <Textarea
                 className="mt-1"
-                value={drafts[sub.key] ?? sub.content}
+                value={text}
                 rows={5}
-                onChange={(event) =>
-                  setDrafts((prev) => ({ ...prev, [sub.key]: event.target.value }))
-                }
-                onBlur={(event) => onSave(sub.key, event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setDrafts((prev) => {
+                    const next = { ...prev, [sub.key]: value };
+                    onDraftsChange?.(next);
+                    return next;
+                  });
+                }}
+                onBlur={(event) => {
+                  if (busy || skipBlurSave.current) return;
+                  void onSave(sub.key, event.target.value);
+                }}
+              />
+              <div className="mt-2 flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  data-testid={`draft-ai-sub-${sub.key}`}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    skipBlurSave.current = true;
+                  }}
+                  onClick={() => {
+                    if (!hasText) {
+                      void (async () => {
+                        const result = await onDraft(sub.key, {
+                          focus_sub_key: sub.key,
+                          current_draft_fields: { [sub.key]: "" },
+                          current_draft: "",
+                          revision_instruction:
+                            "ร่างเฉพาะหัวข้อย่อยนี้จากเอกสารขั้นที่ ๐ ตามกฎเจ้าของสาระ ห้ามดึงหัวข้ออื่นมาปน",
+                        });
+                        if (result?.draftContent) {
+                          applyLocalDraft(
+                            result.sectionKey || sub.key,
+                            result.draftContent
+                          );
+                        }
+                      })();
+                      return;
+                    }
+                    setPromptKey((prev) => (prev === sub.key ? "" : sub.key));
+                    setFeedback("");
+                  }}
+                >
+                  {promptKey === sub.key
+                    ? "ปิดช่องความคิดเห็น"
+                    : hasText
+                      ? "ขอร่างใหม่หัวข้อนี้"
+                      : "ร่างหัวข้อนี้"}
+                </Button>
+              </div>
+              <RedraftPromptPanel
+                open={promptKey === sub.key}
+                busy={busy}
+                value={feedback}
+                testId={`redraft-prompt-sub-${sub.key}`}
+                onChange={setFeedback}
+                onCancel={() => {
+                  setPromptKey("");
+                  setFeedback("");
+                }}
+                onSubmit={() => {
+                  void submitRedraft(sub.key, text, feedback);
+                }}
               />
             </div>
           );
@@ -403,7 +701,7 @@ function ScopeSubsectionEditor({
       </div>
       {!openSub && filledN === 0 ? (
         <p className="text-xs text-amber-800">
-          ยังไม่มีหัวข้อย่อย — กด «ร่างด้วยระบบอัจฉริยะ» เพื่อเติมตามประเภทงาน หรือเลือกหัวข้อด้านบนเพื่อพิมพ์เอง
+          ยังไม่มีหัวข้อย่อย — เลือกหัวข้อด้านบนแล้วกด«ร่างหัวข้อนี้»หรือพิมพ์ความคิดเห็นหลังขอร่างใหม่
         </p>
       ) : null}
     </div>

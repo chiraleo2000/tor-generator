@@ -108,13 +108,15 @@ STEP_SECTION_MAP: dict[int, list[str]] = {
 # Sections with no dedicated wizard form — AI-drafted when entering Step 7
 ORPHAN_SECTIONS: list[str] = ["s7", "s11", "s12", "s13"]
 
-# HITL breakpoints (Req 12.7): legal, budget, payment, penalty, other conditions
+# HITL breakpoints (Req 12.7): keep in sync with taxonomy semantic HITL
+# (qualification/budget/payment/penalty/evaluation/ip_ownership).
 MANDATORY_HUMAN_REVIEW_SECTIONS: set[str] = {
     "s3",
     "s6",
     "s8",
     "s10",
-    "s13",
+    "s11",
+    "s15",
 }
 
 

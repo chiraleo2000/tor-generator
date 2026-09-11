@@ -1,6 +1,6 @@
 # 38 — แผน Deploy Webapp TOR บน AWS Cloud
 
-แอปปัจจุบัน **v0.6.0** · Region **`ap-southeast-1`**  
+แอปปัจจุบัน **v0.6.1** · Region **`ap-southeast-1`**  
 แหล่งซอร์สที่ build เป็นคอนเทนเนอร์: **[`app/frontend`](../app/frontend)** (Next.js 14) + **[`app/backend`](../app/backend)** (FastAPI)
 
 > **อย่าใช้โฟลเดอร์ `frontend/` ที่รากรีโป** — บนดิสก์ท้องถิ่นอาจเหลือแค่ไฟล์สร้างอัตโนมัติ (`src/lib/tor-profiles.generated.ts`) ไม่มี `Dockerfile` / `package.json` จึง **build ขึ้น AWS ไม่ได้**  

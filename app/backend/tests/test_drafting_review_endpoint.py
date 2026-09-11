@@ -179,7 +179,7 @@ class TestDraftSection:
         """Returns 422 for invalid section key format."""
         response = client.post(
             f"/api/v1/projects/{PROJECT_ID}/draft-section",
-            json={"section_key": "invalid"},
+            json={"section_key": "NOT-A-KEY!"},
         )
 
         assert response.status_code == 422
@@ -280,6 +280,55 @@ class TestDraftSection:
         assert response.status_code == 400
         assert "ร่างว่าง" in response.json()["error"]["message"]
 
+    def test_draft_section_focuses_one_scope_subsection(self, client, mock_officer_user):
+        """Scope redraft with focus_sub_key must not invoke the full s4 graph."""
+        project = _make_project()
+        project.project_type = "hire_develop"
+        mock_db = AsyncMock()
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = project
+        mock_db.execute = AsyncMock(return_value=mock_project_result)
+        mock_db.flush = AsyncMock()
+        mock_db.add = MagicMock()
+
+        async def override_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override_db
+
+        with (
+            patch(
+                "app.api.v1.endpoints.drafting._draft_focused_scope_subsection",
+                new=AsyncMock(
+                    return_value=(
+                        "แผนทดสอบหน่วยและยอมรับโดยผู้ใช้ เกณฑ์ผ่านร้อยละ 100",
+                        80.0,
+                        [],
+                        False,
+                    )
+                ),
+            ) as focused,
+            patch("app.orchestrator.compile_tor_drafting_graph") as graph,
+        ):
+            response = client.post(
+                f"/api/v1/projects/{PROJECT_ID}/draft-section",
+                json={
+                    "section_key": "s4",
+                    "additional_context": {
+                        "focus_sub_key": "testing",
+                        "current_draft_fields": {"testing": "ร่างเดิมผิดหัวข้อ"},
+                        "redraft": True,
+                    },
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"]["section_key"] == "testing"
+        assert "แผนทดสอบ" in data["data"]["draft_content"]
+        focused.assert_awaited_once()
+        graph.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # POST /projects/{id}/review
@@ -360,7 +409,7 @@ class TestRunReview:
         async def fake_suggestions(*_args, **_kwargs):
             return 3, "ต้องแก้ให้สอดคล้องกฎหมายและความต้องการโครงการ"
 
-        async def fake_law():
+        async def fake_law(*_args, **_kwargs):
             return "พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มาตรา 8"
 
         with patch(
@@ -733,7 +782,7 @@ class TestValidate:
         mock_engine = MagicMock()
         mock_engine.validate.return_value = mock_validation_result
 
-        async def fake_law():
+        async def fake_law(*_args, **_kwargs):
             return ""
 
         with patch(
@@ -788,7 +837,7 @@ class TestValidate:
         mock_engine = MagicMock()
         mock_engine.validate.return_value = mock_validation_result
 
-        async def fake_law():
+        async def fake_law(*_args, **_kwargs):
             return ""
 
         with patch(

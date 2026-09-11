@@ -176,8 +176,10 @@ _FACT_ALIASES: dict[str, tuple[str, ...]] = {
         _EQUIPMENT_LIST_HEADING,
     ),
     "licenses": (
+        "ครุภัณฑ์และลิขสิทธิ์ซอฟต์แวร์ที่ต้องจัดหา",
         "ลิขสิทธิ์ซอฟต์แวร์",
         "ข้อกำหนดด้านซอฟต์แวร์",
+        "เกณฑ์กลาง ICT",
         _SOFTWARE_LIST_HEADING,
         _SOFTWARE_PROPOSED_HEADING,
     ),

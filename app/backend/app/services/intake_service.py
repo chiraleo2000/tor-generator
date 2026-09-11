@@ -57,17 +57,17 @@ from app.services.intake_heuristic import (
 
 logger = logging.getLogger(__name__)
 
-# Phase 0→1: LLM reads every document chunk and fills slots. Heuristics are
+# Phase 0→1: LLM reads document windows and fills slots. Heuristics are
 # fallback only when the model fails or leaves a slot empty — never a skip gate.
 ANALYZE_USE_LLM = True
 ANALYZE_LLM_TIMEOUT_SEC = 1800
 ANALYZE_MAX_TOKENS = DRAFT_MAX_TOKENS
 ANALYZE_CONTEXT_WINDOW = GEMMA_CONTEXT_WINDOW
-# ~8k tokens in → aim ~8k tokens out (1:1); estimate_tokens ≈ chars/2.
-ANALYZE_CHUNK_CHARS = 16_000
-ANALYZE_CHUNK_OVERLAP = 1_200
-# Multi-page / multi-file packs: many rounds instead of head+tail only.
-ANALYZE_MAX_CHUNKS = 32
+# Gemma ~131k context: prefer few large windows (fewer sequential LLM round-trips).
+# estimate_tokens ≈ chars/2 → 96k chars ≈ 48k input tokens; leave room for system+JSON out.
+ANALYZE_CHUNK_CHARS = 96_000
+ANALYZE_CHUNK_OVERLAP = 2_400
+ANALYZE_MAX_CHUNKS = 4
 INTAKE_TEXT_CHAR_LIMIT = 500_000
 INTAKE_PACK_LIMIT = 200_000
 # LM Studio often serves embeddings/chat sequentially — allow long waits, avoid skip.
@@ -396,6 +396,7 @@ def fill_current_slot(
     slot_map: dict[str, Any],
     current_slot: str,
     answer: str,
+    category: str | None = None,
 ) -> bool:
     """Fill one slot from a spoken answer (facts or non-fact project text)."""
     text = answer.strip()
@@ -405,7 +406,7 @@ def fill_current_slot(
         return False
     if is_fill_reference_request(text):
         return False
-    if current_slot not in empty_slot_keys():
+    if current_slot not in empty_slot_keys(category):
         return False
     _write_chat_slot(slot_map, current_slot, text)
     return True
@@ -436,6 +437,19 @@ SLOT_REPLY_OPTIONS: dict[str, tuple[str, ...]] = {
     ),
     "s12": (DEFAULT_MOF_STANDARD_ANSWER,),
     "s13": (DEFAULT_MOF_STANDARD_ANSWER,),
+    "s15": (
+        DEFAULT_MOF_STANDARD_ANSWER,
+        "ลิขสิทธิ์ กรรมสิทธิ์ เอกสาร ข้อมูล และผลงานตกเป็นของหน่วยงานผู้ว่าจ้างทันทีที่ส่งมอบ "
+        "รวมถึงซอร์สโค้ดฉบับสมบูรณ์ล่าสุดและสิทธิพัฒนาต่อ",
+    ),
+    "s16": (
+        DEFAULT_MOF_STANDARD_ANSWER,
+        "คู่สัญญาต้องรักษาความลับและปฏิบัติตามกฎหมายคุ้มครองข้อมูลส่วนบุคคลตลอดอายุสัญญาและหลังสิ้นสุดสัญญา",
+    ),
+    "s17": (
+        DEFAULT_MOF_STANDARD_ANSWER,
+        "หน่วยงานผู้รับผิดชอบคือผู้ว่าจ้างตามที่ระบุในเอกสารประกาศ พร้อมช่องทางติดต่อในประกาศ",
+    ),
     "s4.7": (DEFAULT_MOF_STANDARD_ANSWER,),
     "s4.9": (DEFAULT_MOF_STANDARD_ANSWER,),
     "s4.11": (DEFAULT_MOF_STANDARD_ANSWER,),
@@ -497,7 +511,7 @@ def _apply_guessed_or_current(
     ):
         _write_chat_slot(slot_map, guess, text)
         return [guess]
-    if target and fill_current_slot(slot_map, target, text):
+    if target and fill_current_slot(slot_map, target, text, category=category):
         return [target]
     return []
 
@@ -718,13 +732,33 @@ def is_phase4_confirmed(project: Project) -> bool:
     return bool(_analysis_dict(project).get("phase4_confirmed"))
 
 
+def hitl_storage_keys() -> set[str]:
+    """Storage keys that require human sign-off before export.
+
+    Source of truth is taxonomy semantic HITL mapped through SEMANTIC_TO_STORAGE.
+    Legacy storage keys from this module remain included for older rows.
+    """
+    from app.domain.section_profile import SEMANTIC_TO_STORAGE
+    from app.domain.tor_taxonomy import (
+        MANDATORY_HUMAN_REVIEW_SECTIONS as SEMANTIC_HITL,
+    )
+
+    mapped = {
+        SEMANTIC_TO_STORAGE[semantic]
+        for semantic in SEMANTIC_HITL
+        if semantic in SEMANTIC_TO_STORAGE
+    }
+    return mapped | set(MANDATORY_HUMAN_REVIEW_SECTIONS)
+
+
 def attest_hitl_sections(rows: list) -> None:
     """Officer confirm-to-review attests mandatory HITL parent rows."""
     if not rows:
         return
+    required = hitl_storage_keys()
     pending = {
         key
-        for key in MANDATORY_HUMAN_REVIEW_SECTIONS
+        for key in required
         if not any(
             getattr(row, "section_key", "") == key
             and not getattr(row, "sub_key", None)
@@ -932,23 +966,33 @@ def _sample_chunks_evenly(chunks: list[str], limit: int) -> list[str]:
     if limit <= 1:
         return [chunks[0]]
     picked: list[str] = []
+    seen: set[int] = set()
     last_index = len(chunks) - 1
     for i in range(limit):
         index = round(i * last_index / (limit - 1))
-        piece = chunks[index]
-        if piece not in picked:
-            picked.append(piece)
+        if index in seen:
+            continue
+        seen.add(index)
+        picked.append(chunks[index])
     return picked
 
 
 def _analyze_prompt_chunks(pack_text: str) -> list[str]:
-    """Split multi-file packs, then window each file; sample evenly if over cap."""
-    pieces: list[str] = []
-    for file_part in _split_pack_by_file(pack_text):
-        pieces.extend(_chunk_text_window(file_part))
-    if not pieces:
+    """Window the whole pack; keep file markers inside text. Cap round-trips."""
+    raw = (pack_text or "").strip()
+    if not raw:
         return []
+    if len(raw) <= ANALYZE_CHUNK_CHARS:
+        return [raw]
+    pieces = _chunk_text_window(raw)
     return _sample_chunks_evenly(pieces, ANALYZE_MAX_CHUNKS)
+
+
+def _critical_slots_filled(slot_map: dict[str, Any], category: str | None) -> bool:
+    """True when fact + required-scope slots are filled (safe to stop extra LLM rounds)."""
+    keys = list(fact_required_slots(category))
+    keys.extend(profile_for_project(category).required_scope_keys())
+    return all(_slot_is_filled(slot_map, key) for key in keys)
 
 
 def _filled_slots_brief(
@@ -1066,7 +1110,7 @@ async def _llm_analyze_slot_map(
     filenames: list[str],
     category: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Read every document chunk with the LLM and merge slot fills gradually."""
+    """Read document windows with the LLM and merge slot fills (few large passes)."""
     llm = ProviderFactory().get_llm("structured")  # NOSONAR python:S930
     merged = empty_slot_map(category)
     extra: list[str] = []
@@ -1094,13 +1138,23 @@ async def _llm_analyze_slot_map(
         )
         merged = overlay_filled_slots(merged, part)
         extra.extend(gaps)
+        filled_n = sum(1 for key in order if _slot_is_filled(merged, key))
+        remaining = _unfilled_slot_keys(merged, category)
         logger.info(
             "intake analyze LLM chunk %s/%s filled=%s remaining=%s",
             index + 1,
             total,
-            sum(1 for key in order if _slot_is_filled(merged, key)),
-            len(_unfilled_slot_keys(merged, category)),
+            filled_n,
+            len(remaining),
         )
+        # Stop extra windows once critical facts are in — heuristics gap-fill the rest.
+        if index + 1 < total and _critical_slots_filled(merged, category):
+            logger.info(
+                "intake analyze early stop after chunk %s/%s (critical slots filled)",
+                index + 1,
+                total,
+            )
+            break
     return merged, extra
 
 

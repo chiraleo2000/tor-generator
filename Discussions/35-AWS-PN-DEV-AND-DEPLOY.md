@@ -165,8 +165,8 @@ docker compose -f docker-compose.pn.yml --env-file .env up -d --build
 ### 4.1 สร้างแพ็กเกจบนเครื่อง dev
 
 ```bash
-python documents/exports/build_pn_aws_dataset.py --version 0.5.0
-# ได้ documents/exports/tor-pn-aws-dataset-v0.5.0.zip
+python documents/exports/build_pn_aws_dataset.py --version 0.6.1
+# ได้ documents/exports/tor-pn-aws-dataset-v0.6.1.zip
 ```
 
 แตก zip แล้วใน `.env` บนเครื่องที่มี AWS CLI:

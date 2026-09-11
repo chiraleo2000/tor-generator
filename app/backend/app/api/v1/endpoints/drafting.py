@@ -80,6 +80,30 @@ def _user_input_for_draft(
     }
     if body.additional_context:
         user_input.update(body.additional_context)
+    feedback = str(
+        user_input.get("user_feedback") or user_input.get("human_feedback") or ""
+    ).strip()
+    if feedback:
+        user_input["user_feedback"] = feedback
+        user_input["human_feedback"] = feedback
+        user_input["redraft"] = True
+        prior_rev = str(user_input.get("revision_instruction") or "").strip()
+        guided = (
+            "แก้ไขเฉพาะหมวด/หัวข้อนี้เท่านั้นตามความคิดเห็นผู้ใช้ "
+            "ส่งร่างใหม่ทั้งก้อนของหมวดนี้ ห้ามแก้หมวดอื่น "
+            f"ความคิดเห็น: {feedback}"
+        )
+        user_input["revision_instruction"] = (
+            f"{guided}\n{prior_rev}".strip() if prior_rev else guided
+        )
+    elif user_input.get("redraft"):
+        force = (
+            "ต้องเขียนร่างใหม่ให้ต่างจากร่างเดิมอย่างมีสาระ "
+            "ห้ามคืนข้อความเดิมทั้งก้อนหรือแก้เพียงเล็กน้อย "
+            "คงสาระที่ผู้ใช้แก้แล้วไว้ และเติมส่วนที่ยังว่างจากเอกสารขั้นที่ ๐"
+        )
+        prior = str(user_input.get("revision_instruction") or "").strip()
+        user_input["revision_instruction"] = f"{force}\n{prior}".strip() if prior else force
     user_input["analysis_json"] = analysis
     user_input["slot_map"] = slot_map
     target_slot = slot_map.get(body.section_key) or {}
@@ -105,12 +129,34 @@ def _user_input_for_draft(
 
 
 def _template_payload(project: Project) -> dict:
-    if not project.template_id or not project.template:
+    if not project.template_id:
+        return {}
+    # Must not lazy-load here — async sessions raise MissingGreenlet.
+    template = project.__dict__.get("template")
+    if template is None:
         return {}
     return {
-        "section_structure": project.template.section_structure or {},
-        "placeholder_guidance": project.template.placeholder_guidance or {},
+        "section_structure": template.section_structure or {},
+        "placeholder_guidance": template.placeholder_guidance or {},
     }
+
+
+async def _load_project_for_draft(
+    db: AsyncSession, project_id: uuid.UUID, current_user: User
+) -> Project:
+    from sqlalchemy.orm import selectinload
+
+    project = (
+        await db.execute(
+            select(Project)
+            .options(selectinload(Project.template))
+            .where(Project.id == project_id)
+        )
+    ).scalar_one_or_none()
+    if project is None:
+        raise NotFoundError(message=PROJECT_NOT_FOUND)
+    require_project_access(project.owner_id, current_user)
+    return project
 
 
 def _draft_from_state(final_state: dict) -> tuple:
@@ -220,18 +266,6 @@ async def _persist_s4_from_draft(
     return overview
 
 
-async def _load_project_for_draft(
-    db: AsyncSession, project_id: uuid.UUID, current_user: User
-) -> Project:
-    project = (
-        await db.execute(select(Project).where(Project.id == project_id))
-    ).scalar_one_or_none()
-    if project is None:
-        raise NotFoundError(message=PROJECT_NOT_FOUND)
-    require_project_access(project.owner_id, current_user)
-    return project
-
-
 async def _invoke_draft_graph(
     request: Request,
     project_id: uuid.UUID,
@@ -243,6 +277,11 @@ async def _invoke_draft_graph(
 
     request_id = (request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())).strip()
     redis = getattr(request.app.state, "redis", None)
+    feedback = str(
+        user_input.get("user_feedback")
+        or user_input.get("human_feedback")
+        or ""
+    ).strip()
     async with admit(redis, "llm", request_id):
         return await compile_tor_drafting_graph().ainvoke(
             {
@@ -253,6 +292,7 @@ async def _invoke_draft_graph(
                 "max_retries": 3,
                 "agent_timeout_seconds": get_settings().drafting_agent_timeout_seconds(),
                 "human_approved": True,
+                "human_feedback": feedback or None,
             }
         )
 
@@ -357,6 +397,170 @@ async def _persist_draft_output(
     return draft_content
 
 
+def _focus_sub_key(body: DraftSectionRequest) -> str | None:
+    """Resolve a single scope subsection to draft (never the whole s4 blob)."""
+    from app.domain.section_profile import is_scope_storage_key
+
+    ctx = body.additional_context if isinstance(body.additional_context, dict) else {}
+    focus = str(ctx.get("focus_sub_key") or "").strip()
+    if focus and (is_scope_storage_key(focus) or focus.startswith("s4.")):
+        return focus
+    key = (body.section_key or "").strip()
+    if key != "s4" and (is_scope_storage_key(key) or key.startswith("s4.")):
+        return key
+    return None
+
+
+def _user_feedback_from_body(body: DraftSectionRequest) -> str:
+    ctx = body.additional_context if isinstance(body.additional_context, dict) else {}
+    return str(
+        ctx.get("user_feedback")
+        or ctx.get("human_feedback")
+        or ""
+    ).strip()
+
+
+def _inject_focus_draft_into_slots(
+    slot_map: dict,
+    focus_sub: str,
+    body: DraftSectionRequest,
+) -> dict:
+    """Prefer the editor text for the focused sub over stale analysis slots."""
+    out = dict(slot_map or {})
+    ctx = body.additional_context if isinstance(body.additional_context, dict) else {}
+    fields = ctx.get("current_draft_fields")
+    text = ""
+    if isinstance(fields, dict):
+        text = str(fields.get(focus_sub) or fields.get("body") or "").strip()
+        if not text and len(fields) == 1:
+            text = str(next(iter(fields.values())) or "").strip()
+    if not text:
+        text = str(ctx.get("current_draft") or "").strip()
+    if text:
+        out[focus_sub] = {
+            "content": text,
+            "status": "filled",
+            "sources": ["editor_redraft"],
+        }
+    return out
+
+
+async def _draft_focused_scope_subsection(
+    db: AsyncSession,
+    request: Request,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project: Project,
+    body: DraftSectionRequest,
+    focus_sub: str,
+    slot_map: dict,
+) -> tuple[str, float | None, list, bool]:
+    """Draft and persist exactly one scope subsection."""
+    from app.domain.section_profile import subsection_title
+    from app.services.draft_chat_service import draft_scope_subsection
+    from app.services.thai_draft import (
+        is_scope_content_wrong_owner,
+        normalize_license_ict_table,
+        polish_scope_subsection_draft,
+        scope_overview_from_subs,
+        scope_subsection_fallback_draft,
+    )
+
+    focus_key = focus_sub.removeprefix("scope.").strip()
+    label = subsection_title(focus_sub, project.project_type, focus_sub)
+    focused_slots = _inject_focus_draft_into_slots(slot_map, focus_sub, body)
+    user_feedback = _user_feedback_from_body(body)
+    prior = str((focused_slots.get(focus_sub) or {}).get("content") or "").strip()
+    if not prior:
+        ctx = body.additional_context if isinstance(body.additional_context, dict) else {}
+        prior = str(ctx.get("current_draft") or "").strip()
+
+    # Never feed a wrong-owner draft back to the model for ANY subsection.
+    prior_for_llm = prior
+    if prior and is_scope_content_wrong_owner(focus_key, prior):
+        logger.warning(
+            "Discarding wrong-owner draft for %s (%s chars) before focused redraft",
+            focus_key,
+            len(prior),
+        )
+        prior_for_llm = ""
+        focused_slots.pop(focus_sub, None)
+        ownership_fix = (
+            f"ร่างเดิมผิดหัวข้อสำหรับ «{label}» — ห้ามคัดลอก "
+            "ต้องเขียนใหม่เฉพาะสาระของหัวข้อนี้ "
+            "จัดลำดับเป็น 1. / 1.1 / 1.2 เท่านั้น"
+        )
+        user_feedback = (
+            f"{user_feedback}\n{ownership_fix}".strip()
+            if user_feedback
+            else ownership_fix
+        )
+
+    # Licenses without user feedback: deterministic table rebuild is enough.
+    if focus_key in {"licenses", "s4.5"} and not user_feedback:
+        source = prior_for_llm or prior
+        if not source or is_scope_content_wrong_owner(focus_key, source):
+            from app.services.intake_service import slot_content
+
+            source = (
+                slot_content(focused_slots, focus_sub).strip()
+                or slot_content(focused_slots, "licenses").strip()
+                or slot_content(focused_slots, "_project_intake").strip()[:8000]
+            )
+        normalized = normalize_license_ict_table(source)
+        if normalized.startswith("|") and "รายการ" in normalized and "\n| " in normalized:
+            text = polish_scope_subsection_draft(normalized, focus_sub)
+            if text:
+                await _save_draft_section(
+                    db, project_id, "s4", focus_sub, text, 80.0, []
+                )
+                existing = await _existing_s4_subs(db, project_id)
+                existing[focus_sub] = text
+                overview = scope_overview_from_subs(existing, project.project_type)
+                if overview.strip():
+                    await _save_draft_section(
+                        db, project_id, "s4", None, overview, 80.0, []
+                    )
+                return text, 80.0, [], False
+
+    request_id = (request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())).strip()
+    redis = getattr(request.app.state, "redis", None)
+    parts: list[str] = []
+    async with admit(redis, "llm", request_id):
+        async for token in draft_scope_subsection(
+            focus_sub,
+            focused_slots,
+            user_id=user_id,
+            category=project.project_type,
+            current_draft=prior_for_llm or None,
+            user_feedback=user_feedback or None,
+        ):
+            parts.append(token)
+    text = polish_scope_subsection_draft("".join(parts).strip(), focus_sub)
+    if not text or is_scope_content_wrong_owner(focus_key, text):
+        logger.warning(
+            "Scope sub %s empty or wrong-owner after LLM; using fallback outline",
+            focus_key,
+        )
+        text = scope_subsection_fallback_draft(focus_key, label, user_feedback)
+    if not text:
+        raise ValidationError(
+            message=f"การสร้างร่างหัวข้อย่อย «{label}» ได้ข้อความว่าง",
+            field="draft",
+        )
+    await _save_draft_section(
+        db, project_id, "s4", focus_sub, text, 80.0, []
+    )
+    existing = await _existing_s4_subs(db, project_id)
+    existing[focus_sub] = text
+    overview = scope_overview_from_subs(existing, project.project_type)
+    if overview.strip():
+        await _save_draft_section(
+            db, project_id, "s4", None, overview, 80.0, []
+        )
+    return text, 80.0, [], False
+
+
 def _draft_ok_response(
     request: Request,
     project_id: uuid.UUID,
@@ -418,45 +622,73 @@ async def draft_section(
     """
     project = await _load_project_for_draft(db, project_id, current_user)
     target_section = body.section_key
-    all_sections = (
-        await db.execute(select(TORSection).where(TORSection.project_id == project_id))
-    ).scalars().all()
+    focus_sub = _focus_sub_key(body)
     analysis = project.analysis_json if isinstance(project.analysis_json, dict) else {}
     from app.services.intake_service import with_project_intake
 
     slot_map = with_project_intake(_as_slot_map(analysis), project)
-    user_input = _user_input_for_draft(project, list(all_sections), body, slot_map, analysis)
-    template_data = _template_payload(project)
 
     try:
-        final_state = await _invoke_draft_graph(
-            request, project_id, user_input, template_data, target_section
-        )
-        draft_content, quality_score, validation_findings, rag_failed, error = _draft_from_state(
-            final_state
-        )
-        if not str(draft_content or "").strip():
-            raise ValidationError(
-                message=f"การสร้างร่างล้มเหลว: {error or 'โมเดลส่งร่างว่าง'}",
-                field="draft",
+        if focus_sub:
+            # One subsection only — never re-run the whole s4 mother draft.
+            draft_content, quality_score, validation_findings, rag_failed = (
+                await _draft_focused_scope_subsection(
+                    db,
+                    request,
+                    project_id,
+                    current_user.id,
+                    project,
+                    body,
+                    focus_sub,
+                    slot_map,
+                )
             )
-        draft_content = await _persist_draft_output(
-            db,
-            project_id,
-            current_user.id,
-            target_section,
-            draft_content,
-            quality_score,
-            validation_findings,
-            slot_map,
-        )
-        await db.flush()
-        logger.info(
-            "Draft generated for project %s, section %s, score=%s",
-            project_id,
-            target_section,
-            quality_score,
-        )
+            target_section = focus_sub
+            await db.flush()
+            logger.info(
+                "Focused scope draft for project %s, sub=%s, score=%s",
+                project_id,
+                focus_sub,
+                quality_score,
+            )
+        else:
+            all_sections = (
+                await db.execute(
+                    select(TORSection).where(TORSection.project_id == project_id)
+                )
+            ).scalars().all()
+            user_input = _user_input_for_draft(
+                project, list(all_sections), body, slot_map, analysis
+            )
+            template_data = _template_payload(project)
+            final_state = await _invoke_draft_graph(
+                request, project_id, user_input, template_data, target_section
+            )
+            draft_content, quality_score, validation_findings, rag_failed, error = (
+                _draft_from_state(final_state)
+            )
+            if not str(draft_content or "").strip():
+                raise ValidationError(
+                    message=f"การสร้างร่างล้มเหลว: {error or 'โมเดลส่งร่างว่าง'}",
+                    field="draft",
+                )
+            draft_content = await _persist_draft_output(
+                db,
+                project_id,
+                current_user.id,
+                target_section,
+                draft_content,
+                quality_score,
+                validation_findings,
+                slot_map,
+            )
+            await db.flush()
+            logger.info(
+                "Draft generated for project %s, section %s, score=%s",
+                project_id,
+                target_section,
+                quality_score,
+            )
     except ValidationError:
         raise
     except AdmissionTimeoutError as exc:

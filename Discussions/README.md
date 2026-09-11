@@ -13,7 +13,7 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 **Production บน AWS ล้วน (ไม่มี hybrid LLM):** ชุด **24–27** + **29 (TBD)** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS  
 **แผนขึ้น webapp (เลือกเส้น EC2 หรือ ECS):** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) — build จาก `app/frontend` ไม่ใช่โฟลเดอร์ `frontend/` ที่ราก  
 RAG **อนุญาตสองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังเป็น Bedrock — ดู [29](29-TBD-AWS-CLOUD-ONLY.md)  
-หลักฐานตรวจ Local LLM ล่าสุด (10 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.6.0** · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md) · **แผน deploy webapp AWS** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md)
+หลักฐานตรวจ Local LLM ล่าสุด (11 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.6.1** · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md) · **แผน deploy webapp AWS** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md)
 
 | File | Topic |
 |------|--------|
@@ -22,7 +22,7 @@ RAG **อนุญาตสองแหล่งข้อมูล** (คลั�
 | `15-APPLICATION_DESCRIPTION.md` | คำอธิบายแอป |
 | `16-BACKEND_ARCHITECTURE.md` | สถาปัตยกรรม backend |
 | `17-FRONTEND_ARCHITECTURE.md` | สถาปัตยกรรม frontend |
-| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — รอบล่าสุด **10 ก.ย. 2026** (fill-references persist + per-section guardrail + thinking recovery · unit 249 ชุดแก้ · Docker backend rebuild) |
+| `18-TEST_EVIDENCE.md` | หลักฐานเทสต์ — รอบล่าสุด **11 ก.ย. 2026** (v0.6.1 scope ownership + deep review RAG + Amazon Quick skills) |
 | `19-APPLICATION_OPERATING_REPORT.md` | รายงานการทำงานครบ frontend/backend/workflows/tools + ภาพ unit tests (24 ส.ค. 2026 อัปเดตเส้นทาง 5 Phase) |
 | `19-APPLICATION_OPERATING_REPORT.docx` | ฉบับ Word (TH Sarabun New, ตาราง, ภาพจอ, ไดอะแกรม) |
 | `19-APPLICATION_OPERATING_REPORT.pdf` | ฉบับ PDF ส่งออกจาก Word |
