@@ -33,7 +33,8 @@ Local GPU testing stays on **LM Studio** (`LLM_PROVIDER=lm_studio`, `EMBEDDING_P
 
 Quick เรียก MCP `retrieve` เท่านั้น — ไม่แทนที่การอนุมัติโครงการหรือ export DOCX/PDF ของเว็บแอป
 
-สไตล์ร่าง (กันโครงร่างวิซาร์ดและคำอังกฤษ) + ownership หัวข้อย่อย + ตรวจลึกกฎหมาย/มาตรฐาน: อัปเดตใน `agents-skills` **v0.6.1** (11 ก.ย. 2026) — เลขไทย, ห้าม `### history`, ห้าม Server/Cyber Attack/Digital Government, ลำดับ `1./1.1`, licenses = ตาราง ICT, review multi-query standards, และระบุรูปแบบส่งออกของแอป (16pt / 1.0 / ขอบ 2.54/1.91 ซม.)
+แพ็กเกจปัจจุบัน **v0.6.2** (14 ก.ย. 2026) รวมคู่มือติดตั้งบน AWS [`app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md`](../app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md)  
+สไตล์ร่าง (กันโครงร่างวิซาร์ดและคำอังกฤษ) + ownership หัวข้อย่อย + ตรวจลึกกฎหมาย/มาตรฐาน: อัปเดตใน `agents-skills` ตั้งแต่ **v0.6.1** (11 ก.ย. 2026) — เลขไทย, ห้าม `### history`, ห้าม Server/Cyber Attack/Digital Government, ลำดับ `1./1.1`, licenses = ตาราง ICT, review multi-query standards, และระบุรูปแบบส่งออกของแอป (16pt / 1.0 / ขอบ 2.54/1.91 ซม.)
 
 ## Local vs Quick vs AWS cloud
 
@@ -59,9 +60,10 @@ From [MCP integration](https://docs.aws.amazon.com/quick/latest/userguide/mcp-in
 
 1. Ensure `mcp-rag` is healthy (real pgvector) and LM Studio embeddings are loaded.
 2. `docker compose --profile amazon-quick up -d amazon-quick`
-3. Desktop Remote MCP: `http://127.0.0.1:8767/mcp` (team/cloud: `https://<public-or-vpc-host>:8767/mcp`). Auth: none unless `QUICK_MCP_AUTH_VALUE` is set.
+3. Desktop Remote MCP: `http://127.0.0.1:8767/mcp` (team/cloud: `https://<โดเมน>/mcp` ผ่าน nginx/ALB). Auth: none unless `QUICK_MCP_AUTH_VALUE` is set.
 4. Or import `app/infra/quick/openapi-tor.json`.
 5. Ask Quick to retrieve “หลักประกันผลงาน” — expect a real `source_document` from the corpus (not `amazon-quick-mcp` stub text).
+6. Import Agents/Skills จาก zip `app/infra/quick/amazon Quick agents/Skills - TOR/` — คู่มือภาษาไทยบนคลาวด์: [`คู่มือติดตั้ง-AWS-cloud.md`](../app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md) · runbook PN: [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md)
 
 ## Verification (7 ก.ย. 2026 บ่าย)
 

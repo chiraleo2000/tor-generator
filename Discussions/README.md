@@ -13,7 +13,7 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 **Production บน AWS ล้วน (ไม่มี hybrid LLM):** ชุด **24–27** + **29 (TBD)** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS  
 **แผนขึ้น webapp (เลือกเส้น EC2 หรือ ECS):** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) — build จาก `app/frontend` ไม่ใช่โฟลเดอร์ `frontend/` ที่ราก  
 RAG **อนุญาตสองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังเป็น Bedrock — ดู [29](29-TBD-AWS-CLOUD-ONLY.md)  
-หลักฐานตรวจ Local LLM ล่าสุด (11 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.6.1** · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md) · **แผน deploy webapp AWS** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md)
+หลักฐานตรวจ Local LLM ล่าสุด (11 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.6.2** (14 ก.ย. คู่มือติดตั้ง Amazon Quick บน AWS) · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md) · **แผน deploy webapp AWS** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md)
 
 | File | Topic |
 |------|--------|
@@ -39,7 +39,7 @@ RAG **อนุญาตสองแหล่งข้อมูล** (คลั�
 | `29-TBD-AWS-CLOUD-ONLY.md` | **TBD** AWS Cloud ล้วน (ห้าม hybrid) + RAG สองแหล่ง + งานค้าง + รีวิวความพร้อมโครง |
 | `30-DEV-ASSIGNMENT-MCP-AND-AWS.md` | มอบหมายทีม DEV: สปรินต์ MCP RAG + YAML deploy AWS |
 | `31-MCP-RAG-AWS-QUICKSTART.md` | MCP + Custom RAG บน Amazon (Secrets JSON, egress, fail-open) |
-| `32-AMAZON-QUICK.md` | Amazon Quick workplace AI connectors (MCP Draft 7 + OpenAPI), not QuickSight |
+| `32-AMAZON-QUICK.md` | Amazon Quick workplace AI connectors (MCP Draft 7 + OpenAPI), not QuickSight · คู่มือ AWS: `app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md` |
 | `33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md` | **แผน PN:** EC2 (ไม่มี Fargate) · Embed 4 · S3 Vectors · MCP · [PDF](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.pdf) |
 | `34-AWS-PN-TOOLS-LIST.md` | **เครื่องมือ AWS PN** บน EC2 · multi-RAG · [PDF](34-AWS-PN-TOOLS-LIST.pdf) |
 | `35-AWS-PN-DEV-AND-DEPLOY.md` | **คู่มือ deploy EC2** + ตั้ง AWS + `.env` ครบ · แพ็กเกจ `app/infra/pn-ec2/` |

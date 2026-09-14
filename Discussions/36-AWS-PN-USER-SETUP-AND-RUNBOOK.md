@@ -232,10 +232,10 @@ MINIO_USE_IAM=true
 
 ```bash
 # จากราก repo
-python documents/exports/build_pn_aws_dataset.py --version 0.6.1
+python documents/exports/build_pn_aws_dataset.py --version 0.6.2
 ```
 
-ได้ `documents/exports/tor-pn-aws-dataset-v0.6.1.zip` — แตกแล้วตั้ง:
+ได้ `documents/exports/tor-pn-aws-dataset-v0.6.2.zip` — แตกแล้วตั้ง:
 
 ```env
 PN_DATASET_LOCAL_PATH=/path/to/extracted/rag-pdfs
@@ -413,8 +413,12 @@ curl -X POST "https://$PN_PUBLIC_HOST/api/v1/pn/kb/search" \
 5. ลอง tool:
    - `list_rag_groups`
    - `retrieve` โดยใส่ `query` + `rag_group` (เช่น `procurement-th`) · `top_k` แนะนำ 3  
+6. ติดตั้ง **Agents/Skills TOR** จาก zip  
+   `app/infra/quick/amazon Quick agents/Skills - TOR/tor-agents-skills-v0.6.2.zip`  
+   (Import `SKILL.md` แล้วผูก MCP tools · สร้าง Agent จาก `agents/*.json`)
 
-รายละเอียดเพิ่ม: [32-AMAZON-QUICK.md](32-AMAZON-QUICK.md)
+คู่มือติดตั้ง AWS + ผู้ใช้สั้น: [`app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md`](../app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md)  
+รายละเอียด connector: [32-AMAZON-QUICK.md](32-AMAZON-QUICK.md)
 
 ### 9.2 Claude Code / MCP client อื่น **(มือ)**
 

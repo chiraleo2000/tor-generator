@@ -1,5 +1,6 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
+> **v0.6.2 (14 กันยายน 2026):** คู่มือติดตั้ง Amazon Quick บน AWS + zip skills `tor-agents-skills-v0.6.2.zip` — ไม่เปลี่ยนพฤติกรรมร่าง/ตรวจจากรอบ 11 ก.ย.  
 > **รอบ 11 กันยายน 2026 — v0.6.1 scope ownership + deep review + Amazon Quick:** focused redraft หัวข้อย่อยขอบเขตทุกคีย์ · กันเนื้อหาผิดหัวข้อ + fallback `1./1.1` · licenses ตาราง ICT · ขั้นตรวจท้ายงบ token/RAG หนา (law+standards) · Amazon Quick agents/skills **v0.6.1** · unit review/amazon-quick ผ่าน · live_llm LM Studio **8/8** · Docker frontend+backend healthy · UI `:3000` 200  
 > **รอบ 10 กันยายน 2026 — v0.6.0 intake/guardrail/thinking:** แก้ `fill-references` 400 หลัง analyze · เกณฑ์ guardrail ต่อหมวดไม่ให้คะแนน 0 เพราะหมวดอื่นว่าง · กู้เนื้อหาไทยจาก reasoning + sanitize คำอังกฤษแทนการทิ้งร่าง · unit ชุดแก้ **249 ผ่าน** · Docker backend rebuild · live SKK ยืนยัน fill-references **200** และ s1/s5 คะแนน 96/100 (รอบ live เต็มถูกหยุดตามคำสั่งก่อนจบ s8/s11/export)  
 > **รอบ 9 กันยายน 2026 ค่ำ — UI ร่าง TOR (เลขหมวดเทคนิค):** Docker rebuild `frontend` · health 200 · Vitest scoped **42 ผ่าน** / 4 ไฟล์ · bundle ไม่มี `หมวด N:` · มี `tabular-nums`/`รอร่าง`  

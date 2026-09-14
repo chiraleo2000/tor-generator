@@ -1,6 +1,6 @@
 {
   "name": "tor-amazon-quick-agents-skills",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "product": "Amazon Quick (workplace AI) — not QuickSight",
   "paired_connector": {
     "mcp": "app/infra/quick/mcp_server.py",
@@ -16,7 +16,7 @@
     ]
   },
   "mirrors_application": {
-    "app_version": "0.6.1",
+    "app_version": "0.6.2",
     "draft_workflow": "Discussions/21-WORKFLOW_DRAFT_TOR.md",
     "review_workflow": "Discussions/22-WORKFLOW_REVIEW_TOR.md",
     "kb_workflow": "Discussions/23-WORKFLOW_KB_QA.md",

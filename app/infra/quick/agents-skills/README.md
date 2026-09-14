@@ -1,6 +1,6 @@
 # Amazon Quick — Agents & Skills สำหรับร่าง/ตรวจ TOR
 
-แพ็กเกจนี้สะท้อนกระบวนการของแอป TOR **v0.6.1** (5 ขั้นร่าง + ตรวจสอบลึกด้วยกฎหมายและมาตรฐาน) ให้รันบน **Amazon Quick** (workplace AI) โดยเรียกคลังความรู้ผ่าน MCP connector ที่มีอยู่แล้ว — **ไม่ใช่ QuickSight**
+แพ็กเกจนี้สะท้อนกระบวนการของแอป TOR **v0.6.2** (5 ขั้นร่าง + ตรวจสอบลึกด้วยกฎหมายและมาตรฐาน) ให้รันบน **Amazon Quick** (workplace AI) โดยเรียกคลังความรู้ผ่าน MCP connector ที่มีอยู่แล้ว — **ไม่ใช่ QuickSight**
 
 | แอป (Next.js/FastAPI) | Amazon Quick |
 |------------------------|--------------|
@@ -43,6 +43,9 @@ agents-skills/
 3. (โปรดักชัน) ใส่ `QUICK_MCP_AUTH_VALUE` แล้วอัปเดต `mcpServers.tor-rag.headers` ใน agent JSON
 
 ## นำเข้า Skills (Quick Desktop)
+
+แพ็กเกจ zip พร้อมแจก: [`../amazon Quick agents/Skills - TOR/tor-agents-skills-v0.6.2.zip`](../amazon%20Quick%20agents/Skills%20-%20TOR/tor-agents-skills-v0.6.2.zip)  
+คู่มือติดตั้งภาษาไทยทั้งชุด: [`../README.md`](../README.md)
 
 1. **Agents & skills** → **Skills** → **+ Create** → **Import from file**
 2. เลือกไฟล์ `SKILL.md` ทีละสกิล (แนะนำลำดับ):

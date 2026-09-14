@@ -107,7 +107,7 @@ def _write_zip(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default="0.6.1")
+    parser.add_argument("--version", default="0.6.2")
     args = parser.parse_args()
     version = args.version
 

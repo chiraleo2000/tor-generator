@@ -1,6 +1,6 @@
 # รายงานการทำงานของแอป TOR Generator
 
-**เวอร์ชัน 0.6.1** · วันที่จัดทำ **24 สิงหาคม 2026** · อัปเดตผลทดสอบล่าสุด **11 กันยายน 2026** (focused scope ownership · deep review RAG · Amazon Quick skills v0.6.1 · พื้นฐาน 10 ก.ย. v0.6.0 · 9 ก.ย. live_llm 17/17)  
+**เวอร์ชัน 0.6.2** · วันที่จัดทำ **24 สิงหาคม 2026** · อัปเดตคู่มือ AWS Quick **14 กันยายน 2026** · ผลทดสอบล่าสุด **11 กันยายน 2026** (focused scope ownership · deep review RAG · Amazon Quick skills v0.6.1 · พื้นฐาน 10 ก.ย. v0.6.0 · 9 ก.ย. live_llm 17/17)  
 แหล่งความจริงของตัวเลขเทสต์รอบนี้: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) และ [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)
 
 แอปนี้ช่วยเจ้าหน้าที่พัสดุ**ร่างและตรวจ TOR** (ขอบเขตของงาน) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 โดยใช้ **Section_Profile ตามหมวดใหญ่ ๗ ประเภท** (ดู [37-TOR-PROFILES-BY-TYPE.md](37-TOR-PROFILES-BY-TYPE.md)) รับชุดเอกสาร จัดเข้าช่อง ตรวจด้วย Rule Engine แล้วส่งออก Word/PDF รูปแบบราชการ
