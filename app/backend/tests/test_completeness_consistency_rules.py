@@ -23,6 +23,7 @@ from app.rule_engine.rules.completeness import (
     MinimumContentRule,
     MissingSectionsHalt,
     RequiredSubsectionsRule,
+    RequiredTablesRule,
     SectionPresenceRule,
 )
 from app.rule_engine.rules.consistency import (
@@ -631,3 +632,21 @@ class TestEngineHaltingOnMissingSections:
         assert result.halted is False
         assert 0 <= result.quality_score <= 100
         assert len(result.categories) == 4
+
+
+class TestRequiredTablesRule:
+    def test_payment_without_percent_warns(self):
+        findings = RequiredTablesRule().validate(
+            {"sections": {"s8": "จ่ายเป็นสามงวดเมื่อส่งมอบงาน"}, "project_type": "buy_goods"}
+        )
+        assert any(item.rule_violated == "COMPLETENESS_PAYMENT_TABLE" for item in findings)
+
+    def test_complete_payment_passes(self, complete_tor_document: dict):
+        findings = RequiredTablesRule().validate(complete_tor_document)
+        assert not any(item.rule_violated == "COMPLETENESS_PAYMENT_TABLE" for item in findings)
+
+    def test_maintain_soc_warns_when_missing(self):
+        findings = RequiredTablesRule().validate(
+            {"project_type": "hire_maintain", "sections": {"s12": "เอกสารทั่วไป"}}
+        )
+        assert any(item.rule_violated == "COMPLETENESS_SOC_TABLE" for item in findings)

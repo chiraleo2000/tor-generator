@@ -492,3 +492,13 @@ class TestTorOutputStandardization:
         assert semantic in joined
         assert str(minimum) in joined
         assert str(length) in joined
+
+
+def test_polish_export_strips_markdown_and_banned_english():
+    from app.services.thai_draft import detect_unauthorized_english, polish_export_text
+
+    text = polish_export_text("๘. งวดงานและการจ่ายเงิน**\nเกิด Cyber Attack ในระบบ")
+    assert "**" not in text
+    assert "Cyber Attack" not in text
+    assert detect_unauthorized_english(text) == []
+    assert "งวดงาน" in text

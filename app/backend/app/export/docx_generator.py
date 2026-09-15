@@ -244,6 +244,9 @@ class DOCXGenerator:
             heading_text = (
                 f"{section.number}. {section.label}" if section.number else section.label
             )
+            from app.services.thai_draft import polish_export_text
+
+            heading_text = polish_export_text(heading_text)
             heading_para = doc.add_paragraph()
             heading_para.space_before = Pt(8)
             heading_para.space_after = Pt(4)
@@ -255,12 +258,16 @@ class DOCXGenerator:
             self._set_run_font_cs(run)
 
             if section.content:
-                self._write_content_blocks(doc, section.content, first_line_indent_cm=1.25)
+                self._write_content_blocks(
+                    doc, polish_export_text(section.content), first_line_indent_cm=1.25
+                )
             for sub in section.subsections:
-                sub_heading = f"{sub.number} {sub.label}".strip()
+                sub_heading = polish_export_text(f"{sub.number} {sub.label}".strip())
                 self._add_sub_heading(doc, sub_heading)
                 if sub.content:
-                    self._write_content_blocks(doc, sub.content, left_indent_cm=1.5)
+                    self._write_content_blocks(
+                        doc, polish_export_text(sub.content), left_indent_cm=1.5
+                    )
 
     def _add_appendices(self, doc: Document, plan) -> None:
         divider = doc.add_paragraph()
@@ -294,9 +301,9 @@ class DOCXGenerator:
         first_line_indent_cm: float | None = None,
         left_indent_cm: float | None = None,
     ) -> None:
-        from app.services.thai_draft import split_content_blocks
+        from app.services.thai_draft import polish_export_text, split_content_blocks
 
-        for kind, payload in split_content_blocks(text):
+        for kind, payload in split_content_blocks(polish_export_text(text)):
             if kind == "table" and isinstance(payload, list):
                 self._add_markdown_table(doc, payload)
                 continue
@@ -335,12 +342,14 @@ class DOCXGenerator:
                 self._set_run_font_cs(run)
 
     def _add_sub_heading(self, doc: Document, heading: str) -> None:
+        from app.services.thai_draft import polish_export_text
+
         sub_heading_para = doc.add_paragraph()
         sub_heading_para.space_before = Pt(4)
         sub_heading_para.space_after = Pt(2)
         sub_heading_para.paragraph_format.left_indent = Cm(1.0)
         self._apply_line_spacing(sub_heading_para)
-        run = sub_heading_para.add_run(heading)
+        run = sub_heading_para.add_run(polish_export_text(heading) if heading else heading)
         run.bold = True
         run.font.name = FONT_NAME
         run.font.size = SUBHEADING_FONT_SIZE

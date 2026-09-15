@@ -40,8 +40,9 @@ OUTPUT_DIRS = [
     SKILLS_ROOT / "check-TORs-Skills" / "hermes-agent" / "tor-review" / "references",
 ]
 
-MAX_SECTIONS = 8  # Max sections per topic to keep files manageable
-MAX_CHARS_PER_SECTION = 2000  # Truncate very long sections
+# Full copies — do not truncate. Skill packs must match documents/knowledge-base/.
+MAX_SECTIONS = None
+MAX_CHARS_PER_SECTION = None
 
 
 def load_topic(topic_key):
@@ -77,18 +78,14 @@ def convert_to_markdown(data, topic_key, thai_name):
     sections = data.get("sections", [])
     sections = deduplicate_sections(sections)
 
-    # Take most important sections (first N unique ones)
-    for i, section in enumerate(sections[:MAX_SECTIONS]):
+    for i, section in enumerate(sections):
         section_id = section.get("section_id", f"Section {i+1}")
         content = section.get("content", "")
 
-        # Clean up content
         content = content.replace("[...ตัดที่ 3000 ตัวอักษร...]", "")
         content = content.strip()
-
-        # Truncate very long sections
-        if len(content) > MAX_CHARS_PER_SECTION:
-            content = content[:MAX_CHARS_PER_SECTION] + "\n\n[...truncated...]"
+        if not content:
+            continue
 
         lines.append(f"## {section_id}")
         lines.append("")

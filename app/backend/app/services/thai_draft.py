@@ -180,6 +180,62 @@ def sanitize_unauthorized_english(text: str) -> str:
     return out.strip()
 
 
+INTAKE_WRAPPER_RE = re.compile(
+    r"\[(?:ข้อความผู้ใช้|[^\]]+\.(?:txt|pdf|docx?|xlsx?))\]",
+    re.IGNORECASE,
+)
+FILE_BANNER_RE = re.compile(r"(?m)^={3,}\s*ไฟล์\s*:.*$")
+SEPARATOR_ROW_RE = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
+
+
+def strip_intake_wrappers(text: str) -> str:
+    """Drop pasted-file banners that leaked from Phase 0 packs into drafts."""
+    out = INTAKE_WRAPPER_RE.sub("", text or "")
+    out = FILE_BANNER_RE.sub("", out)
+    return out.strip()
+
+
+def strip_markdown_separator_rows(text: str) -> str:
+    """Remove markdown alignment rows like ``| --- | --- |`` from display text."""
+    lines = (text or "").replace("\r\n", "\n").split("\n")
+    kept = [line for line in lines if not SEPARATOR_ROW_RE.match(line)]
+    return "\n".join(kept).strip()
+
+
+def looks_like_intake_dump(text: str, intake: str) -> bool:
+    """True when the draft is mostly a copy of the Phase 0 pack."""
+    body = strip_intake_wrappers(text or "")
+    pack = strip_intake_wrappers(intake or "")
+    if len(body) < 80 or len(pack) < 80:
+        return False
+    if INTAKE_WRAPPER_RE.search(text or ""):
+        return True
+    sample = pack[:400].strip()
+    if sample and sample in body:
+        return True
+    head = body[: min(len(body), 800)]
+    overlap = sum(1 for a, b in zip(head, pack, strict=False) if a == b)
+    return overlap / max(len(head), 1) >= 0.62
+
+
+def reject_intake_echo(text: str, intake: str) -> str:
+    """Return polished text, or empty when the model echoed the intake pack."""
+    cleaned = strip_intake_wrappers(text or "")
+    if looks_like_intake_dump(cleaned, intake):
+        return ""
+    return cleaned
+
+
+def polish_export_text(text: str) -> str:
+    """Strip leftover markdown, file banners, and unauthorized English before export."""
+    out = sanitize_unauthorized_english(text or "")
+    out = strip_intake_wrappers(out)
+    out = re.sub(r"\*\*(.+?)\*\*", r"\1", out)
+    out = re.sub(r"(?m)^#{1,6}\s+", "", out)
+    out = out.replace("**", "")
+    return out.strip()
+
+
 SECTION_OWNERSHIP_TABLE = (
     "เจ้าของสาระต่อหมวด (ห้ามซ้ำข้ามหมวด):\n"
     "- ความเป็นมา/บริบทหน่วยงาน — เฉพาะหมวดความเป็นมา\n"
@@ -807,11 +863,13 @@ def polish_scope_subsection_draft(text: str, sub_key: str | None = None) -> str:
     if key == "licenses" or _looks_like_license_table(text or ""):
         polished = normalize_license_ict_table(text or "")
         polished = sanitize_unauthorized_english(polished)
+        polished = strip_intake_wrappers(polished)
         polished = sanitize_scope_draft_tables(polished)
         if key and is_scope_content_wrong_owner(key, polished):
             return ""
         return polished.strip()
     polished = sanitize_unauthorized_english(text or "")
+    polished = strip_intake_wrappers(polished)
     # Keep 1. / 1.1 outlines for every scope sub; only strip leaked chapter-8 nums.
     polished = strip_source_chapter_eight_numbers(polished)
     if key and is_scope_content_wrong_owner(key, polished):
@@ -943,6 +1001,15 @@ def official_tor_style_block(
         SECTION_OWNERSHIP_TABLE.rstrip(),
         f"รูปแบบราชการ ประเภทงาน {profile.label}: เรียกคู่สัญญาว่า «{contractor}» "
         f"เรียกหน่วยงานว่า «{owner}» ห้ามสลับคำเรียก",
+        *(
+            [
+                "งานนี้เป็นการจ้างพัฒนาระบบ ห้ามเรียกคู่สัญญาว่าผู้ขาย "
+                "ห้ามเขียนโทนจัดซื้อครุภัณฑ์หรือฮาร์ดแวร์เป็นงานหลัก "
+                "หัวข้อลิขสิทธิ์ซอฟต์แวร์ระบุได้เฉพาะเมื่อเอกสารขั้นที่ ๐ กำหนดให้จัดหา"
+            ]
+            if cat == "hire_develop"
+            else []
+        ),
         "ห้ามพิมพ์เลขหมวดนำหน้าชื่อหัวข้อ (ทั้งเลขไทยและอารบิก) "
         "ระบบส่งออกเป็นผู้ใส่ชื่อหัวข้อตามโปรไฟล์ "
         "ห้ามพิมพ์ป้ายช่องข้อมูล รหัสอังกฤษ หรือ hint เป็นหัวข้อ "

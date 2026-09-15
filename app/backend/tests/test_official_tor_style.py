@@ -6,6 +6,7 @@ from app.orchestrator.agents.scope_agent import ScopeDraftingAgent
 from app.services.draft_chat_service import _section_prompt_context
 from app.services.thai_draft import SUBSTANCE_RULES, THAI_ONLY_RULES, official_tor_style_block
 from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE
+from app.domain.section_prompts import core_system_prompt
 
 
 def test_official_style_block_forbids_scaffolding_and_english():
@@ -27,7 +28,7 @@ def test_payment_and_eval_prompts_use_thai_tables():
     assert "ผลงานที่ต้องส่งมอบ" in payment
     assert "[deliverable]" not in payment.lower()
     evaluation = EvaluationDraftingAgent().get_system_prompt("hire_develop")
-    eval_body = evaluation.replace(THAI_ONLY_RULES, "")
+    eval_body = evaluation.replace(THAI_ONLY_RULES, "").replace(core_system_prompt(), "")
     assert "Price Only" not in eval_body
     assert "เกณฑ์ราคาประกอบเกณฑ์คุณภาพ" in evaluation
 
@@ -90,3 +91,4 @@ def test_chat_section_prompt_avoids_english_field_keys():
     assert "ขึ้นต้นแต่ละหัวข้อด้วยบรรทัด ### ตามรหัส" not in prompt
     assert "ผู้รับจ้าง" in prompt
     assert "ห้ามพิมพ์เลขหมวดนำหน้า" in prompt
+    assert "ห้ามเรียกคู่สัญญาว่าผู้ขาย" in official_tor_style_block("hire_develop", "s1")

@@ -107,6 +107,8 @@ def test_project_intake_pack_stays_on_this_project():
     pack = project_intake_pack(project)
     assert "วงเงินสองล้านห้าแสนของโครงการนี้" in pack
     assert "เอกสารโครงการอื่นห้ามปน" not in pack
+    assert "[งบ.pdf]" not in pack
+    assert "[ข้อความผู้ใช้.txt]" not in pack
     slots = with_project_intake({}, project)
     assert "วงเงินสองล้านห้าแสนของโครงการนี้" in slots["_project_intake"]["content"]
 

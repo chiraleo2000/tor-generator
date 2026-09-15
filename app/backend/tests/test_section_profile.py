@@ -53,7 +53,7 @@ def test_goods_construction_service_omit_current_system():
 
 def test_legal_required_present_in_every_profile():
     needed = {"s1", "s2", "s3", "s4", "s5", "s6", "s8", "s11"}
-    from app.domain.tor_taxonomy import EXTRA_SECTIONS_BY_TYPE
+    from app.domain.tor_taxonomy import EXTRA_SECTIONS_BY_TYPE, TYPE_REQUIRED_EXTRAS
 
     for category in PROCUREMENT_CATEGORY_ORDER:
         required = {
@@ -63,9 +63,14 @@ def test_legal_required_present_in_every_profile():
         }
         keys = {item.storage_key for item in profile_for_project(category).main_sections}
         assert needed <= required, category
-        assert "s7" in keys
         assert "s7" not in required
-        if "other_conditions" in EXTRA_SECTIONS_BY_TYPE.get(category, []):
+        if category == "hire_develop":
+            assert {"s18", "s19", "s20"} <= keys
+        if category == "hire_maintain":
+            assert "s12" in keys
+        extras = EXTRA_SECTIONS_BY_TYPE.get(category, [])
+        type_req = TYPE_REQUIRED_EXTRAS.get(category, frozenset())
+        if "other_conditions" in extras or "other_conditions" in type_req:
             assert "s13" in keys
         else:
             assert "s13" not in required

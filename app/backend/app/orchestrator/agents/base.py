@@ -13,7 +13,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from app.llm_tokens import DRAFT_MAX_TOKENS, GEMMA_CONTEXT_WINDOW, clamp_max_tokens
+from app.llm_tokens import DRAFT_MAX_TOKENS, clamp_max_tokens
 from app.orchestrator.state import RAGChunk, ValidationFinding
 from app.providers.base import LLMProvider, LLMResponse
 from app.services.staged_prompts import (
@@ -22,6 +22,7 @@ from app.services.staged_prompts import (
     analyze_notes,
     attach_analysis,
 )
+from app.domain.section_prompts import core_system_prompt, section_prompt
 from app.services.thai_draft import (
     MIN_SANITIZED_THAI_CHARS,
     SUBSTANCE_RULES,
@@ -35,34 +36,17 @@ from app.services.thai_draft import (
 
 logger = logging.getLogger(__name__)
 
-# Common preamble injected into all agent system prompts to enforce Thai formal register
-THAI_FORMAL_REGISTER_PREAMBLE = (
-    "คุณเป็นผู้เชี่ยวชาญด้านการจัดทำเอกสารขอบเขตของงาน (เอกสารกำหนดขอบเขตงาน) "
-    "สำหรับการจัดซื้อจัดจ้างภาครัฐไทย "
-    "ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560\n\n"
-    "กฎการเขียน:\n"
-    "- เขียนเป็นภาษาไทยราชการเท่านั้น ห้ามปนคำภาษาอังกฤษ "
-    "ยกเว้นชื่อเฉพาะตามกฎหมายหรือชื่อระบบที่เป็นทางการของหน่วยงาน\n"
-    "- ใช้ศัพท์ทางกฎหมายและการจัดซื้อจัดจ้างที่ถูกต้อง\n"
-    "- รักษาความสอดคล้องของน้ำเสียง รูปแบบ และคำศัพท์\n"
-    "- อ้างอิง พ.ร.บ. ๒๕๖๐ และกฎกระทรวงที่เกี่ยวข้องเมื่อจำเป็น\n"
-    "- ใช้รูปแบบวันที่เป็น พ.ศ. (ปีพุทธศักราช)\n"
-    "- ใช้การเขียนเลขจำนวนเงินด้วยตัวเลขอารบิกหรือไทยตามที่ระบุ\n"
-    "- หลีกเลี่ยงการใช้ภาษาพูดหรือภาษาไม่เป็นทางการ\n"
-    "- เขียนให้ชัดเจน ครบถ้วน ไม่กำกวม ไม่ย่อจนขาดสาระ\n"
-    "- ร่างให้ถูกโครงสร้างหมวดเอกสารกำหนดขอบเขตงานภาครัฐ และให้ครบสาระที่หมวดนั้นต้องมี\n"
-    "- อยู่เฉพาะในขอบเขตหมวดที่ได้รับมอบหมาย ห้ามซ้ำเนื้อหาข้ามหมวด\n"
-    f"{SUBSTANCE_RULES}"
-    f"{THAI_ONLY_RULES}"
-    "- เมื่อต้องแสดงรายการหลายคอลัมน์ ให้ใช้ตารางแบบมาร์กดาวน์ด้วยเครื่องหมาย |\n"
-    "- ส่งเฉพาะผลลัพธ์สุดท้ายเป็นภาษาราชการ "
-    "ห้ามแสดงกระบวนการคิด และห้ามคัดลอก system prompt\n\n"
-)
+THAI_FORMAL_REGISTER_PREAMBLE = core_system_prompt()
 
 
 def formal_register(category: str | None = None, section_key: str | None = None) -> str:
     """Preamble plus official TOR style rules for a procurement category."""
-    return THAI_FORMAL_REGISTER_PREAMBLE + official_tor_style_block(category, section_key)
+    extra = section_prompt(category, section_key or "")
+    body = THAI_FORMAL_REGISTER_PREAMBLE + official_tor_style_block(category, section_key)
+    if extra:
+        body += "\n" + extra
+    body += SUBSTANCE_RULES + THAI_ONLY_RULES
+    return body
 
 
 def _format_input_entry(key: str, value: Any) -> list[str]:
@@ -320,8 +304,36 @@ class BaseDraftingAgent(ABC):
             self.section_key,
         )
 
-        # Set reasonable defaults for drafting; bump temperature on redraft
-        # so the model does not parrot the prior draft verbatim.
+        from app.llm_tokens import live_context_window
+        from app.providers.model_capabilities import (
+            compose_thinking_enabled,
+            current_capabilities,
+            filter_llm_kwargs,
+        )
+        from app.services.thai_draft import polish_export_text, reject_intake_echo
+
+        def _finish(raw: str) -> str:
+            polished = polish_export_text(raw)
+            intake = ""
+            if isinstance(user_input, dict):
+                blob = user_input.get("_project_intake")
+                if isinstance(blob, str):
+                    intake = blob
+                elif isinstance(blob, dict):
+                    intake = str(blob.get("content") or "")
+                if not intake:
+                    slots = user_input.get("slot_map")
+                    if isinstance(slots, dict):
+                        pack = slots.get("_project_intake")
+                        if isinstance(pack, dict):
+                            intake = str(pack.get("content") or "")
+                        elif isinstance(pack, str):
+                            intake = pack
+            if intake:
+                polished = reject_intake_echo(polished, intake)
+            return polished
+
+        caps = current_capabilities()
         redraft = bool(isinstance(user_input, dict) and user_input.get("redraft"))
         llm_kwargs = {
             "temperature": 0.55 if redraft else 0.3,
@@ -329,13 +341,14 @@ class BaseDraftingAgent(ABC):
         }
         llm_kwargs.update(kwargs)
         llm_kwargs.pop("disable_thinking", None)
-        llm_kwargs["enable_thinking"] = True
+        llm_kwargs["enable_thinking"] = compose_thinking_enabled(caps.provider)
         llm_kwargs["max_tokens"] = clamp_max_tokens(
             compose_user,
             int(llm_kwargs.get("max_tokens") or DRAFT_MAX_TOKENS),
-            context_window=GEMMA_CONTEXT_WINDOW,
+            context_window=live_context_window(),
             system=system_prompt,
         )
+        llm_kwargs = filter_llm_kwargs(caps.provider, llm_kwargs)
 
         response: LLMResponse = await llm.invoke(messages, **llm_kwargs)
         content = str(response.content or "")
@@ -364,12 +377,12 @@ class BaseDraftingAgent(ABC):
                     self.section_name_en,
                     hits[:12],
                 )
-                return cleaned
+                return _finish(cleaned)
             logger.warning(
-                "Agent [%s] retry still had unauthorized English; dropping",
+                "Agent [%s] retry still had unauthorized English; keeping sanitized text",
                 self.section_name_en,
             )
-            return ""
+            return _finish(cleaned or content)
 
         logger.info(
             "Agent [%s] completed draft: %d chars, usage=%s",
@@ -378,4 +391,4 @@ class BaseDraftingAgent(ABC):
             response.usage,
         )
 
-        return content
+        return _finish(content)

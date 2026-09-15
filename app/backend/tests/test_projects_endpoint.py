@@ -21,7 +21,6 @@ from fastapi.testclient import TestClient
 
 from app.api.v1.endpoints.projects import missing_submit_sections, officer_can_submit
 from app.deps import get_current_user, get_db
-from app.domain.tor_sections import TOR_SECTION_ORDER
 from app.main import app
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
@@ -80,14 +79,16 @@ def _make_project(
     return project
 
 
-def _filled_tor_rows():
+def _filled_tor_rows(project_type="it"):
+    from app.domain.section_profile import profile_for_project
+
     rows = []
-    for key in TOR_SECTION_ORDER:
+    for item in profile_for_project(project_type).main_sections:
         row = MagicMock()
-        row.section_key = key
+        row.section_key = item.storage_key
         row.sub_key = None
-        row.content = f"เนื้อหาหมวด {key} สำหรับทดสอบ"
-        row.ai_draft = f"เนื้อหาหมวด {key} สำหรับทดสอบ"
+        row.content = f"เนื้อหาหมวด {item.storage_key} สำหรับทดสอบ"
+        row.ai_draft = f"เนื้อหาหมวด {item.storage_key} สำหรับทดสอบ"
         rows.append(row)
     return rows
 

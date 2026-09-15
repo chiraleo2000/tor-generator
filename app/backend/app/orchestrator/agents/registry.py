@@ -52,8 +52,10 @@ def get_agent_for_section(section_key: str) -> BaseDraftingAgent | None:
     lookup = section_key
     if section_key.startswith("s4") or is_scope_storage_key(section_key):
         lookup = "s4"
-    elif section_key in {"s15", "s16", "s17"}:
+    elif section_key in {"s15", "s16", "s17", "s18", "s19", "s21"}:
         lookup = "s13"
+    elif section_key == "s20":
+        lookup = "s8"
     agent = AGENT_REGISTRY.get(lookup)
     if agent is None:
         logger.warning(

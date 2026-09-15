@@ -106,6 +106,11 @@ def _user_input_for_draft(
         user_input["revision_instruction"] = f"{force}\n{prior}".strip() if prior else force
     user_input["analysis_json"] = analysis
     user_input["slot_map"] = slot_map
+    intake_pack = slot_map.get("_project_intake")
+    if isinstance(intake_pack, dict) and intake_pack.get("content"):
+        user_input["_project_intake"] = str(intake_pack.get("content") or "")
+    elif isinstance(intake_pack, str) and intake_pack.strip():
+        user_input["_project_intake"] = intake_pack
     target_slot = slot_map.get(body.section_key) or {}
     if isinstance(target_slot, dict) and target_slot.get("content"):
         user_input["intake_slot_content"] = target_slot.get("content")

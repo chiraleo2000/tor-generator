@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import {
+  LIVE_INTAKE_TEXT,
   createProjectAndOpenDraft,
   login,
   pauseLikeUser,
@@ -11,13 +12,6 @@ import {
   waitForLiveAssistant,
   walkLiveFivePhases,
 } from "./helpers";
-
-const TOR_TEXT = [
-  "1. ความเป็นมา",
-  "โครงการจัดซื้อครุภัณฑ์คอมพิวเตอร์ของสำนักงานปลัดกระทรวง วงเงิน 5,000,000 บาท",
-  "2. วัตถุประสงค์ เพื่อทดแทนครุภัณฑ์ตาม พ.ร.บ. การจัดซื้อจัดจ้าง พ.ศ. 2560",
-  "ระยะเวลา 180 วัน สถานที่กรุงเทพมหานคร",
-].join("\n");
 
 function citationBlob(texts: string[]): string {
   return texts.join(" | ").toLowerCase();
@@ -57,7 +51,39 @@ test.describe.serial("Three tools live UI (chat, draft, review)", () => {
     await saveEvidence(page, "serial-01-chat");
   });
 
-  test("2 ร่าง TOR ครบ 13 หมวด บนหน้าเว็บ", async ({ page }) => {
+  test("1b ฐานความรู้ อัปโหลดและลบ", async ({ page }) => {
+    test.setTimeout(240_000);
+    await login(page);
+    await page.getByTestId("nav-knowledge-base").click();
+    await expect(page.getByTestId("knowledge-base-page")).toBeVisible();
+    const otherCategory = page.getByRole("button", { name: "ข้อมูลอื่น ๆ" }).first();
+    await expect(otherCategory).toBeVisible();
+    await otherCategory.click();
+    await pauseLikeUser(page, 400);
+    const uniqueName = `บันทึกภายใน-three-tools-${Date.now()}.txt`;
+    await page.locator("[data-testid=knowledge-base-page] input[type=file]").setInputFiles({
+      name: uniqueName,
+      mimeType: "text/plain",
+      buffer: Buffer.from(
+        "หลักเกณฑ์วงเงินจัดซื้อจัดจ้างภาครัฐ ตามระเบียบกรมบัญชีกลาง สำหรับทดสอบคลังในเส้นทางสามเครื่องมือ",
+        "utf-8"
+      ),
+    });
+    await expect(page.getByText(/อัปโหลดเฉพาะบัญชีของคุณแล้ว|อัปโหลดไม่สำเร็จ/)).toBeVisible({
+      timeout: 180_000,
+    });
+    await expect(page.getByText(uniqueName)).toBeVisible({ timeout: 30_000 });
+    await saveEvidence(page, "serial-01b-kb");
+    page.once("dialog", (dialog) => {
+      void dialog.accept();
+    });
+    await page.locator("[data-testid^=delete-user-file-]").first().click();
+    await expect(
+      page.getByText(`ลบ «${uniqueName}» แล้ว`).or(page.getByText("ลบเอกสารไม่สำเร็จ"))
+    ).toBeVisible({ timeout: 20_000 });
+  });
+
+  test("2 ร่าง TOR ครบ 16 หมวด บนหน้าเว็บ", async ({ page }) => {
     test.setTimeout(4_200_000);
     await login(page);
     await page.getByTestId("nav-projects").click();
@@ -79,7 +105,7 @@ test.describe.serial("Three tools live UI (chat, draft, review)", () => {
     await fileInput.setInputFiles({
       name: "tor-draft.txt",
       mimeType: "text/plain",
-      buffer: Buffer.from(TOR_TEXT, "utf-8"),
+      buffer: Buffer.from(LIVE_INTAKE_TEXT, "utf-8"),
     });
     await pauseLikeUser(page, 800);
     await expect(page.getByTestId("review-extract")).toBeEnabled();

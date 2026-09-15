@@ -75,7 +75,7 @@ def check_export_gates(
         threshold = MINIMUM_CONTENT_LENGTH if officer_attested else minimum
         if count < threshold:
             errors.append(
-                f"หมวด{_label(semantic)} มี {count} อักขระ "
+                f"หมวด{_label(semantic)} ({semantic}) มี {count} อักขระ "
                 f"ต่ำกว่าเกณฑ์ขั้นต่ำ {threshold} — กลับไปขั้นที่ ๓ กดร่างใหม่ให้ครบ"
             )
     for semantic in MANDATORY_HUMAN_REVIEW_SECTIONS:

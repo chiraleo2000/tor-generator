@@ -495,11 +495,11 @@ async def _run_chat_llm(
         async with admit(redis, "llm", request_id, on_wait=_queued_event(event_q, request_id)):
             await event_q.put(("started", {"request_id": request_id}))
             llm = ProviderFactory().get_llm()
+            from app.providers.model_capabilities import llm_call_kwargs
+
             async for token in llm.stream(
                 messages,
-                temperature=0.2,
-                max_tokens=max_tokens,
-                enable_thinking=True,
+                **llm_call_kwargs(temperature=0.2, max_tokens=max_tokens),
             ):
                 parts_local.append(token)
                 await event_q.put(("token", {"text": token}))

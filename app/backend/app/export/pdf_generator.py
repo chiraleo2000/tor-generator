@@ -118,23 +118,31 @@ class PDFGenerator:
 
     def _build_sections_html(self, plan) -> str:
         """Build HTML for displayed TOR sections from the shared RenderPlan."""
+        from app.services.thai_draft import polish_export_text
+
         parts: list[str] = []
         for section in plan.body:
-            heading_text = (
+            heading_text = polish_export_text(
                 f"{section.number}. {section.label}" if section.number else section.label
             )
             parts.append(
                 f'<div class="section-heading">{_escape_html(heading_text)}</div>'
             )
             if section.content:
-                parts.append(self._format_body_html(section.content, "section-body"))
+                parts.append(
+                    self._format_body_html(polish_export_text(section.content), "section-body")
+                )
             for sub in section.subsections:
-                heading = f"{sub.number} {sub.label}".strip()
+                heading = polish_export_text(f"{sub.number} {sub.label}".strip())
                 parts.append(
                     f'<div class="sub-section-heading">{_escape_html(heading)}</div>'
                 )
                 if sub.content:
-                    parts.append(self._format_body_html(sub.content, "sub-section-body"))
+                    parts.append(
+                        self._format_body_html(
+                            polish_export_text(sub.content), "sub-section-body"
+                        )
+                    )
         return "\n".join(parts)
 
     def _build_appendices_html(self, plan) -> str:

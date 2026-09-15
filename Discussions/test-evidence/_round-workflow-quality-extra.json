@@ -1,0 +1,33 @@
+{
+  "pdf_ok": true,
+  "review_exported_docx_score": 74,
+  "review_exported_docx_job_id": "39de60e7-20ad-4c62-bf8c-cbb4c89f0bcd",
+  "review_job_id": "4bd2952c-85d4-4f5c-8316-8a6dab149079",
+  "review_score": 80,
+  "review_status": "completed",
+  "review_assessment": "ตรวจสอบเอกสาร TOR จำนวน 12 ส่วน พบข้อเสนอแนะ 6 รายการ แบ่งตามประเภท: completeness: 2, compliance: 4 ควรทบทวนและปรับปรุงตามข้อเสนอแนะเพื่อให้เอกสารครบ",
+  "hire_maintain_project_id": "66bbb520-8d8a-46f8-b606-52ecf0226dd7",
+  "hire_maintain_filled": [
+    "s1",
+    "s2",
+    "s3",
+    "s12",
+    "s4",
+    "s5",
+    "s6",
+    "s8",
+    "s10",
+    "s9",
+    "s17",
+    "asset_list",
+    "cm",
+    "pm",
+    "sla",
+    "helpdesk",
+    "spare_parts",
+    "onsite_staff",
+    "reporting",
+    "backup"
+  ],
+  "asset_list_filled": true
+}

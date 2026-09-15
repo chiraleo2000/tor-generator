@@ -5,6 +5,7 @@ export interface SectionPayload {
   content: string;
   human_confirmed: boolean;
   hitl: boolean;
+  required?: boolean;
   matchStatus: string;
   ai_draft?: string;
   big?: boolean;

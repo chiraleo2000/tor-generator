@@ -8,13 +8,14 @@ from app.api.v1.endpoints.draft_chat import (
     SECTION_TIMEOUT_SECONDS,
     _section_done_event,
     _sse,
+    draft_waves,
     section_draft_timeout,
     sequential_draft_order,
 )
 from app.domain.section_profile import profile_for_project
 from app.domain.tor_sections import TOR_SECTION_ORDER
+from app.llm_tokens import DRAFT_MAX_TOKENS, SCOPE_SUB_MAX_TOKENS
 from app.services.draft_chat_service import (
-    DRAFT_MAX_TOKENS,
     _section_prompt_context,
     edit_section_draft,
     fallback_scope_subsection,
@@ -31,6 +32,15 @@ def test_sequential_order_drafts_s4_last():
     assert set(order) == set(mains)
 
 
+def test_draft_waves_facts_then_parallel_then_scope_then_payment():
+    waves = draft_waves("hire_develop")
+    flat = [key for wave in waves for key in wave]
+    assert "s1" in waves[0]
+    assert "s4" in flat
+    assert flat.index("s1") < flat.index("s4")
+    assert any("s8" in wave for wave in waves)
+
+
 def test_fallback_section_uses_intake_slots():
     text = fallback_section_text(
         "s6",
@@ -44,6 +54,20 @@ def test_fallback_section_uses_intake_slots():
     assert "พัฒนาระบบบริหารสัญญา" in fallback_scope_subsection(
         "s4.1", {"s4.1": {"content": "พัฒนาระบบบริหารสัญญา"}}
     )
+
+
+def test_fallback_section_does_not_dump_raw_intake():
+    intake = (
+        "[ข้อความผู้ใช้.txt]\n"
+        + "กรมบัญชีกลางจ้างพัฒนาระบบสารสนเทศบริหารสัญญา " * 20
+    )
+    text = fallback_section_text(
+        "s1",
+        {"_project_intake": {"content": intake, "status": "filled"}},
+    )
+    assert "[ข้อความผู้ใช้.txt]" not in text
+    assert intake.strip() not in text
+    assert "เจ้าหน้าที่ควรตรวจ" in text
 
 
 def test_section_timeout_is_capped_for_local_testing():
@@ -108,7 +132,7 @@ async def test_edit_section_draft_includes_intake_slot():
     async def fake_stream(messages, **kwargs):
         assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
         assert kwargs["max_tokens"] >= 256
-        assert kwargs.get("enable_thinking") is True
+        assert kwargs.get("enable_thinking") is not True
         assert kwargs.get("disable_thinking") is not True
         user = messages[1]["content"]
         assert "กรมบัญชีกลาง" in user
@@ -141,7 +165,7 @@ async def test_draft_single_section_streams_llm_tokens():
     async def fake_stream(_messages, **kwargs):
         assert kwargs["max_tokens"] <= DRAFT_MAX_TOKENS
         assert kwargs["max_tokens"] >= 256
-        assert kwargs.get("enable_thinking") is True
+        assert kwargs.get("enable_thinking") is not True
         assert kwargs.get("disable_thinking") is not True
         yield "ร่าง"
         yield "จาก"
@@ -234,6 +258,7 @@ async def test_draft_single_section_propagates_llm_timeout():
 async def test_collect_scope_subsection_drafts_calls_llm_in_order():
     from app.domain.section_profile import profile_for_project
     from app.services.draft_chat_service import collect_scope_subsection_drafts
+    from app.services.thai_draft import polish_scope_subsection_draft
 
     keys = profile_for_project(None).scope_storage_keys()
     calls: list[str] = []
@@ -249,13 +274,16 @@ async def test_collect_scope_subsection_drafts_calls_llm_in_order():
         out = await collect_scope_subsection_drafts({})
 
     assert calls == keys
-    assert out == {key: f"ร่างจากโมเดล {key}" for key in keys}
+    assert out == {
+        key: polish_scope_subsection_draft(f"ร่างจากโมเดล {key}", key) for key in keys
+    }
 
 
 @pytest.mark.asyncio
 async def test_collect_scope_skips_prior_then_drafts_rest_in_order():
     from app.domain.section_profile import profile_for_project
     from app.services.draft_chat_service import collect_scope_subsection_drafts
+    from app.services.thai_draft import polish_scope_subsection_draft
 
     keys = profile_for_project(None).scope_storage_keys()
     calls: list[str] = []
@@ -276,7 +304,7 @@ async def test_collect_scope_skips_prior_then_drafts_rest_in_order():
 
     assert calls == keys[1:]
     assert out[keys[0]] == "ร่างเดิมจากโมเดล"
-    assert out[keys[1]] == f"llm-{keys[1]}"
+    assert out[keys[1]] == polish_scope_subsection_draft(f"llm-{keys[1]}", keys[1])
 
 
 def test_section_done_sse_includes_count_and_label():
@@ -298,7 +326,7 @@ async def test_s4_subsections_reuse_one_hybrid_retrieve():
     mock_llm = MagicMock()
 
     async def fake_stream(_messages, **kwargs):
-        assert kwargs["max_tokens"] <= 2048
+        assert kwargs["max_tokens"] <= SCOPE_SUB_MAX_TOKENS
         yield "ย่อ"
 
     mock_result = MagicMock()

@@ -69,6 +69,11 @@ SEMANTIC_TO_STORAGE: dict[str, str] = {
     "ip_ownership": "s15",
     "confidentiality": "s16",
     "responsible_unit": "s17",
+    "backup": "s18",
+    "deliverables": "s19",
+    "retention": "s20",
+    "proposal_conditions": "s12",
+    "appendices": "s21",
 }
 
 STORAGE_TO_SEMANTIC: dict[str, str] = {value: key for key, value in SEMANTIC_TO_STORAGE.items()}
@@ -247,12 +252,7 @@ def storage_to_semantic_scope(storage_key: str) -> str:
 
 def semantic_section_order(category: str) -> list[str]:
     key = category if is_known_category(category) else tax.DEFAULT_PROCUREMENT_TYPE
-    order: list[str] = []
-    for item in tax.section_order(key):
-        order.append(item)
-        if item == "schedule" and "location" not in order:
-            order.append("location")
-    return order
+    return list(tax.section_order(key))
 
 
 def _hitl_for(semantic: str) -> bool:
@@ -263,13 +263,13 @@ def _build_profile(category: str) -> SectionProfile:
     mains: list[MainSection] = []
     for semantic in semantic_section_order(category):
         storage = SEMANTIC_TO_STORAGE[semantic]
-        required = semantic in LEGAL_REQUIRED_SEMANTIC
+        required = semantic in LEGAL_REQUIRED_SEMANTIC or semantic in tax.TYPE_REQUIRED_EXTRAS.get(
+            category, frozenset()
+        )
         mains.append(
             MainSection(
                 key=storage,
-                title=tax.section_label(semantic, category)
-                if semantic != "location"
-                else "สถานที่ดำเนินการ",
+                title=tax.section_label(semantic, category),
                 required=required,
                 storage_key=storage,
                 semantic_key=semantic,

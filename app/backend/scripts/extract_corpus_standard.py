@@ -19,6 +19,7 @@ sys.path.insert(0, str(BACKEND))
 from app.domain.tor_taxonomy import CANONICAL_PHRASES, CORE_SECTION_ORDER, SECTION_LABELS  # noqa: E402
 
 CORPUS_DIR = REPO / "documents" / "ตัวอย่าง TOR"
+OCR_DIR = CORPUS_DIR / "corpus_ocr"
 OUT_JSON = CORPUS_DIR / "corpus_standard.json"
 OUT_MD = CORPUS_DIR / "corpus_standard.md"
 
@@ -26,6 +27,7 @@ LOCKED_MARGINS_MM = {"top": 25.4, "bottom": 25.4, "left": 19.1, "right": 19.1}
 LOCKED_FONTS_PT = {"body": 16, "heading": 18, "subheading": 16, "header": 12}
 LOCKED_LINE_SPACING = 1.0
 PT_TO_CM = 2.54 / 72.0
+MIN_TEXT_CHARS = 80
 
 # Phrases that appear across the example TOR corpus (and taxonomy).
 CORPUS_PHRASE_FILES = [
@@ -87,6 +89,61 @@ def _measure_page(page) -> dict:
     }
 
 
+def ocr_available() -> tuple[bool, str]:
+    """Return whether Tesseract/pytesseract can run (never raises)."""
+    try:
+        import pytesseract  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        return False, f"pytesseract import failed: {exc}"
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Tesseract not available: {exc}"
+    return True, ""
+
+
+def ocr_pdf_pages(path: Path, *, dpi: int = 200) -> tuple[str, str]:
+    """OCR a scanned PDF. Returns (text, reason). Empty reason means success."""
+    ok, why = ocr_available()
+    if not ok:
+        return "", why
+    try:
+        import io
+
+        import pytesseract  # type: ignore
+        from PIL import Image  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        return "", f"OCR dependencies missing: {exc}"
+    try:
+        doc = _try_open_pdf(path)
+    except Exception as exc:  # noqa: BLE001
+        return "", f"open/parse error: {exc}"
+    parts: list[str] = []
+    try:
+        for page in doc:
+            pix = page.get_pixmap(dpi=dpi)
+            image = Image.open(io.BytesIO(pix.tobytes("png")))
+            parts.append(pytesseract.image_to_string(image, lang="tha+eng") or "")
+    except Exception as exc:  # noqa: BLE001
+        return "", f"OCR error: {exc}"
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+    text = "\n".join(parts).strip()
+    if len(text) < MIN_TEXT_CHARS:
+        return text, "OCR produced too little text"
+    return text, ""
+
+
+def write_ocr_sidecar(path: Path, text: str) -> Path:
+    OCR_DIR.mkdir(parents=True, exist_ok=True)
+    dest = OCR_DIR / f"{path.stem}.txt"
+    dest.write_text(text, encoding="utf-8")
+    return dest
+
+
 def extract_file(path: Path) -> dict:
     doc = _try_open_pdf(path)
     total_chars = 0
@@ -116,6 +173,7 @@ def extract_file(path: Path) -> dict:
         "top_fonts": font_counter.most_common(4),
         "top_sizes": size_counter.most_common(6),
         "margin_samples": margin_samples[:3],
+        "extraction": "text_layer",
     }
 
 
@@ -168,8 +226,8 @@ def render_md(payload: dict) -> str:
         "# มาตรฐานที่สกัดจากคลังตัวอย่าง TOR",
         "",
         "สกัดตาม Requirement 1 ของ `tor-output-standardization`.",
-        "ไฟล์สแกนข้ามได้ (partial compliance) และใช้ค่า layout ที่ล็อกไว้ในแอป:",
-        "TH Sarabun New 16pt / บรรทัด 1.0 / ขอบบน-ล่าง 2.54 ซม. ซ้าย-ขวา 1.91 ซม.",
+        "ไฟล์สแกนใช้ OCR (`tha+eng`) เมื่อมี Tesseract — ถ้าไม่มี OCR จะข้ามพร้อมเหตุผลโดยไม่ทำให้ pipeline พัง",
+        "ใช้ค่า layout ที่ล็อกไว้ในแอป: TH Sarabun New 16pt / บรรทัด 1.0 / ขอบบน-ล่าง 2.54 ซม. ซ้าย-ขวา 1.91 ซม.",
         "",
         "## ลำดับหมวดหลักที่สอดคล้องกัน (≥ 2 ไฟล์ / taxonomy v2)",
         "",
@@ -212,11 +270,20 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 — skip-and-log per Req 1.5
             skipped.append({"file": path.name, "reason": f"open/parse error: {exc}"})
             continue
-        if row["chars"] < 80:
+        if row["chars"] < MIN_TEXT_CHARS:
+            ocr_text, ocr_reason = ocr_pdf_pages(path)
+            if ocr_text and not ocr_reason:
+                sidecar = write_ocr_sidecar(path, ocr_text)
+                row["chars"] = len(ocr_text)
+                row["extraction"] = "ocr"
+                row["ocr_file"] = sidecar.name
+                readable.append(row)
+                continue
             skipped.append(
                 {
                     "file": path.name,
-                    "reason": "scanned or no extractable text (PyMuPDF text layer empty)",
+                    "reason": ocr_reason
+                    or "scanned or no extractable text (PyMuPDF text layer empty)",
                 }
             )
             continue

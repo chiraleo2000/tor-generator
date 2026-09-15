@@ -141,7 +141,7 @@ class Settings(BaseSettings):
     bedrock_region: str = "ap-southeast-1"
     bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
-    cloud_llm_timeout: float = 300.0
+    cloud_llm_timeout: float = 900.0
     azure_foundry_endpoint: str = ""
     azure_foundry_deployment: str = ""
     azure_foundry_embedding_deployment: str = ""
@@ -226,7 +226,7 @@ class Settings(BaseSettings):
         if self.llm_provider in LOCAL_LLM_PROVIDERS:
             return max(1, min(LOCAL_LLM_TIMEOUT_CAP_SECONDS, int(self.lm_studio_timeout)))
         if self.llm_provider == "bedrock":
-            return max(1, int(self.cloud_llm_timeout or 300))
+            return max(1, int(self.cloud_llm_timeout or 900))
         return 60
 
     def cache_ttl_seconds(self, hours: int) -> int:

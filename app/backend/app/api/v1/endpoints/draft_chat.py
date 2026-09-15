@@ -148,6 +148,17 @@ def sequential_draft_order(project_type: str | None = None) -> list[str]:
     return rest
 
 
+def draft_waves(project_type: str | None = None) -> list[list[str]]:
+    """Fact sections, independent mains in parallel, scope, then payment."""
+    order = sequential_draft_order(project_type)
+    wave1 = [key for key in ("s1", "s2", "s5", "s6") if key in order]
+    wave4 = [key for key in ("s8", "s20") if key in order]
+    wave3 = [key for key in ("s4",) if key in order]
+    used = set(wave1 + wave3 + wave4)
+    wave2 = [key for key in order if key not in used]
+    return [wave for wave in (wave1, wave2, wave3, wave4) if wave]
+
+
 @dataclass
 class _SeqDraft:
     session_factory: Any
@@ -758,13 +769,36 @@ async def _run_sequential_draft(
         clear_s4_rag_cache()
         await set_job(job.redis, job.project_id, "running", 0, total)
     try:
-        for section_key in sequential_draft_order(job.project_type):
-            saved = await _try_draft_one_section(job, section_key)
-            if not saved:
+        for wave in draft_waves(job.project_type):
+            if len(wave) == 1 or wave[0] in {"s1", "s4"}:
+                for section_key in wave:
+                    saved = await _try_draft_one_section(job, section_key)
+                    if not saved:
+                        continue
+                    drafted_count += 1
+                    await bump_progress(job.redis, job.project_id, drafted_count)
+                    await _publish_section_done(job, section_key, drafted_count)
                 continue
-            drafted_count += 1
-            await bump_progress(job.redis, job.project_id, drafted_count)
-            await _publish_section_done(job, section_key, drafted_count)
+            sem = asyncio.Semaphore(3)
+
+            async def _one(key: str) -> tuple[str, bool]:
+                async with sem:
+                    return key, await _try_draft_one_section(job, key)
+
+            results = await asyncio.gather(
+                *(_one(key) for key in wave),
+                return_exceptions=True,
+            )
+            for item in results:
+                if isinstance(item, Exception):
+                    logger.exception("Parallel draft wave failed: %s", item)
+                    continue
+                section_key, saved = item
+                if not saved:
+                    continue
+                drafted_count += 1
+                await bump_progress(job.redis, job.project_id, drafted_count)
+                await _publish_section_done(job, section_key, drafted_count)
         if drafted_count < total and remaining_passes > 0:
             logger.info(
                 "Retry incomplete draft for %s (%s/%s)",

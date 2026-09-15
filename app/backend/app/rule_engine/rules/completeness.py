@@ -162,3 +162,73 @@ class MinimumContentRule(BaseRule):
                     )
                 )
         return findings
+
+
+class RequiredTablesRule(BaseRule):
+    """Gold tables: payment %, evaluation weights, personnel, and SoC when the type needs them."""
+
+    def validate(self, tor_document: dict) -> list[Finding]:
+        findings: list[Finding] = []
+        category = _category(tor_document) or "buy_goods"
+        sections = _sections(tor_document)
+        focus = focus_section(tor_document)
+        payment = str(sections.get("s8") or "")
+        if focus in {None, "s8"} and payment.strip():
+            if "งวดที่" not in payment or "ร้อยละ" not in payment:
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        rule_violated="COMPLETENESS_PAYMENT_TABLE",
+                        affected_section="s8",
+                        message="หมวดงวดจ่ายต้องมีตารางงวดที่และร้อยละรวมหนึ่งร้อย",
+                        recommended_correction="ใส่ตารางงวดที่ / ผลงานส่งมอบ / ร้อยละ ของวงเงิน",
+                    )
+                )
+        evaluation = str(sections.get("s11") or "")
+        if focus in {None, "s11"} and evaluation.strip() and (
+            "คุณภาพ" in evaluation or "ประกอบ" in evaluation
+        ):
+            if "ร้อยละ" not in evaluation and "น้ำหนัก" not in evaluation:
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        rule_violated="COMPLETENESS_EVAL_WEIGHT_TABLE",
+                        affected_section="s11",
+                        message="เกณฑ์คุณภาพต้องระบุสัดส่วนน้ำหนักหรือร้อยละ",
+                        recommended_correction="ใส่ตารางน้ำหนักคะแนนคุณภาพและราคา",
+                    )
+                )
+        qualifications = str(sections.get("s3") or "")
+        if (
+            focus in {None, "s3"}
+            and category == "hire_develop"
+            and qualifications.strip()
+            and "บุคลากร" not in qualifications
+            and "man" not in qualifications.lower()
+            and "อัตรากำลัง" not in qualifications
+        ):
+            findings.append(
+                Finding(
+                    severity=Severity.WARNING,
+                    rule_violated="COMPLETENESS_PERSONNEL_TABLE",
+                    affected_section="s3",
+                    message="งานจ้างพัฒนาควรระบุตารางบุคลากรหรือปริมาณงาน",
+                    recommended_correction="เพิ่มตำแหน่ง วุฒิ และปริมาณงานของทีมงาน",
+                )
+            )
+        soc = str(sections.get("s12") or "")
+        if (
+            focus in {None, "s12"}
+            and category == "hire_maintain"
+            and (not soc.strip() or ("เปรียบเทียบ" not in soc and "ข้อกำหนด" not in soc))
+        ):
+            findings.append(
+                Finding(
+                    severity=Severity.WARNING,
+                    rule_violated="COMPLETENESS_SOC_TABLE",
+                    affected_section="s12",
+                    message="งานบำรุงรักษาต้องมีเงื่อนไขการยื่นข้อเสนอหรือตารางเปรียบเทียบข้อกำหนด",
+                    recommended_correction="เพิ่มตารางเปรียบเทียบข้อกำหนดเป็นข้อหลัก",
+                )
+            )
+        return findings

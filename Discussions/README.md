@@ -13,7 +13,7 @@ Clickable UX/UI demo: **https://chiraleo2000.github.io/tor-generator/** (`index.
 **Production บน AWS ล้วน (ไม่มี hybrid LLM):** ชุด **24–27** + **29 (TBD)** + โครง `app/infra/aws/` — อย่าใช้เอกสาร 20 เป็นคู่มือ ECS/RDS  
 **แผนขึ้น webapp (เลือกเส้น EC2 หรือ ECS):** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) — build จาก `app/frontend` ไม่ใช่โฟลเดอร์ `frontend/` ที่ราก  
 RAG **อนุญาตสองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังเป็น Bedrock — ดู [29](29-TBD-AWS-CLOUD-ONLY.md)  
-หลักฐานตรวจ Local LLM ล่าสุด (11 ก.ย. 2026): [28](28-VERIFICATION-AND-MIGRATION.md) · แอปปัจจุบัน **v0.6.2** (14 ก.ย. คู่มือติดตั้ง Amazon Quick บน AWS) · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md) · **แผน deploy webapp AWS** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md)
+หลักฐานตรวจ Local LLM ล่าสุด (15 ก.ย. 2026): [18](18-TEST_EVIDENCE.md) · แอปปัจจุบัน **v0.7.0** (harden คุณภาพร่าง + ยืนยัน workflow สด) · Amazon Quick [32](32-AMAZON-QUICK.md) · แผน PN EC2 [33](33-AWS-PN-CLOUD-MINIMUM-COST-PLAN.md) · เครื่องมือ [34](34-AWS-PN-TOOLS-LIST.md) · deploy + .env [35](35-AWS-PN-DEV-AND-DEPLOY.md) · **คู่มือผู้ใช้ Local→AWS + งานมือ** [36](36-AWS-PN-USER-SETUP-AND-RUNBOOK.md) · **Section_Profile ตามประเภทงาน** [37](37-TOR-PROFILES-BY-TYPE.md) · **แผน deploy webapp AWS** [38](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md)
 
 | File | Topic |
 |------|--------|

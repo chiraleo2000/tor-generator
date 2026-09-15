@@ -20,10 +20,10 @@ Output: `documents/exports/tor-rag-mcp-dataset-v0.4.0.zip`
 ## PN AWS EC2 dataset (S3 + Embed 4 + pn-ec2 configs)
 
 ```bash
-python documents/exports/build_pn_aws_dataset.py --version 0.6.2
+python documents/exports/build_pn_aws_dataset.py --version 0.7.0
 ```
 
-Output: `documents/exports/tor-pn-aws-dataset-v0.6.2.zip`
+Output: `documents/exports/tor-pn-aws-dataset-v0.7.0.zip`
 
 Includes PDFs/JSON, `pn/rag-groups.yaml`, `pn/env.example`, MCP quick files, Discussions 32–35, `DATASET_MANIFEST.json`.
 

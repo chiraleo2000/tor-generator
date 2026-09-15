@@ -699,8 +699,7 @@ def project_intake_pack(project: Project, limit: int = INTAKE_PACK_LIMIT) -> str
         text = str(item.get("text") or "").strip()
         if not text:
             continue
-        name = str(item.get("name") or "เอกสารขั้นที่ ๐").strip() or "เอกสารขั้นที่ ๐"
-        parts.append(f"[{name}]\n{text[:INTAKE_TEXT_CHAR_LIMIT]}")
+        parts.append(text[:INTAKE_TEXT_CHAR_LIMIT])
     return "\n\n".join(parts)[:limit]
 
 

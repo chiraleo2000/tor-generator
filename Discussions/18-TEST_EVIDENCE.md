@@ -1,11 +1,38 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
+> **รอบ 15 กันยายน 2026 — harden live workflow:** gold pack `hire_develop` Phase 0→4 บน LM Studio · หัวข้อทอง **ขาด 0** / **16/16 หมวด** · ส่งออก DOCX+PDF ไม่มี `[*.txt]` / ไม่มีโทนผู้ขาย · ถาม-ตอบมี citation · KB อัปโหลดโซน+ลบ · standalone review **80/100** · smoke `hire_maintain` ถึงขั้นที่ ๑ (`asset_list` ครบ) ไม่เริ่มร่าง  
+> **v0.7.0 (15 กันยายน 2026):** harden คุณภาพร่าง + ยืนยัน workflow สด · Amazon Quick skills `tor-agents-skills-v0.7.0.zip`  
 > **v0.6.2 (14 กันยายน 2026):** คู่มือติดตั้ง Amazon Quick บน AWS + zip skills `tor-agents-skills-v0.6.2.zip` — ไม่เปลี่ยนพฤติกรรมร่าง/ตรวจจากรอบ 11 ก.ย.  
 > **รอบ 11 กันยายน 2026 — v0.6.1 scope ownership + deep review + Amazon Quick:** focused redraft หัวข้อย่อยขอบเขตทุกคีย์ · กันเนื้อหาผิดหัวข้อ + fallback `1./1.1` · licenses ตาราง ICT · ขั้นตรวจท้ายงบ token/RAG หนา (law+standards) · Amazon Quick agents/skills **v0.6.1** · unit review/amazon-quick ผ่าน · live_llm LM Studio **8/8** · Docker frontend+backend healthy · UI `:3000` 200  
 > **รอบ 10 กันยายน 2026 — v0.6.0 intake/guardrail/thinking:** แก้ `fill-references` 400 หลัง analyze · เกณฑ์ guardrail ต่อหมวดไม่ให้คะแนน 0 เพราะหมวดอื่นว่าง · กู้เนื้อหาไทยจาก reasoning + sanitize คำอังกฤษแทนการทิ้งร่าง · unit ชุดแก้ **249 ผ่าน** · Docker backend rebuild · live SKK ยืนยัน fill-references **200** และ s1/s5 คะแนน 96/100 (รอบ live เต็มถูกหยุดตามคำสั่งก่อนจบ s8/s11/export)  
 > **รอบ 9 กันยายน 2026 ค่ำ — UI ร่าง TOR (เลขหมวดเทคนิค):** Docker rebuild `frontend` · health 200 · Vitest scoped **42 ผ่าน** / 4 ไฟล์ · bundle ไม่มี `หมวด N:` · มี `tabular-nums`/`รอร่าง`  
 > **รอบ 9 กันยายน 2026 เย็น — สไตล์ราชการ + Sonar + Docker:** pytest `-m "not live_llm and not integration"` **2059 ผ่าน** / 25 ตัด · Vitest **309 ผ่าน** / 50 ไฟล์ · Docker `tor-app` rebuild frontend+backend (healthy) · Amazon Quick skills อัปเดตสไตล์ราชการ · `pytest -m live_llm` **หยุดกลางคันตามคำสั่ง** (ECT ผ่าน 2 ข้อแรก แล้วยกเลิกตอนร่างครบหมวด)  
 > รอบเช้า 9 กันยายน 2026 — Section_Profile: pytest **2046** · Vitest **309** · live_llm **17/17** · Docker rebuild
+
+---
+
+## รอบ 15 กันยายน 2026 — harden live workflow (LM Studio + three tools)
+
+สแตก `tor-app` + LM Studio `:1234` (`google/gemma-4-e4b`) · UI `:3000` 200 · `/health` 200 · โมเดล `/v1/models` 200  
+โครงการหลัก: `052a3395-6f58-460a-bf8e-10f3d26fae2d` (`hire_develop`, gold pack) · ร่าง **16/16** ใน ~18 นาที · `confirm-phase4` 200 · คะแนนกฎ **85/100**
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| pytest โฟกัส draft_quality / profile / draft_chat | **35 ผ่าน** | โฮสต์ 15 ก.ย. 2026 |
+| `scripts/workflow_quality_check.py` | **exit 0** · analyze 25/25 · draft 16/16 · ไม่มี filename leak / type_forbidden / missing gold headings · มีตารางงวดจ่าย | `test-evidence/_round-workflow-quality.json` · `workflow-quality-export.docx` |
+| ส่งออก PDF | `%PDF` 47,639 ไบต์ | `test-evidence/workflow-quality-export.pdf` |
+| ถาม-ตอบ UI | คำตอบไทย + citation (มาตรา ๖๕) | `test-evidence/ui-workflow-01-chat.png` |
+| ฐานความรู้ UI | หมวดข้อมูลอื่น ๆ · โซนอัปโหลด · ปุ่มลบ 19 ไฟล์ส่วนตัว | `test-evidence/ui-workflow-01b-kb.png` |
+| ขั้นที่ ๓ กำลังร่าง | 1/16 หมวด · ชิป 01–17 ตามประเภทจ้างพัฒนา | `test-evidence/ui-workflow-02-phase3-composing.png` |
+| ขั้นที่ ๓ หลังร่างครบ (a11y สด ไม่รีโหลด) | หัวข้อทอง **ครบ 15 · บาง 1 · ขาด 0** (s10 ค่าปรับสั้นกว่า 120 ตัวอักษร) · ข้อความ **ร่างครบทุกหมวด** | snapshot 11:27 · โปรเจกต์ด้านบน |
+| ขั้นที่ ๔ | **16/16 หมวด** · preview มี `functional` / การทดสอบ · คะแนนกฎ 85/100 | `test-evidence/ui-workflow-04-phase4.png` |
+| ตรวจสอบ TOR standalone | gold pack **80/100** · ไฟล์ส่งออก DOCX **74/100** | `test-evidence/ui-workflow-05-review-start.png` · `ui-workflow-05b-review-score.png` · `_round-workflow-quality-extra.json` |
+| smoke `hire_maintain` Phase 0–1 | `asset_list` + cm/pm/sla ครบ · **ไม่เริ่มขั้นที่ ๓** | `test-evidence/ui-workflow-ma-phase1.png` |
+
+เกณฑ์คุณภาพ DOCX (`score_draft_text`, `category=hire_develop`): ไม่มี `[ข้อความผู้ใช้.txt]` · ไม่มี `ผู้ขาย` · มีโมดูลทะเบียนสัญญาและการทดสอบ · `type_forbidden=[]`  
+คำอังกฤษที่เหลือใน harness: `workflow` / `quality` จากชื่อโครงการทดสอบ — ไม่ทำให้สคริปต์ล้ม
+
+หมายเหตุที่ยังไม่ปิดในรอบนี้: กฎ completeness บางข้อยังเทียบหัวข้อย่อยแบบซื้อพัสดุกับร่างจ้างพัฒนา (ขั้นที่ ๔ ฟ้องว่าไม่พบ functional/testing ทั้งที่ preview มีแล้ว) · บางหมวดยังมี JSON ช่องย่อยในแชทร่าง · Playwright headed `E2E=1` ไม่รันบนโฮสต์นี้เพราะไม่มี Node
 
 ---
 

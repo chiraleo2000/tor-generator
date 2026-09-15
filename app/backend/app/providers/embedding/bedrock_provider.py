@@ -1,11 +1,10 @@
-"""Amazon Bedrock embedding provider (Titan). Vectors are resized to 768-d."""
+"""Amazon Bedrock embedding provider. Vector size follows the live model (Cohere 1024 / Titan 1024 / env)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-from typing import Any
 
 from app.providers.base import EmbeddingProvider
 from app.providers.constants import EMBEDDING_DIMENSIONS
@@ -13,16 +12,26 @@ from app.providers.constants import EMBEDDING_DIMENSIONS
 logger = logging.getLogger(__name__)
 
 
-def _fit_dimensions(vector: list[float], size: int = EMBEDDING_DIMENSIONS) -> list[float]:
-    if len(vector) == size:
+def _target_dimensions() -> int:
+    try:
+        from app.providers.model_capabilities import embedding_dimensions
+
+        return int(embedding_dimensions())
+    except Exception:
+        return EMBEDDING_DIMENSIONS
+
+
+def _fit_dimensions(vector: list[float], size: int | None = None) -> list[float]:
+    target = int(size or _target_dimensions())
+    if len(vector) == target:
         return vector
-    if len(vector) > size:
-        return vector[:size]
-    return vector + [0.0] * (size - len(vector))
+    if len(vector) > target:
+        return vector[:target]
+    return vector + [0.0] * (target - len(vector))
 
 
 class BedrockEmbeddingProvider(EmbeddingProvider):
-    """Titan embeddings via Bedrock Runtime invoke_model."""
+    """Titan/Cohere embeddings via Bedrock Runtime invoke_model."""
 
     def __init__(
         self,

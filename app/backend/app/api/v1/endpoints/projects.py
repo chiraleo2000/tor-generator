@@ -98,7 +98,10 @@ def officer_can_submit(
 def _row_has_content(row: TORSection | None) -> bool:
     if row is None:
         return False
-    return bool(str(row.content or "").strip() or str(row.ai_draft or "").strip())
+    from app.services.thai_draft import polish_export_text
+
+    raw = str(row.content or "").strip() or str(row.ai_draft or "").strip()
+    return bool(polish_export_text(raw))
 
 
 def _scope_section_is_filled(
@@ -1001,6 +1004,9 @@ def _section_list_item(
     filled = bool(str(content or "").strip())
     profile = profile_for_project(project_type)
     hitl = any(item.hitl for item in profile.main_sections if item.storage_key == key)
+    required = any(
+        item.required for item in profile.main_sections if item.storage_key == key
+    )
     item: dict = {
         "key": key,
         "title": title,
@@ -1009,6 +1015,7 @@ def _section_list_item(
         "ai_draft": row.ai_draft if row else "",
         "human_confirmed": bool(row.is_approved) if row else False,
         "hitl": hitl or key in MANDATORY_HUMAN_REVIEW_SECTIONS,
+        "required": required,
         "matchStatus": "matched" if extracted else "partial",
     }
     if key == "s4":

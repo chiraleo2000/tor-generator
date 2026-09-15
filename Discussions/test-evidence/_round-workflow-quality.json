@@ -1,0 +1,55 @@
+{
+  "project_id": "052a3395-6f58-460a-bf8e-10f3d26fae2d",
+  "filled": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s11",
+    "s18",
+    "s19",
+    "s6",
+    "s5",
+    "s8",
+    "s20",
+    "s10",
+    "s9",
+    "s15",
+    "s16",
+    "s17",
+    "system_overview",
+    "functional",
+    "integration",
+    "licenses",
+    "standards_security",
+    "testing",
+    "training",
+    "project_team",
+    "sla_warranty"
+  ],
+  "draft_status": {
+    "drafted_count": 16,
+    "total": 16,
+    "all_drafted": true
+  },
+  "harness": {
+    "chars": 21873,
+    "unauthorized_english": [
+      "workflow",
+      "quality"
+    ],
+    "unauthorized_english_count": 2,
+    "banned_english": [],
+    "scaffold": [],
+    "filename_leak": [],
+    "markdown_leak": [],
+    "markdown_separator": [],
+    "type_forbidden": [],
+    "section_empty": [],
+    "has_arabic_heading": false,
+    "has_thai_heading": true,
+    "has_payment_table": true,
+    "missing_gold_headings": []
+  },
+  "docx": "D:\\แนวปฏิบัติ_กฎระเบียบ_การจัดซื้อจัดจ้าง\\Discussions\\test-evidence\\workflow-quality-export.docx"
+}

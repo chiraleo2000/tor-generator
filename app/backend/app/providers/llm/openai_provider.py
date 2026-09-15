@@ -9,6 +9,7 @@ from httpx import Timeout
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 
 from app.providers.base import LLMProvider, LLMResponse
+from app.providers.model_capabilities import filter_llm_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,10 @@ class OpenAILLMProvider(LLMProvider):
             request_kwargs: dict = {
                 "model": self._model_name,
                 "messages": messages,
-                **kwargs,
             }
+            from app.providers.model_capabilities import filter_llm_kwargs
+
+            request_kwargs.update(filter_llm_kwargs("openai", kwargs))
             if tools:
                 request_kwargs["tools"] = tools
             response = await self._client.chat.completions.create(**request_kwargs)
@@ -75,7 +78,7 @@ class OpenAILLMProvider(LLMProvider):
                 model=self._model_name,
                 messages=messages,
                 stream=True,
-                **kwargs,
+                **filter_llm_kwargs("openai", kwargs),
             )
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:

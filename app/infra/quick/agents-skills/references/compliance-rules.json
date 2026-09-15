@@ -1,6 +1,6 @@
 {
   "title": "TOR Compliance Rules — mirrors RuleEngine + ReviewAgent + law_review",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "source": [
     "app/backend/app/rule_engine/engine.py",
     "app/backend/app/rule_engine/rules/*.py",

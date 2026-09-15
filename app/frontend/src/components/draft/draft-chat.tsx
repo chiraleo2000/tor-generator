@@ -192,7 +192,7 @@ export function DraftChat({
 }: Readonly<{
   projectId: string;
   onAllDrafted: () => void;
-  onSectionDone?: () => void;
+  onSectionDone?: (sectionKey?: string, content?: string) => void;
   onDraftingChange?: (busy: boolean) => void;
 }>) {
   const token = useAuthStore((state) => state.token);
@@ -325,6 +325,7 @@ export function DraftChat({
             setMessages((prev) =>
               patchDraftMessage(prev, messageId, { content, status: "done" })
             );
+            onSectionDone?.(sectionKey, content);
             return;
           }
           if (event === "error" || event === "section_error") {
@@ -339,7 +340,6 @@ export function DraftChat({
           }
         }
       );
-      onSectionDone?.();
       return !failed && tokens.trim().length > 0;
     } catch (err: unknown) {
       setMessages((prev) =>
@@ -459,7 +459,7 @@ export function DraftChat({
               patchDraftMessage(prev, existingId, { content, status: "done" })
             );
           }
-          onSectionDone?.();
+          onSectionDone?.(key, content);
           void refreshStatus();
           return;
         }
@@ -472,7 +472,9 @@ export function DraftChat({
           return;
         }
         if (event === "subsection_done") {
-          onSectionDone?.();
+          const subKey = typeof data.sub_key === "string" ? data.sub_key : "";
+          const subContent = typeof data.content === "string" ? data.content : "";
+          onSectionDone?.(subKey || "s4", subContent);
           void refreshStatus();
           return;
         }
@@ -614,7 +616,10 @@ export function DraftChat({
                   : m
               )
             );
-            onSectionDone?.();
+            onSectionDone?.(
+              typeof data.section_key === "string" ? data.section_key : sectionKey || undefined,
+              content2
+            );
           }
           if (event === "accepted") {
             setMessages((prev) =>

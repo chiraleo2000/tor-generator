@@ -471,14 +471,14 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
         await event_q.put(("started", {"request_id": work.request_id}))
         async with admit(redis, "llm", work.request_id, on_wait=on_wait):
             llm = ProviderFactory().get_llm("chat")  # NOSONAR python:S930
+            from app.providers.model_capabilities import llm_call_kwargs
+
             async for token in llm.stream(
                 [
                     {"role": "system", "content": INTAKE_CHAT_SYSTEM},
                     {"role": "user", "content": work.user_prompt},
                 ],
-                temperature=0.2,
-                max_tokens=4096,
-                enable_thinking=True,
+                **llm_call_kwargs(temperature=0.2, max_tokens=4096),
             ):
                 parts_local.append(token)
                 await event_q.put(("token", {"text": token}))

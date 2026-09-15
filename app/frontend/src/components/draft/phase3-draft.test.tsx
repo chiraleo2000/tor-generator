@@ -9,13 +9,22 @@ vi.mock("@/components/draft/draft-chat", () => ({
     onSectionDone,
   }: {
     onAllDrafted: () => void;
-    onSectionDone?: () => void;
+    onSectionDone?: (sectionKey?: string, content?: string) => void;
   }) => (
     <div data-testid="mock-draft-chat">
       <button type="button" data-testid="mock-all-drafted" onClick={onAllDrafted}>
         all
       </button>
-      <button type="button" data-testid="mock-section-done" onClick={() => onSectionDone?.()}>
+      <button
+        type="button"
+        data-testid="mock-section-done"
+        onClick={() =>
+          onSectionDone?.(
+            "s3",
+            "กรมบัญชีกลางจ้างพัฒนาระบบสารสนเทศบริหารสัญญาจัดซื้อจัดจ้างเพื่อติดตามงวดจ่ายและตรวจรับงานให้ครบถ้วนตามกฎหมาย ผู้รับจ้างต้องพัฒนาระบบตามขอบเขตงานและแผนทดสอบที่ยืนยันกับผู้ใช้"
+          )
+        }
+      >
         section
       </button>
     </div>
@@ -522,6 +531,56 @@ describe("Phase3Draft", () => {
     fireEvent.click(screen.getByTestId("mock-all-drafted"));
     expect(screen.getByTestId("phase3-all-drafted")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("mock-section-done"));
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it("shows gold heading checklist counts", () => {
+    render(
+      <Phase3Draft
+        sections={[s1, s3]}
+        expanded=""
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByTestId("phase3-gold-checklist")).toHaveTextContent("ขาด");
+    expect(screen.getByTestId("gold-status-s3")).toHaveTextContent("ขาด");
+  });
+
+  it("updates gold checklist from section_done without waiting for reload", () => {
+    const onRefresh = vi.fn();
+    render(
+      <Phase3Draft
+        sections={[s3]}
+        expanded=""
+        openSub=""
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+        projectId="p-gold"
+        onRefresh={onRefresh}
+      />
+    );
+    expect(screen.getByTestId("phase3-gold-checklist")).toHaveTextContent("ขาด 1");
+    fireEvent.click(screen.getByTestId("mock-section-done"));
+    expect(screen.getByTestId("phase3-gold-checklist")).toHaveTextContent("ขาด 0");
+    expect(screen.getByTestId("gold-status-s3")).toHaveTextContent("ครบ");
     expect(onRefresh).toHaveBeenCalled();
   });
 });

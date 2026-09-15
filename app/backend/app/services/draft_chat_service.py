@@ -11,11 +11,11 @@ import logging
 from typing import Any, AsyncIterator
 from uuid import UUID
 
+from app.domain.section_prompts import core_system_prompt, section_prompt
 from app.domain.section_profile import profile_for_project, subsection_title
 from app.domain.tor_sections import TOR_SECTION_LABELS
 from app.llm_tokens import (
     DRAFT_MAX_TOKENS,
-    GEMMA_CONTEXT_WINDOW,
     SCOPE_SUB_MAX_TOKENS,
     SECTION_MAX_TOKENS,
     clamp_max_tokens,
@@ -39,16 +39,8 @@ from app.services.thai_draft import (
 logger = logging.getLogger("tor_app.draft_chat")
 
 DRAFT_SYSTEM_PROMPT = (
-    "คุณเป็นผู้เชี่ยวชาญร่างเอกสารกำหนดขอบเขตงานภาครัฐไทย "
-    "ร่างเป็นภาษาราชการ ชัดเจน ครบถ้วน ตามโครงสร้าง "
-    "พระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐ "
-    "ใช้ข้อมูลจากช่องข้อมูลและบริบทกฎหมายที่ให้มาเท่านั้น "
-    "ห้ามแต่งมาตราที่ไม่มีในบริบท "
-    "ให้ครบด้านวิธีจัดซื้อ ราคากลาง คุณสมบัติ ขอบเขตระดับการให้บริการ งวดงาน ค่าปรับ "
-    "เกณฑ์คัดเลือก เอกสารยื่น และเงื่อนไขลิขสิทธิ์หรือความลับ ตามแนวทางตัวอย่าง "
-    "ก่อนร่างแต่ละหัวข้อ จำแนกสาระจากเอกสารต้นทางว่าเป็นของหัวข้อนั้นจริงหรือไม่ "
-    "ห้ามยกทั้งหมวดหรือทั้งตารางไปวางผิดหัวข้อ "
-    "ขั้นที่ 2 ส่งเฉพาะเนื้อหาหมวดฉบับสมบูรณ์ตามรูปแบบเอกสารกำหนดขอบเขตงาน "
+    core_system_prompt()
+    + "ขั้นที่ 2 ส่งเฉพาะเนื้อหาหมวดฉบับสมบูรณ์ตามรูปแบบเอกสารกำหนดขอบเขตงาน "
     "ห้ามส่งบันทึกวิเคราะห์ ห้ามย่อจนขาดสาระ "
     "ห้ามพิมพ์เลขนำหน้าชื่อหมวดหรือข้อย่อย (ทั้งเลขไทยและอารบิก เช่น ๘.๑ 8.1.2) "
     "— ระบบส่งออกเป็นผู้ใส่หัวข้อ "
@@ -112,6 +104,9 @@ def _section_prompt_context(
         parts.append(f"\nรายละเอียดขอบเขตงาน:\n{sub_content}")
     if rag_context:
         parts.append(f"\nบริบทกฎหมาย/ระเบียบจากคลังความรู้:\n{rag_context}")
+    extra = section_prompt(category, section_key)
+    if extra:
+        parts.append(extra)
     if section_key == "s4":
         listed = "\n".join(f"- {item.title}" for item in profile.scope_subsections)
         parts.append(
@@ -142,12 +137,12 @@ def _section_prompt_context(
 
 
 def fallback_section_text(section_key: str, slot_map: dict[str, Any]) -> str:
-    """Thai draft from intake slots when the LLM returns nothing or times out."""
+    """Thai draft from filled slots when the LLM returns nothing or times out."""
     label = TOR_SECTION_LABELS.get(section_key, section_key)
     facts = slot_content(slot_map, section_key).strip()
-    intake = slot_content(slot_map, "_project_intake").strip()
-    body = facts or intake[:1200]
-    return body or (
+    if facts:
+        return facts
+    return (
         f"หมวด{label} ใช้ข้อมูลจากเอกสารขั้นที่ ๐ ของโครงการนี้ "
         "เจ้าหน้าที่ควรตรวจและเติมรายละเอียดก่อนประกาศ"
     )
@@ -160,8 +155,11 @@ def fallback_scope_subsection(
     title = subsection_title(sub_key, category, sub_key)
     facts = slot_content(slot_map, sub_key).strip()
     parent = slot_content(slot_map, "s4").strip()
-    intake = slot_content(slot_map, "_project_intake").strip()
-    return facts or parent[:800] or intake[:800] or (
+    if facts:
+        return facts
+    if parent:
+        return parent[:800]
+    return (
         f"{title}: ใช้ข้อมูลจากเอกสารขั้นที่ ๐ ของโครงการนี้ "
         "เจ้าหน้าที่ควรตรวจและเติมรายละเอียดก่อนประกาศ"
     )
@@ -219,22 +217,35 @@ async def _s4_shared_rag(user_id: UUID | str | None) -> str:
 async def _collect_llm_text(
     system: str, user_prompt: str, *, max_tokens: int
 ) -> str:
+    from app.providers.model_capabilities import (
+        compose_thinking_enabled,
+        current_capabilities,
+        filter_llm_kwargs,
+    )
+
     llm = ProviderFactory().get_llm("draft")  # NOSONAR python:S930
+    caps = current_capabilities()
     max_out = clamp_max_tokens(
         user_prompt,
         max_tokens,
-        context_window=GEMMA_CONTEXT_WINDOW,
+        context_window=caps.context_window,
         system=system,
     )
     parts: list[str] = []
+    stream_kwargs = filter_llm_kwargs(
+        caps.provider,
+        {
+            "temperature": 0.3,
+            "max_tokens": max_out,
+            "enable_thinking": compose_thinking_enabled(caps.provider),
+        },
+    )
     async for token in llm.stream(
         [
             {"role": "system", "content": system},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.3,
-        max_tokens=max_out,
-        enable_thinking=True,
+        **stream_kwargs,
     ):
         parts.append(token)
     return "".join(parts)
@@ -244,7 +255,7 @@ async def _stream_llm_prompt(
     system: str, user_prompt: str, *, max_tokens: int = DRAFT_MAX_TOKENS
 ) -> AsyncIterator[str]:
     """Stream one compose pass from the configured LLM (no analyze-then-compose)."""
-    from app.services.thai_draft import sanitize_unauthorized_english, thai_char_count
+    from app.services.thai_draft import polish_export_text, sanitize_unauthorized_english, thai_char_count
 
     system = attach_thai_only(system)
     user_prompt = attach_thai_only(user_prompt)
@@ -262,9 +273,10 @@ async def _stream_llm_prompt(
                 text = cleaned
             else:
                 logger.warning(
-                    "draft retry still contained unauthorized English; dropping"
+                    "draft retry still had English; using sanitized text anyway"
                 )
-                return
+                text = polish_export_text(cleaned or text)
+    text = polish_export_text(text)
     if text:
         yield text
 
@@ -276,29 +288,26 @@ async def draft_single_section(
     category: str | None = None,
 ) -> AsyncIterator[str]:
     """Draft one section using LLM + RAG. Yields tokens from the model only."""
-    label = TOR_SECTION_LABELS.get(section_key, section_key)
-    slot_facts = slot_content(slot_map, section_key).strip()
-    query = f"ขอบเขตของงาน {label} {slot_facts[:200]}"
     try:
-        rag_context = await _hybrid_rag_pack(
-            query,
-            user_id=user_id,
-            section_relevance=section_key,
-            top_k=draft_rag_top_k(),
-            chunk_n=8,
-            chunk_chars=800,
-        )
+        rag_context = await _s4_shared_rag(user_id)
     except Exception:
         logger.warning("RAG failed for %s, proceeding without context", section_key)
         rag_context = ""
 
     user_prompt = _section_prompt_context(section_key, slot_map, rag_context, category)
+    intake = slot_content(slot_map, "_project_intake")
     async for token in _stream_llm_prompt(
         DRAFT_SYSTEM_PROMPT,
         user_prompt,
         max_tokens=SECTION_MAX_TOKENS,
     ):
-        yield token
+        from app.services.thai_draft import reject_intake_echo
+
+        text = reject_intake_echo(token, intake)
+        if not text:
+            text = fallback_section_text(section_key, slot_map)
+        if text:
+            yield text
 
 
 async def draft_scope_subsection(
@@ -320,10 +329,17 @@ async def draft_scope_subsection(
         current_draft=current_draft,
         user_feedback=user_feedback,
     )
+    intake = slot_content(slot_map, "_project_intake")
     async for token in _stream_llm_prompt(
         DRAFT_SYSTEM_PROMPT, prompt, max_tokens=SCOPE_SUB_MAX_TOKENS
     ):
-        yield token
+        from app.services.thai_draft import reject_intake_echo
+
+        text = reject_intake_echo(token, intake)
+        if not text:
+            text = fallback_scope_subsection(sub_key, slot_map, category)
+        if text:
+            yield text
 
 
 async def collect_scope_subsection_drafts(
@@ -349,9 +365,18 @@ async def collect_scope_subsection_drafts(
             parts.append(token)
         text = "".join(parts).strip()
         if text:
-            from app.services.thai_draft import polish_scope_subsection_draft
+            from app.services.thai_draft import (
+                polish_scope_subsection_draft,
+                reject_intake_echo,
+            )
 
-            out[sub_key] = polish_scope_subsection_draft(text, sub_key)
+            polished = polish_scope_subsection_draft(text, sub_key)
+            intake = slot_content(slot_map, "_project_intake")
+            polished = reject_intake_echo(polished, intake)
+            if not polished:
+                polished = fallback_scope_subsection(sub_key, slot_map, category)
+            if polished:
+                out[sub_key] = polished
     return out
 
 

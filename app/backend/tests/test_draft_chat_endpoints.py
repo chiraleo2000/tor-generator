@@ -325,7 +325,7 @@ def test_status_counts_drafted_sections(client, mock_officer_user):
     assert data["sections"][0]["human_confirmed"] is True
 
 
-def test_status_hire_develop_total_is_14_and_done_job_does_not_inflate(
+def test_status_hire_develop_total_matches_profile_and_done_job_does_not_inflate(
     client, mock_officer_user
 ):
     project = _make_project(analysis=_ready_analysis())
@@ -362,8 +362,10 @@ def test_status_hire_develop_total_is_14_and_done_job_does_not_inflate(
     ):
         response = client.get(f"/api/v1/projects/{PROJECT_ID}/draft-chat/status")
     data = response.json()["data"]
-    assert data["total"] == 14
-    assert data["drafted_count"] == 14
+    expected = len(_main_keys("hire_develop"))
+    assert expected == 16
+    assert data["total"] == expected
+    assert data["drafted_count"] == expected
     assert data["all_drafted"] is True
 
 
@@ -509,7 +511,7 @@ async def test_iter_s4_subsection_sse_drafts_each_sub_in_order():
 
     async def fake_sub(sub_key, *_args, **_kwargs):
         order.append(sub_key)
-        yield f"llm-{sub_key}"
+        yield f"ร่างหัวข้อ{sub_key} จากเอกสารขั้นที่ศูนย์ของโครงการนี้"
 
     work = _S4Work(
         redis=None,
@@ -525,7 +527,8 @@ async def test_iter_s4_subsection_sse_drafts_each_sub_in_order():
     ):
         events = [event async for event in _iter_s4_subsection_sse(work, {})]
     assert order == _scope_keys()
-    assert collected == {key: f"llm-{key}" for key in _scope_keys()}
+    assert set(collected) == set(_scope_keys())
+    assert all("ร่างหัวข้อ" in text and "ขั้นที่ศูนย์" in text for text in collected.values())
     assert not errors
     assert any("subsection_start" in event for event in events)
     assert any("subsection_done" in event for event in events)

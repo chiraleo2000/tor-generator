@@ -80,6 +80,11 @@ SECTION_LABELS: dict[str, str] = {
     "confidentiality": "การรักษาความลับของข้อมูลและการคุ้มครองข้อมูลส่วนบุคคล",
     "other_conditions": "เงื่อนไขอื่น ๆ และข้อสงวนสิทธิ์",
     "responsible_unit": "หน่วยงานผู้รับผิดชอบและสถานที่ติดต่อ",
+    "backup": "การสำรองข้อมูล",
+    "deliverables": "เอกสารส่งมอบ",
+    "retention": "เงินประกันผลงาน",
+    "proposal_conditions": "เงื่อนไขการเสนอราคาและตารางเปรียบเทียบข้อกำหนด",
+    "appendices": "ภาคผนวก",
 }
 
 SECTION_LABELS_EN: dict[str, str] = {
@@ -97,6 +102,11 @@ SECTION_LABELS_EN: dict[str, str] = {
     "confidentiality": "Confidentiality and PDPA",
     "other_conditions": "Other Conditions",
     "responsible_unit": "Responsible Unit",
+    "backup": "Backup",
+    "deliverables": "Deliverable Documents",
+    "retention": "Retention Money",
+    "proposal_conditions": "Proposal Conditions and Statement of Compliance",
+    "appendices": "Appendices",
 }
 
 # Sections present in every TOR regardless of procurement type, in order.
@@ -127,6 +137,144 @@ EXTRA_SECTIONS_BY_TYPE: dict[str, list[str]] = {
     "construction": [],
 }
 
+# Display order per procurement type (gold TOR 514 / 513 / 506 and siblings).
+SECTION_ORDER_BY_TYPE: dict[str, list[str]] = {
+    "hire_develop": [
+        "background",
+        "objective",
+        "qualification",
+        "scope",
+        "evaluation",
+        "backup",
+        "deliverables",
+        "budget",
+        "schedule",
+        "payment",
+        "retention",
+        "penalty",
+        "warranty",
+        "ip_ownership",
+        "confidentiality",
+        "responsible_unit",
+    ],
+    "hire_maintain": [
+        "background",
+        "objective",
+        "evaluation",
+        "qualification",
+        "proposal_conditions",
+        "scope",
+        "schedule",
+        "budget",
+        "payment",
+        "penalty",
+        "warranty",
+        "confidentiality",
+        "other_conditions",
+        "responsible_unit",
+    ],
+    "lease_service": [
+        "background",
+        "objective",
+        "qualification",
+        "scope",
+        "schedule",
+        "evaluation",
+        "budget",
+        "payment",
+        "penalty",
+        "warranty",
+        "responsible_unit",
+    ],
+    "buy_goods": [
+        "background",
+        "objective",
+        "qualification",
+        "scope",
+        "schedule",
+        "evaluation",
+        "budget",
+        "payment",
+        "penalty",
+        "warranty",
+        "responsible_unit",
+    ],
+    "construction": [
+        "background",
+        "objective",
+        "qualification",
+        "scope",
+        "schedule",
+        "evaluation",
+        "budget",
+        "payment",
+        "penalty",
+        "warranty",
+        "responsible_unit",
+    ],
+    "hire_consult": [
+        "background",
+        "objective",
+        "qualification",
+        "scope",
+        "schedule",
+        "evaluation",
+        "budget",
+        "payment",
+        "penalty",
+        "warranty",
+        "ip_ownership",
+        "confidentiality",
+        "other_conditions",
+        "responsible_unit",
+    ],
+    "hire_service": [
+        "background",
+        "objective",
+        "qualification",
+        "scope",
+        "schedule",
+        "evaluation",
+        "budget",
+        "payment",
+        "penalty",
+        "warranty",
+        "ip_ownership",
+        "confidentiality",
+        "responsible_unit",
+    ],
+}
+
+# Gold extras that must be present (in addition to LEGAL_REQUIRED in section_profile).
+TYPE_REQUIRED_EXTRAS: dict[str, frozenset[str]] = {
+    "hire_develop": frozenset(
+        {
+            "backup",
+            "deliverables",
+            "retention",
+            "penalty",
+            "warranty",
+            "ip_ownership",
+            "confidentiality",
+            "responsible_unit",
+        }
+    ),
+    "hire_maintain": frozenset(
+        {
+            "proposal_conditions",
+            "penalty",
+            "warranty",
+            "confidentiality",
+            "other_conditions",
+            "responsible_unit",
+        }
+    ),
+    "hire_consult": frozenset(
+        {"ip_ownership", "confidentiality", "other_conditions", "responsible_unit"}
+    ),
+    "hire_service": frozenset({"ip_ownership", "confidentiality", "responsible_unit"}),
+}
+
 # Per-type heading wording. Real TORs rename the same slot depending on
 # whether the work is a purchase, a lease, a maintenance contract, etc.
 SECTION_LABEL_OVERRIDES: dict[str, dict[str, str]] = {
@@ -137,6 +285,9 @@ SECTION_LABEL_OVERRIDES: dict[str, dict[str, str]] = {
         "schedule": "ระยะเวลาการให้บริการและการส่งมอบงาน",
         "payment": "ค่าจ้างและการจ่ายเงิน",
         "warranty": "การรับประกันผลงานการบำรุงรักษา",
+        "proposal_conditions": "เงื่อนไขการเสนอราคาและตารางเปรียบเทียบข้อกำหนด",
+        "evaluation": "เกณฑ์การพิจารณาคัดเลือกข้อเสนอ",
+        "background": "หลักการและเหตุผล",
     },
     "lease_service": {
         "scope": "ขอบเขตของงานและบริการที่เช่าใช้",
@@ -164,6 +315,9 @@ SECTION_LABEL_OVERRIDES: dict[str, dict[str, str]] = {
 def section_order(procurement_type: str) -> list[str]:
     """Ordered section keys for one procurement type."""
     key = procurement_type if procurement_type in PROCUREMENT_TYPES else DEFAULT_PROCUREMENT_TYPE
+    ordered = SECTION_ORDER_BY_TYPE.get(key)
+    if ordered:
+        return list(ordered)
     return [*CORE_SECTION_ORDER, *EXTRA_SECTIONS_BY_TYPE.get(key, []), CLOSING_SECTION]
 
 
@@ -375,7 +529,7 @@ SCOPE_BY_TYPE: dict[str, list[str]] = {
     "hire_develop": [
         Scope.SYSTEM_OVERVIEW, Scope.FUNCTIONAL, Scope.INTEGRATION,
         Scope.LICENSES, Scope.STANDARDS_SECURITY, Scope.TESTING,
-        Scope.DELIVERABLE_DOCS, Scope.TRAINING, Scope.PROJECT_TEAM,
+        Scope.TRAINING, Scope.PROJECT_TEAM,
         Scope.SLA_WARRANTY,
     ],
     "hire_maintain": [
@@ -408,7 +562,7 @@ SCOPE_BY_TYPE: dict[str, list[str]] = {
 # Subsections that must not be left empty for the draft to count as complete.
 SCOPE_REQUIRED_BY_TYPE: dict[str, list[str]] = {
     "buy_goods": [Scope.ITEMS, Scope.SPECIFICATION, Scope.DELIVERY_ACCEPTANCE],
-    "hire_develop": [Scope.FUNCTIONAL, Scope.DELIVERABLE_DOCS, Scope.TESTING],
+    "hire_develop": [Scope.FUNCTIONAL, Scope.TESTING],
     "hire_maintain": [Scope.ASSET_LIST, Scope.CM, Scope.PM, Scope.SLA],
     "lease_service": [Scope.SERVICE_SPEC, Scope.AVAILABILITY, Scope.NOC],
     "hire_service": [Scope.WORKLOAD, Scope.WORKFLOW, Scope.QUALITY_STANDARD],
@@ -715,6 +869,24 @@ SECTION_HINTS: dict[str, str] = {
         "และเว็บไซต์สำหรับเสนอแนะวิจารณ์ร่างขอบเขตของงาน "
         "ปิดท้ายด้วยหมายเหตุเงื่อนไขพระราชบัญญัติงบประมาณรายจ่ายประจำปีเมื่อยังไม่ได้รับจัดสรร"
     ),
+    "backup": (
+        "กำหนดการสำรองข้อมูลแบบเต็มและส่วนเพิ่มโดยอัตโนมัติ "
+        "รอบเวลาเก็บรักษา และความสามารถกู้คืน ณ จุดเวลาที่กำหนด"
+    ),
+    "deliverables": (
+        "แจกแจงเอกสารส่งมอบเป็นข้อ เช่น ข้อกำหนดความต้องการ แบบออกแบบ "
+        "พจนานุกรมข้อมูล คู่มือผู้ใช้ คู่มือผู้ดูแล รายงานทดสอบและฝึกอบรม "
+        "จำนวนชุดและสื่อบันทึกข้อมูล"
+    ),
+    "retention": (
+        "หักเงินประกันผลงานร้อยละไม่เกิน ๑๐ ของค่าจ้างแต่ละงวด "
+        "คืนพร้อมงวดสุดท้าย หรือวางหนังสือค้ำประกันของธนาคารแทนได้"
+    ),
+    "proposal_conditions": (
+        "กำหนดให้จัดทำตารางเปรียบเทียบข้อกำหนด (Statement of Compliance) "
+        "คอลัมน์หัวข้อ ข้อกำหนดที่ต้องการ ของที่เสนอ และเอกสารอ้างอิงบท/หน้า "
+        "หากไม่จัดทำสงวนสิทธิ์ไม่พิจารณา"
+    ),
 }
 
 SCOPE_HINTS: dict[str, str] = {
@@ -914,7 +1086,12 @@ def validate_taxonomy_edit(
     if missing_core:
         raise TaxonomyEditError(f"CORE_SECTION_ORDER missing {missing_core}")
     for ptype in types:
-        order = [*core_list, *extras.get(ptype, []), close]
+        order = list(SECTION_ORDER_BY_TYPE.get(ptype) or [*core_list, *extras.get(ptype, []), close])
+        missing_in_type = [key for key in CORE_SECTION_ORDER if key not in order]
+        if missing_in_type:
+            raise TaxonomyEditError(f"{ptype} missing CORE sections {missing_in_type}")
+        if close not in order:
+            raise TaxonomyEditError(f"{ptype} missing closing section {close}")
         if len(order) != len(set(order)):
             raise TaxonomyEditError(f"{ptype} has duplicate section keys")
         for index, key in enumerate(order, start=1):

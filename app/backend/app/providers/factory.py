@@ -24,6 +24,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _live_embedding_dimensions() -> int:
+    try:
+        from app.providers.model_capabilities import embedding_dimensions
+
+        return int(embedding_dimensions())
+    except Exception:
+        return EMBEDDING_DIMENSIONS
+
 VALID_DEPLOYMENT_MODES = ("on_prem", "cloud", "hybrid")
 VALID_LLM_PROVIDERS = (
     "claude",
@@ -274,7 +283,7 @@ class ProviderFactory:
                     self._settings, "aws_bearer_token_bedrock"
                 ),
                 timeout=float(
-                    _attr(self._settings, "cloud_llm_timeout", 300.0) or 300.0
+                    _attr(self._settings, "cloud_llm_timeout", 900.0) or 900.0
                 ),
             )
         if kind == "azure_foundry":
@@ -330,7 +339,7 @@ class ProviderFactory:
                 model=_attr(self._settings, "azure_foundry_embedding_deployment")
                 or _attr(self._settings, "azure_foundry_deployment")
                 or "text-embedding-3-small",
-                dimensions=EMBEDDING_DIMENSIONS,
+                dimensions=_live_embedding_dimensions(),
             )
             provider._client = AsyncAzureOpenAI(
                 api_key=_attr(self._settings, "azure_foundry_api_key"),
@@ -351,7 +360,7 @@ class ProviderFactory:
                     "openai_compatible_embedding_model",
                     "text-embedding-3-small",
                 ),
-                dimensions=EMBEDDING_DIMENSIONS,
+                dimensions=_live_embedding_dimensions(),
                 base_url=_attr(self._settings, "openai_compatible_base_url"),
             )
         return self._create_openai_embedding_provider()
@@ -374,7 +383,7 @@ class ProviderFactory:
         return OpenAIEmbeddingProvider(
             api_key=_attr(self._settings, "openai_api_key"),
             model=_attr(self._settings, "openai_embedding_model", "text-embedding-3-small"),
-            dimensions=EMBEDDING_DIMENSIONS,
+            dimensions=_live_embedding_dimensions(),
         )
 
     def _create_local_embedding_provider(self) -> EmbeddingProvider:
@@ -445,5 +454,5 @@ class ProviderFactory:
         return QdrantProvider(
             host=_attr(self._settings, "qdrant_host", "localhost"),
             port=_attr(self._settings, "qdrant_port", 6333),
-            vector_size=EMBEDDING_DIMENSIONS,
+            vector_size=_live_embedding_dimensions(),
         )

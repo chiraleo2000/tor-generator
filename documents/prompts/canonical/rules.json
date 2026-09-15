@@ -1,0 +1,57 @@
+{
+  "fact_required": ["s1", "s2", "s5", "s6"],
+  "hitl": ["s3", "s6", "s8", "s10", "s13"],
+  "banned_english": [
+    "Server",
+    "Cyber Attack",
+    "Digital Government",
+    "Big Data",
+    "Public AI",
+    "Deliverables",
+    "Price Only",
+    "Price-Performance"
+  ],
+  "penalty": {
+    "min_pct_per_day": 0.01,
+    "max_pct_per_day": 0.2,
+    "min_thb_per_day": 100
+  },
+  "guarantee_contract_pct": 5,
+  "required_tables": ["payment", "evaluation_weights", "personnel", "soc"],
+  "gold_profiles": {
+    "hire_develop": [
+      "background",
+      "objective",
+      "qualification",
+      "scope",
+      "evaluation",
+      "backup",
+      "deliverables",
+      "budget",
+      "schedule",
+      "payment",
+      "retention",
+      "penalty",
+      "warranty",
+      "ip_ownership",
+      "confidentiality",
+      "responsible_unit"
+    ],
+    "hire_maintain": [
+      "background",
+      "objective",
+      "evaluation",
+      "qualification",
+      "proposal_conditions",
+      "scope",
+      "schedule",
+      "budget",
+      "payment",
+      "penalty",
+      "warranty",
+      "confidentiality",
+      "other_conditions",
+      "responsible_unit"
+    ]
+  }
+}

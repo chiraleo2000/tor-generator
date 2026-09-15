@@ -33,7 +33,8 @@ Local GPU testing stays on **LM Studio** (`LLM_PROVIDER=lm_studio`, `EMBEDDING_P
 
 Quick เรียก MCP `retrieve` เท่านั้น — ไม่แทนที่การอนุมัติโครงการหรือ export DOCX/PDF ของเว็บแอป
 
-แพ็กเกจปัจจุบัน **v0.6.2** (14 ก.ย. 2026) รวมคู่มือติดตั้งบน AWS [`app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md`](../app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md)  
+แพ็กเกจปัจจุบัน **v0.7.0** (14 ก.ย. 2026) รวมคู่มือติดตั้งบน AWS [`app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md`](../app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md)  
+คุณภาพร่างมาจากอิมเมจ Docker ชุดเดียวกับเว็บแอป สลับโมเดลด้วย env (LM Studio ท้องถิ่น / Bedrock·OpenAI·Anthropic บน VM) — SKILL.md เป็นคำสั่งราชการทั่วไป ไม่ใส่ `enable_thinking` หรือหน้าต่าง 131k ของรุ่นใดรุ่นหนึ่ง  
 สไตล์ร่าง (กันโครงร่างวิซาร์ดและคำอังกฤษ) + ownership หัวข้อย่อย + ตรวจลึกกฎหมาย/มาตรฐาน: อัปเดตใน `agents-skills` ตั้งแต่ **v0.6.1** (11 ก.ย. 2026) — เลขไทย, ห้าม `### history`, ห้าม Server/Cyber Attack/Digital Government, ลำดับ `1./1.1`, licenses = ตาราง ICT, review multi-query standards, และระบุรูปแบบส่งออกของแอป (16pt / 1.0 / ขอบ 2.54/1.91 ซม.)
 
 ## Local vs Quick vs AWS cloud

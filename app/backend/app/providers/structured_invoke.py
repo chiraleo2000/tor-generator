@@ -60,11 +60,19 @@ async def invoke_with_schema(
             for key, value in kwargs.items()
             if key not in {"disable_thinking", "enable_thinking"}
         }
+        from app.providers.model_capabilities import (
+            compose_thinking_enabled,
+            current_capabilities,
+            filter_llm_kwargs,
+        )
+
+        caps = current_capabilities()
+        invoke_kwargs["enable_thinking"] = compose_thinking_enabled(caps.provider)
+        invoke_kwargs = filter_llm_kwargs(caps.provider, invoke_kwargs)
         response = await llm.invoke(
             call_messages,
             json_schema=schema,
             json_schema_name=schema_name,
-            enable_thinking=True,
             **invoke_kwargs,
         )
         try:

@@ -471,6 +471,10 @@ export function DraftWorkspace() {
           onRefresh={() => {
             loadSections().catch(() => undefined);
           }}
+          onSectionPatch={(sectionKey, draftContent) => {
+            if (!sectionKey || !draftContent.trim()) return;
+            setSections((prev) => patchSectionsWithDraft(prev, sectionKey, draftContent));
+          }}
           onDraftingChange={setChatDrafting}
           onBack={() => persistPhase(2, unlocked, { allowDowngrade: true })}
           onConfirm={async () => {

@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
+import fs from "node:fs";
 import path from "node:path";
 
 export const DEMO_EMAIL = process.env.E2E_EMAIL || "officer@example.go.th";
@@ -25,7 +26,17 @@ const PAUSE_MS = Number(
   process.env.E2E_PAUSE_MS || (process.env.HEADED === "1" ? "900" : "600")
 );
 
-export const LIVE_INTAKE_TEXT = [
+const GOLD_PACK_PATH = path.resolve(
+  __dirname,
+  "../../backend/tests/fixtures/hire_develop_gold_pack.txt"
+);
+const MA_PACK_PATH = path.resolve(
+  __dirname,
+  "../../backend/tests/fixtures/hire_maintain_smoke_pack.txt"
+);
+
+/** Thin buy-ish paste — keep as a negative fixture, not the live happy path. */
+export const THIN_INTAKE_TEXT = [
   "ความเป็นมา (s1): กรมบัญชีกลางมีความจำเป็นต้องจัดซื้อระบบสารสนเทศบริหารสัญญาจัดซื้อจัดจ้าง",
   "เพื่อติดตามงวดจ่ายและการส่งมอบให้เป็นไปตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560",
   "วัตถุประสงค์ (s2): เพื่อให้เจ้าหน้าที่พัสดุบริหารสัญญา ตรวจรับงาน และรายงานสถานะได้ครบถ้วนตามกฎหมาย",
@@ -35,15 +46,23 @@ export const LIVE_INTAKE_TEXT = [
   "ขอบเขตงานหลัก (s4.1): วิเคราะห์ความต้องการ พัฒนาโมดูลบริหารสัญญา ทดสอบระบบ อบรมผู้ใช้ และส่งมอบคู่มือใช้งาน",
 ].join("\n");
 
-const FACT_SLOT_KEYS = ["s1", "s2", "s5", "s6", "s7", "s4.1"] as const;
+export const LIVE_INTAKE_TEXT = fs.existsSync(GOLD_PACK_PATH)
+  ? fs.readFileSync(GOLD_PACK_PATH, "utf-8")
+  : THIN_INTAKE_TEXT;
+
+export const HIRE_MAINTAIN_INTAKE_TEXT = fs.existsSync(MA_PACK_PATH)
+  ? fs.readFileSync(MA_PACK_PATH, "utf-8")
+  : "";
+
+const FACT_SLOT_KEYS = ["s1", "s2", "s5", "s6", "functional"] as const;
 
 const LIVE_GAP_ANSWERS = [
-  "ความเป็นมาคือกรมบัญชีกลางต้องมีระบบบริหารสัญญาจัดซื้อจัดจ้างภาครัฐ",
+  "ความเป็นมาคือกรมบัญชีกลางต้องจ้างพัฒนาระบบบริหารสัญญาจัดซื้อจัดจ้างภาครัฐ",
   "วัตถุประสงค์เพื่อติดตามงวดจ่าย ตรวจรับงาน และรายงานสถานะตามกฎหมาย",
-  "ระยะเวลาดำเนินการหนึ่งร้อยแปดสิบวันนับจากวันลงนามในสัญญา",
+  "ระยะเวลาดำเนินการหนึ่งร้อยแปดสิบวันนับถัดจากวันลงนามในสัญญา",
   "วงเงินงบประมาณสองล้านห้าแสนบาทถ้วน จากงบดำเนินงานประจำปี",
-  "สถานที่ดำเนินการคือกรมบัญชีกลาง ถนนพระรามที่ 6 กรุงเทพมหานคร",
-  "ขอบเขตงานหลักคือวิเคราะห์ความต้องการ พัฒนา ทดสอบ อบรม และส่งมอบคู่มือ",
+  "ขอบเขตระบบงานคือโมดูลทะเบียนสัญญา งวดจ่าย ตรวจรับ รายงาน และสิทธิ์ผู้ใช้",
+  "การทดสอบครอบคลุมหน้าที่การทำงาน การเชื่อมโยง ประสิทธิภาพ ความมั่นคงปลอดภัย และการยอมรับโดยผู้ใช้",
   "รายละเอียดเพิ่มเติม ระบบต้องเชื่อมโยงข้อมูลสัญญา งวดจ่าย และการตรวจรับ",
   "ผู้ใช้งานหลักคือเจ้าหน้าที่พัสดุและผู้ตรวจสอบภายในของกรมบัญชีกลาง",
 ];
@@ -108,7 +127,8 @@ export function liveProjectName(): string {
 
 export async function createProjectAndOpenDraft(
   page: Page,
-  name = liveProjectName()
+  name = liveProjectName(),
+  projectType = "hire_develop"
 ): Promise<string> {
   await page.getByTestId("new-project").click();
   await expect(page.getByTestId("new-project-dialog")).toBeVisible();
@@ -117,6 +137,8 @@ export async function createProjectAndOpenDraft(
   await typeLikeUser(page.getByTestId("new-project-ministry"), "กรมบัญชีกลาง");
   await pauseLikeUser(page, 300);
   await typeLikeUser(page.getByTestId("new-project-budget"), "100000");
+  await pauseLikeUser(page, 300);
+  await page.getByTestId("new-project-type").selectOption(projectType);
   await pauseLikeUser(page, 400);
   await page.getByTestId("create-project-submit").click();
   await expect(page.getByTestId("draft-page")).toBeVisible({ timeout: 20_000 });
@@ -165,12 +187,12 @@ async function answerFactGapsViaIntakeChat(page: Page) {
   expect(await allFactSlotsFilled(page)).toBe(true);
 }
 
-async function uploadPhase0Sample(page: Page) {
+async function uploadPhase0Sample(page: Page, intakeText = LIVE_INTAKE_TEXT) {
   await page.getByTestId("intake-upload").setInputFiles({
     name: "pB0.txt",
     mimeType: "text/plain",
     buffer: Buffer.from(
-      `${LIVE_INTAKE_TEXT}\nไฟล์แนบประกอบการวิเคราะห์โครงการทดสอบ E2E`,
+      `${intakeText}\nไฟล์แนบประกอบการวิเคราะห์โครงการทดสอบ E2E`,
       "utf-8"
     ),
   });
@@ -179,11 +201,14 @@ async function uploadPhase0Sample(page: Page) {
   });
 }
 
-export async function walkLiveAnalyzeToPhase1(page: Page) {
+export async function walkLiveAnalyzeToPhase1(
+  page: Page,
+  intakeText = LIVE_INTAKE_TEXT
+) {
   await expect(page.getByTestId("intake-paste")).toBeVisible();
-  await typeLikeUser(page.getByTestId("intake-paste"), LIVE_INTAKE_TEXT);
+  await typeLikeUser(page.getByTestId("intake-paste"), intakeText);
   await pauseLikeUser(page, 600);
-  await uploadPhase0Sample(page);
+  await uploadPhase0Sample(page, intakeText);
   await saveEvidence(page, "03-phase-0-upload");
   await pauseLikeUser(page, 800);
   await page.getByTestId("intake-start-analyze").click();
@@ -230,8 +255,6 @@ export async function walkLiveDraftToCompose(page: Page) {
   await expect(page.getByTestId("draft-chat")).toBeVisible();
 }
 
-const SCOPE_SUB_KEYS = Array.from({ length: 14 }, (_, i) => `s4.${i + 1}`);
-
 const SAMPLE_SCOPE_TABLE = [
   "| รายการ | รายละเอียด |",
   "| --- | --- |",
@@ -241,7 +264,6 @@ const SAMPLE_SCOPE_TABLE = [
 async function assertPhase3SubsectionsThaiAndTable(page: Page) {
   const phase3 = page.getByTestId("phase3-draft");
   await expect(phase3).toContainText("ขั้นที่ ๓");
-  await expect(phase3).toContainText("๔.๑–๔.๑๔");
   await expect(page.getByTestId("phase3-heading")).toBeVisible();
   await expect(page.getByTestId("phase3-heading")).toHaveText(/ขั้นที่ ๓/);
   await expect(page.getByTestId("phase3-heading")).not.toContainText("Phase 3");
@@ -253,52 +275,40 @@ async function assertPhase3SubsectionsThaiAndTable(page: Page) {
   ).toHaveCount(0);
   await expect(page.getByText("เนื้อหาร่าง (จากเอกสารหรือระบบ)")).toHaveCount(0);
   await expect(page.getByText("เนื้อหาร่าง (จากเอกสาร/AI)")).toHaveCount(0);
-  const s1Header = page.getByRole("button", { name: /หมวด 1:/ });
+  const s1Header = page.getByRole("button", { name: /ความเป็นมา/ });
   await expect(s1Header).toBeVisible();
-  const historyField = page.getByText("ประวัติ/สถานการณ์ปัจจุบันของระบบเดิม");
-  if ((await historyField.count()) === 0) {
-    await s1Header.click();
-  }
-  await expect(historyField).toBeVisible();
   await s1Header.click();
-  const scopeHeader = page.getByRole("button", { name: /หมวด 4:/ });
+  const scopeHeader = page.getByRole("button", { name: /ขอบเขตของงาน/ });
   await expect(scopeHeader).toBeVisible();
   if ((await page.getByTestId("scope-subsection-editor").count()) === 0) {
     await scopeHeader.click();
   }
   await expect(page.getByTestId("scope-subsection-editor")).toBeVisible();
-  await expect(page.getByTestId("scope-subsection-editor")).toContainText("๔.๑");
-  for (const key of SCOPE_SUB_KEYS) {
-    const panel = page.getByTestId(`scope-sub-${key}`);
-    await expect(panel).toBeVisible();
-    await expect(panel.locator("textarea")).toHaveValue(/\S.{15,}/);
-  }
-  const deliverable = page.getByTestId("scope-sub-s4.8");
-  const textarea = deliverable.locator("textarea");
+  const functional = page.getByTestId("scope-sub-functional");
+  const testing = page.getByTestId("scope-sub-testing");
+  await expect(functional).toBeVisible();
+  await expect(testing).toBeVisible();
+  await expect(functional).toContainText(/\S.{15,}/);
+  await expect(testing).toContainText(/\S.{15,}/);
+  const textarea = functional.locator("textarea");
   const current = await textarea.inputValue();
   await textarea.fill(`${current.trim()}\n\n${SAMPLE_SCOPE_TABLE}`);
   await textarea.blur();
-  await expect(deliverable.locator("table").first()).toBeVisible({ timeout: 20_000 });
+  await expect(functional.locator("table").first()).toBeVisible({ timeout: 20_000 });
   await saveEvidence(page, "08b-phase-3-subsections");
   await saveEvidence(page, "08c-phase-3-table");
 }
 
 async function assertPhase4Assemble(page: Page) {
   await expect(page.getByTestId("phase4-merged-preview")).toBeVisible();
-  await expect(page.getByTestId("phase4-merged-preview")).toContainText("4.1");
-  await expect(page.getByTestId("phase4-merged-preview")).toContainText("4.8");
-  await expect(page.getByTestId("phase4-merged-preview").locator("table").first()).toBeVisible();
+  await expect(page.getByTestId("phase4-merged-preview")).toContainText(/ขอบเขต/);
   await expect(page.getByText("s4.s4.1")).toHaveCount(0);
   await saveEvidence(page, "07b-phase-4-assemble");
 }
 
-/** From a completed Phase 3 (13/13): HITL-free confirm, Rule Engine, export, submit. */
+/** From a completed Phase 3: HITL-free confirm, Rule Engine, export, submit. */
 export async function finishLivePhase3ToSubmit(page: Page) {
-  const draftUrl = page.url();
-  await page.goto("/projects");
-  await expect(page.getByTestId("projects-page")).toBeVisible();
-  await page.goto(draftUrl);
-  await expect(page.getByTestId("phase3-draft")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("phase3-gold-checklist")).toContainText(/ขาด 0/);
   await assertPhase3SubsectionsThaiAndTable(page);
   await saveEvidence(page, "08-phase-2-ai-draft");
   await saveEvidence(page, "e2e-phase-3-draft");
@@ -363,10 +373,10 @@ export async function finishLivePhase3ToSubmit(page: Page) {
   await saveEvidence(page, "07-phase-4-publish");
 }
 
-/** Completes live Phase 0–4: 13 AI drafts, Rule Engine, review chat, export. */
+/** Completes live Phase 0–4: profile drafts, Rule Engine, review chat, export. */
 export async function walkLiveFivePhases(page: Page) {
   await walkLiveDraftToCompose(page);
-  await expect(page.getByTestId("draft-chat")).toContainText("กำลังเริ่มร่างทั้ง ๑๓ หมวด", {
+  await expect(page.getByTestId("draft-chat")).toContainText("กำลังเริ่มร่างตามประเภทงาน", {
     timeout: 90_000,
   });
   await pauseLikeUser(page, 2500);
@@ -375,8 +385,10 @@ export async function walkLiveFivePhases(page: Page) {
   await expect(page.getByTestId("draft-section-badge-s1")).toBeVisible({ timeout: 300_000 });
   await saveEvidence(page, "08a-phase-3-drafting");
   await expect(page.getByTestId("phase3-all-drafted")).toBeVisible({ timeout: 3_600_000 });
-  await expect(page.getByTestId("draft-chat-count")).toHaveText("13/13 หมวด");
+  await expect(page.getByTestId("draft-chat-count")).toHaveText("16/16 หมวด");
+  await expect(page.getByTestId("phase3-gold-checklist")).toContainText(/ขาด 0/);
   await expect(page.getByTestId("section-preview-s1")).toContainText(/\S.{20,}/);
+  await expect(page.getByTestId("phase3-draft")).not.toContainText("[ข้อความผู้ใช้.txt]");
   await finishLivePhase3ToSubmit(page);
 }
 
@@ -396,8 +408,7 @@ export async function unlockPhase2ViaMockedIntake(page: Page) {
     s2: filledSlot,
     s5: filledSlot,
     s6: filledSlot,
-    s7: filledSlot,
-    "s4.1": filledSlot,
+    functional: filledSlot,
     s10: { content: "", status: "gap", sources: [] as string[] },
   };
   const coverage = Object.entries(slotMap).map(([key, slot]) => ({
@@ -455,7 +466,7 @@ export async function unlockPhase2ViaMockedIntake(page: Page) {
         name: "โครงการทดสอบ E2E",
         ministry: "กรมบัญชีกลาง",
         budget: 100000,
-        project_type: "general",
+        project_type: "hire_develop",
         status: "draft",
         current_phase: projectPhase,
         current_step: 1,

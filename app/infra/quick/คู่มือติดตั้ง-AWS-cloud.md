@@ -1,11 +1,11 @@
 # คู่มือติดตั้ง Amazon Quick Agents/Skills บน AWS Cloud
 
-เวอร์ชันแพ็กเกจ **v0.6.2** · Region แนะนำ **`ap-southeast-1`**  
+เวอร์ชันแพ็กเกจ **v0.7.0** · Region แนะนำ **`ap-southeast-1`**  
 เอกสารนี้สำหรับ **ผู้ดูแลระบบ / IT** ที่จะเปิดให้เจ้าหน้าที่ใช้ Amazon Quick ร่าง-ตรวจ TOR ผ่าน MCP ของแอปบนคลาวด์
 
 > **ไม่ใช่ QuickSight** · Quick เป็น workplace AI ที่เรียกคลังความรู้ของแอปผ่าน HTTPS `/mcp`
 
-แพ็กเกจ zip: [`amazon Quick agents/Skills - TOR/tor-agents-skills-v0.6.2.zip`](amazon%20Quick%20agents/Skills%20-%20TOR/tor-agents-skills-v0.6.2.zip)  
+แพ็กเกจ zip: [`amazon Quick agents/Skills - TOR/tor-agents-skills-v0.7.0.zip`](amazon%20Quick%20agents/Skills%20-%20TOR/tor-agents-skills-v0.7.0.zip)  
 ขั้นตอนบน Desktop (ท้องถิ่น): [`README.md`](README.md)
 
 ---
@@ -42,7 +42,7 @@
 - [ ] Security Group เปิด **443** จากเครือข่ายสำนักงาน/VPN (ไม่เปิด DB/Redis สู่ internet)
 - [ ] ค่า `QUICK_MCP_AUTH_VALUE` เป็นโทเคนสุ่ม (ไม่ใช่ `changeme_…`)
 - [ ] มีสิทธิ์ Amazon Quick **Enterprise / ทีม** ที่สร้าง Connectors ได้
-- [ ] ไฟล์ zip Agents/Skills v0.6.2
+- [ ] ไฟล์ zip Agents/Skills v0.7.0
 
 ---
 
@@ -96,7 +96,7 @@ curl -sf -X POST "https://$PN_PUBLIC_HOST/mcp" \
 
 ### 3.3 ติดตั้ง Skills + Agents (บน Quick Desktop ของผู้ใช้/ต้นแบบทีม)
 
-1. แตก `tor-agents-skills-v0.6.2.zip`
+1. แตก `tor-agents-skills-v0.7.0.zip`
 2. **Agents & skills** → **Skills** → **Import from file** → นำเข้า `SKILL.md` ทีละไฟล์:
 
 | ลำดับ | สกิล | งาน |

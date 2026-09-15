@@ -33,6 +33,21 @@ function displayExtracted(value: unknown): string {
   return "";
 }
 
+function goldStatus(section: SectionPayload): "ครบ" | "บาง" | "ขาด" {
+  if (!isSectionFilled(section)) return "ขาด";
+  const body = `${section.content || ""}${
+    section.subs?.map((item) => item.content || "").join("") || ""
+  }`;
+  if (body.trim().length < 120) return "บาง";
+  return "ครบ";
+}
+
+function goldBadgeClass(status: "ครบ" | "บาง" | "ขาด"): string {
+  if (status === "ครบ") return "text-brand-green";
+  if (status === "บาง") return "text-amber-800";
+  return "text-destructive";
+}
+
 function sectionIndexClass(filled: boolean, expanded: boolean): string {
   if (filled) return "text-brand-green";
   if (expanded) return "text-navy";
@@ -108,6 +123,30 @@ function RedraftPromptPanel({
   );
 }
 
+function applySectionPatch(
+  sections: SectionPayload[],
+  key: string,
+  draftContent: string
+): SectionPayload[] {
+  const filled = Boolean(draftContent.trim());
+  return sections.map((section) => {
+    if (section.key === key) {
+      return { ...section, content: draftContent, filled: filled || section.filled };
+    }
+    if (!section.subs?.length) return section;
+    const hit = section.subs.some((sub) => sub.key === key);
+    if (!hit) return section;
+    const subs = section.subs.map((sub) =>
+      sub.key === key ? { ...sub, content: draftContent, filled } : sub
+    );
+    return {
+      ...section,
+      subs,
+      filled: section.filled || subs.some((item) => item.filled),
+    };
+  });
+}
+
 export function Phase3Draft({
   sections,
   expanded,
@@ -124,6 +163,7 @@ export function Phase3Draft({
   onConfirm,
   projectId,
   onRefresh,
+  onSectionPatch,
   onDraftingChange,
 }: Readonly<{
   sections: SectionPayload[];
@@ -143,14 +183,25 @@ export function Phase3Draft({
   onBack: () => void;
   onConfirm: () => Promise<void>;
   projectId?: string;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
+  onSectionPatch?: (sectionKey: string, content: string) => void;
   onDraftingChange?: (busy: boolean) => void;
 }>) {
   const [allDrafted, setAllDrafted] = useState(false);
-  const filledCount = sections.filter((section) => isSectionFilled(section)).length;
-  // Require persisted section content — chat "all drafted" alone used to enable
-  // the button while confirm still blocked on empty filled flags.
-  const draftedEnough = sections.length > 0 && filledCount >= sections.length;
+  const [livePatches, setLivePatches] = useState<Record<string, string>>({});
+  const visibleSections = Object.keys(livePatches).length
+    ? Object.entries(livePatches).reduce(
+        (rows, [key, content]) => applySectionPatch(rows, key, content),
+        sections
+      )
+    : sections;
+  const filledCount = visibleSections.filter((section) => isSectionFilled(section)).length;
+  const goldCounts = {
+    complete: visibleSections.filter((section) => goldStatus(section) === "ครบ").length,
+    thin: visibleSections.filter((section) => goldStatus(section) === "บาง").length,
+    missing: visibleSections.filter((section) => goldStatus(section) === "ขาด").length,
+  };
+  const draftedEnough = visibleSections.length > 0 && filledCount >= visibleSections.length;
   const canReview = !projectId || draftedEnough;
 
   return (
@@ -165,6 +216,16 @@ export function Phase3Draft({
           กดไปทบทวนแล้วระบบตรวจกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐ ของโครงการนี้
           ตารางในเนื้อหาจะกลายเป็นตารางจริงในไฟล์เวิร์ด/พีดีเอฟ
         </p>
+        {visibleSections.length ? (
+          <p className="mb-3 text-xs" data-testid="phase3-gold-checklist">
+            หัวข้อทองตามประเภทงาน:{" "}
+            <span className="text-brand-green">ครบ {goldCounts.complete}</span>
+            {" · "}
+            <span className="text-amber-800">บาง {goldCounts.thin}</span>
+            {" · "}
+            <span className="text-destructive">ขาด {goldCounts.missing}</span>
+          </p>
+        ) : null}
         {busy ? (
           <p className="mb-3 text-sm text-navy">
             {actionInfo || "กำลังร่างด้วยระบบอัจฉริยะ..."}
@@ -192,19 +253,29 @@ export function Phase3Draft({
           projectId={projectId}
           onAllDrafted={() => {
             setAllDrafted(true);
-            onRefresh?.();
+            void Promise.resolve(onRefresh?.());
           }}
-          onSectionDone={onRefresh}
+          onSectionDone={(key, content) => {
+            if (key && content?.trim()) {
+              setLivePatches((prev) => ({ ...prev, [key]: content }));
+              onSectionPatch?.(key, content);
+            }
+            void Promise.resolve(onRefresh?.()).then(() => {
+              if (key && content?.trim()) {
+                onSectionPatch?.(key, content);
+              }
+            });
+          }}
           onDraftingChange={onDraftingChange}
         />
       ) : null}
       <div className="gov-card">
       <div className="flex flex-col">
-        {sections.map((section, index) => (
+        {visibleSections.map((section, index) => (
           <SectionCard
             key={section.key}
             section={section}
-            last={index === sections.length - 1}
+            last={index === visibleSections.length - 1}
             expanded={expanded === section.key}
             openSub={openSub}
             extracted={extracted}
@@ -412,6 +483,12 @@ function SectionCard({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <h3 className="text-sm font-semibold text-navy">{section.title}</h3>
+              <span
+                className={cn("text-[10px] tracking-wide", goldBadgeClass(goldStatus(section)))}
+                data-testid={`gold-status-${section.key}`}
+              >
+                {goldStatus(section)}
+              </span>
               <span
                 className={cn(
                   "text-[10px] tracking-wide text-muted-foreground",

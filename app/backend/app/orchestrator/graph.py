@@ -356,7 +356,7 @@ async def _draft_section_with_agent(
 
 async def _fallback_llm_draft(llm: Any, messages: list[dict], agent_timeout: float | int) -> str:
     """Analyze-then-compose when no section agent is registered."""
-    from app.llm_tokens import GEMMA_CONTEXT_WINDOW, clamp_max_tokens
+    from app.llm_tokens import clamp_max_tokens
     from app.services.staged_prompts import (
         COMPOSE_SECTION_INSTRUCTION,
         SECTION_ANALYZE_SYSTEM,
@@ -365,6 +365,9 @@ async def _fallback_llm_draft(llm: Any, messages: list[dict], agent_timeout: flo
     )
 
     async def _run() -> str:
+        from app.llm_tokens import live_context_window
+        from app.providers.model_capabilities import compose_thinking_enabled, llm_call_kwargs
+
         system = messages[0]["content"]
         user = messages[1]["content"]
         notes = await analyze_notes(llm, user, SECTION_ANALYZE_SYSTEM)
@@ -372,7 +375,7 @@ async def _fallback_llm_draft(llm: Any, messages: list[dict], agent_timeout: flo
         max_out = clamp_max_tokens(
             compose_user,
             DRAFT_MAX_TOKENS,
-            context_window=GEMMA_CONTEXT_WINDOW,
+            context_window=live_context_window(),
             system=system,
         )
         response = await llm.invoke(
@@ -380,9 +383,11 @@ async def _fallback_llm_draft(llm: Any, messages: list[dict], agent_timeout: flo
                 {"role": "system", "content": system},
                 {"role": "user", "content": compose_user},
             ],
-            temperature=0.3,
-            max_tokens=max_out,
-            enable_thinking=True,
+            **llm_call_kwargs(
+                thinking=compose_thinking_enabled(),
+                temperature=0.3,
+                max_tokens=max_out,
+            ),
         )
         return response.content
 
@@ -441,12 +446,14 @@ def _create_rule_engine() -> RuleEngine:
         from app.rule_engine.rules.completeness import (
             MinimumContentRule,
             RequiredSubsectionsRule,
+            RequiredTablesRule,
             SectionPresenceRule,
         )
 
         engine.register_rule("completeness", SectionPresenceRule())
         engine.register_rule("completeness", RequiredSubsectionsRule())
         engine.register_rule("completeness", MinimumContentRule())
+        engine.register_rule("completeness", RequiredTablesRule())
     except ImportError:
         logger.debug("Completeness rules module not available, skipping registration")
 

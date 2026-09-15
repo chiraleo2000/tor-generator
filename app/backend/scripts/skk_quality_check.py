@@ -11,6 +11,10 @@ from pathlib import Path
 import httpx
 from docx import Document
 
+BACKEND = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND))
+from app.export.draft_quality import score_draft_text  # noqa: E402
+
 API = "http://127.0.0.1:4000"
 EMAIL = "officer@example.go.th"
 PASSWORD = "Passw0rd!"
@@ -190,6 +194,10 @@ def _write_report(project_id: str, drafts: dict[str, str], new_scan: dict, old_s
         "draft_english": [item for item in ENGLISH if item in joined],
         "s1_sample": drafts.get("s1", "")[:800],
         "s8_sample": drafts.get("s8", "")[:800],
+        "harness": score_draft_text(
+            joined,
+            draft_chars={key: len(value) for key, value in drafts.items()},
+        ),
     }
     dest = OUT_DIR / "_round-2026-09-10-skk-quality-thinking.json"
     dest.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

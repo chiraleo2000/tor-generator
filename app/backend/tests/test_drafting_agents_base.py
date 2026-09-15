@@ -69,7 +69,7 @@ async def test_draft_invokes_fake_llm_with_rag_and_feedback():
     max_out = llm.invoke.await_args.kwargs.get("max_tokens")
     assert max_out <= DRAFT_MAX_TOKENS
     assert max_out >= 256
-    assert llm.invoke.await_args.kwargs.get("enable_thinking") is True
+    assert llm.invoke.await_args.kwargs.get("enable_thinking") is not True
     assert llm.invoke.await_args.kwargs.get("disable_thinking") is not True
 
 
