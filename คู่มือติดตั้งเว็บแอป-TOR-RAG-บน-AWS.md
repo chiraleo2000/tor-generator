@@ -1,6 +1,6 @@
 # คู่มือติดตั้งเว็บแอป TOR และบริการ RAG บน AWS
 
-เวอร์ชันแอป **v0.7.1** · Region **`ap-southeast-1` (สิงคโปร์)**  
+เวอร์ชันแอป **v0.8.0** · Region **`ap-southeast-1` (สิงคโปร์)**  
 เครื่องที่ใช่ในคู่มือนี้: **EC2 `t3.medium` เครื่องเดียว** · คลังและไฟล์อยู่บน **S3 เป็นหลัก**
 
 แพ็กเกจที่รันจริง: [`app/infra/pn-ec2/`](app/infra/pn-ec2/)  
@@ -12,7 +12,7 @@ Postgres / Redis / Mongo รันใน Docker บนดิสก์ของ E
 
 > ถ้าคำสั่งในคู่มือนี้ขัดกับไฟล์ใน `app/infra/pn-ec2/` ให้ยึดไฟล์ในแพ็กเกจนั้นเป็นค่าที่รันจริง
 
-อิมเมจ Docker ของ `frontend` / `backend` **ชุดเดียวกับเครื่องพัฒนา** — สลับผู้ให้บริการด้วย env (`LLM_PROVIDER=lm_studio` ท้องถิ่น หรือ `bedrock` / `openai` / `claude` บน VM) อย่า hardcode หน้าต่าง 131k, คิดแบบ thinking หรือมิติเวกเตอร์ 768 เมื่อรันบน Bedrock (Cohere embed-v4 มิติ 1024)
+อิมเมจ Docker ของ `frontend` / `backend` **ชุดเดียวกับเครื่องพัฒนา** — สลับผู้ให้บริการด้วย env (`LLM_PROVIDER=lm_studio` ท้องถิ่น หรือ `bedrock` / `openai` / `claude` บน VM) ตั้ง `TOR_CONTEXT_WINDOW` / `EMBEDDING_*` ใน `.env` (อย่า hardcode หน้าต่าง 131k), คิดแบบ thinking หรือมิติเวกเตอร์ 768 เมื่อรันบน Bedrock (Cohere embed-v4 มิติ 1024)
 
 ---
 
@@ -438,10 +438,10 @@ MCP คืนเฉพาะชิ้นข้อความ ชื่อแห
 บนเครื่องพัฒนา จากราก repo:
 
 ```bash
-python documents/exports/build_pn_aws_dataset.py --version 0.7.1
+python documents/exports/build_pn_aws_dataset.py --version 0.8.0
 ```
 
-ได้ไฟล์ `documents/exports/tor-pn-aws-dataset-v0.7.1.zip` แตกแล้วตั้งใน `.env` ของเครื่องที่มี AWS CLI:
+ได้ไฟล์ `documents/exports/tor-pn-aws-dataset-v0.8.0.zip` แตกแล้วตั้งใน `.env` ของเครื่องที่มี AWS CLI:
 
 ```env
 PN_DATASET_LOCAL_PATH=/path/to/extracted/rag-pdfs
@@ -501,7 +501,7 @@ curl -X POST "https://โดเมน/api/v1/pn/kb/search" \
 ทำหลัง HTTPS ใช้ได้ และค้นคลังเจอเอกสารจริงแล้ว  
 Quick เป็นผู้ช่วยที่เรียกคลังผ่าน `/mcp` ไม่ใช่ QuickSight และไม่แทนหน้าอนุมัติหรือการส่งออก Word
 
-zip ของสกิล: `app/infra/quick/amazon Quick agents/Skills - TOR/tor-agents-skills-v0.7.1.zip`
+zip ของสกิล: `app/infra/quick/amazon Quick agents/Skills - TOR/tor-agents-skills-v0.8.0.zip`
 
 ### 11.1 สร้าง Connector
 

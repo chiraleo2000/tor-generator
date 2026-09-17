@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.domain.slots import INTAKE_SLOT_ORDER
-from app.llm_tokens import CHAT_MAX_TOKENS
+from app.llm_tokens import live_chat_max_tokens
 from app.providers.factory import ProviderFactory
 from app.providers.structured_invoke import invoke_with_schema
 from app.schemas.llm_structured import IntakeAnalyzeResult, IncrementalClassifyResult, json_schema_for
@@ -177,7 +177,7 @@ class SectionMapper:
                 json_schema_for(IntakeAnalyzeResult),
                 "intake_analyze",
                 temperature=0.2,
-                max_tokens=CHAT_MAX_TOKENS,
+                max_tokens=live_chat_max_tokens(),
             ),
             timeout=ANALYSIS_TIMEOUT,
         )

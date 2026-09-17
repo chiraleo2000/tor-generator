@@ -88,6 +88,8 @@ async def _sync_one_pdf(
     log: ProgressFn,
     db: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
+    *,
+    extract_graph: bool = True,
 ) -> tuple[set[str], set[str]]:
     try:
         data = item.path.read_bytes()
@@ -114,6 +116,7 @@ async def _sync_one_pdf(
             session_factory=session_factory,
             corpus_group=item.group,
             content_sha256=digest,
+            extract_graph=extract_graph,
         )
         await db.commit()
         names.add(item.path.name)
@@ -163,20 +166,33 @@ async def sync_mandatory_sources(
     wipe_baseline: bool = False,
     progress: ProgressFn | None = None,
     neo4j_driver: Any | None = None,
+    extract_graph: bool = True,
 ) -> SyncStats:
-    """Ingest handbook + ข้อมูลดิบ PDFs. Default skips files already in the baseline."""
+    """Ingest handbook + ข้อมูลดิบ PDFs. Default skips files already in the baseline.
+
+    extract_graph=False skips chat-LLM GraphRAG (embedding-only) for low-VRAM hosts.
+    """
     stats = SyncStats()
     log = progress or (lambda message: logger.info(message))
     sources = list_mandatory_sources()
     if not sources:
         log("No PDFs found under documents/sources/")
         return stats
+    if not extract_graph:
+        log("GraphRAG LLM extract disabled (embedding-only / VRAM-safe)")
     await _wipe_baseline_if_requested(
         db, wipe_baseline=wipe_baseline, log=log, neo4j_driver=neo4j_driver
     )
     names, hashes = await _existing_baseline(db)
     for item in sources:
         names, hashes = await _sync_one_pdf(
-            item, names, hashes, stats, log, db, session_factory
+            item,
+            names,
+            hashes,
+            stats,
+            log,
+            db,
+            session_factory,
+            extract_graph=extract_graph,
         )
     return stats

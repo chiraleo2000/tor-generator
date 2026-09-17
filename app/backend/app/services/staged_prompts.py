@@ -7,10 +7,10 @@ import logging
 from typing import Any
 
 from app.llm_tokens import (
-    GEMMA_CONTEXT_WINDOW,
-    REVIEW_ANALYZE_MAX_TOKENS,
     REVIEW_TIMEOUT_SECONDS,
     clamp_max_tokens,
+    live_context_window,
+    live_review_analyze_max_tokens,
 )
 
 logger = logging.getLogger("tor_app.staged_prompts")
@@ -78,7 +78,7 @@ async def analyze_notes(
     max_out = clamp_max_tokens(
         user_message,
         requested,
-        context_window=GEMMA_CONTEXT_WINDOW,
+        context_window=live_context_window(),
         system=system,
     )
     try:
@@ -108,7 +108,7 @@ async def review_analyze_notes(llm: Any, user_message: str) -> str:
         llm,
         user_message,
         REVIEW_ANALYZE_SYSTEM,
-        max_tokens=REVIEW_ANALYZE_MAX_TOKENS,
+        max_tokens=live_review_analyze_max_tokens(),
         timeout=REVIEW_TIMEOUT_SECONDS,
     )
 

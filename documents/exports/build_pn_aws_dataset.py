@@ -1,4 +1,4 @@
-"""Build documents/exports/tor-pn-aws-dataset-vX.Y.Z.zip for EC2/S3 PN deploy."""
+﻿"""Build documents/exports/tor-pn-aws-dataset-vX.Y.Z.zip for EC2/S3 PN deploy."""
 
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ def _write_zip(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default="0.7.1")
+    parser.add_argument("--version", default="0.8.0")
     args = parser.parse_args()
     version = args.version
 

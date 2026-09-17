@@ -1,9 +1,9 @@
----
+﻿---
 name: tor-kb-retrieve
 description: ค้นคลังความรู้จัดซื้อจัดจ้างภาครัฐไทยผ่าน Amazon Quick MCP สำหรับตอบคำถามระเบียบ ราคากลาง ค่าปรับ คุณสมบัติ มาตรฐาน ICT/ความมั่นคงปลอดภัย หรือหาบริบทก่อนร่าง/ตรวจ TOR.
 compatibility: Amazon Quick Desktop + TOR MCP connector (:8767 or HTTPS /mcp). Tool timeout 60s.
 metadata:
-  version: "0.7.1"
+  version: "0.8.0"
   product: Amazon Quick
   mirrors: Discussions/23 + app/infra/quick/mcp_server.py + law_review packs
 allowed-tools: retrieve list_rag_groups ping get_health

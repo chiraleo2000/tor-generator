@@ -1,6 +1,7 @@
 """Model capability table — same Docker image, different env providers."""
 
 from app.providers.model_capabilities import (
+    DEFAULT_CONTEXT_WINDOW,
     EMBEDDING_DIM_COHERE_V4,
     EMBEDDING_DIM_GEMMA,
     GEMMA_CONTEXT_WINDOW,
@@ -17,7 +18,10 @@ def setup_function() -> None:
     reset_capability_cache()
 
 
-def test_local_gemma_uses_large_window_and_768d():
+def test_local_gemma_uses_large_window_and_768d(monkeypatch):
+    monkeypatch.delenv("TOR_CONTEXT_WINDOW", raising=False)
+    monkeypatch.delenv("EMBEDDING_DIMENSIONS", raising=False)
+    reset_capability_cache()
     caps = capabilities_for(
         "lm_studio",
         "google/gemma-4-e4b",
@@ -25,13 +29,27 @@ def test_local_gemma_uses_large_window_and_768d():
         "text-embedding-embeddinggemma-300m",
     )
     assert caps.context_window == GEMMA_CONTEXT_WINDOW
-    assert caps.section_max_tokens >= 8_192
+    assert caps.section_max_tokens >= 4_096
     assert caps.thinking_supported is True
     assert caps.embedding_dimensions == EMBEDDING_DIM_GEMMA
     assert compose_thinking_enabled("lm_studio") is False
 
 
-def test_bedrock_claude_and_cohere_on_same_image():
+def test_local_non_gemma_defaults_to_32k(monkeypatch):
+    monkeypatch.delenv("TOR_CONTEXT_WINDOW", raising=False)
+    reset_capability_cache()
+    caps = capabilities_for(
+        "lm_studio",
+        "typhoon2.5-qwen3-4b",
+        "local",
+        "text-embedding-embeddinggemma-300m",
+    )
+    assert caps.context_window == DEFAULT_CONTEXT_WINDOW
+
+
+def test_bedrock_claude_and_cohere_on_same_image(monkeypatch):
+    monkeypatch.delenv("TOR_CONTEXT_WINDOW", raising=False)
+    reset_capability_cache()
     caps = capabilities_for(
         "bedrock",
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
@@ -64,10 +82,12 @@ def test_openai_and_anthropic_strip_thinking_kwargs():
 def test_env_overrides_section_cap(monkeypatch):
     monkeypatch.setenv("TOR_SECTION_MAX_TOKENS", "4096")
     monkeypatch.setenv("EMBEDDING_DIMENSIONS", "1024")
+    monkeypatch.setenv("EMBEDDING_MAX_TOKENS", "512")
     reset_capability_cache()
     caps = capabilities_for("openai", "gpt-4o-mini", "openai", "text-embedding-3-small")
     assert caps.section_max_tokens == 4096
     assert caps.embedding_dimensions == 1024
+    assert caps.embedding_max_input == 512
 
 
 def test_llm_call_kwargs_keeps_thinking_only_for_local(monkeypatch):

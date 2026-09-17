@@ -13,7 +13,8 @@ from app.deps import get_current_user, get_db
 from app.main import app
 from app.models.user import User
 from app.rag.retrieval import RetrievalResult
-from app.rag.kb_qa import CHAT_MAX_TOKENS, chat_rag_top_k
+from app.llm_tokens import live_chat_max_tokens
+from app.rag.kb_qa import chat_rag_top_k
 
 USER_ID = uuid.UUID("12345678-1234-5678-1234-567812345678")
 OTHER_USER_ID = uuid.UUID("99999999-9999-9999-9999-999999999999")
@@ -219,7 +220,7 @@ def test_chat_sse_streams_tokens(client, mock_officer_user, monkeypatch):
     persist.add.assert_called()
     retrieve.assert_awaited()
     assert retrieve.await_args.kwargs["top_k"] == chat_rag_top_k()
-    assert captured["max_tokens"] == CHAT_MAX_TOKENS
+    assert captured["max_tokens"] == live_chat_max_tokens()
     assert captured.get("enable_thinking") is True
     assert captured.get("disable_thinking") is not True
     assert "ข้อความเนื้อหา" in captured["messages"][0]["content"]

@@ -54,8 +54,32 @@ function sectionIndexClass(filled: boolean, expanded: boolean): string {
   return "text-muted-foreground";
 }
 
-function previewText(sectionKey: string, content: string): string {
-  return previewSectionDraft(sectionKey, content);
+function previewText(section: SectionPayload): string {
+  const fromBody = previewSectionDraft(section.key, section.content || "");
+  if (fromBody.trim()) return fromBody;
+  const fromSubs = (section.subs || [])
+    .map((sub) => (sub.content || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return fromSubs.slice(0, 240);
+}
+
+function resolveDraftFocus(
+  sections: SectionPayload[],
+  key: string
+): { sectionKey: string; subKey?: string } {
+  if (sections.some((section) => section.key === key)) {
+    return { sectionKey: key };
+  }
+  for (const section of sections) {
+    if (section.subs?.some((sub) => sub.key === key)) {
+      return { sectionKey: section.key, subKey: key };
+    }
+  }
+  if (key.startsWith("s4")) {
+    return { sectionKey: "s4", subKey: key === "s4" ? undefined : key };
+  }
+  return { sectionKey: key };
 }
 
 type DraftResult = { sectionKey: string; draftContent: string } | null | void;
@@ -256,10 +280,24 @@ export function Phase3Draft({
             void Promise.resolve(onRefresh?.());
           }}
           onSectionDone={(key, content) => {
+            if (key) {
+              const focus = resolveDraftFocus(sections, key);
+              onExpand(focus.sectionKey);
+              if (focus.subKey) {
+                onOpenSub(focus.subKey);
+              }
+              window.requestAnimationFrame(() => {
+                document
+                  .querySelector(`[data-testid="section-card-${focus.sectionKey}"]`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              });
+            }
             if (key && content?.trim()) {
               setLivePatches((prev) => ({ ...prev, [key]: content }));
               onSectionPatch?.(key, content);
             }
+            // Always reload section list so the form reflects each finished
+            // category/subsection immediately (not only after all_done).
             void Promise.resolve(onRefresh?.()).then(() => {
               if (key && content?.trim()) {
                 onSectionPatch?.(key, content);
@@ -469,6 +507,7 @@ function SectionCard({
         ) : null}
       </div>
       <div
+        data-testid={`section-card-${section.key}`}
         className={cn(
           "mb-2 flex-1 overflow-hidden border-b",
           expanded ? "border-navy/25 bg-slate-50/80" : "border-gray-100"
@@ -502,7 +541,7 @@ function SectionCard({
               data-testid={`section-preview-${section.key}`}
               className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground"
             >
-              {previewText(section.key, section.content) || "รอระบบร่างจากข้อมูลที่คุยมา..."}
+              {previewText(section) || "รอระบบร่างจากข้อมูลที่คุยมา..."}
             </p>
           </div>
           <span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground">

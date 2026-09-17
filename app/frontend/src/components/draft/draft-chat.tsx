@@ -210,6 +210,9 @@ export function DraftChat({
   const endRef = useRef<HTMLDivElement | null>(null);
   const started = useRef(false);
   const sectionsRef = useRef<SectionStatus[]>([]);
+  const seenDraftedKeysRef = useRef<Set<string> | null>(null);
+  const onSectionDoneRef = useRef(onSectionDone);
+  onSectionDoneRef.current = onSectionDone;
 
   const scrollToEnd = useCallback(() => {
     const node = endRef.current;
@@ -231,6 +234,22 @@ export function DraftChat({
     setDraftedCount(Math.min(safeTotal, Math.max(0, drafted)));
   }, []);
 
+  const notifyNewlyDrafted = useCallback((rows: SectionStatus[]) => {
+    const ready = rows
+      .filter((row) => row.ai_drafted || row.has_content)
+      .map((row) => row.section_key);
+    if (seenDraftedKeysRef.current === null) {
+      seenDraftedKeysRef.current = new Set(ready);
+      return;
+    }
+    for (const key of ready) {
+      if (seenDraftedKeysRef.current.has(key)) continue;
+      seenDraftedKeysRef.current.add(key);
+      // No content payload — parent reloads full section text from API.
+      onSectionDoneRef.current?.(key);
+    }
+  }, []);
+
   const refreshStatus = useCallback(async () => {
     try {
       const response = await apiClient.get(
@@ -246,6 +265,7 @@ export function DraftChat({
       const rows = Array.isArray(data.sections) ? data.sections : [];
       setSections(rows);
       sectionsRef.current = rows;
+      notifyNewlyDrafted(rows);
       const total = Number(data.total) || rows.length || 13;
       applyProgress(Number(data.drafted_count) || 0, total);
       const running = data.job_status === "running" || data.job_status === "queued";
@@ -262,7 +282,7 @@ export function DraftChat({
     } catch {
       return false;
     }
-  }, [projectId, onAllDrafted, applyProgress]);
+  }, [projectId, onAllDrafted, applyProgress, notifyNewlyDrafted]);
 
   useEffect(() => {
     if (phase !== "drafting") return;
@@ -326,6 +346,11 @@ export function DraftChat({
               patchDraftMessage(prev, messageId, { content, status: "done" })
             );
             onSectionDone?.(sectionKey, content);
+            if (seenDraftedKeysRef.current === null) {
+              seenDraftedKeysRef.current = new Set();
+            }
+            seenDraftedKeysRef.current.add(sectionKey);
+            void refreshStatus();
             return;
           }
           if (event === "error" || event === "section_error") {
@@ -460,6 +485,10 @@ export function DraftChat({
             );
           }
           onSectionDone?.(key, content);
+          if (seenDraftedKeysRef.current === null) {
+            seenDraftedKeysRef.current = new Set();
+          }
+          seenDraftedKeysRef.current.add(key);
           void refreshStatus();
           return;
         }

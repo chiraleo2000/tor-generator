@@ -13,7 +13,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from app.llm_tokens import DRAFT_MAX_TOKENS, clamp_max_tokens
+from app.llm_tokens import DRAFT_MAX_TOKENS, clamp_max_tokens, live_section_max_tokens
 from app.orchestrator.state import RAGChunk, ValidationFinding
 from app.providers.base import LLMProvider, LLMResponse
 from app.services.staged_prompts import (
@@ -337,14 +337,14 @@ class BaseDraftingAgent(ABC):
         redraft = bool(isinstance(user_input, dict) and user_input.get("redraft"))
         llm_kwargs = {
             "temperature": 0.55 if redraft else 0.3,
-            "max_tokens": DRAFT_MAX_TOKENS,
+            "max_tokens": live_section_max_tokens(),
         }
         llm_kwargs.update(kwargs)
         llm_kwargs.pop("disable_thinking", None)
         llm_kwargs["enable_thinking"] = compose_thinking_enabled(caps.provider)
         llm_kwargs["max_tokens"] = clamp_max_tokens(
             compose_user,
-            int(llm_kwargs.get("max_tokens") or DRAFT_MAX_TOKENS),
+            int(llm_kwargs.get("max_tokens") or live_section_max_tokens()),
             context_window=live_context_window(),
             system=system_prompt,
         )

@@ -73,6 +73,14 @@ services:
       - LM_STUDIO_MODEL=${LM_STUDIO_MODEL:-google/gemma-4-e4b}
       - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-300m}
       - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-1800}
+      - TOR_CONTEXT_WINDOW=${TOR_CONTEXT_WINDOW:-}
+      - TOR_SECTION_MAX_TOKENS=${TOR_SECTION_MAX_TOKENS:-}
+      - TOR_SCOPE_SUB_MAX_TOKENS=${TOR_SCOPE_SUB_MAX_TOKENS:-}
+      - TOR_CHAT_MAX_TOKENS=${TOR_CHAT_MAX_TOKENS:-}
+      - TOR_REVIEW_MAX_TOKENS=${TOR_REVIEW_MAX_TOKENS:-}
+      - TOR_REVIEW_ANALYZE_MAX_TOKENS=${TOR_REVIEW_ANALYZE_MAX_TOKENS:-}
+      - EMBEDDING_MAX_TOKENS=${EMBEDDING_MAX_TOKENS:-}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       - LLAMA_CPP_BASE_URL=${LLAMA_CPP_BASE_URL:-http://host.docker.internal:8080/v1}
       - OPENAI_CHAT_MODEL=${OPENAI_CHAT_MODEL:-gpt-4o-mini}
@@ -190,6 +198,8 @@ services:
       - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-300m}
       - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-1800}
+      - EMBEDDING_MAX_TOKENS=${EMBEDDING_MAX_TOKENS:-}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-local}
       - LOCAL_EMBEDDING_SERVER=${LOCAL_EMBEDDING_SERVER:-lm_studio}
       - LOCAL_EMBEDDING_BASE_URL=${LOCAL_EMBEDDING_BASE_URL:-}
@@ -352,7 +362,8 @@ services:
   # MinIO (S3-Compatible Object Storage for Documents)
   # ---------------------------------------------------------------------------
   minio:
-    image: minio/minio:latest
+    # quay.io mirror — Docker Hub often denies anonymous pulls of minio/minio
+    image: quay.io/minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}

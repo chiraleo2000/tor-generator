@@ -1,4 +1,4 @@
-"""Fan-out canonical prompts to backend, documents/prompts, skill packs, and Amazon Quick.
+﻿"""Fan-out canonical prompts to backend, documents/prompts, skill packs, and Amazon Quick.
 
 Source of truth: documents/prompts/canonical/
 Idempotent: running twice writes the same bytes.
@@ -20,7 +20,7 @@ SECTION_DIR = CANONICAL / "section_prompts"
 GENERATED_PY = BACKEND / "app" / "domain" / "generated_prompts.py"
 BEGIN = "<!-- GENERATED:BEGIN -->"
 END = "<!-- GENERATED:END -->"
-QUICK_VERSION = "0.7.1"
+QUICK_VERSION = "0.8.0"
 
 SKILL_MD_PATHS = [
     REPO / "skills" / "Draft-TORs-Skills" / "claude" / "tor-procurement" / "SKILL.md",

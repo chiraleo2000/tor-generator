@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Amazon Quick remote MCP + REST twin (JSON Schema Draft 7, no stdio).
 
 Amazon Quick registers tools from tools/list. inputSchema.required must be an
@@ -27,7 +27,7 @@ from typing import Any
 HOST = os.environ.get("QUICK_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("QUICK_MCP_PORT", "8767"))
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_VERSION = "0.7.1"
+SERVER_VERSION = "0.8.0"
 MCP_TOOLS_CALL = "tools/call"
 _JSON = "application/json"
 _HEALTH_PATH = "/health"

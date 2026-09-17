@@ -1,7 +1,7 @@
 """Provider/model capability table for the same Docker image on local VM and cloud.
 
-LLM and embedding providers are selected with env (`LLM_PROVIDER`, `EMBEDDING_PROVIDER`,
-model ids). Do not hard-code Gemma's 131k window, thinking flags, or 768-d vectors.
+LLM and embedding limits are driven by env (``TOR_*``, ``EMBEDDING_*``) with
+model-name heuristics only as fallbacks. Do not assume Gemma 131k or 768-d.
 """
 
 from __future__ import annotations
@@ -18,16 +18,17 @@ from app.providers.constants import (
     LOCAL_LLM_PROVIDERS,
 )
 
-# Gemma 4 E4B / local llama.cpp-class windows.
+# Named model heuristics (used only when TOR_CONTEXT_WINDOW is unset).
 GEMMA_CONTEXT_WINDOW = 131_072
-# Safe default when the model is unknown (OpenAI-compatible endpoint on a VM).
 DEFAULT_CONTEXT_WINDOW = 32_768
-DEFAULT_SECTION_COMPLETION = 16_384
+DEFAULT_SECTION_COMPLETION = 8_192
 DEFAULT_SCOPE_COMPLETION = 4_096
-LOCAL_SECTION_COMPLETION = 32_768
-LOCAL_SCOPE_COMPLETION = 8_192
+LOCAL_SECTION_COMPLETION = 8_192
+LOCAL_SCOPE_COMPLETION = 4_096
 CLOUD_SECTION_COMPLETION = 16_384
 CLOUD_SCOPE_COMPLETION = 4_096
+DEFAULT_CHAT_COMPLETION = 8_192
+DEFAULT_REVIEW_ANALYZE = 16_384
 
 EMBEDDING_INPUT_GEMMA = 2_048
 EMBEDDING_INPUT_OPENAI = 8_191
@@ -63,19 +64,22 @@ class ModelCapabilities:
     context_window: int
     section_max_tokens: int
     scope_max_tokens: int
+    chat_max_tokens: int
+    review_max_tokens: int
+    review_analyze_max_tokens: int
     thinking_supported: bool
     embedding_max_input: int
     embedding_dimensions: int
 
 
-def _int_env(name: str, default: int) -> int:
+def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     raw = os.environ.get(name)
     if raw is None or str(raw).strip() == "":
-        return default
+        return max(minimum, int(default))
     try:
-        return max(256, int(raw))
+        return max(minimum, int(raw))
     except ValueError:
-        return default
+        return max(minimum, int(default))
 
 
 def _settings_or_none() -> Any:
@@ -85,6 +89,25 @@ def _settings_or_none() -> Any:
         return get_settings()
     except Exception:
         return None
+
+
+def _setting_int(attr: str, env_name: str, default: int, *, minimum: int = 1) -> int:
+    """Prefer process env, then explicit Settings field, then heuristic default."""
+    raw = os.environ.get(env_name)
+    if raw is not None and str(raw).strip() != "":
+        try:
+            return max(minimum, int(raw))
+        except ValueError:
+            pass
+    settings = _settings_or_none()
+    if settings is not None:
+        value = getattr(settings, attr, None)
+        if value is not None and str(value).strip() != "":
+            try:
+                return max(minimum, int(value))
+            except (TypeError, ValueError):
+                pass
+    return max(minimum, int(default))
 
 
 def _llm_provider(settings: Any | None = None) -> str:
@@ -149,9 +172,13 @@ def _embedding_model(provider: str, settings: Any | None = None) -> str:
 
 
 def _context_window(provider: str, model: str) -> int:
+    """Heuristic fallback when TOR_CONTEXT_WINDOW is unset."""
     lowered = f"{provider} {model}".lower()
-    if "gemma" in lowered or provider in LOCAL_LLM_PROVIDERS:
+    if "gemma-4" in lowered or "gemma4" in lowered or "gemma-3" in lowered:
         return GEMMA_CONTEXT_WINDOW
+    if provider in LOCAL_LLM_PROVIDERS:
+        # Local OpenAI-compatible servers: safe default is 32k unless env overrides.
+        return DEFAULT_CONTEXT_WINDOW
     if "gpt-4o" in lowered or "gpt-4.1" in lowered or "o3" in lowered or "o4" in lowered:
         return 128_000
     if "gpt-4" in lowered:
@@ -219,19 +246,60 @@ def capabilities_for(
     embedding_provider: str,
     embedding_model: str,
 ) -> ModelCapabilities:
-    window = _int_env("TOR_CONTEXT_WINDOW", _context_window(llm_provider, chat_model))
+    heuristic_window = _context_window(llm_provider, chat_model)
+    window = _setting_int(
+        "tor_context_window", "TOR_CONTEXT_WINDOW", heuristic_window, minimum=256
+    )
     section_default, scope_default = _completion_caps(llm_provider, window)
-    section = _int_env("TOR_SECTION_MAX_TOKENS", section_default)
-    scope = _int_env("TOR_SCOPE_SUB_MAX_TOKENS", scope_default)
+    section = _setting_int(
+        "tor_section_max_tokens",
+        "TOR_SECTION_MAX_TOKENS",
+        section_default,
+        minimum=256,
+    )
+    scope = _setting_int(
+        "tor_scope_sub_max_tokens",
+        "TOR_SCOPE_SUB_MAX_TOKENS",
+        scope_default,
+        minimum=256,
+    )
+    chat_default = min(DEFAULT_CHAT_COMPLETION, max(256, window - 256))
+    chat = _setting_int(
+        "tor_chat_max_tokens", "TOR_CHAT_MAX_TOKENS", chat_default, minimum=256
+    )
+    review = _setting_int(
+        "tor_review_max_tokens",
+        "TOR_REVIEW_MAX_TOKENS",
+        min(window, max(256, window - 256)),
+        minimum=256,
+    )
+    review_analyze = _setting_int(
+        "tor_review_analyze_max_tokens",
+        "TOR_REVIEW_ANALYZE_MAX_TOKENS",
+        min(DEFAULT_REVIEW_ANALYZE, review),
+        minimum=256,
+    )
     embed_in, embed_dim = _embedding_limits(embedding_provider, embedding_model)
-    embed_in = _int_env("EMBEDDING_MAX_TOKENS", embed_in)
-    embed_dim = _int_env("EMBEDDING_DIMENSIONS", embed_dim)
+    embed_in = _setting_int(
+        "embedding_max_tokens", "EMBEDDING_MAX_TOKENS", embed_in, minimum=64
+    )
+    embed_dim = _setting_int(
+        "embedding_dimensions", "EMBEDDING_DIMENSIONS", embed_dim, minimum=8
+    )
+    section = min(section, max(256, window - 256))
+    scope = min(scope, section)
+    chat = min(chat, max(256, window - 256))
+    review = min(review, max(256, window - 256))
+    review_analyze = min(review_analyze, review)
     return ModelCapabilities(
         provider=llm_provider,
         model=chat_model,
         context_window=window,
-        section_max_tokens=min(section, max(256, window - 256)),
-        scope_max_tokens=min(scope, section),
+        section_max_tokens=section,
+        scope_max_tokens=scope,
+        chat_max_tokens=chat,
+        review_max_tokens=review,
+        review_analyze_max_tokens=review_analyze,
         thinking_supported=thinking_supported(llm_provider),
         embedding_max_input=embed_in,
         embedding_dimensions=embed_dim,
@@ -260,6 +328,18 @@ def section_max_tokens() -> int:
 
 def scope_max_tokens() -> int:
     return current_capabilities().scope_max_tokens
+
+
+def chat_max_tokens() -> int:
+    return current_capabilities().chat_max_tokens
+
+
+def review_max_tokens() -> int:
+    return current_capabilities().review_max_tokens
+
+
+def review_analyze_max_tokens() -> int:
+    return current_capabilities().review_analyze_max_tokens
 
 
 def embedding_max_input() -> int:

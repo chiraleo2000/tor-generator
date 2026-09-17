@@ -23,15 +23,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.llm_tokens import (
-    REVIEW_CONTEXT_WINDOW,
     REVIEW_CUSTOM_REQUIREMENTS_CHARS,
     REVIEW_LEGAL_CONTEXT_CHARS,
-    REVIEW_MAX_TOKENS,
     REVIEW_REQUIREMENTS_CHARS,
     REVIEW_SUGGESTION_MAX_TOKENS,
     REVIEW_TIMEOUT_SECONDS,
     clamp_max_tokens,
     estimate_tokens,
+    live_review_context_window,
+    live_review_max_tokens,
 )
 from app.orchestrator.agents.base import THAI_FORMAL_REGISTER_PREAMBLE
 from app.orchestrator.section_state import SECTION_NAMES_TH, SECTION_ORDER
@@ -739,7 +739,7 @@ class ReviewAgent:
         packed = self._compose_review_user_message(sections, project_metadata, extra)
         used = estimate_tokens(REVIEW_SYSTEM_PROMPT) + estimate_tokens(packed)
         # Reserve a large completion budget for the analyze + JSON passes.
-        return used + 16_384 < REVIEW_CONTEXT_WINDOW
+        return used + min(16_384, live_review_context_window() // 4) < live_review_context_window()
 
     def _compose_review_user_message(
         self,
@@ -774,7 +774,7 @@ class ReviewAgent:
         max_out = clamp_max_tokens(
             compose_user,
             REVIEW_SUGGESTION_MAX_TOKENS,
-            context_window=REVIEW_CONTEXT_WINDOW,
+            context_window=live_review_context_window(),
             system=REVIEW_SYSTEM_PROMPT,
         )
         messages = [
@@ -891,8 +891,8 @@ class ReviewAgent:
         compose_body = attach_analysis(body, notes, COMPOSE_REVIEW_COMMENT)
         max_out = clamp_max_tokens(
             compose_body,
-            REVIEW_MAX_TOKENS,
-            context_window=REVIEW_CONTEXT_WINDOW,
+            live_review_max_tokens(),
+            context_window=live_review_context_window(),
             system=system,
         )
         response = await llm.invoke(

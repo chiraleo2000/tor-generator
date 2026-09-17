@@ -15,7 +15,8 @@ from app.models.kb_chat_session import KBChatSession
 from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.rag.hybrid import unpack_hybrid
-from app.rag.kb_qa import CHAT_MAX_TOKENS, build_kb_qa_messages, chat_rag_top_k
+from app.rag.kb_qa import build_kb_qa_messages, chat_rag_top_k
+from app.llm_tokens import live_chat_max_tokens
 from app.services.session_cache import SessionCacheService
 
 logger = logging.getLogger("tor_app.kb_chat")
@@ -131,7 +132,7 @@ class KnowledgeChatService:
         response = await llm.invoke(
             build_kb_qa_messages(question=message, chunks=chunks, history=history),
             temperature=0.2,
-            max_tokens=CHAT_MAX_TOKENS,
+            max_tokens=live_chat_max_tokens(),
         )
         return getattr(response, "content", "") or ""
 

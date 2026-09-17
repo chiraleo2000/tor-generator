@@ -558,6 +558,7 @@ describe("Phase3Draft", () => {
 
   it("updates gold checklist from section_done without waiting for reload", () => {
     const onRefresh = vi.fn();
+    const onExpand = vi.fn();
     render(
       <Phase3Draft
         sections={[s3]}
@@ -567,7 +568,7 @@ describe("Phase3Draft", () => {
         busy={false}
         actionError={null}
         actionInfo={null}
-        onExpand={vi.fn()}
+        onExpand={onExpand}
         onOpenSub={vi.fn()}
         onSave={vi.fn().mockResolvedValue(undefined)}
         onDraft={vi.fn()}
@@ -581,6 +582,8 @@ describe("Phase3Draft", () => {
     fireEvent.click(screen.getByTestId("mock-section-done"));
     expect(screen.getByTestId("phase3-gold-checklist")).toHaveTextContent("ขาด 0");
     expect(screen.getByTestId("gold-status-s3")).toHaveTextContent("ครบ");
+    expect(screen.getByTestId("section-preview-s3")).toHaveTextContent("กรมบัญชีกลาง");
+    expect(onExpand).toHaveBeenCalledWith("s3");
     expect(onRefresh).toHaveBeenCalled();
   });
 });

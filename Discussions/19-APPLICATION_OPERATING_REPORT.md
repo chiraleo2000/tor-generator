@@ -1,6 +1,6 @@
-# รายงานการทำงานของแอป TOR Generator
+﻿# รายงานการทำงานของแอป TOR Generator
 
-**เวอร์ชัน 0.7.1** · วันที่จัดทำ **24 สิงหาคม 2026** · อัปเดตคู่มือ AWS Quick **14 กันยายน 2026** · ผลทดสอบล่าสุด **17 กันยายน 2026** (ถาม-ตอบแบบบทสรุป · พื้นฐาน 15 ก.ย. harden live workflow · gold pack 16/16)  
+**เวอร์ชัน 0.8.0** · token budgets อ่านจาก .env (TOR_CONTEXT_WINDOW / EMBEDDING_MAX_TOKENS) ไม่ hardcode Gemma 131k · วันที่จัดทำ **24 สิงหาคม 2026** · อัปเดตคู่มือ AWS Quick **14 กันยายน 2026** · ผลทดสอบล่าสุด **17 กันยายน 2026** (ถาม-ตอบแบบบทสรุป · พื้นฐาน 15 ก.ย. harden live workflow · gold pack 16/16)  
 แหล่งความจริงของตัวเลขเทสต์รอบนี้: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) และ [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)
 
 แอปนี้ช่วยเจ้าหน้าที่พัสดุ**ร่างและตรวจ TOR** (ขอบเขตของงาน) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 โดยใช้ **Section_Profile ตามหมวดใหญ่ ๗ ประเภท** (ดู [37-TOR-PROFILES-BY-TYPE.md](37-TOR-PROFILES-BY-TYPE.md)) รับชุดเอกสาร จัดเข้าช่อง ตรวจด้วย Rule Engine แล้วส่งออก Word/PDF รูปแบบราชการ

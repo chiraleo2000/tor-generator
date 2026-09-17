@@ -52,7 +52,8 @@ async def extract_graph_from_text(
     *,
     document_name: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    excerpt = text[:12000]
+    # Keep prompt short for 4k-ctx / 7.5GB VRAM GPUs (Tesla P4).
+    excerpt = text[:3500]
     try:
         payload = await invoke_with_schema(
             llm,
@@ -66,7 +67,7 @@ async def extract_graph_from_text(
             json_schema_for(GraphExtractResult),
             "graph_extract",
             temperature=0.1,
-            max_tokens=2048,
+            max_tokens=1024,
         )
     except ValueError:
         logger.warning("Graph JSON parse failed for %s", document_name)

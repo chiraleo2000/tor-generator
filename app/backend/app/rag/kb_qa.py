@@ -4,15 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.llm_tokens import CHAT_MAX_TOKENS, GEMMA_CONTEXT_WINDOW, estimate_tokens
+from app.llm_tokens import (
+    estimate_tokens,
+    live_chat_max_tokens,
+    live_context_window,
+)
 
-# Gemma 4 E4B context window allowed for Q&A (prompt + completion).
-CHAT_CONTEXT_WINDOW = GEMMA_CONTEXT_WINDOW
+# Catalog aliases for tests / older imports; runtime uses live_* below.
+CHAT_MAX_TOKENS = 32_768
+CHAT_CONTEXT_WINDOW = 32_768
 CHAT_RAG_TOP_K = 96
 CHAT_MAX_CONTEXT_CHUNKS = 96
 CHAT_HISTORY_MESSAGES = 6
 CHAT_HISTORY_CHAR_CAP = 12_000
-CHAT_CONTEXT_TOKEN_BUDGET = CHAT_CONTEXT_WINDOW - CHAT_MAX_TOKENS - 4_000
+
+
+def chat_context_token_budget() -> int:
+    return max(1_024, live_context_window() - live_chat_max_tokens() - 4_000)
 
 DRAFT_INTAKE_TOP_K = 5
 DRAFT_INTAKE_MAX_TOKENS = 2048
@@ -188,7 +196,7 @@ def pack_kb_context(
     if budget is None and char_budget is not None:
         budget = estimate_tokens("x" * max(0, char_budget))
     if budget is None:
-        budget = CHAT_CONTEXT_TOKEN_BUDGET
+        budget = chat_context_token_budget()
     limit = chat_max_context_chunks() if max_chunks is None else max_chunks
     packed: list[str] = []
     used = 0

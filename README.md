@@ -95,9 +95,34 @@ python -m app.seed_raw_docs
 
 ### LM Studio (ค่าเริ่มต้น)
 
-1. โหลดแชท **google/gemma-4-e4b** และ embeddings **text-embedding-embeddinggemma-300m**
-2. เปิดเซิร์ฟเวอร์ OpenAI-compatible ที่ `http://127.0.0.1:1234/v1`
-3. จาก Docker backend ใช้ `http://host.docker.internal:1234/v1`
+1. โหลดแชท (เช่น **google/gemma-4-e4b** หรือโมเดลเล็กกว่า) และ embeddings **text-embedding-embeddinggemma-300m**
+2. ตั้ง context ใน LM Studio ให้ตรงกับโมเดล (Gemma 4 สูงสุด 131072; โมเดล 32k ใช้ `-c 32768`)
+3. เปิดเซิร์ฟเวอร์ OpenAI-compatible ที่ `http://127.0.0.1:1234/v1`
+4. จาก Docker backend ใช้ `http://host.docker.internal:1234/v1`
+5. ล็อกงบโทเคนใน `.env` (ไม่ hardcode 131k ในโค้ดแล้ว):
+
+```env
+LM_STUDIO_MODEL=typhoon2.5-qwen3-4b
+TOR_CONTEXT_WINDOW=32768
+TOR_SECTION_MAX_TOKENS=8192
+TOR_SCOPE_SUB_MAX_TOKENS=4096
+TOR_CHAT_MAX_TOKENS=8192
+TOR_REVIEW_MAX_TOKENS=32768
+EMBEDDING_MAX_TOKENS=2048
+EMBEDDING_DIMENSIONS=768
+```
+
+| ตัวแปร | ความหมาย |
+|--------|----------|
+| `TOR_CONTEXT_WINDOW` | หน้าต่าง context ทั้งก้อน (ต้อง ≤ ที่โหลดใน LM Studio) |
+| `TOR_SECTION_MAX_TOKENS` | เพดาน completion ตอนร่างแต่ละหมวด |
+| `TOR_SCOPE_SUB_MAX_TOKENS` | เพดานร่าง scope ย่อย |
+| `TOR_CHAT_MAX_TOKENS` | เพดานตอบแชทคลัง |
+| `TOR_REVIEW_MAX_TOKENS` | เพดานขั้นตรวจ TOR |
+| `EMBEDDING_MAX_TOKENS` | ความยาวข้อความสูงสุดต่อชิ้นก่อน embed |
+| `EMBEDDING_DIMENSIONS` | มิติเวกเตอร์ (EmbeddingGemma = 768) |
+
+เว้นว่าง = ใช้ heuristic ตามชื่อโมเดล (Gemma 4 → 131072; local อื่น → 32768)
 
 ## รันโดยไม่ใช้ Compose
 

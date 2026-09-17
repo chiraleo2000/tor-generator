@@ -37,9 +37,10 @@ from app.domain.tor_sections import (
 )
 from app.llm_tokens import (
     DRAFT_MAX_TOKENS,
-    GEMMA_CONTEXT_WINDOW,
+    chars_for_tokens,
     clamp_max_tokens,
     estimate_tokens,
+    live_context_window,
 )
 from app.models.project import Project
 from app.models.tor_section import TORSection
@@ -62,12 +63,14 @@ logger = logging.getLogger(__name__)
 ANALYZE_USE_LLM = True
 ANALYZE_LLM_TIMEOUT_SEC = 1800
 ANALYZE_MAX_TOKENS = DRAFT_MAX_TOKENS
-ANALYZE_CONTEXT_WINDOW = GEMMA_CONTEXT_WINDOW
-# Gemma ~131k context: prefer few large windows (fewer sequential LLM round-trips).
-# estimate_tokens ≈ chars/2 → 96k chars ≈ 48k input tokens; leave room for system+JSON out.
-ANALYZE_CHUNK_CHARS = 96_000
 ANALYZE_CHUNK_OVERLAP = 2_400
 ANALYZE_MAX_CHUNKS = 4
+
+
+def _analyze_chunk_chars() -> int:
+    """Fit intake windows inside TOR_CONTEXT_WINDOW (≈ chars/2 tokens)."""
+    # Leave headroom for system prompt + JSON completion.
+    return max(4_000, chars_for_tokens(max(1_024, live_context_window() // 2)))
 INTAKE_TEXT_CHAR_LIMIT = 500_000
 INTAKE_PACK_LIMIT = 200_000
 # LM Studio often serves embeddings/chat sequentially — allow long waits, avoid skip.
@@ -946,12 +949,13 @@ def _chunk_text_window(text: str) -> list[str]:
     raw = (text or "").strip()
     if not raw:
         return []
-    if len(raw) <= ANALYZE_CHUNK_CHARS:
+    chunk_chars = _analyze_chunk_chars()
+    if len(raw) <= chunk_chars:
         return [raw]
     chunks: list[str] = []
     start = 0
     while start < len(raw):
-        end = min(len(raw), start + ANALYZE_CHUNK_CHARS)
+        end = min(len(raw), start + chunk_chars)
         chunks.append(raw[start:end])
         if end >= len(raw):
             break
@@ -981,7 +985,7 @@ def _analyze_prompt_chunks(pack_text: str) -> list[str]:
     raw = (pack_text or "").strip()
     if not raw:
         return []
-    if len(raw) <= ANALYZE_CHUNK_CHARS:
+    if len(raw) <= _analyze_chunk_chars():
         return [raw]
     pieces = _chunk_text_window(raw)
     return _sample_chunks_evenly(pieces, ANALYZE_MAX_CHUNKS)
@@ -1017,7 +1021,7 @@ def _analyze_completion_tokens(user: str, system: str) -> int:
     return clamp_max_tokens(
         user,
         requested,
-        context_window=ANALYZE_CONTEXT_WINDOW,
+        context_window=live_context_window(),
         system=system,
     )
 

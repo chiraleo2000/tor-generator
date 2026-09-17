@@ -31,8 +31,8 @@ from app.providers.factory import ProviderFactory
 from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.hybrid import unpack_hybrid
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
+from app.llm_tokens import live_chat_max_tokens
 from app.rag.kb_qa import (
-    CHAT_MAX_TOKENS,
     DRAFT_INTAKE_CONTEXT_CHUNKS,
     DRAFT_INTAKE_MAX_TOKENS,
     DRAFT_INTAKE_SYSTEM,
@@ -608,7 +608,7 @@ async def send_message(
     )
     is_kb = room.kind == KIND_KB
     top_k = chat_rag_top_k() if is_kb else DRAFT_INTAKE_TOP_K
-    max_tokens = CHAT_MAX_TOKENS if is_kb else DRAFT_INTAKE_MAX_TOKENS
+    max_tokens = live_chat_max_tokens() if is_kb else DRAFT_INTAKE_MAX_TOKENS
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()

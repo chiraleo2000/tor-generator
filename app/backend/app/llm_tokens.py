@@ -5,22 +5,28 @@ Draft uses DRAFT_MIN_TOKENS as a soft floor in substance prompts (not a
 verbosity target). KB chat no longer
 enforces a minimum length (CHAT_MIN_TOKENS is unused).
 
-Completion and embedding limits follow the provider selected on this Docker
-image (LM Studio locally, Bedrock/OpenAI/Anthropic on the same image in a VM).
-``clamp_max_tokens`` still keeps prompt + completion inside the live window.
+Completion and embedding limits follow env (``TOR_*`` / ``EMBEDDING_*``) via
+``current_capabilities()``. Catalog constants below are fallbacks / test ceilings;
+prefer the ``live_*`` helpers at call sites.
 """
 
 from __future__ import annotations
 
 from app.providers.model_capabilities import (
+    DEFAULT_CONTEXT_WINDOW,
     GEMMA_CONTEXT_WINDOW as _GEMMA_WINDOW,
+    chat_max_tokens as _live_chat,
     current_capabilities,
     embedding_max_input as live_embedding_max_input,
+    review_analyze_max_tokens as _live_review_analyze,
+    review_max_tokens as _live_review,
+    section_max_tokens as _live_section,
+    scope_max_tokens as _live_scope,
 )
 
-# Kept for tests and local-Gemma docs; live clamp uses current_capabilities().
+# Kept for tests / docs that mention Gemma's max window; live clamp uses env.
 GEMMA_CONTEXT_WINDOW = _GEMMA_WINDOW
-# Catalog ceilings — clamp_max_tokens / live helpers shrink per provider.
+# Catalog ceilings — clamp_max_tokens / live helpers shrink per provider/env.
 SECTION_MAX_TOKENS = 32_768
 SECTION_MIN_TOKENS = 192
 SCOPE_SUB_MAX_TOKENS = 8_192
@@ -31,10 +37,11 @@ CHAT_MAX_TOKENS = 32_768
 CHAT_MIN_TOKENS = 0
 EMBEDDING_MAX_TOKENS = 2_048
 
-REVIEW_MAX_TOKENS = GEMMA_CONTEXT_WINDOW
-REVIEW_CONTEXT_WINDOW = GEMMA_CONTEXT_WINDOW
-REVIEW_ANALYZE_MAX_TOKENS = 65_536
-REVIEW_SUGGESTION_MAX_TOKENS = 32_768
+# Review catalog ceilings (actual runtime uses live_review_* / TOR_CONTEXT_WINDOW).
+REVIEW_MAX_TOKENS = DEFAULT_CONTEXT_WINDOW
+REVIEW_CONTEXT_WINDOW = DEFAULT_CONTEXT_WINDOW
+REVIEW_ANALYZE_MAX_TOKENS = 16_384
+REVIEW_SUGGESTION_MAX_TOKENS = 8_192
 REVIEW_TIMEOUT_SECONDS = 900.0
 REVIEW_LEGAL_CONTEXT_CHARS = 90_000
 REVIEW_REQUIREMENTS_CHARS = 60_000
@@ -48,15 +55,31 @@ def live_context_window() -> int:
 
 
 def live_section_max_tokens() -> int:
-    return current_capabilities().section_max_tokens
+    return _live_section()
 
 
 def live_scope_max_tokens() -> int:
-    return current_capabilities().scope_max_tokens
+    return _live_scope()
+
+
+def live_chat_max_tokens() -> int:
+    return _live_chat()
+
+
+def live_review_max_tokens() -> int:
+    return _live_review()
+
+
+def live_review_analyze_max_tokens() -> int:
+    return _live_review_analyze()
 
 
 def live_review_context_window() -> int:
-    return max(REVIEW_CONTEXT_WINDOW, live_context_window())
+    return live_context_window()
+
+
+def live_embedding_max_tokens() -> int:
+    return live_embedding_max_input()
 
 
 def estimate_tokens(text: str) -> int:

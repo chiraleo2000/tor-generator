@@ -16,9 +16,9 @@ from app.domain.section_profile import profile_for_project, subsection_title
 from app.domain.tor_sections import TOR_SECTION_LABELS
 from app.llm_tokens import (
     DRAFT_MAX_TOKENS,
-    SCOPE_SUB_MAX_TOKENS,
-    SECTION_MAX_TOKENS,
     clamp_max_tokens,
+    live_section_max_tokens,
+    live_scope_max_tokens,
 )
 from app.providers.factory import ProviderFactory
 from app.rag.kb_qa import draft_rag_top_k
@@ -299,7 +299,7 @@ async def draft_single_section(
     async for token in _stream_llm_prompt(
         DRAFT_SYSTEM_PROMPT,
         user_prompt,
-        max_tokens=SECTION_MAX_TOKENS,
+        max_tokens=live_section_max_tokens(),
     ):
         from app.services.thai_draft import reject_intake_echo
 
@@ -331,7 +331,7 @@ async def draft_scope_subsection(
     )
     intake = slot_content(slot_map, "_project_intake")
     async for token in _stream_llm_prompt(
-        DRAFT_SYSTEM_PROMPT, prompt, max_tokens=SCOPE_SUB_MAX_TOKENS
+        DRAFT_SYSTEM_PROMPT, prompt, max_tokens=live_scope_max_tokens()
     ):
         from app.services.thai_draft import reject_intake_echo
 

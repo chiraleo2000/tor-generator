@@ -52,7 +52,9 @@ def list_raw_pdfs() -> list[Path]:
     return [item.path for item in list_mandatory_sources()]
 
 
-async def run_seed(*, wipe_baseline: bool = False) -> None:
+async def run_seed(
+    *, wipe_baseline: bool = False, extract_graph: bool = False
+) -> None:
     sources = list_mandatory_sources()
     if not sources:
         _safe_print(_HOST_HINT)
@@ -78,6 +80,7 @@ async def run_seed(*, wipe_baseline: bool = False) -> None:
         _safe_print(f"MongoDB unavailable: {exc}")
 
     driver = None
+    # Graph wipe still runs on --wipe-baseline; LLM extract is optional.
     try:
         from neo4j import AsyncGraphDatabase
 
@@ -90,6 +93,11 @@ async def run_seed(*, wipe_baseline: bool = False) -> None:
         _safe_print(f"Neo4j unavailable: {exc}")
         driver = None
 
+    if not extract_graph:
+        _safe_print(
+            "extract_graph=off — embedding-only (no chat LLM / GraphRAG extract)"
+        )
+
     async with factory() as db:
         stats = await sync_mandatory_sources(
             db,
@@ -97,6 +105,7 @@ async def run_seed(*, wipe_baseline: bool = False) -> None:
             wipe_baseline=wipe_baseline,
             progress=_safe_print,
             neo4j_driver=driver,
+            extract_graph=extract_graph,
         )
         await db.commit()
 
@@ -108,13 +117,13 @@ async def run_seed(*, wipe_baseline: bool = False) -> None:
     _safe_print(
         f"seed_raw_docs complete ingested={stats.ingested} "
         f"skipped={stats.skipped} failed={stats.failed} "
-        f"(scanned {len(sources)} PDFs)"
+        f"(scanned {len(sources)} PDFs, extract_graph={extract_graph})"
     )
 
 
 async def wipe_and_seed() -> None:
     """Replace baseline corpus (used by S3 sync). Does not delete user uploads."""
-    await run_seed(wipe_baseline=True)
+    await run_seed(wipe_baseline=True, extract_graph=False)
 
 
 def main() -> None:
@@ -124,8 +133,18 @@ def main() -> None:
         action="store_true",
         help="Replace shared corpus; keep officer private documents",
     )
+    parser.add_argument(
+        "--extract-graph",
+        action="store_true",
+        help="Also run GraphRAG chat-LLM extract (needs VRAM for chat+embed; off by default)",
+    )
     args = parser.parse_args()
-    asyncio.run(run_seed(wipe_baseline=args.wipe_baseline))
+    asyncio.run(
+        run_seed(
+            wipe_baseline=args.wipe_baseline,
+            extract_graph=bool(args.extract_graph),
+        )
+    )
 
 
 if __name__ == "__main__":

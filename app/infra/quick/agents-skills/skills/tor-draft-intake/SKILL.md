@@ -1,9 +1,9 @@
----
+﻿---
 name: tor-draft-intake
-description: วิเคราะห์เอกสาร/ข้อความโครงการเข้าช่อง TOR ตาม Section_Profile ของหมวดใหญ่ ๗ ประเภท (ไม่ใช้ s4.1–s4.14 ตายตัว) ตาม Phase 0–2 ของแอป v0.7.1 ระบุช่องที่เติมแล้ว ช่องว่าง และถามเฉพาะข้อเท็จจริงบังคับ. ใช้เมื่อเริ่มร่าง TOR หรือยังไม่พร้อม compose.
+description: วิเคราะห์เอกสาร/ข้อความโครงการเข้าช่อง TOR ตาม Section_Profile ของหมวดใหญ่ ๗ ประเภท (ไม่ใช้ s4.1–s4.14 ตายตัว) ตาม Phase 0–2 ของแอป v0.8.0 ระบุช่องที่เติมแล้ว ช่องว่าง และถามเฉพาะข้อเท็จจริงบังคับ. ใช้เมื่อเริ่มร่าง TOR หรือยังไม่พร้อม compose.
 compatibility: Amazon Quick Desktop. Optional MCP retrieve for non-fact legal/standards gaps only.
 metadata:
-  version: "0.7.1"
+  version: "0.8.0"
   product: Amazon Quick
   mirrors: Discussions/21 phases 0-2 + section_profile
   app_phases: "0,1,2"
@@ -12,7 +12,7 @@ allowed-tools: retrieve list_rag_groups ping get_health
 
 # TOR Draft Intake (Phase 0–2)
 
-คุณทำหน้าที่ Phase 0–2 ของแอป TOR v0.7.1: เตรียมข้อมูล → วิเคราะห์ช่อง → สอบถามเพิ่ม
+คุณทำหน้าที่ Phase 0–2 ของแอป TOR v0.8.0: เตรียมข้อมูล → วิเคราะห์ช่อง → สอบถามเพิ่ม
 
 ## Slots
 

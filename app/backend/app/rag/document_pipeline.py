@@ -61,8 +61,13 @@ async def ingest_file_bytes(
     corpus_group: str | None = None,
     category: str | None = None,
     content_sha256: str | None = None,
+    extract_graph: bool = True,
 ) -> KnowledgeBaseDocument:
-    """Store original, chunk/embed, and optionally extract a graph."""
+    """Store original, chunk/embed, and optionally extract a graph.
+
+    Set extract_graph=False to skip Neo4j LLM extraction (embedding-only ingest),
+    which keeps VRAM free for the embedding model on small GPUs.
+    """
     resolved_group = corpus_group or group_for_filename(filename, owner_id=owner_id)
     store = store_from_client(runtime.mongo_client)
     grid_id = None
@@ -126,7 +131,11 @@ async def ingest_file_bytes(
     except Exception:
         logger.exception("refresh document after ingest failed for %s", filename)
 
-    if _should_extract_legal_graph(scope) and runtime.neo4j_driver is not None:
+    if (
+        extract_graph
+        and _should_extract_legal_graph(scope)
+        and runtime.neo4j_driver is not None
+    ):
         try:
             from app.rag.extraction import extract_text
 

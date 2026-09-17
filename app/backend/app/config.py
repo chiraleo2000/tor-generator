@@ -12,6 +12,7 @@ import logging
 import os
 from typing import Any, Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.providers.constants import (
@@ -112,8 +113,37 @@ class Settings(BaseSettings):
     sglang_embedding_model: str = "google/embeddinggemma-300m"
     local_embedding_server: str = "lm_studio"
     local_embedding_base_url: str = ""
+    # LLM / embedding token windows (None = model heuristic; set in .env to pin)
+    tor_context_window: int | None = None
+    tor_section_max_tokens: int | None = None
+    tor_scope_sub_max_tokens: int | None = None
+    tor_chat_max_tokens: int | None = None
+    tor_review_max_tokens: int | None = None
+    tor_review_analyze_max_tokens: int | None = None
+    embedding_max_tokens: int | None = None
+    embedding_dimensions: int | None = None
     # Custom RAG HTTP (optional extra retrieval source)
     custom_rag_enabled: bool = False
+
+    @field_validator(
+        "tor_context_window",
+        "tor_section_max_tokens",
+        "tor_scope_sub_max_tokens",
+        "tor_chat_max_tokens",
+        "tor_review_max_tokens",
+        "tor_review_analyze_max_tokens",
+        "embedding_max_tokens",
+        "embedding_dimensions",
+        mode="before",
+    )
+    @classmethod
+    def _empty_int_to_none(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     custom_rag_base_url: str = ""
     custom_rag_retrieve_path: str = ""
     custom_rag_api_key: str = ""
@@ -238,6 +268,12 @@ def apply_runtime_overlay(data: dict[str, Any]) -> None:
     """Replace the in-process overlay (loaded at startup from the database)."""
     global _runtime_overlay
     _runtime_overlay = {key: value for key, value in data.items() if value is not None}
+    try:
+        from app.providers.model_capabilities import reset_capability_cache
+
+        reset_capability_cache()
+    except Exception:
+        pass
 
 
 def clear_runtime_overlay() -> None:
