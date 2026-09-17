@@ -35,12 +35,21 @@ def test_ocr_pdf_returns_text_when_engine_ready(tmp_path):
     doc = MagicMock()
     doc.__iter__.return_value = iter([page])
 
+    fake_tess = MagicMock()
+    fake_tess.image_to_string.return_value = "ความเป็นมาของโครงการ " * 20
+    fake_image_mod = MagicMock()
+    fake_image_mod.open.return_value = MagicMock()
+    fake_pil = MagicMock()
+    fake_pil.Image = fake_image_mod
+
     with (
         patch.object(mod, "ocr_available", return_value=(True, "")),
         patch.object(mod, "_try_open_pdf", return_value=doc),
         patch.object(mod, "OCR_DIR", tmp_path),
-        patch("PIL.Image.open", return_value=MagicMock()),
-        patch("pytesseract.image_to_string", return_value="ความเป็นมาของโครงการ " * 20),
+        patch.dict(
+            "sys.modules",
+            {"pytesseract": fake_tess, "PIL": fake_pil, "PIL.Image": fake_image_mod},
+        ),
     ):
         text, reason = mod.ocr_pdf_pages(tmp_path / "scan.pdf")
         sidecar = mod.write_ocr_sidecar(tmp_path / "scan.pdf", text)

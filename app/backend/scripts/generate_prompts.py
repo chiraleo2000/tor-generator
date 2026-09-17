@@ -12,7 +12,16 @@ import sys
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
-REPO = BACKEND.parents[1]
+
+
+def _repo_root(start: Path) -> Path:
+    for parent in [start, *start.parents]:
+        if (parent / "docker-compose.yml").is_file():
+            return parent
+    return start.parent if start.name == "backend" else start
+
+
+REPO = _repo_root(BACKEND)
 CANONICAL = REPO / "documents" / "prompts" / "canonical"
 CORE_MD = CANONICAL / "system_prompt.core.md"
 RULES_JSON = CANONICAL / "rules.json"
@@ -20,7 +29,7 @@ SECTION_DIR = CANONICAL / "section_prompts"
 GENERATED_PY = BACKEND / "app" / "domain" / "generated_prompts.py"
 BEGIN = "<!-- GENERATED:BEGIN -->"
 END = "<!-- GENERATED:END -->"
-QUICK_VERSION = "0.8.1"
+QUICK_VERSION = "0.8.2"
 
 SKILL_MD_PATHS = [
     REPO / "skills" / "Draft-TORs-Skills" / "claude" / "tor-procurement" / "SKILL.md",

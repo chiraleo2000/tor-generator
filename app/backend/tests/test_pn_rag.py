@@ -19,8 +19,10 @@ def test_load_rag_groups_from_repo_yaml() -> None:
     candidates: list[Path] = [
         here.parents[2] / "infra" / "pn" / "rag-groups.yaml",
         Path("/app/infra/pn/rag-groups.yaml"),
+        Path("/infra/pn/rag-groups.yaml"),
     ]
     if len(here.parents) > 3:
+        candidates.append(here.parents[3] / "app" / "infra" / "pn" / "rag-groups.yaml")
         candidates.append(here.parents[3] / "infra" / "pn" / "rag-groups.yaml")
     cfg_path = next((p for p in candidates if p.is_file()), None)
     assert cfg_path is not None, f"rag-groups.yaml not found in {candidates}"

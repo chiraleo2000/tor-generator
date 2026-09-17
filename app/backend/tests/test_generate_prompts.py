@@ -32,7 +32,8 @@ def test_generate_prompts_idempotent_and_marks_targets():
     assert "enable_thinking" not in generated
     assert "131_072" not in generated
     compose = (
-        BACKEND.parent
+        mod.REPO
+        / "app"
         / "infra"
         / "quick"
         / "agents-skills"
@@ -40,10 +41,18 @@ def test_generate_prompts_idempotent_and_marks_targets():
         / "tor-draft-compose"
         / "SKILL.md"
     )
+    if not compose.is_file():
+        compose = (
+            BACKEND
+            / "infra"
+            / "quick"
+            / "agents-skills"
+            / "skills"
+            / "tor-draft-compose"
+            / "SKILL.md"
+        )
     text = compose.read_text(encoding="utf-8")
     assert mod.BEGIN in text
     assert "แหล่งความจริงเดียว" in text
-    rules = (BACKEND.parents[1] / "documents" / "prompts" / "chatgpt_system_prompt.md").read_text(
-        encoding="utf-8"
-    )
-    assert mod.BEGIN in rules
+    rules = mod.REPO / "documents" / "prompts" / "chatgpt_system_prompt.md"
+    assert mod.BEGIN in rules.read_text(encoding="utf-8")

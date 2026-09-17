@@ -275,26 +275,32 @@ async function assertPhase3SubsectionsThaiAndTable(page: Page) {
   ).toHaveCount(0);
   await expect(page.getByText("เนื้อหาร่าง (จากเอกสารหรือระบบ)")).toHaveCount(0);
   await expect(page.getByText("เนื้อหาร่าง (จากเอกสาร/AI)")).toHaveCount(0);
-  const s1Header = page.getByRole("button", { name: /ความเป็นมา/ });
+  const s1Header = page.getByRole("button", { name: /^ความเป็นมา(\s|$)/ });
   await expect(s1Header).toBeVisible();
   await s1Header.click();
-  const scopeHeader = page.getByRole("button", { name: /ขอบเขตของงาน/ });
+  // Accessible name includes draft preview; avoid matching other sections that mention ขอบเขตของงาน.
+  const scopeHeader = page.getByRole("button", { name: /^ขอบเขตของงาน(\s|$)/ });
   await expect(scopeHeader).toBeVisible();
   if ((await page.getByTestId("scope-subsection-editor").count()) === 0) {
     await scopeHeader.click();
   }
   await expect(page.getByTestId("scope-subsection-editor")).toBeVisible();
+  const editor = page.getByTestId("scope-subsection-editor");
+  // Only one subsection panel is expanded when a chip is selected — open each before assert.
+  await editor.getByRole("button", { name: /functional|ความต้องการ|ฟังก์ชัน/i }).first().click();
   const functional = page.getByTestId("scope-sub-functional");
-  const testing = page.getByTestId("scope-sub-testing");
-  await expect(functional).toBeVisible();
-  await expect(testing).toBeVisible();
+  await expect(functional).toBeVisible({ timeout: 15_000 });
   await expect(functional).toContainText(/\S.{15,}/);
+
+  await editor.getByRole("button", { name: /testing|ทดสอบ/i }).first().click();
+  const testing = page.getByTestId("scope-sub-testing");
+  await expect(testing).toBeVisible({ timeout: 15_000 });
   await expect(testing).toContainText(/\S.{15,}/);
-  const textarea = functional.locator("textarea");
+  const textarea = testing.locator("textarea");
   const current = await textarea.inputValue();
   await textarea.fill(`${current.trim()}\n\n${SAMPLE_SCOPE_TABLE}`);
   await textarea.blur();
-  await expect(functional.locator("table").first()).toBeVisible({ timeout: 20_000 });
+  await expect(testing.locator("table").first()).toBeVisible({ timeout: 20_000 });
   await saveEvidence(page, "08b-phase-3-subsections");
   await saveEvidence(page, "08c-phase-3-table");
 }

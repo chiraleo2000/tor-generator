@@ -41,7 +41,7 @@ def test_readiness_is_filled_fact_required_ratio(slot_map: dict):
         slot = slot_map[key]
         if slot["status"] == "filled" and str(slot["content"]).strip():
             filled += 1
-    expected = filled / 6
+    expected = filled / len(FACT_REQUIRED_SLOTS)
     assert compute_readiness_score(slot_map) == expected
     assert compute_ready(slot_map) is (filled == len(FACT_REQUIRED_SLOTS))
 

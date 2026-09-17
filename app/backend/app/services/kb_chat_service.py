@@ -15,7 +15,7 @@ from app.models.kb_chat_session import KBChatSession
 from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.rag.hybrid import unpack_hybrid
-from app.rag.kb_qa import build_kb_qa_messages, chat_rag_top_k
+from app.rag.kb_qa import build_kb_qa_messages, chat_rag_top_k, normalize_kb_qa_answer
 from app.llm_tokens import live_chat_max_tokens
 from app.services.session_cache import SessionCacheService
 
@@ -134,7 +134,7 @@ class KnowledgeChatService:
             temperature=0.2,
             max_tokens=live_chat_max_tokens(),
         )
-        return getattr(response, "content", "") or ""
+        return normalize_kb_qa_answer(getattr(response, "content", "") or "")
 
     async def _append(
         self,

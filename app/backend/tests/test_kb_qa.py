@@ -11,6 +11,7 @@ from app.rag.kb_qa import (
     build_kb_qa_messages,
     chat_rag_top_k,
     diversify_chunks,
+    normalize_kb_qa_answer,
     pack_kb_context,
     trim_history,
 )
@@ -85,6 +86,15 @@ def test_build_kb_qa_messages_is_content_style_and_uses_rag():
     assert "ตอบให้ครบถ้วนตามเอกสาร" in KB_QA_SYSTEM
     assert "ถักทอสาระ" in KB_QA_SYSTEM
     assert "6144" not in KB_QA_SYSTEM
+
+
+def test_normalize_kb_qa_answer_expands_abbreviated_headings():
+    raw = "**สรุปตอบ**\nข้อความ\n**หลักที่เกี่ยวข้อง**\n| a | b | c |"
+    fixed = normalize_kb_qa_answer(raw)
+    assert "**สรุปคำตอบ**" in fixed
+    assert "**สรุปตอบ**" not in fixed
+    already = "**สรุปคำตอบ**\nok\n**ข้อควรระวัง**\n- x"
+    assert normalize_kb_qa_answer(already) == already
 
 
 def test_trim_history_caps_long_officer_answers():

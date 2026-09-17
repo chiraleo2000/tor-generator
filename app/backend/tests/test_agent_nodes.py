@@ -288,7 +288,7 @@ async def test_draft_validate_and_export_nodes() -> None:
     ):
         exported = await export_node(
             {
-                "sections_acknowledged": ["s3", "s6", "s8", "s10", "s13"],
+                "sections_acknowledged": ["s3", "s6", "s8", "s10", "s11", "s15"],
                 "slot_map": empty_slot_map(),
             }
         )
@@ -301,7 +301,7 @@ async def test_draft_validate_and_export_nodes() -> None:
     ):
         failed = await export_node(
             {
-                "sections_acknowledged": ["s3", "s6", "s8", "s10", "s13"],
+                "sections_acknowledged": ["s3", "s6", "s8", "s10", "s11", "s15"],
                 "slot_map": empty_slot_map(),
             }
         )

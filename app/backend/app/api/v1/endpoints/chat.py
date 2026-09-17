@@ -39,6 +39,7 @@ from app.rag.kb_qa import (
     DRAFT_INTAKE_TOP_K,
     build_kb_qa_messages,
     chat_rag_top_k,
+    normalize_kb_qa_answer,
     trim_history,
 )
 from app.rate_limiter import rate_limit_ai
@@ -503,7 +504,7 @@ async def _run_chat_llm(
             ):
                 parts_local.append(token)
                 await event_q.put(("token", {"text": token}))
-        full_text = "".join(parts_local)
+        full_text = normalize_kb_qa_answer("".join(parts_local))
         await _persist_assistant_reply(session_factory, room_id, full_text, citations)
         await event_q.put(
             (

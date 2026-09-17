@@ -13,7 +13,16 @@ from collections import Counter
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
-REPO = BACKEND.parents[1]
+
+
+def _repo_root(start: Path) -> Path:
+    for parent in [start, *start.parents]:
+        if (parent / "docker-compose.yml").is_file():
+            return parent
+    return start.parent if start.name == "backend" else start
+
+
+REPO = _repo_root(BACKEND)
 sys.path.insert(0, str(BACKEND))
 
 from app.domain.tor_taxonomy import CANONICAL_PHRASES, CORE_SECTION_ORDER, SECTION_LABELS  # noqa: E402

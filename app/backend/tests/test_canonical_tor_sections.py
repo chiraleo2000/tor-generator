@@ -33,8 +33,9 @@ def test_agents_registered_for_all_sections():
 
 def test_completeness_labels_match_canonical():
     assert TOR_REQUIRED_SECTIONS["s6"].startswith("วงเงินงบประมาณ")
-    assert TOR_REQUIRED_SECTIONS["s7"].startswith("สถานที่ดำเนินการ")
+    assert TOR_REQUIRED_SECTIONS["s1"].startswith("ความเป็นมา")
     assert "s1" in TOR_REQUIRED_SECTIONS
+    assert "s7" not in TOR_REQUIRED_SECTIONS  # location is profile-optional for buy_goods
 
 
 def test_sample_complete_sections_has_thirteen_keys():

@@ -194,7 +194,9 @@ def test_remap_legacy_s4_onto_hire_develop_scope():
         "hire_develop",
     )
     assert "พัฒนาระบบลงทะเบียน" in remapped["functional"]
-    assert "ซอร์สโค้ด" in remapped["deliverable_docs"]
+    # hire_develop keeps deliverables as main s19; legacy s4.8 stays until compose
+    deliverable = remapped.get("deliverable_docs") or remapped.get("s4.8") or ""
+    assert "ซอร์สโค้ด" in deliverable
     assert "API" in remapped["integration"]
     assert remapped["functional"]
 

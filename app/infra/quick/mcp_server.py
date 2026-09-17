@@ -27,7 +27,7 @@ from typing import Any
 HOST = os.environ.get("QUICK_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("QUICK_MCP_PORT", "8767"))
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_VERSION = "0.8.1"
+SERVER_VERSION = "0.8.2"
 MCP_TOOLS_CALL = "tools/call"
 _JSON = "application/json"
 _HEALTH_PATH = "/health"

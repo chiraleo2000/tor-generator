@@ -488,8 +488,8 @@ class TestHumanInTheLoopTrigger:
 
     @pytest.mark.asyncio
     async def test_mandatory_sections_require_human_review(self):
-        """Sections s3, s6, s8, s10, s13 must trigger human review."""
-        expected_sections = {"s3", "s6", "s8", "s10", "s13"}
+        """HITL sections from tor_sections must trigger human review."""
+        expected_sections = {"s3", "s6", "s8", "s10", "s11", "s15"}
         assert MANDATORY_HUMAN_REVIEW_SECTIONS == expected_sections
 
         for section in expected_sections:
@@ -506,7 +506,7 @@ class TestHumanInTheLoopTrigger:
     @pytest.mark.asyncio
     async def test_non_mandatory_sections_skip_review_when_passed(self):
         """Non-mandatory sections (s1, s2, s4, etc.) don't force review."""
-        non_mandatory = ["s1", "s2", "s4", "s5", "s7", "s9", "s11", "s12"]
+        non_mandatory = ["s1", "s2", "s4", "s5", "s7", "s9", "s12", "s13"]
 
         for section in non_mandatory:
             state: TORDraftState = {

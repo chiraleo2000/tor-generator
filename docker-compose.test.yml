@@ -5,11 +5,13 @@ services:
   backend:
     volumes:
       - ./app/backend/tests:/app/tests:ro
+      - ./app/backend/scripts:/app/scripts:ro
       - ./app/backend/pyproject.toml:/app/pyproject.toml:ro
-      - ./app/infra/mcp:/app/infra/mcp:ro
-      - ./app/infra/quick:/app/infra/quick:ro
-      - ./documents/research:/documents/research:ro
-      - ./documents/sources:/documents/sources:ro
-      - ./skills:/app/skills:ro
-      - ./Discussions:/app/Discussions:ro
+      - ./app/infra:/app/infra
+      - ./app/backend/app/domain:/app/app/domain
+      - ./documents:/app/documents
+      - ./documents/research:/documents/research
+      - ./documents/sources:/documents/sources
+      - ./skills:/app/skills
+      - ./Discussions:/app/Discussions
       - ./docker-compose.yml:/app/docker-compose.yml:ro
