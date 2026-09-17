@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     openai_chat_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.8-flash"
     gemini_embedding_model: str = "text-embedding-004"
     bedrock_region: str = "ap-southeast-1"
     bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
@@ -252,11 +252,11 @@ class Settings(BaseSettings):
     agent_local_storage_dir: str = ""
 
     def drafting_agent_timeout_seconds(self) -> int:
-        """Per-section LLM timeout. Local Gemma needs more headroom than cloud."""
+        """Per-section LLM timeout. Local models need more headroom than cloud."""
         if self.llm_provider in LOCAL_LLM_PROVIDERS:
             return max(1, min(LOCAL_LLM_TIMEOUT_CAP_SECONDS, int(self.lm_studio_timeout)))
-        if self.llm_provider == "bedrock":
-            return max(1, int(self.cloud_llm_timeout or 900))
+        if self.llm_provider in CLOUD_LLM_PROVIDERS:
+            return max(1, int(self.cloud_llm_timeout or 300))
         return 60
 
     def cache_ttl_seconds(self, hours: int) -> int:
@@ -283,13 +283,20 @@ def clear_runtime_overlay() -> None:
 
 
 def apply_on_prem_llm_pin(settings: Settings) -> Settings:
-    """Keep Compose on-prem chat on LM Studio when Admin overlay still says Bedrock."""
+    """Keep Compose on-prem chat on local LLM when Admin overlay still says Bedrock.
+
+    If ``LLM_PROVIDER`` in the process env is already a cloud provider (e.g. gemini),
+    honor that choice — do not force LM Studio.
+    """
     if not env_flag("PIN_ON_PREM_LLM", default=False):
         return settings
     env_mode = (os.environ.get("DEPLOYMENT_MODE") or "on_prem").strip().lower()
     if env_mode != "on_prem":
         return settings
     env_llm = (os.environ.get("LLM_PROVIDER") or "lm_studio").strip() or "lm_studio"
+    # Explicit cloud in .env wins (hybrid workstation: Gemini chat + local embed).
+    if env_llm in CLOUD_LLM_PROVIDERS:
+        return settings
     if env_llm not in LOCAL_LLM_PROVIDERS:
         env_llm = "lm_studio"
     env_embed = (os.environ.get("EMBEDDING_PROVIDER") or "local").strip() or "local"

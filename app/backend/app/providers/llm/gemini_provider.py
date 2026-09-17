@@ -66,12 +66,18 @@ class GeminiLLMProvider(LLMProvider):
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(self._url("generateContent"), json=body)
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    detail = (response.text or "")[:500]
+                    raise ConnectionError(
+                        f"Gemini HTTP {response.status_code}: {detail}"
+                    )
                 payload = response.json()
         except httpx.TimeoutException as exc:
             raise TimeoutError(
                 f"Gemini did not respond within {self._timeout}s"
             ) from exc
+        except ConnectionError:
+            raise
         except httpx.HTTPError as exc:
             raise ConnectionError(f"Gemini endpoint unreachable: {exc}") from exc
 
