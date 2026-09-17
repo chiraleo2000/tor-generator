@@ -1,4 +1,4 @@
-﻿# 35 — พัฒนาและ Deploy PN บน AWS EC2 (MCP + Webapp + S3)
+# 35 — พัฒนาและ Deploy PN บน AWS EC2 (MCP + Webapp + S3)
 
 **แผนขึ้น webapp ทั้งสองเส้นทาง (EC2 vs ECS):** [38-AWS-WEBAPP-DEPLOYMENT-PLAN.md](38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) — อิมเมจ UI build จาก **`app/frontend`**
 
@@ -165,8 +165,8 @@ docker compose -f docker-compose.pn.yml --env-file .env up -d --build
 ### 4.1 สร้างแพ็กเกจบนเครื่อง dev
 
 ```bash
-python documents/exports/build_pn_aws_dataset.py --version 0.8.0
-# ได้ documents/exports/tor-pn-aws-dataset-v0.8.0.zip
+python documents/exports/build_pn_aws_dataset.py --version 0.8.1
+# ได้ documents/exports/tor-pn-aws-dataset-v0.8.1.zip
 ```
 
 แตก zip แล้วใน `.env` บนเครื่องที่มี AWS CLI:

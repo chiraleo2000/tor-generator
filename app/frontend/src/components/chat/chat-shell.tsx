@@ -574,11 +574,12 @@ export function ChatShell({
             <Link href="/knowledge-base" className="font-bold text-navy underline">
               คลังของฉัน
             </Link>
-            {mineFiles.map((file) => (
+            {mineFiles.slice(0, 8).map((file) => (
               <span
                 key={file.id}
-                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-900"
+                className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded-full bg-blue-50 px-2 py-0.5 text-blue-900"
                 data-testid={`chat-mine-${file.id}`}
+                title={file.name}
               >
                 {file.name}
                 <button
@@ -595,6 +596,9 @@ export function ChatShell({
                 </button>
               </span>
             ))}
+            {mineFiles.length > 8 ? (
+              <span className="text-muted-foreground">+{mineFiles.length - 8} ไฟล์</span>
+            ) : null}
           </div>
         ) : null}
         {error ? (
@@ -610,7 +614,7 @@ export function ChatShell({
             {attachNote}
           </output>
         ) : null}
-        <div className="flex-1 space-y-4 overflow-y-auto p-5" data-testid="chat-messages">
+        <div className="min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-5" data-testid="chat-messages">
           {messages.length === 0 ? (
             <div className="space-y-4 py-6" data-testid="chat-empty">
               <p className="text-center text-sm text-muted-foreground">
@@ -725,7 +729,7 @@ function ChatBubble({
               briefing ? "bg-emerald-500" : "bg-navy"
             )
           : briefing
-            ? "w-full max-w-none rounded-2xl bg-white px-6 py-5 text-sm shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
+            ? "w-full min-w-0 max-w-none rounded-2xl bg-white px-6 py-5 text-sm shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
             : "max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground"
       )}
     >
@@ -768,17 +772,7 @@ function ChatBubble({
       {briefing && !isUser ? (
         <ChatCitationBar citations={item.citations || []} />
       ) : item.citations?.length ? (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {item.citations.map((cite) => (
-            <span
-              key={`${cite.type}-${cite.label}`}
-              data-testid="chat-citation"
-              className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-navy"
-            >
-              {cite.type}: {cite.label}
-            </span>
-          ))}
-        </div>
+        <ChatCitationBar citations={item.citations} />
       ) : null}
     </article>
   );

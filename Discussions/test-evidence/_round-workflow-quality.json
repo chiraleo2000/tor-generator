@@ -1,5 +1,5 @@
 {
-  "project_id": "052a3395-6f58-460a-bf8e-10f3d26fae2d",
+  "project_id": "dedad31c-2915-4091-84ca-2e962f334cf4",
   "filled": [
     "s1",
     "s2",
@@ -33,7 +33,7 @@
     "all_drafted": true
   },
   "harness": {
-    "chars": 21873,
+    "chars": 20127,
     "unauthorized_english": [
       "workflow",
       "quality"

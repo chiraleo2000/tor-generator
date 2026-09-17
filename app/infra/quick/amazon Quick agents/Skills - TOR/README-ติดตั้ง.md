@@ -1,10 +1,10 @@
-# Amazon Quick — Agents / Skills TOR (v0.7.1)
+# Amazon Quick — Agents / Skills TOR (v0.8.1)
 
 แพ็กเกจสำหรับติดตั้งบน Amazon Quick Desktop / ทีมบน AWS
 
 ## ไฟล์ในโฟลเดอร์นี้
 
-- `tor-agents-skills-v0.7.1.zip` — แตกแล้วได้โฟลเดอร์ `agents-skills` ครบชุด
+- `tor-agents-skills-v0.8.1.zip` — แตกแล้วได้โฟลเดอร์ `agents-skills` ครบชุด
 - `README-ติดตั้ง.md` — สรุปสั้น (ไฟล์นี้)
 
 ## ติดตั้งบนเครื่อง (local)

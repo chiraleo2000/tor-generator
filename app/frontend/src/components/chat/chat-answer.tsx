@@ -42,6 +42,30 @@ export function citationChipText(cite: ChatCitation): string {
   return `${cite.type}: ${cite.label}`;
 }
 
+export const MAX_VISIBLE_CITATION_CHIPS = 8;
+
+function _citationRank(type: string): number {
+  if (type === "document") return 0;
+  if (type === "article") return 1;
+  if (type === "mcp") return 2;
+  return 3;
+}
+
+/** Collapse mcp+document duplicates of the same file so Gemini RAG does not flood the bar. */
+export function uniqueCitations(citations: ChatCitation[]): ChatCitation[] {
+  const byLabel = new Map<string, ChatCitation>();
+  for (const cite of citations) {
+    const label = (cite.label || "").trim();
+    if (!label) continue;
+    const key = label.toLowerCase();
+    const existing = byLabel.get(key);
+    if (!existing || _citationRank(cite.type) < _citationRank(existing.type)) {
+      byLabel.set(key, cite);
+    }
+  }
+  return Array.from(byLabel.values());
+}
+
 export function isNumericCell(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
@@ -204,8 +228,8 @@ function BriefTable({ rows, blockKey: key }: Readonly<{ rows: string[][]; blockK
   if (!rows.length) return null;
   const [header, ...body] = rows;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[13.5px]">
+    <div className="max-w-full min-w-0 overflow-x-auto">
+      <table className="w-full min-w-[28rem] border-collapse text-[13.5px]">
         <thead>
           <tr>
             {header.map((cell, cIdx) => (
@@ -291,7 +315,7 @@ export function ChatAnswerBody({
   if (!text.trim()) return null;
   const sections = groupChatSections(parseChatBlocks(text));
   return (
-    <div className={cn("space-y-5", className)}>
+    <div className={cn("min-w-0 max-w-full space-y-5", className)}>
       {sections.map((section, sIdx) => (
         <section
           key={`sec-${sIdx}-${section.heading || section.blocks[0]?.kind || "body"}`}
@@ -312,25 +336,37 @@ export function ChatAnswerBody({
 export function ChatCitationBar({
   citations,
 }: Readonly<{ citations: ChatCitation[] }>) {
-  if (!citations.length) return null;
+  const unique = uniqueCitations(citations);
+  if (!unique.length) return null;
+  const visible = unique.slice(0, MAX_VISIBLE_CITATION_CHIPS);
+  const extra = unique.length - visible.length;
   return (
     <div
-      className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3"
+      className="mt-4 flex max-w-full min-w-0 flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3"
       data-testid="chat-source-bar"
     >
       <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
         <Database className="h-3 w-3" />
         แหล่งข้อมูล
       </span>
-      {citations.map((cite) => (
+      {visible.map((cite) => (
         <span
           key={`${cite.type}-${cite.label}`}
           data-testid="chat-citation"
-          className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-navy"
+          className="max-w-[16rem] truncate rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-navy"
+          title={citationChipText(cite)}
         >
           {citationChipText(cite)}
         </span>
       ))}
+      {extra > 0 ? (
+        <span
+          className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600"
+          data-testid="chat-citation-more"
+        >
+          +{extra}
+        </span>
+      ) : null}
     </div>
   );
 }

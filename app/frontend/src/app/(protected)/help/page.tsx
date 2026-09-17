@@ -138,7 +138,9 @@ function OverviewTab() {
           <tr>
             <td>AI ค่าเริ่มต้น (ทดสอบในเครื่อง)</td>
             <td>
-              LM Studio · แชท <code>google/gemma-4-e4b</code> · ฝังเวกเตอร์ EmbeddingGemma 768-d
+              ตาม <code>.env</code> (<code>LM_STUDIO_MODEL</code> /{" "}
+              <code>LM_STUDIO_EMBEDDING_MODEL</code> / <code>EMBEDDING_DIMENSIONS</code>
+              ) — ตัวอย่างใน <code>.env.example</code> คือ Gemma 4 + EmbeddingGemma 768-d
             </td>
           </tr>
           <tr>
@@ -560,7 +562,9 @@ function AdminTab() {
           <strong>ไม่สลับคู่</strong> แชทกับฝังเวกเตอร์
         </li>
         <li>
-          ค่าเริ่มต้น: LM Studio <code>google/gemma-4-e4b</code> + EmbeddingGemma · timeout 600s · pgvector
+          ค่าเริ่มต้นตาม <code>.env.example</code>: <code>LM_STUDIO_MODEL=google/gemma-4-e4b</code> +{" "}
+          <code>LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m</code> ·{" "}
+          <code>EMBEDDING_DIMENSIONS=768</code> · pgvector
         </li>
         <li>
           <strong>ทดสอบการเชื่อมต่อ</strong> ยิงทั้งแชทและฝังเวกเตอร์ ·{" "}
@@ -619,8 +623,8 @@ function FaqTab() {
           <code>tor-app</code> + LM Studio ที่ <code>127.0.0.1:1234</code>
         </li>
         <li>
-          Dev ค่าเริ่มต้น: แชท <code>google/gemma-4-e4b</code> · ฝังเวกเตอร์{" "}
-          <code>text-embedding-embeddinggemma-300m</code> (768 มิติ)
+          Dev ตาม <code>.env.example</code>: <code>LM_STUDIO_MODEL=google/gemma-4-e4b</code> ·{" "}
+          <code>LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m</code> (768 มิติ)
         </li>
         <li>
           Production บน AWS ของแอปนี้: Amazon Bedrock — คู่มือ{" "}

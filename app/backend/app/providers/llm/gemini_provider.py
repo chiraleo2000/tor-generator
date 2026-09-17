@@ -35,12 +35,12 @@ class GeminiLLMProvider(LLMProvider):
         self,
         api_key: str,
         model_name: str = "gemini-3.5-flash-lite",
-        timeout: float = 60.0,
+        timeout: float = 300.0,
     ) -> None:
         if not api_key:
             raise ValueError("Gemini API key is required for GeminiLLMProvider")
-        self._api_key = api_key
-        self._model_name = model_name
+        self._api_key = api_key.strip()
+        self._model_name = (model_name or "gemini-3.5-flash-lite").strip()
         self._timeout = timeout
 
     def _url(self, action: str) -> str:

@@ -114,8 +114,10 @@ def _public_payload(
     public["restart_required"] = restart_required
     public["reingest_required"] = reingest_required
     public["local_llm_defaults"] = dict(LOCAL_LLM_DEFAULT_URLS)
-    public["default_chat_model"] = DEFAULT_CHAT_MODEL
-    public["default_embedding_model"] = DEFAULT_EMBEDDING_MODEL
+    public["default_chat_model"] = str(merged.get("lm_studio_model") or DEFAULT_CHAT_MODEL)
+    public["default_embedding_model"] = str(
+        merged.get("lm_studio_embedding_model") or DEFAULT_EMBEDDING_MODEL
+    )
     return public
 
 
@@ -313,11 +315,11 @@ def _validate_local_fields(body: AiSettingsUpdate, existing: dict[str, Any]) -> 
     _validate_custom_rag(body, existing)
 
 
-def _resolved_secret(body: AiSettingsUpdate, existing: dict[str, Any], name: str) -> str:
-    incoming = getattr(body, name)
+def _resolved_secret(body: Any, existing: dict[str, Any], name: str) -> str:
+    incoming = getattr(body, name, None)
     if incoming and not _is_masked_secret(incoming):
-        return incoming
-    return str(existing.get(name) or "")
+        return str(incoming).strip()
+    return str(existing.get(name) or "").strip()
 
 
 def _require_provider_url(
@@ -562,7 +564,7 @@ def _embed_local_base_url(body: AiSettingsTest) -> str:
 
 
 def _usable_secret(value: Any) -> str:
-    text = str(value or "")
+    text = str(value or "").strip()
     if not text or text.startswith("****"):
         return ""
     return text
@@ -581,7 +583,7 @@ async def _probe_local_models(base_url: str) -> str:
 
 
 async def _probe_claude(body: AiSettingsTest, existing: dict[str, Any]) -> None:
-    key = _usable_secret(body.anthropic_api_key or existing.get("anthropic_api_key"))
+    key = _usable_secret(_resolved_secret(body, existing, "anthropic_api_key"))
     if not key:
         raise ValidationError(message=_MSG_ANTHROPIC_KEY, field="anthropic_api_key")
     await _http_get_ok(
@@ -591,7 +593,7 @@ async def _probe_claude(body: AiSettingsTest, existing: dict[str, Any]) -> None:
 
 
 async def _probe_openai(body: AiSettingsTest, existing: dict[str, Any]) -> None:
-    key = _usable_secret(body.openai_api_key or existing.get("openai_api_key"))
+    key = _usable_secret(_resolved_secret(body, existing, "openai_api_key"))
     if not key:
         raise ValidationError(message=_MSG_OPENAI_KEY, field="openai_api_key")
     await _http_get_ok(
@@ -601,7 +603,7 @@ async def _probe_openai(body: AiSettingsTest, existing: dict[str, Any]) -> None:
 
 
 async def _probe_gemini(body: AiSettingsTest, existing: dict[str, Any]) -> None:
-    key = _usable_secret(body.gemini_api_key or existing.get("gemini_api_key"))
+    key = _usable_secret(_resolved_secret(body, existing, "gemini_api_key"))
     if not key:
         raise ValidationError(message=_MSG_GEMINI_KEY, field="gemini_api_key")
     await _http_get_ok(
@@ -618,7 +620,7 @@ async def _probe_openai_compatible(body: AiSettingsTest, existing: dict[str, Any
     if not base:
         raise ValidationError(message=_MSG_COMPAT_URL, field="openai_compatible_base_url")
     key = _usable_secret(
-        body.openai_compatible_api_key or existing.get("openai_compatible_api_key")
+        _resolved_secret(body, existing, "openai_compatible_api_key")
     )
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     await _http_get_ok(f"{base}/models", headers)
@@ -626,9 +628,7 @@ async def _probe_openai_compatible(body: AiSettingsTest, existing: dict[str, Any
 
 async def _probe_azure_foundry(body: AiSettingsTest, existing: dict[str, Any]) -> None:
     endpoint = body.azure_foundry_endpoint or existing.get("azure_foundry_endpoint")
-    key = _usable_secret(
-        body.azure_foundry_api_key or existing.get("azure_foundry_api_key")
-    )
+    key = _usable_secret(_resolved_secret(body, existing, "azure_foundry_api_key"))
     version = (
         body.azure_foundry_api_version
         or existing.get("azure_foundry_api_version")
@@ -671,9 +671,7 @@ async def _probe_bedrock(body: AiSettingsTest, existing: dict[str, Any]) -> None
         return
     region = str(body.bedrock_region or existing.get("bedrock_region") or "ap-southeast-1")
     access = str(body.aws_access_key_id or existing.get("aws_access_key_id") or "")
-    secret = _usable_secret(
-        body.aws_secret_access_key or existing.get("aws_secret_access_key")
-    )
+    secret = _usable_secret(_resolved_secret(body, existing, "aws_secret_access_key"))
     try:
         await asyncio.to_thread(_sts_caller_identity, region, access, secret)
     except Exception as exc:
@@ -683,7 +681,7 @@ async def _probe_bedrock(body: AiSettingsTest, existing: dict[str, Any]) -> None
 async def _probe_cloud_embeddings(body: AiSettingsTest, existing: dict[str, Any]) -> None:
     provider = body.embedding_provider
     if provider == "openai":
-        key = _usable_secret(body.openai_api_key or existing.get("openai_api_key"))
+        key = _usable_secret(_resolved_secret(body, existing, "openai_api_key"))
         if not key:
             raise ValidationError(message=_MSG_OPENAI_KEY, field="openai_api_key")
         await _http_get_ok(
@@ -692,7 +690,7 @@ async def _probe_cloud_embeddings(body: AiSettingsTest, existing: dict[str, Any]
         )
         return
     if provider == "gemini":
-        key = _usable_secret(body.gemini_api_key or existing.get("gemini_api_key"))
+        key = _usable_secret(_resolved_secret(body, existing, "gemini_api_key"))
         if not key:
             raise ValidationError(message=_MSG_GEMINI_KEY, field="gemini_api_key")
         await _http_get_ok(

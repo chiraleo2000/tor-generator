@@ -20,7 +20,7 @@ SECTION_DIR = CANONICAL / "section_prompts"
 GENERATED_PY = BACKEND / "app" / "domain" / "generated_prompts.py"
 BEGIN = "<!-- GENERATED:BEGIN -->"
 END = "<!-- GENERATED:END -->"
-QUICK_VERSION = "0.8.0"
+QUICK_VERSION = "0.8.1"
 
 SKILL_MD_PATHS = [
     REPO / "skills" / "Draft-TORs-Skills" / "claude" / "tor-procurement" / "SKILL.md",
@@ -101,14 +101,21 @@ def skill_block(core: str, rules: dict) -> str:
     )
 
 
+def write_utf8(path: Path, text: str) -> None:
+    data = text.encode("utf-8")
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    path.write_bytes(data)
+
+
 def bump_quick_version(path: Path) -> None:
     if not path.is_file():
         return
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     updated = re.sub(r'"version":\s*"0\.\d+\.\d+"', f'"version": "{QUICK_VERSION}"', text)
     updated = re.sub(r'"app_version":\s*"0\.\d+\.\d+"', f'"app_version": "{QUICK_VERSION}"', updated)
     updated = re.sub(r"v0\.\d+\.\d+", f"v{QUICK_VERSION}", updated)
-    path.write_text(updated, encoding="utf-8")
+    write_utf8(path, updated)
 
 
 def write_quick_json(core: str) -> None:
@@ -118,11 +125,12 @@ def write_quick_json(core: str) -> None:
         root / "agents" / "tor-draft-agent.json",
         root / "agents" / "tor-review-agent.json",
         *sorted((root / "skills").glob("*/skill.json")),
+        root / "references" / "compliance-rules.json",
     ]:
         bump_quick_version(path)
     draft = root / "agents" / "tor-draft-agent.json"
     if draft.is_file():
-        payload = json.loads(draft.read_text(encoding="utf-8"))
+        payload = json.loads(draft.read_text(encoding="utf-8-sig"))
         prompt = str(payload.get("prompt") or "")
         marker = "## กฎจากแหล่งความจริงเดียว"
         block = marker + "\n" + core.strip() + "\n"
@@ -141,7 +149,7 @@ def write_quick_json(core: str) -> None:
         draft.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     structure = root / "references" / "tor-structure.json"
     if structure.is_file():
-        data = json.loads(structure.read_text(encoding="utf-8"))
+        data = json.loads(structure.read_text(encoding="utf-8-sig"))
         data["version"] = QUICK_VERSION
         data["note"] = (
             "Gold headings follow Section_Profile per procurement type; "

@@ -17,6 +17,7 @@ from app.api.v1.endpoints.admin_ai_settings import (
     _merged_settings_dict,
     _overlay_from_merged,
     _probe_bedrock,
+    _probe_gemini,
     _public_payload,
     _resolved_local_url,
     _sts_caller_identity,
@@ -654,6 +655,25 @@ def test_put_ai_settings_cloud_with_keys(admin_client):
     assert response.json()["data"]["llm_provider"] == "gemini"
     assert response.json()["data"]["gemini_api_key"].startswith("****")
     assert get_settings().llm_provider == "gemini"
+
+
+@pytest.mark.asyncio
+async def test_probe_gemini_uses_existing_key_when_form_sends_mask():
+    body = AiSettingsTest(
+        deployment_mode="hybrid",
+        llm_provider="gemini",
+        embedding_provider="local",
+        gemini_api_key="****AR76",
+    )
+    with patch(
+        "app.api.v1.endpoints.admin_ai_settings._http_get_ok",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        await _probe_gemini(body, {"gemini_api_key": "real-gemini-key"})
+    mock_get.assert_awaited_once()
+    url = mock_get.await_args.args[0]
+    assert "real-gemini-key" in url
+    assert "****" not in url
 
 
 @pytest.mark.asyncio

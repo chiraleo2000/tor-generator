@@ -325,7 +325,7 @@ def test_amazon_quick_skills_follow_official_tor_style() -> None:
     structure = json.loads(
         (root / "references" / "tor-structure.json").read_text(encoding="utf-8")
     )
-    assert structure["version"] == "0.8.0"
+    assert structure["version"] == "0.8.1"
     assert structure["official_export_style"]["body_pt"] == 16
     assert structure["official_export_style"]["line_spacing"] == 1.0
     assert structure["official_export_style"]["margin_top_bottom_cm"] == 2.54
@@ -336,7 +336,7 @@ def test_amazon_quick_skills_follow_official_tor_style() -> None:
     rules = json.loads(
         (root / "references" / "compliance-rules.json").read_text(encoding="utf-8")
     )
-    assert rules["version"] == "0.8.0"
+    assert rules["version"] == "0.8.1"
     assert rules["format_checks"]["app_export"]["body_pt"] == 16
     assert rules["format_checks"]["app_export"]["line_spacing"] == 1.0
     assert rules["format_checks"]["app_export"]["margin_top_bottom_cm"] == 2.54

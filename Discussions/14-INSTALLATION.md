@@ -1,6 +1,7 @@
 # การติดตั้งและรันระบบ TOR
 
 คู่มือนี้สำหรับสแตกที่รันจริง: Next.js + FastAPI ใน Docker  
+แอปปัจจุบัน **v0.8.1** — คัดลอก [`.env.example`](../.env.example) เป็น `.env` แล้วปรับเฉพาะค่าเครื่อง (พอร์ต/คีย์) ชุดโมเดลท้องถิ่นคือ `LM_STUDIO_MODEL` + `LM_STUDIO_EMBEDDING_MODEL` + `TOR_*` + `EMBEDDING_DIMENSIONS`  
 **Production บน AWS ล้วน (ECS/RDS/Bedrock):** ชุด [`24`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md) และรายการค้าง [`29-TBD-AWS-CLOUD-ONLY.md`](29-TBD-AWS-CLOUD-ONLY.md) — **ไม่มี hybrid**  
 ทางลัด EC2+Compose+Bedrock เท่านั้น: [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
 **Dev / on-prem:** LM Studio บนเครื่องโฮสต์ (ค่าเริ่มต้น) หรือ Ollama / llama.cpp / SGLang — สลับได้จาก Admin โดยไม่ถอดตัวเลือก
@@ -44,6 +45,13 @@ LOCAL_EMBEDDING_SERVER=lm_studio
 LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
 LM_STUDIO_MODEL=google/gemma-4-e4b
 LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m
+TOR_CONTEXT_WINDOW=131072
+TOR_SECTION_MAX_TOKENS=32768
+TOR_SCOPE_SUB_MAX_TOKENS=8192
+TOR_CHAT_MAX_TOKENS=32768
+TOR_REVIEW_MAX_TOKENS=131072
+EMBEDDING_MAX_TOKENS=2048
+EMBEDDING_DIMENSIONS=768
 LM_STUDIO_TIMEOUT=1800
 OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
 LLAMA_CPP_BASE_URL=http://host.docker.internal:8080/v1

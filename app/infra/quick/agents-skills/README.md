@@ -1,6 +1,6 @@
 # Amazon Quick — Agents & Skills สำหรับร่าง/ตรวจ TOR
 
-แพ็กเกจนี้สะท้อนกระบวนการของแอป TOR **v0.7.1** (5 ขั้นร่าง + ตรวจสอบลึกด้วยกฎหมายและมาตรฐาน) ให้รันบน **Amazon Quick** (workplace AI) โดยเรียกคลังความรู้ผ่าน MCP connector ที่มีอยู่แล้ว — **ไม่ใช่ QuickSight**
+แพ็กเกจนี้สะท้อนกระบวนการของแอป TOR **v0.8.1** (5 ขั้นร่าง + ตรวจสอบลึกด้วยกฎหมายและมาตรฐาน) ให้รันบน **Amazon Quick** (workplace AI) โดยเรียกคลังความรู้ผ่าน MCP connector ที่มีอยู่แล้ว — **ไม่ใช่ QuickSight**
 
 | แอป (Next.js/FastAPI) | Amazon Quick |
 |------------------------|--------------|
@@ -44,7 +44,7 @@ agents-skills/
 
 ## นำเข้า Skills (Quick Desktop)
 
-แพ็กเกจ zip พร้อมแจก: [`../amazon Quick agents/Skills - TOR/`](../amazon%20Quick%20agents/Skills%20-%20TOR/) (สร้างจากโฟลเดอร์ `agents-skills` รุ่น **v0.7.1**)  
+แพ็กเกจ zip พร้อมแจก: [`../amazon Quick agents/Skills - TOR/`](../amazon%20Quick%20agents/Skills%20-%20TOR/) (สร้างจากโฟลเดอร์ `agents-skills` รุ่น **v0.8.1**)  
 คู่มือติดตั้งภาษาไทยทั้งชุด: [`../README.md`](../README.md)
 
 1. **Agents & skills** → **Skills** → **+ Create** → **Import from file**

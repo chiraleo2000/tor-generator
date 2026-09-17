@@ -404,6 +404,26 @@ class TestExpandedProviders:
         assert isinstance(factory.get_llm(), GeminiLLMProvider)
         assert isinstance(factory.get_embedding(), GeminiEmbeddingProvider)
 
+    def test_hybrid_gemini_chat_local_embeddings_strips_model_and_uses_cloud_timeout(self):
+        from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
+        from app.providers.llm.gemini_provider import GeminiLLMProvider
+
+        settings = make_settings(
+            deployment_mode="hybrid",
+            llm_provider="gemini",
+            embedding_provider="local",
+            local_embedding_server="lm_studio",
+            gemini_api_key="gem-test-key",
+            gemini_model="gemini-3.5-flash-lite ",
+            cloud_llm_timeout=300.0,
+        )
+        factory = ProviderFactory(settings=settings)
+        llm = factory.get_llm()
+        assert isinstance(llm, GeminiLLMProvider)
+        assert llm._model_name == "gemini-3.5-flash-lite"
+        assert llm._timeout == 300.0
+        assert isinstance(factory.get_embedding(), Qwen3LocalEmbeddingProvider)
+
     def test_cloud_openai_does_not_need_anthropic(self):
         from app.providers.llm.openai_provider import OpenAILLMProvider
 

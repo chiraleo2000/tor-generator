@@ -100,6 +100,7 @@ export const RAG_SOURCE_OPTIONS = [
   { value: "custom", label: "เฉพาะ Custom RAG" },
 ];
 
+/** Placeholders matching `.env.example` until GET /admin/ai-settings returns. */
 export const EMPTY_AI_SETTINGS: AiSettings = {
   deployment_mode: "on_prem",
   llm_provider: "lm_studio",
@@ -122,7 +123,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   gemini_api_key: "",
   openai_chat_model: "gpt-4o-mini",
   openai_embedding_model: "text-embedding-3-small",
-  gemini_model: "gemini-2.0-flash",
+  gemini_model: "gemini-3.5-flash-lite",
   gemini_embedding_model: "text-embedding-004",
   vector_store_provider: "pgvector",
   aws_access_key_id: "",

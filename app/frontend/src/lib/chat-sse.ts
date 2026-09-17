@@ -67,11 +67,24 @@ export function formatChatTimestamp(iso?: string | null): string {
   return date.toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" });
 }
 
+const PAINT_SSE_EVENTS = new Set([
+  "section_done",
+  "subsection_done",
+  "all_done",
+  "done",
+]);
+
+function yieldForPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 function dispatchSseBlock(
   block: string,
   eventName: string,
   onEvent: (event: string, data: Record<string, unknown>) => void
-): string {
+): { nextEvent: string; dispatched: string | null } {
   let dataLine = "";
   let nextEvent = eventName;
   for (const line of block.split("\n")) {
@@ -82,14 +95,26 @@ function dispatchSseBlock(
     }
   }
   if (!dataLine) {
-    return nextEvent;
+    return { nextEvent, dispatched: null };
   }
   try {
     onEvent(nextEvent, JSON.parse(dataLine) as Record<string, unknown>);
   } catch {
     onEvent(nextEvent, { text: dataLine });
   }
-  return "message";
+  return { nextEvent: "message", dispatched: nextEvent };
+}
+
+async function dispatchSseBlockAndPaint(
+  block: string,
+  eventName: string,
+  onEvent: (event: string, data: Record<string, unknown>) => void
+): Promise<string> {
+  const result = dispatchSseBlock(block, eventName, onEvent);
+  if (result.dispatched && PAINT_SSE_EVENTS.has(result.dispatched)) {
+    await yieldForPaint();
+  }
+  return result.nextEvent;
 }
 
 export async function streamSsePost(
@@ -150,10 +175,10 @@ export async function streamSsePost(
     const parts = buffer.split("\n\n");
     buffer = parts.pop() || "";
     for (const block of parts) {
-      eventName = dispatchSseBlock(block, eventName, onEvent);
+      eventName = await dispatchSseBlockAndPaint(block, eventName, onEvent);
     }
   }
   if (buffer.trim()) {
-    dispatchSseBlock(buffer, eventName, onEvent);
+    await dispatchSseBlockAndPaint(buffer, eventName, onEvent);
   }
 }

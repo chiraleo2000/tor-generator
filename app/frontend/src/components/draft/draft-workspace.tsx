@@ -468,9 +468,7 @@ export function DraftWorkspace() {
           onOpenSub={setOpenSub}
           onSave={saveSection}
           onDraft={draftSection}
-          onRefresh={() => {
-            loadSections().catch(() => undefined);
-          }}
+          onRefresh={() => loadSections().catch(() => undefined)}
           onSectionPatch={(sectionKey, draftContent) => {
             if (!sectionKey || !draftContent.trim()) return;
             setSections((prev) => patchSectionsWithDraft(prev, sectionKey, draftContent));

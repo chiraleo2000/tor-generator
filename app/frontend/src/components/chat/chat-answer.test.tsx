@@ -8,6 +8,7 @@ import {
   isNumericCell,
   looksLikeNoRetrieve,
   parseChatBlocks,
+  uniqueCitations,
 } from "@/components/chat/chat-answer";
 
 describe("parseChatBlocks", () => {
@@ -103,5 +104,22 @@ describe("citation chips", () => {
       />
     );
     expect(screen.getByTestId("chat-source-cards")).toHaveTextContent("พรบ.pdf");
+  });
+
+  it("dedupes mcp+document of the same file and caps the chip bar", () => {
+    expect(
+      uniqueCitations([
+        { type: "mcp", label: "พรบ.pdf" },
+        { type: "document", label: "พรบ.pdf" },
+        { type: "mcp", label: "พรบ.pdf" },
+      ])
+    ).toEqual([{ type: "document", label: "พรบ.pdf" }]);
+    const many = Array.from({ length: 12 }, (_, index) => ({
+      type: "document",
+      label: `ไฟล์-${index}.pdf`,
+    }));
+    render(<ChatCitationBar citations={many} />);
+    expect(screen.getAllByTestId("chat-citation")).toHaveLength(8);
+    expect(screen.getByTestId("chat-citation-more")).toHaveTextContent("+4");
   });
 });

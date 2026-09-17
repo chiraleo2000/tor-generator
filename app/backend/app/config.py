@@ -20,6 +20,7 @@ from app.providers.constants import (
     CLOUD_LLM_PROVIDERS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_SGLANG_EMBEDDING_MODEL,
     LOCAL_EMBEDDING_PROVIDERS,
     LOCAL_LLM_DEFAULT_URLS,
     LOCAL_LLM_PROVIDERS,
@@ -110,7 +111,7 @@ class Settings(BaseSettings):
     sglang_base_url: str = LOCAL_LLM_DEFAULT_URLS["sglang"]
     sglang_embedding_base_url: str = SGLANG_DEFAULT_EMBEDDING_URL
     sglang_model: str = DEFAULT_CHAT_MODEL
-    sglang_embedding_model: str = "google/embeddinggemma-300m"
+    sglang_embedding_model: str = DEFAULT_SGLANG_EMBEDDING_MODEL
     local_embedding_server: str = "lm_studio"
     local_embedding_base_url: str = ""
     # LLM / embedding token windows (None = model heuristic; set in .env to pin)
@@ -179,6 +180,28 @@ class Settings(BaseSettings):
     openai_compatible_base_url: str = ""
     openai_compatible_model: str = ""
     openai_compatible_embedding_model: str = "text-embedding-3-small"
+
+    @field_validator(
+        "lm_studio_model",
+        "lm_studio_embedding_model",
+        "sglang_model",
+        "sglang_embedding_model",
+        "openai_chat_model",
+        "openai_embedding_model",
+        "gemini_model",
+        "gemini_embedding_model",
+        "gemini_api_key",
+        "bedrock_model_id",
+        "llm_provider",
+        "embedding_provider",
+        "deployment_mode",
+        mode="before",
+    )
+    @classmethod
+    def _strip_ids(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
     # -------------------------------------------------------------------------
     # MongoDB (original documents) + Neo4j (GraphRAG)

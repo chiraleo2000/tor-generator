@@ -63,6 +63,10 @@ def _attr(settings: Any, name: str, default: Any = "") -> Any:
     value = getattr(settings, name, default)
     if isinstance(default, str) and not isinstance(value, str):
         return default
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return default
     return value
 
 
@@ -263,6 +267,9 @@ class ProviderFactory:
             return OpenAILLMProvider(
                 api_key=_attr(self._settings, "openai_api_key"),
                 model_name=_attr(self._settings, "openai_chat_model", "gpt-4o-mini"),
+                timeout=float(
+                    _attr(self._settings, "cloud_llm_timeout", 300.0) or 300.0
+                ),
             )
         if kind == "gemini":
             from app.providers.llm.gemini_provider import GeminiLLMProvider

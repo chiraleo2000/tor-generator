@@ -1,6 +1,9 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
+> **รอบ 17 กันยายน 2026 — hybrid Gemini live (สามเครื่องมือ):** `DEPLOYMENT_MODE=hybrid` · `LLM_PROVIDER=gemini` (`gemini-3.5-flash-lite`) · ฝังเวกเตอร์ local EmbeddingGemma ผ่าน LM Studio · ถาม-ตอบมี **สรุปคำตอบ** + ตาราง + **ข้อควรระวัง** + citation (ไม่ใช้ stub) · gold pack `hire_develop` วิเคราะห์ **25/25** · ร่าง **16/16** · ส่งออก DOCX ไม่มี filename leak / type_forbidden · หัวข้อทองขาด 0 · ขั้นที่ ๔ คะแนนกฎ **93/100** · standalone `/review` **80/100** · จำกัดชิปอ้างอิงถาม-ตอบไม่ให้ล้นจอ  
 > **รอบ 15 กันยายน 2026 — harden live workflow:** gold pack `hire_develop` Phase 0→4 บน LM Studio · หัวข้อทอง **ขาด 0** / **16/16 หมวด** · ส่งออก DOCX+PDF ไม่มี `[*.txt]` / ไม่มีโทนผู้ขาย · ถาม-ตอบมี citation · KB อัปโหลดโซน+ลบ · standalone review **80/100** · smoke `hire_maintain` ถึงขั้นที่ ๑ (`asset_list` ครบ) ไม่เริ่มร่าง  
+> **v0.8.1 (17 กันยายน 2026):** ค่า LLM/embedding ตาม `.env.example` (Gemma 4 + EmbeddingGemma 768-d + `TOR_*`) ไม่ hardcode ใน constants · ยืนยัน live hybrid Gemini บนเครื่องนี้  
+> **v0.8.0 (17 กันยายน 2026):** งบโทเคนร่าง/ตรวจ/embed อ่านจาก `.env` (`TOR_CONTEXT_WINDOW` / `EMBEDDING_MAX_TOKENS`)  
 > **v0.7.1 (17 กันยายน 2026):** ถาม-ตอบแบบบทสรุปผู้บริหาร (สรุป + ตาราง + ข้อควรระวัง) · ติดตาม `documents/sources/` และตัวอย่าง TOR ใน git  
 > **v0.7.0 (15 กันยายน 2026):** harden คุณภาพร่าง + ยืนยัน workflow สด · Amazon Quick skills `tor-agents-skills-v0.7.0.zip`  
 > **v0.6.2 (14 กันยายน 2026):** คู่มือติดตั้ง Amazon Quick บน AWS + zip skills `tor-agents-skills-v0.6.2.zip` — ไม่เปลี่ยนพฤติกรรมร่าง/ตรวจจากรอบ 11 ก.ย.  
@@ -9,6 +12,24 @@
 > **รอบ 9 กันยายน 2026 ค่ำ — UI ร่าง TOR (เลขหมวดเทคนิค):** Docker rebuild `frontend` · health 200 · Vitest scoped **42 ผ่าน** / 4 ไฟล์ · bundle ไม่มี `หมวด N:` · มี `tabular-nums`/`รอร่าง`  
 > **รอบ 9 กันยายน 2026 เย็น — สไตล์ราชการ + Sonar + Docker:** pytest `-m "not live_llm and not integration"` **2059 ผ่าน** / 25 ตัด · Vitest **309 ผ่าน** / 50 ไฟล์ · Docker `tor-app` rebuild frontend+backend (healthy) · Amazon Quick skills อัปเดตสไตล์ราชการ · `pytest -m live_llm` **หยุดกลางคันตามคำสั่ง** (ECT ผ่าน 2 ข้อแรก แล้วยกเลิกตอนร่างครบหมวด)  
 > รอบเช้า 9 กันยายน 2026 — Section_Profile: pytest **2046** · Vitest **309** · live_llm **17/17** · Docker rebuild
+
+---
+
+## รอบ 17 กันยายน 2026 — hybrid Gemini + local embeddings (สามเครื่องมือ)
+
+สแตก `tor-app` · `LLM_PROVIDER=gemini` · `GEMINI_MODEL=gemini-3.5-flash-lite` · `EMBEDDING_PROVIDER=local` / LM Studio EmbeddingGemma · UI `:3000` 200 · `/health` healthy  
+โครงการ: `dedad31c-2915-4091-84ca-2e962f334cf4` (`hire_develop`, gold pack) · วิเคราะห์ **25/25** · ร่าง **16/16** ใน ~57 วินาที · `confirm-phase4` 200 · คะแนนกฎ **93/100**
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| ถาม-ตอบ API (`search_scope=both`) | ไทย 1,451 · โครงสรุป/ตาราง/ข้อควรระวัง · citation 53 ชิ้น ไม่มี stub | `test-evidence/_gemini-three-tools.json` |
+| standalone `/review` gold pack | **80/100** · findings 15 | งาน `a122e345-b90f-4c96-b050-b96d1ee1ff08` · UI `/review?job=` |
+| `scripts/workflow_quality_check.py` | **exit 0** · 16/16 · ไม่มี filename leak / type_forbidden / missing gold headings · มีตารางงวดจ่าย | `test-evidence/_round-workflow-quality.json` · `workflow-quality-export.docx` |
+| ขั้นที่ ๔ UI | **16/16 หมวด** · คะแนน 93/100 · ส่งออก Word/PDF | โปรเจกต์ด้านบน |
+| ชิปอ้างอิงถาม-ตอบ | ยุบ mcp+document ชื่อเดียวกัน · แสดงสูงสุด 8 + ส่วนเกิน | `chat-answer.tsx` `uniqueCitations` |
+
+คำอังกฤษที่เหลือใน harness คือ `workflow` / `quality` จากชื่อโครงการทดสอบ — ไม่ทำให้สคริปต์ล้ม  
+หมายเหตุเดิมเรื่องกฎ completeness เทียบหัวข้อย่อยแบบซื้อพัสดุกับร่างจ้างพัฒนายังมีในขั้นที่ ๔ (ฟ้อง functional/testing ทั้งที่ preview มีแล้ว)
 
 ---
 

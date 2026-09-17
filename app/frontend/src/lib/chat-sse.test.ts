@@ -6,6 +6,27 @@ describe("streamSsePost", () => {
     vi.unstubAllGlobals();
   });
 
+  it("yields after section_done so the UI can paint mid-stream", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'event: section_done\ndata: {"section_key":"s1","content":"หนึ่ง"}\n\n' +
+              'event: section_done\ndata: {"section_key":"s2","content":"สอง"}\n\n'
+          )
+        );
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body }));
+    const keys: string[] = [];
+    await streamSsePost("/draft", {}, null, (event, data) => {
+      if (event === "section_done") keys.push(String(data.section_key || ""));
+    });
+    expect(keys).toEqual(["s1", "s2"]);
+  });
+
   it("parses token and done events", async () => {
     const encoder = new TextEncoder();
     const chunks = [

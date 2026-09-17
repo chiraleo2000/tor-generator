@@ -1,9 +1,36 @@
-"""Shared AI provider constants."""
+"""Shared AI provider constants.
 
-EMBEDDING_DIMENSIONS = 768
+Live chat/embedding ids and vector size come from `.env` (same keys as `.env.example`).
+Fallbacks below match that file's local Gemma 4 + EmbeddingGemma pair.
+"""
 
-DEFAULT_CHAT_MODEL = "google/gemma-4-e4b"
-DEFAULT_EMBEDDING_MODEL = "text-embedding-embeddinggemma-300m"
+from __future__ import annotations
+
+import os
+
+
+def _env_str(name: str, fallback: str) -> str:
+    return (os.environ.get(name) or "").strip() or fallback
+
+
+def _env_int(name: str, fallback: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return fallback
+    try:
+        return int(raw)
+    except ValueError:
+        return fallback
+
+
+DEFAULT_CHAT_MODEL = _env_str("LM_STUDIO_MODEL", "google/gemma-4-e4b")
+DEFAULT_EMBEDDING_MODEL = _env_str(
+    "LM_STUDIO_EMBEDDING_MODEL", "text-embedding-embeddinggemma-300m"
+)
+DEFAULT_SGLANG_EMBEDDING_MODEL = _env_str(
+    "SGLANG_EMBEDDING_MODEL", "google/embeddinggemma-300m"
+)
+EMBEDDING_DIMENSIONS = _env_int("EMBEDDING_DIMENSIONS", 768)
 
 LOCAL_LLM_DEFAULT_URLS = {
     "lm_studio": "http://host.docker.internal:1234/v1",
