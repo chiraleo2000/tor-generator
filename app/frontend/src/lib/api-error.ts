@@ -39,7 +39,7 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
     message?: string;
     response?: { data?: { error?: { message?: unknown } } };
   };
-    if record.code === "ECONNABORTED" || /timeout/i.test(record.message ?? "") {
+  if (record.code === "ECONNABORTED" || /timeout/i.test(record.message ?? "")) {
     return "หมดเวลารอโมเดล — ตรวจ LLM_PROVIDER / API key แล้วลองอีกครั้ง";
   }
   const network = networkFailureMessage(err);

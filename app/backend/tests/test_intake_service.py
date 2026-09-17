@@ -514,11 +514,19 @@ def test_project_intake_pack_keeps_more_than_8k_chars():
     assert len(pack) > 8000
 
 
-def test_analyze_prompt_chunks_covers_long_pack_evenly():
-    from app.services.intake_service import ANALYZE_CHUNK_CHARS
+def test_analyze_prompt_chunks_covers_long_pack_evenly(monkeypatch):
+    from app.providers.model_capabilities import reset_capability_cache
+    from app.services.intake_service import (
+        ANALYZE_MAX_CHUNKS,
+        _analyze_chunk_chars,
+        _analyze_prompt_chunks,
+    )
 
+    monkeypatch.setenv("TOR_CONTEXT_WINDOW", "32768")
+    reset_capability_cache()
+    chunk_chars = _analyze_chunk_chars()
     # Distinct segments so even sampling keeps middle coverage.
-    parts = [f"PART{i}" + ("ก" * (ANALYZE_CHUNK_CHARS - 10)) for i in range(6)]
+    parts = [f"PART{i}" + ("ก" * (chunk_chars - 10)) for i in range(6)]
     raw = "".join(parts)
     chunks = _analyze_prompt_chunks(raw)
     assert 2 <= len(chunks) <= ANALYZE_MAX_CHUNKS
@@ -526,19 +534,29 @@ def test_analyze_prompt_chunks_covers_long_pack_evenly():
     assert any(f"PART{i}" in "".join(chunks) for i in (0, 2, 5))
 
 
-def test_analyze_prompt_chunks_prefers_single_pass_for_typical_pack():
+def test_analyze_prompt_chunks_prefers_single_pass_for_typical_pack(monkeypatch):
     """Typical TOR packs fit one large window → one LLM call."""
-    from app.services.intake_service import ANALYZE_CHUNK_CHARS
+    from app.providers.model_capabilities import reset_capability_cache
+    from app.services.intake_service import _analyze_chunk_chars, _analyze_prompt_chunks
 
-    raw = "ก" * min(80_000, ANALYZE_CHUNK_CHARS)
+    monkeypatch.setenv("TOR_CONTEXT_WINDOW", "131072")
+    reset_capability_cache()
+    raw = "ก" * min(80_000, _analyze_chunk_chars())
     assert len(_analyze_prompt_chunks(raw)) == 1
 
 
-def test_analyze_prompt_chunks_caps_round_trips():
-    from app.services.intake_service import ANALYZE_CHUNK_CHARS
+def test_analyze_prompt_chunks_caps_round_trips(monkeypatch):
+    from app.providers.model_capabilities import reset_capability_cache
+    from app.services.intake_service import (
+        ANALYZE_MAX_CHUNKS,
+        _analyze_chunk_chars,
+        _analyze_prompt_chunks,
+    )
 
-    parts = [f"SEG{i}" + ("ข" * ANALYZE_CHUNK_CHARS) for i in range(12)]
-    raw = "".join(parts)
+    monkeypatch.setenv("TOR_CONTEXT_WINDOW", "32768")
+    reset_capability_cache()
+    chunk_chars = _analyze_chunk_chars()
+    raw = "ก" * (chunk_chars * (ANALYZE_MAX_CHUNKS + 3))
     assert len(_analyze_prompt_chunks(raw)) == ANALYZE_MAX_CHUNKS
 
 

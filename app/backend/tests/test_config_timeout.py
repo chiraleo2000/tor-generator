@@ -30,13 +30,21 @@ def test_mcp_rag_env_maps_case_insensitively(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.drafting_agent_timeout_seconds() == 180
 
 
-def test_cloud_claude_timeout_is_60():
-    settings = Settings(llm_provider="claude", deployment_mode="cloud")
+def test_cloud_claude_uses_cloud_llm_timeout():
+    settings = Settings(
+        llm_provider="claude",
+        deployment_mode="cloud",
+        cloud_llm_timeout=60.0,
+    )
     assert settings.drafting_agent_timeout_seconds() == 60
 
 
 def test_on_prem_claude_uses_cloud_timeout():
-    settings = Settings(llm_provider="claude", deployment_mode="on_prem")
+    settings = Settings(
+        llm_provider="claude",
+        deployment_mode="on_prem",
+        cloud_llm_timeout=60.0,
+    )
     assert settings.drafting_agent_timeout_seconds() == 60
 
 
@@ -115,6 +123,7 @@ def test_on_prem_pin_enables_mcp_when_env_true(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setenv("PIN_ON_PREM_LLM", "true")
     monkeypatch.setenv("DEPLOYMENT_MODE", "on_prem")
+    monkeypatch.setenv("LLM_PROVIDER", "lm_studio")
     monkeypatch.setenv("MCP_RAG_ENABLED", "true")
     pinned = apply_on_prem_llm_pin(
         PinSettings(

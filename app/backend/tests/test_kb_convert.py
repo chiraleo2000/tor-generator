@@ -5,7 +5,19 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "skills").is_dir() and (parent / "docker-compose.yml").is_file():
+            return parent
+        if (parent / "skills").is_dir() and (parent / "Discussions").is_dir():
+            return parent
+    # Host layout: app/backend/tests → parents[3] == repo root
+    return here.parents[min(3, len(here.parents) - 1)]
+
+
+ROOT = _repo_root()
 MODULE_PATH = ROOT / "skills" / "Draft-TORs-Skills" / "convert_kb_to_markdown.py"
 
 

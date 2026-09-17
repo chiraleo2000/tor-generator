@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     openai_chat_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
     gemini_embedding_model: str = "text-embedding-004"
     bedrock_region: str = "ap-southeast-1"
     bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"

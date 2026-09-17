@@ -34,7 +34,7 @@ class GeminiLLMProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        model_name: str = "gemini-2.0-flash",
+        model_name: str = "gemini-3.5-flash-lite",
         timeout: float = 60.0,
     ) -> None:
         if not api_key:
@@ -66,10 +66,15 @@ class GeminiLLMProvider(LLMProvider):
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(self._url("generateContent"), json=body)
-                if response.status_code >= 400:
-                    detail = (response.text or "")[:500]
+                raw_status = getattr(response, "status_code", 200)
+                try:
+                    status = int(raw_status)
+                except (TypeError, ValueError):
+                    status = 200
+                if status >= 400:
+                    detail = str(getattr(response, "text", "") or "")[:500]
                     raise ConnectionError(
-                        f"Gemini HTTP {response.status_code}: {detail}"
+                        f"Gemini HTTP {status}: {detail}"
                     )
                 payload = response.json()
         except httpx.TimeoutException as exc:

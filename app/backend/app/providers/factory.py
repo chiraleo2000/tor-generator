@@ -269,7 +269,7 @@ class ProviderFactory:
 
             return GeminiLLMProvider(
                 api_key=_attr(self._settings, "gemini_api_key"),
-                model_name=_attr(self._settings, "gemini_model", "gemini-2.0-flash"),
+                model_name=_attr(self._settings, "gemini_model", "gemini-3.5-flash-lite"),
                 timeout=float(
                     _attr(self._settings, "cloud_llm_timeout", 300.0) or 300.0
                 ),

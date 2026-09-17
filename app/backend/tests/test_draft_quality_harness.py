@@ -7,7 +7,18 @@ from pathlib import Path
 
 from app.export.draft_quality import score_draft_text, score_fixture_report
 
-EVIDENCE = Path(__file__).resolve().parents[3] / "Discussions" / "test-evidence"
+
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "Discussions" / "test-evidence").is_dir():
+            return parent
+        if (parent / "docker-compose.yml").is_file() and (parent / "Discussions").is_dir():
+            return parent
+    return here.parents[min(3, len(here.parents) - 1)]
+
+
+EVIDENCE = _repo_root() / "Discussions" / "test-evidence"
 SEP9 = EVIDENCE / "_round-2026-09-09-skk-quality.json"
 SEP10 = EVIDENCE / "_round-2026-09-10-skk-quality-thinking.json"
 

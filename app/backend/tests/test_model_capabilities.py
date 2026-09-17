@@ -49,6 +49,8 @@ def test_local_non_gemma_defaults_to_32k(monkeypatch):
 
 def test_bedrock_claude_and_cohere_on_same_image(monkeypatch):
     monkeypatch.delenv("TOR_CONTEXT_WINDOW", raising=False)
+    monkeypatch.delenv("EMBEDDING_DIMENSIONS", raising=False)
+    monkeypatch.delenv("EMBEDDING_MAX_TOKENS", raising=False)
     reset_capability_cache()
     caps = capabilities_for(
         "bedrock",

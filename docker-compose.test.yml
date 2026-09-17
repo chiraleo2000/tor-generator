@@ -10,3 +10,6 @@ services:
       - ./app/infra/quick:/app/infra/quick:ro
       - ./documents/research:/documents/research:ro
       - ./documents/sources:/documents/sources:ro
+      - ./skills:/app/skills:ro
+      - ./Discussions:/app/Discussions:ro
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
