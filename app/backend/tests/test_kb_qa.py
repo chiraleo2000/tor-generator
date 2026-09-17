@@ -68,7 +68,9 @@ def test_build_kb_qa_messages_is_content_style_and_uses_rag():
     assert "ข้อความเนื้อหา" in messages[0]["content"]
     assert "ห้ามใช้โครงหัวข้อบังคับ" in messages[0]["content"]
     assert "ประเด็นคำถาม" in messages[0]["content"]
+    assert "สรุปคำตอบ" in messages[0]["content"]
     assert "ตอบให้ครบถ้วนตามเอกสาร" in messages[0]["content"]
+    assert "บทสรุปผู้บริหาร" in messages[0]["content"]
     assert "Neo4j" in messages[0]["content"]
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "สวัสดี"

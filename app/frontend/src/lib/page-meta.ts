@@ -14,7 +14,7 @@ export function pageMeta(pathname: string): { title: string; sub: string } {
   if (pathname.startsWith("/chat")) {
     return {
       title: "ถาม-ตอบ",
-      sub: "ดึงคลังกฎหมายจาก pgvector หลายชิ้น แล้วอธิบายละเอียดตามเอกสาร พร้อมอ้างอิง inline",
+      sub: "ถามได้ด้วยภาษาธรรมชาติ โดยทุกคำตอบอ้างอิงแหล่งข้อมูลจากคลัง ซึ่งสามารถตรวจสอบย้อนกลับได้",
     };
   }
   if (pathname.startsWith("/review")) {

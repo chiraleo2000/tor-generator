@@ -145,9 +145,9 @@ logs/
 *.log
 debug-*.log
 
-# Temporary files
-tmp/
-temp/
+# Editor backup / cache
+*.bkp
+*.bak
 *.tmp
 
 # Generated documentation
@@ -172,22 +172,24 @@ app/backend/.cache/
 app/backend/.local/
 app/backend/coverage.xml
 
-# Original PDF/DOCX source packs — too large for GitHub and not required to run the app
-documents/sources/
-
-# Large dataset export zips (build locally; see documents/exports/README.md)
+# Generated dataset zips (build locally; see documents/exports/README.md)
 documents/exports/*.zip
 documents/exports/*.ZIP
 
 # Runtime officer/agent uploads and local test caches
 app/backend/agent-uploads/
+app/backend/_probe*
+app/backend/_tor_fmt_probe*.py
 .hypothesis/
 .ruff_cache/
+
+# Accidental nested copy of infra (not part of the app)
+app/infra/quick/app/
 
 # Leftover IDE path — the Next.js app is app/frontend (see Discussions/38)
 /frontend/
 
-# Local IDE / GitHub Actions / Kiro working trees (stay on disk, not in Git)
+# Hidden / local IDE trees (stay on disk, not in Git)
 .cursor/
 .github/
 .kiro/

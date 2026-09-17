@@ -105,6 +105,41 @@ describe("ChatShell MCP degraded banner", () => {
     expect(screen.getByTestId("chat-citation").textContent).toMatch(/mcp:/i);
   });
 
+  it("renders a structured answer card with citation chips", async () => {
+    vi.mocked(streamSsePost).mockImplementation(async (_u, _b, _t, onEvent) => {
+      onEvent("done", {
+        content:
+          "**สรุปคำตอบ**\nวางหลักประกันก่อนจ่ายงวด\n\n| ข้อ | สาระ |\n| --- | --- |\n| 85 | หลักประกันสัญญา |",
+        citations: [
+          { type: "document", label: "ระเบียบพัสดุ.pdf" },
+          { type: "article", label: "ข้อ 85" },
+        ],
+      });
+    });
+    render(<ChatShell kind="kb" />);
+    const input = await screen.findByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "หลักประกัน" } });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "สรุปคำตอบ" })).toBeInTheDocument()
+    );
+    expect(screen.getByTestId("chat-source-bar")).toHaveTextContent("ระเบียบพัสดุ.pdf");
+  });
+
+  it("shows a no-retrieve badge when the answer did not use the knowledge base", async () => {
+    vi.mocked(streamSsePost).mockImplementation(async (_u, _b, _t, onEvent) => {
+      onEvent("done", {
+        content: "ยังไม่มีข้อมูลในคลังสำหรับจำนวนเกษตรกรรายจังหวัด",
+        citations: [],
+      });
+    });
+    render(<ChatShell kind="kb" />);
+    const input = await screen.findByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "เกษตรกรร้อยเอ็ด" } });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    await waitFor(() => expect(screen.getByTestId("chat-no-retrieve")).toBeInTheDocument());
+  });
+
   it("sends on Enter without shift", async () => {
     render(<ChatShell kind="kb" />);
     const input = await screen.findByTestId("chat-input");
@@ -115,11 +150,21 @@ describe("ChatShell MCP degraded banner", () => {
 
   it("fills draft from prompt chips", async () => {
     render(<ChatShell kind="kb" />);
-    const chip = await screen.findByText("หลักประกัน");
+    const chip = await screen.findByTestId("chat-prompt-chip");
     fireEvent.click(chip);
     expect((screen.getByTestId("chat-input") as HTMLTextAreaElement).value).toBe(
       "หลักประกันสัญญา"
     );
+  });
+
+  it("sends a suggested prompt from the empty state", async () => {
+    render(<ChatShell kind="kb" />);
+    const suggested = await screen.findByTestId("chat-suggested-prompt");
+    fireEvent.click(suggested);
+    await waitFor(() => expect(streamSsePost).toHaveBeenCalled());
+    expect(vi.mocked(streamSsePost).mock.calls[0][1]).toMatchObject({
+      content: "หลักประกันสัญญา",
+    });
   });
 
   it("changes search scope", async () => {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bot,
   Copy,
   Globe,
   Library,
@@ -13,6 +14,11 @@ import {
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  ChatAnswerBody,
+  ChatCitationBar,
+  looksLikeNoRetrieve,
+} from "@/components/chat/chat-answer";
 import { MiniRoomList } from "@/components/chat/mini-room-list";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -452,12 +458,14 @@ export function ChatShell({
   }
 
   const lastAssistant = messages.findLast((item) => item.role === "assistant");
+  const briefing = kind === "kb" && !compact;
 
   return (
     <div
       className={cn(
         "flex overflow-hidden rounded-xl border bg-white",
-        compact ? "min-h-[52vh]" : "min-h-[70vh]"
+        compact ? "min-h-[52vh]" : "min-h-[70vh]",
+        briefing && "bg-slate-50"
       )}
       data-testid="chat-shell"
     >
@@ -479,9 +487,33 @@ export function ChatShell({
         onToggleCollapse={() => setCollapsed((value) => !value)}
       />
       )}
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="flex min-w-0 flex-1 flex-col bg-[hsl(150,20%,97%)]">
+        {briefing ? (
+          <div className="border-b bg-white px-5 py-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white">
+                <Bot className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-extrabold text-navy">
+                    AI ผู้ช่วยถาม-ตอบคลังความรู้
+                  </h2>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    ออนไลน์
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                  ถามได้ด้วยภาษาธรรมชาติ โดยทุกคำตอบอ้างอิงแหล่งข้อมูลจากคลังกฎหมาย
+                  ซึ่งสามารถตรวจสอบย้อนกลับได้
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {compact ? null : (
-        <div className="flex flex-wrap items-center gap-1 border-b px-3 py-2">
+        <div className="flex flex-wrap items-center gap-1 border-b bg-white px-3 py-2">
           <p className="mr-auto truncate text-sm font-semibold text-navy" data-testid="chat-active-title">
             {rooms.find((room) => room.id === activeId)?.title || "แชทใหม่"}
           </p>
@@ -578,73 +610,45 @@ export function ChatShell({
             {attachNote}
           </output>
         ) : null}
-        <div className="flex-1 space-y-3 overflow-y-auto p-4" data-testid="chat-messages">
+        <div className="flex-1 space-y-4 overflow-y-auto p-5" data-testid="chat-messages">
           {messages.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground" data-testid="chat-empty">
-              {kind === "kb"
-                ? "เลือกประวัติทางซ้าย หรือพิมพ์คำถามเพื่อเริ่มแชทใหม่ — ระบบดึงหลายชิ้นจากคลังแล้วตอบพร้อมอ้างอิง"
-                : "บอทจะสรุปผลวิเคราะห์ขั้นที่ ๑ ให้ก่อน แล้วคุยถามส่วนที่ยังขาดเป็นภาษาพูด"}
-            </p>
-          ) : null}
-          {messages.map((item) => (
-            <article
-              key={item.id}
-              data-testid={item.role === "assistant" ? "chat-msg-assistant" : "chat-msg-user"}
-              className={cn(
-                "max-w-[85%] rounded-xl px-3 py-2 text-sm",
-                item.role === "user"
-                  ? "ml-auto bg-navy text-white"
-                  : "bg-muted text-foreground"
-              )}
-            >
-              <p className="whitespace-pre-wrap">{item.content}</p>
-              {!item.content && item.role === "assistant" && busy ? (
-                <span className="inline-flex gap-1 items-center text-sm" aria-label="กำลังพิมพ์">
-                  {queueStatus ? (
-                    <span>{queueStatus}</span>
-                  ) : (
-                    <>
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
-                    </>
-                  )}
-                </span>
-              ) : null}
-              {item.created_at ? (
-                <time
-                  className="mt-1 block text-[10px] opacity-70"
-                  dateTime={item.created_at}
-                >
-                  {formatChatTimestamp(item.created_at)}
-                </time>
-              ) : null}
-              {item.mcp_degraded ? (
-                <p
-                  className="mt-2 text-[11px] opacity-80"
-                  data-testid="mcp-unavailable"
-                >
-                  แหล่ง MCP ไม่พร้อม — แสดงผลจากคลังในเครื่องและ Custom RAG
-                </p>
-              ) : null}
-              {item.citations?.length ? (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {item.citations.map((cite) => (
-                    <span
-                      key={`${cite.type}-${cite.label}`}
-                      data-testid="chat-citation"
-                      className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-navy"
+            <div className="space-y-4 py-6" data-testid="chat-empty">
+              <p className="text-center text-sm text-muted-foreground">
+                {kind === "kb"
+                  ? "เลือกประวัติทางซ้าย หรือพิมพ์คำถามเพื่อเริ่มแชทใหม่ — ระบบดึงหลายชิ้นจากคลังแล้วตอบพร้อมอ้างอิง"
+                  : "บอทจะสรุปผลวิเคราะห์ขั้นที่ ๑ ให้ก่อน แล้วคุยถามส่วนที่ยังขาดเป็นภาษาพูด"}
+              </p>
+              {briefing && prompts.length ? (
+                <div className="flex flex-col items-end gap-2">
+                  {prompts.map((prompt) => (
+                    <button
+                      key={prompt.id}
+                      type="button"
+                      data-testid="chat-suggested-prompt"
+                      className="max-w-[90%] rounded-2xl bg-emerald-500 px-4 py-2 text-left text-sm text-white shadow-sm hover:bg-emerald-600"
+                      onClick={() => {
+                        void send(prompt.body);
+                      }}
                     >
-                      {cite.type}: {cite.label}
-                    </span>
+                      {prompt.title}
+                    </button>
                   ))}
                 </div>
               ) : null}
-            </article>
+            </div>
+          ) : null}
+          {messages.map((item) => (
+            <ChatBubble
+              key={item.id}
+              item={item}
+              briefing={briefing}
+              busy={busy}
+              queueStatus={queueStatus}
+            />
           ))}
           <div ref={endRef} />
         </div>
-        <div className="border-t p-3">
+        <div className="border-t bg-white p-3">
           <div className="mb-2 flex flex-wrap gap-1">
             {compact
               ? null
@@ -652,6 +656,7 @@ export function ChatShell({
                   <button
                     key={prompt.id}
                     type="button"
+                    data-testid="chat-prompt-chip"
                     className="rounded-full border px-2 py-0.5 text-[11px] hover:bg-muted"
                     onClick={() => setDraft(prompt.body)}
                   >
@@ -662,11 +667,14 @@ export function ChatShell({
           <div className="flex items-end gap-2">
             <textarea
               data-testid="chat-input"
-              className="min-h-[48px] flex-1 rounded-md border p-2 text-sm"
+              className={cn(
+                "min-h-[48px] flex-1 border p-2 text-sm",
+                briefing ? "rounded-2xl px-4 py-3 shadow-sm" : "rounded-md"
+              )}
               value={draft}
               placeholder={
                 kind === "kb"
-                  ? "ถามจากคลังกฎหมาย เช่น งวดจ่ายต้องวางหลักประกันหรือไม่"
+                  ? "พิมพ์คำถามเกี่ยวกับกฎหมาย ระเบียบ และแนวปฏิบัติจัดซื้อจัดจ้าง..."
                   : "ตอบเป็นภาษาพูดได้ เช่น วงเงินสองล้านห้าแสนบาท จากงบดำเนินงาน"
               }
               onChange={(event) => setDraft(event.target.value)}
@@ -681,6 +689,7 @@ export function ChatShell({
               type="button"
               data-testid="chat-send"
               disabled={busy || !draft.trim()}
+              className={briefing ? "h-11 w-11 rounded-full bg-emerald-500 hover:bg-emerald-600" : undefined}
               onClick={() => send(draft)}
             >
               <Send className="h-4 w-4" />
@@ -689,6 +698,89 @@ export function ChatShell({
         </div>
       </section>
     </div>
+  );
+}
+
+function ChatBubble({
+  item,
+  briefing,
+  busy,
+  queueStatus,
+}: Readonly<{
+  item: ChatMessageItem;
+  briefing: boolean;
+  busy: boolean;
+  queueStatus: string | null;
+}>) {
+  const isUser = item.role === "user";
+  const noRetrieve =
+    !isUser && looksLikeNoRetrieve(item.content, item.citations);
+  return (
+    <article
+      data-testid={isUser ? "chat-msg-user" : "chat-msg-assistant"}
+      className={cn(
+        isUser
+          ? cn(
+              "ml-auto max-w-[85%] rounded-2xl px-4 py-2.5 text-sm text-white",
+              briefing ? "bg-emerald-500" : "bg-navy"
+            )
+          : briefing
+            ? "w-full max-w-none rounded-2xl bg-white px-6 py-5 text-sm shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
+            : "max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground"
+      )}
+    >
+      {isUser || !briefing ? (
+        <p className="whitespace-pre-wrap">{item.content}</p>
+      ) : (
+        <ChatAnswerBody text={item.content} />
+      )}
+      {!item.content && !isUser && busy ? (
+        <span className="inline-flex items-center gap-1 text-sm" aria-label="กำลังพิมพ์">
+          {queueStatus ? (
+            <span>{queueStatus}</span>
+          ) : (
+            <>
+              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+            </>
+          )}
+        </span>
+      ) : null}
+      {item.created_at && !briefing ? (
+        <time className="mt-1 block text-[10px] opacity-70" dateTime={item.created_at}>
+          {formatChatTimestamp(item.created_at)}
+        </time>
+      ) : null}
+      {item.mcp_degraded ? (
+        <p className="mt-2 text-[11px] opacity-80" data-testid="mcp-unavailable">
+          แหล่ง MCP ไม่พร้อม — แสดงผลจากคลังในเครื่องและ Custom RAG
+        </p>
+      ) : null}
+      {noRetrieve ? (
+        <p
+          className="mt-3 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+          data-testid="chat-no-retrieve"
+        >
+          ไม่ดึงคลัง
+        </p>
+      ) : null}
+      {briefing && !isUser ? (
+        <ChatCitationBar citations={item.citations || []} />
+      ) : item.citations?.length ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {item.citations.map((cite) => (
+            <span
+              key={`${cite.type}-${cite.label}`}
+              data-testid="chat-citation"
+              className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-navy"
+            >
+              {cite.type}: {cite.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </article>
   );
 }
 

@@ -1,0 +1,621 @@
+<mxfile host="Electron">
+  <diagram id="JAICh0e9tGLwkjdMmrnr" name="Page-1">
+    <mxGraphModel dx="5580" dy="4310" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3300" pageHeight="1600" math="0" shadow="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=#1e3a5f;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontColor=#FFFFFF;fontSize=36;fontStyle=1;fontFamily=FC Iconic;" value="ระบบการจัดซื้อจัดจ้างภาครัฐ ภาพรวมครบวงจร (พ.ร.บ. 2560)" vertex="1">
+          <mxGeometry height="55" width="2530" x="600" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_A" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fff0;strokeColor=#82b366;opacity=30;fontFamily=FC Iconic;fontSize=20;" value="" vertex="1">
+          <mxGeometry height="160" width="2530" x="600" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_A" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;fontColor=#1a5276;rotation=-90;fontFamily=FC Iconic;" value="A. กฎหมาย" vertex="1">
+          <mxGeometry height="160" width="40" x="600" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_B" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f8ff;strokeColor=#6c8ebf;opacity=30;fontFamily=FC Iconic;fontSize=20;" value="" vertex="1">
+          <mxGeometry height="120" width="2530" x="600" y="345" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_B" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;fontColor=#1a5276;rotation=-90;fontFamily=FC Iconic;" value="B. ประเภทงาน" vertex="1">
+          <mxGeometry height="120" width="40" x="600" y="345" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_C" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff5f5;strokeColor=#b85450;opacity=30;fontFamily=FC Iconic;fontSize=20;" value="" vertex="1">
+          <mxGeometry height="130" width="2530" x="600" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_C" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;fontColor=#1a5276;rotation=-90;fontFamily=FC Iconic;" value="C. วิธีการจัดจ้าง" vertex="1">
+          <mxGeometry height="130" width="40" x="600" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_D" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f0ff;strokeColor=#9673a6;opacity=30;fontFamily=FC Iconic;fontSize=20;" value="" vertex="1">
+          <mxGeometry height="130" width="2530" x="600" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_D" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;fontColor=#1a5276;rotation=-90;fontFamily=FC Iconic;" value="D. ระบบ e-GP" vertex="1">
+          <mxGeometry height="130" width="40" x="600" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_E" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbe6;strokeColor=#d6b656;opacity=30;fontFamily=FC Iconic;fontSize=20;" value="" vertex="1">
+          <mxGeometry height="180" width="2530" x="600" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_E" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;fontColor=#1a5276;rotation=-90;fontFamily=FC Iconic;" value="E. TOR" vertex="1">
+          <mxGeometry height="180" width="40" x="600" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_F" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8f0;strokeColor=#d79b00;opacity=30;fontFamily=FC Iconic;fontSize=20;" value="" vertex="1">
+          <mxGeometry height="345" width="2530" x="600" y="965" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_F" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;fontColor=#1a5276;rotation=-90;fontFamily=FC Iconic;" value="F. ขั้นตอน e-Bidding" vertex="1">
+          <mxGeometry height="160" width="40" x="600" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_G" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5fff5;strokeColor=#27ae60;opacity=30;fontFamily=FC Iconic;fontSize=20;" value="" vertex="1">
+          <mxGeometry height="180" width="2530" x="610" y="1370" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_G" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;fontColor=#1a5276;rotation=-90;fontFamily=FC Iconic;" value="G. สัญญา / SME / โปร่งใส" vertex="1">
+          <mxGeometry height="180" width="40" x="610" y="1370" as="geometry" />
+        </mxCell>
+        <mxCell id="law_prb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560&lt;/b&gt;&lt;br&gt;กฎหมายแม่บท 132 มาตรา" vertex="1">
+          <mxGeometry height="60" width="250" x="660" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="law_reg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;ระเบียบกระทรวงการคลัง&lt;/b&gt;&lt;br&gt;ว่าด้วยการจัดซื้อจัดจ้างฯ พ.ศ. 2560" vertex="1">
+          <mxGeometry height="60" width="250" x="960" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="law_min" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;กฎกระทรวง&lt;/b&gt;&lt;br&gt;กำหนดวิธีเฉพาะเจาะจง, วงเงิน ฯลฯ" vertex="1">
+          <mxGeometry height="60" width="230" x="1260" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="law_circ" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;หนังสือเวียน กรมบัญชีกลาง&lt;/b&gt;&lt;br&gt;ว.119, ว.132, ว.56, &lt;b&gt;ว.159/2566&lt;/b&gt; (TOR ก่อสร้าง)" vertex="1">
+          <mxGeometry height="60" width="310" x="1540" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="law_pdpa" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;พ.ร.บ. PDPA 2562&lt;/b&gt;&lt;br&gt;คุ้มครองข้อมูลส่วนบุคคล" vertex="1">
+          <mxGeometry height="60" width="220" x="1910" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="law_info" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;พ.ร.บ. ข้อมูลข่าวสาร 2540&lt;/b&gt;&lt;br&gt;การเปิดเผยข้อมูลภาครัฐ" vertex="1">
+          <mxGeometry height="60" width="230" x="2190" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="law_cloud" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;นโยบาย Cloud First ว.9-2/2568&lt;/b&gt;&lt;br&gt;Public / Protected / Sovereign Cloud" vertex="1">
+          <mxGeometry height="60" width="270" x="2480" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="law_integrity" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;Integrity Pact (IP) + CoST&lt;/b&gt;&lt;br&gt;Construction Sector Transparency" vertex="1">
+          <mxGeometry height="60" width="260" x="2810" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="el12" edge="1" parent="1" source="law_prb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="law_reg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="el23" edge="1" parent="1" source="law_reg" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="law_min">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="el34" edge="1" parent="1" source="law_min" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="law_circ">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="type_buy" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontFamily=FC Iconic;" value="🛒 &lt;b&gt;การจัดซื้อ&lt;/b&gt;&lt;br&gt;Supply / IT" vertex="1">
+          <mxGeometry height="70" width="170" x="660" y="363" as="geometry" />
+        </mxCell>
+        <mxCell id="type_hire" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontFamily=FC Iconic;" value="🏗️ &lt;b&gt;การจัดจ้าง&lt;/b&gt;&lt;br&gt;Construction" vertex="1">
+          <mxGeometry height="70" width="170" x="880" y="363" as="geometry" />
+        </mxCell>
+        <mxCell id="type_consult" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontFamily=FC Iconic;" value="💼 &lt;b&gt;จ้างที่ปรึกษา&lt;/b&gt;&lt;br&gt;Consulting" vertex="1">
+          <mxGeometry height="70" width="170" x="1100" y="363" as="geometry" />
+        </mxCell>
+        <mxCell id="type_design" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontFamily=FC Iconic;" value="🎨 &lt;b&gt;จ้างออกแบบ&lt;/b&gt;&lt;br&gt;Design Contest (ม.83)" vertex="1">
+          <mxGeometry height="70" width="200" x="1320" y="363" as="geometry" />
+        </mxCell>
+        <mxCell id="type_rent" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontFamily=FC Iconic;" value="🔑 &lt;b&gt;การเช่า / เช่าซื้อ&lt;/b&gt;" vertex="1">
+          <mxGeometry height="70" width="170" x="1570" y="363" as="geometry" />
+        </mxCell>
+        <mxCell id="m_open" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=20;fontFamily=FC Iconic;" value="1️⃣ &lt;b&gt;ประกาศเชิญชวนทั่วไป&lt;/b&gt;&lt;br&gt;Open Competitive Bidding&lt;br&gt;ม.55(1) / ข้อ 56" vertex="1">
+          <mxGeometry height="80" width="260" x="660" y="498" as="geometry" />
+        </mxCell>
+        <mxCell id="m_select" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=20;fontFamily=FC Iconic;" value="2️⃣ &lt;b&gt;วิธีคัดเลือก&lt;/b&gt;&lt;br&gt;Selective Tendering&lt;br&gt;ม.55(2) / ข้อ 57" vertex="1">
+          <mxGeometry height="80" width="260" x="990" y="498" as="geometry" />
+        </mxCell>
+        <mxCell id="m_direct" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=20;fontFamily=FC Iconic;" value="3️⃣ &lt;b&gt;วิธีเฉพาะเจาะจง&lt;/b&gt;&lt;br&gt;Direct Award&lt;br&gt;ม.55(3) / ข้อ 79 + กฎกระทรวง" vertex="1">
+          <mxGeometry height="80" width="280" x="1320" y="498" as="geometry" />
+        </mxCell>
+        <mxCell id="m_consult_w" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=20;fontFamily=FC Iconic;" value="4️⃣ &lt;b&gt;วิธีจ้างที่ปรึกษา&lt;/b&gt;&lt;br&gt;Quality / Price-Performance&lt;br&gt;ม.55(4) / ข้อ 89–107" vertex="1">
+          <mxGeometry height="80" width="280" x="1670" y="498" as="geometry" />
+        </mxCell>
+        <mxCell id="egp_ebidding" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=20;fontFamily=FC Iconic;" value="💻 &lt;b&gt;e-Bidding&lt;/b&gt;&lt;br&gt;ประกวดราคาอิเล็กทรอนิกส์&lt;br&gt;&amp;gt; 500,000 บาท" vertex="1">
+          <mxGeometry height="80" width="220" x="670" y="643" as="geometry" />
+        </mxCell>
+        <mxCell id="egp_emarket" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=20;fontFamily=FC Iconic;" value="🛒 &lt;b&gt;e-Market&lt;/b&gt;&lt;br&gt;RFQ: 500K–5M&lt;br&gt;Thai Auction: &amp;gt; 5M" vertex="1">
+          <mxGeometry height="80" width="220" x="940" y="643" as="geometry" />
+        </mxCell>
+        <mxCell id="egp_ecatalog" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=20;fontFamily=FC Iconic;" value="📦 &lt;b&gt;e-Catalog&lt;/b&gt;&lt;br&gt;รายการมาตรฐาน 77/200 รายการ&lt;br&gt;(A4, Toner, CCTV ฯลฯ)" vertex="1">
+          <mxGeometry height="80" width="240" x="1220" y="643" as="geometry" />
+        </mxCell>
+        <mxCell id="egp_direct_s" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=20;fontFamily=FC Iconic;" value="📝 &lt;b&gt;ระบบทั่วไป (เฉพาะเจาะจง)&lt;/b&gt;&lt;br&gt;≤ 500,000 บาท&lt;br&gt;PO ≤ 100,000 บาท" vertex="1">
+          <mxGeometry height="80" width="260" x="1520" y="643" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_def" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="📖 &lt;b&gt;TOR คืออะไร&lt;/b&gt;&lt;br&gt;ม.67 พ.ร.บ.2560&lt;br&gt;เอกสารขอบเขตงาน / คุณลักษณะ" vertex="1">
+          <mxGeometry height="80" width="230" x="670" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_smart" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="🎯 &lt;b&gt;หลัก SMART&lt;/b&gt;&lt;br&gt;Specific · Measurable&lt;br&gt;Achievable · Relevant · Time-bound" vertex="1">
+          <mxGeometry height="80" width="240" x="950" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_thresh" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="💰 &lt;b&gt;เกณฑ์วงเงิน TOR&lt;/b&gt;&lt;br&gt;e-Market ≤5M: ไม่บังคับ&lt;br&gt;e-Market &amp;gt;5M + e-Bidding: บังคับ" vertex="1">
+          <mxGeometry height="80" width="250" x="1250" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_hearing" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="⏱️ &lt;b&gt;ระยะเวลาประกาศ TOR&lt;/b&gt;&lt;br&gt;&amp;lt;5M→3วัน · 5M–50M→5วัน&lt;br&gt;50M–500M→10วัน · &amp;gt;500M→15วัน" vertex="1">
+          <mxGeometry height="80" width="270" x="1560" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="8xtArAcYOBblemyMtna2-2" edge="1" parent="1" source="tor_con" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="tor_consult" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_con" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="🏗️ &lt;b&gt;TOR ก่อสร้าง&lt;/b&gt; (ว.159/2566)&lt;br&gt;BOQ · Bar Chart · S-Curve&lt;br&gt;Shop / As-Built Drawing" vertex="1">
+          <mxGeometry height="80" width="240" x="1900" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_consult" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="💼 &lt;b&gt;TOR ที่ปรึกษา&lt;/b&gt;&lt;br&gt;Scope of Work · Man-month&lt;br&gt;Deliverables · Inception/Final Report" vertex="1">
+          <mxGeometry height="80" width="260" x="2200" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_it" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="💻 &lt;b&gt;TOR IT / Supply&lt;/b&gt;&lt;br&gt;Mandatory / Preferred Specs&lt;br&gt;Functional / Non-Functional · ISO" vertex="1">
+          <mxGeometry height="80" width="240" x="2500" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="tor_cloud" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8daff;strokeColor=#7b68ee;fontSize=20;fontFamily=FC Iconic;" value="☁️ &lt;b&gt;TOR Cloud&lt;/b&gt; (ว.9-2/2568)&lt;br&gt;IaaS/PaaS/SaaS · PDPA&lt;br&gt;SLA · Exit Plan · Data Residency" vertex="1">
+          <mxGeometry height="80" width="260" x="2810" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="ph1" parent="1" style="text;html=1;strokeColor=none;fillColor=#ffd591;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;rounded=1;fontFamily=FC Iconic;" value="Phase 1: Pre-Announcement" vertex="1">
+          <mxGeometry height="24" width="700" x="1490" y="969" as="geometry" />
+        </mxCell>
+        <mxCell id="0_dBTeDyBr_3sEDzE-qr-5" edge="1" parent="1" source="ph2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;strokeWidth=3;" target="egp_ebidding">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2590" y="950" />
+              <mxPoint x="3080" y="950" />
+              <mxPoint x="3080" y="750" />
+              <mxPoint x="780" y="750" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ph2" parent="1" style="text;html=1;strokeColor=none;fillColor=#ffd591;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;rounded=1;fontFamily=FC Iconic;" value="Phase 2: Announcement" vertex="1">
+          <mxGeometry height="24" width="700" x="2240" y="969" as="geometry" />
+        </mxCell>
+        <mxCell id="ph3" parent="1" style="text;html=1;strokeColor=none;fillColor=#ffd591;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;rounded=1;fontFamily=FC Iconic;" value="Phase 3: Evaluation &amp;amp; Contract" vertex="1">
+          <mxGeometry height="24" width="730" x="700" y="1159" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;1&lt;/b&gt;&lt;br&gt;แต่งตั้ง&lt;br&gt;คณะกรรมการ&lt;br&gt;(e-GP)" vertex="1">
+          <mxGeometry height="100" width="100" x="1490" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;2&lt;/b&gt;&lt;br&gt;จัดทำราคากลาง&lt;br&gt;(Factor F / ม.4)" vertex="1">
+          <mxGeometry height="80" width="130" x="1610" y="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;3&lt;/b&gt;&lt;br&gt;จัดทำ TOR&lt;br&gt;(ขอบเขตงาน)" vertex="1">
+          <mxGeometry height="100" width="130" x="1760" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;4&lt;/b&gt;&lt;br&gt;Public Hearing&lt;br&gt;TOR ≥5 วันทำการ" vertex="1">
+          <mxGeometry height="100" width="130" x="1910" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;5&lt;/b&gt;&lt;br&gt;ประกาศเชิญชวน&lt;br&gt;e-GP ≥3 วัน" vertex="1">
+          <mxGeometry height="100" width="130" x="2060" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;6&lt;/b&gt;&lt;br&gt;ประกาศ TOR&lt;br&gt;ใน e-GP" vertex="1">
+          <mxGeometry height="100" width="120" x="2240" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;7&lt;/b&gt;&lt;br&gt;ขายเอกสาร&lt;br&gt;(e-GP / หน้างาน)" vertex="1">
+          <mxGeometry height="100" width="130" x="2380" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;8&lt;/b&gt;&lt;br&gt;ชี้แจง TOR&lt;br&gt;(ถ้ามี)" vertex="1">
+          <mxGeometry height="100" width="120" x="2530" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;9&lt;/b&gt;&lt;br&gt;รับข้อเสนอ&lt;br&gt;ราคาผ่าน e-GP" vertex="1">
+          <mxGeometry height="100" width="130" x="2670" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;10&lt;/b&gt;&lt;br&gt;เปิดซองข้อเสนอ&lt;br&gt;e-GP" vertex="1">
+          <mxGeometry height="100" width="130" x="2820" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="s11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;11&lt;/b&gt;&lt;br&gt;ตรวจสอบ&lt;br&gt;คุณสมบัติ" vertex="1">
+          <mxGeometry height="100" width="120" x="700" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="s12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;12&lt;/b&gt;&lt;br&gt;พิจารณาราคา&lt;br&gt;/ คุณภาพ" vertex="1">
+          <mxGeometry height="100" width="130" x="840" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="s13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;13&lt;/b&gt;&lt;br&gt;ต่อรองราคา&lt;br&gt;(ถ้าราคาสูง)" vertex="1">
+          <mxGeometry height="100" width="120" x="990" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="s14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;14&lt;/b&gt;&lt;br&gt;ประกาศผู้ชนะ&lt;br&gt;ใน e-GP" vertex="1">
+          <mxGeometry height="100" width="130" x="1130" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="s15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;15&lt;/b&gt;&lt;br&gt;ทำสัญญา&lt;br&gt;(ภายใน 30/15 วัน)" vertex="1">
+          <mxGeometry height="100" width="140" x="1280" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="es12" edge="1" parent="1" source="s1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es23" edge="1" parent="1" source="s2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es34" edge="1" parent="1" source="s3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es45" edge="1" parent="1" source="s4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es56" edge="1" parent="1" source="s5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es67" edge="1" parent="1" source="s6" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es78" edge="1" parent="1" source="s7" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es89" edge="1" parent="1" source="s8" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es910" edge="1" parent="1" source="s9" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es1011" edge="1" parent="1" source="s10" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="s11">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2885" y="1150" />
+              <mxPoint x="680" y="1150" />
+              <mxPoint x="680" y="1232" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="es1112" edge="1" parent="1" source="s11" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es1213" edge="1" parent="1" source="s12" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es1314" edge="1" parent="1" source="s13" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es1415" edge="1" parent="1" source="s14" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g_contract" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#27ae60;fontSize=20;fontFamily=FC Iconic;" value="📝 &lt;b&gt;การบริหารสัญญา&lt;/b&gt;&lt;br&gt;K Factor (ม.90) · Lump Sum (ม.97)&lt;br&gt;ตรวจรับ (ม.102, ม.182)&lt;br&gt;บอกเลิก / Blacklist (ม.103)" vertex="1">
+          <mxGeometry height="90" width="270" x="670" y="1390" as="geometry" />
+        </mxCell>
+        <mxCell id="g_appeal" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#27ae60;fontSize=20;fontFamily=FC Iconic;" value="⚖️ &lt;b&gt;ระบบอุทธรณ์&lt;/b&gt;&lt;br&gt;ม.114–115 พ.ร.บ.2560&lt;br&gt;ยื่น 7 วัน · พิจารณา 7 วัน&lt;br&gt;ฟ้องศาลปกครองได้" vertex="1">
+          <mxGeometry height="90" width="260" x="1000" y="1390" as="geometry" />
+        </mxCell>
+        <mxCell id="g_mit" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4d6;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="🏭 &lt;b&gt;MiT (Made in Thailand)&lt;/b&gt;&lt;br&gt;Price Handicap 15% (ม.78)&lt;br&gt;สัดส่วน MiT ≥60%&lt;br&gt;ระบุเงื่อนไขใน TOR" vertex="1">
+          <mxGeometry height="90" width="260" x="1320" y="1390" as="geometry" />
+        </mxCell>
+        <mxCell id="g_sme" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4d6;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="🏢 &lt;b&gt;SME&lt;/b&gt;&lt;br&gt;Price Handicap 10% (THAI SME-GP)&lt;br&gt;ราคา ≤500K ให้ SME ก่อน&lt;br&gt;SME+MiT รวม = 15%" vertex="1">
+          <mxGeometry height="90" width="270" x="1640" y="1390" as="geometry" />
+        </mxCell>
+        <mxCell id="g_trans" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=20;fontFamily=FC Iconic;" value="🔍 &lt;b&gt;ความโปร่งใส&lt;/b&gt;&lt;br&gt;e-GP Audit Trail&lt;br&gt;Integrity Pact · CoST&lt;br&gt;ป.ป.ช. / สตง. ตรวจสอบ" vertex="1">
+          <mxGeometry height="90" width="260" x="1970" y="1390" as="geometry" />
+        </mxCell>
+        <mxCell id="g_pdpa" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=20;fontFamily=FC Iconic;" value="🔐 &lt;b&gt;ความปลอดภัยข้อมูล (PDPA)&lt;/b&gt;&lt;br&gt;Data Controller / Processor&lt;br&gt;AES-256 · TLS 1.2&lt;br&gt;Penetration Test" vertex="1">
+          <mxGeometry height="90" width="280" x="2290" y="1390" as="geometry" />
+        </mxCell>
+        <mxCell id="cx1" edge="1" parent="1" source="law_prb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#82b366;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="m_open" value="ม.55(1)">
+          <mxGeometry relative="1" x="0.5442" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="650" y="218" />
+              <mxPoint x="650" y="470" />
+              <mxPoint x="790" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx2" edge="1" parent="1" source="law_prb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#82b366;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" target="m_select" value="ม.55(2)">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="847" y="470" />
+              <mxPoint x="1055" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx3" edge="1" parent="1" source="law_prb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#82b366;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.275;entryY=0.043;entryDx=0;entryDy=0;entryPerimeter=0;" target="m_direct" value="ม.55(3)">
+          <mxGeometry relative="1" x="0.6154" as="geometry">
+            <mxPoint x="-1" as="offset" />
+            <Array as="points">
+              <mxPoint x="722" y="310" />
+              <mxPoint x="1090" y="310" />
+              <mxPoint x="1090" y="470" />
+              <mxPoint x="1397" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx3b" edge="1" parent="1" source="law_prb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#82b366;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;" target="m_consult_w" value="ม.55(4)">
+          <mxGeometry relative="1" x="0.9404" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="785" y="340" />
+              <mxPoint x="1810" y="340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx4" edge="1" parent="1" source="law_min" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#82b366;strokeWidth=1.5;fontSize=20;fontFamily=FC Iconic;" target="m_direct" value="กำหนดเกณฑ์">
+          <mxGeometry relative="1" x="0.7304" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1280" y="450" />
+              <mxPoint x="1460" y="450" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx5" edge="1" parent="1" source="m_open" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;" target="egp_ebidding" value="ใช้ระบบ">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cx6" edge="1" parent="1" source="m_open" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.655;exitY=0.994;exitDx=0;exitDy=0;exitPerimeter=0;" target="egp_emarket" value="ใช้ระบบ">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="830" y="620" />
+              <mxPoint x="1050" y="620" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx7" edge="1" parent="1" source="m_open" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" target="egp_ecatalog" value="e-Catalog">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="855" y="600" />
+              <mxPoint x="1340" y="600" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx8" edge="1" parent="1" source="m_direct" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;" target="egp_direct_s" value="ใช้ระบบ">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cx9" edge="1" parent="1" source="egp_ebidding" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7b68ee;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" target="tor_def" value="บังคับ TOR">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="835" y="770" />
+              <mxPoint x="785" y="770" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx10" edge="1" parent="1" source="tor_def" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#7b68ee;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="s3" value="จัดทำในขั้นที่ 3">
+          <mxGeometry relative="1" x="-0.8658" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="785" y="960" />
+              <mxPoint x="1450" y="960" />
+              <mxPoint x="1450" y="1140" />
+              <mxPoint x="1825" y="1140" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx11" edge="1" parent="1" source="egp_ebidding" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="s1" value="เริ่มขั้นตอน">
+          <mxGeometry relative="1" x="-0.8829" y="-10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="725" y="770" />
+              <mxPoint x="660" y="770" />
+              <mxPoint x="660" y="940" />
+              <mxPoint x="1470" y="940" />
+              <mxPoint x="1470" y="1059" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx12" edge="1" parent="1" source="law_circ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#e67e22;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;" target="tor_con" value="ว.159/2566">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1695" y="310" />
+              <mxPoint x="2020" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx13" edge="1" parent="1" source="law_cloud" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#e74c3c;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;" target="tor_cloud" value="ว.9-2/2568">
+          <mxGeometry relative="1" x="-0.0612" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="2615" y="310" />
+              <mxPoint x="2940" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx14" edge="1" parent="1" source="law_pdpa" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#e74c3c;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="g_pdpa" value="PDPA บังคับ">
+          <mxGeometry relative="1" x="-0.7716" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="2020" y="280" />
+              <mxPoint x="3100" y="280" />
+              <mxPoint x="3100" y="1205" />
+              <mxPoint x="2650" y="1205" />
+              <mxPoint x="2650" y="1435" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx15" edge="1" parent="1" source="law_integrity" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#d6b656;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;" target="g_trans">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="3120" y="218" />
+              <mxPoint x="3120" y="1340" />
+              <mxPoint x="2090" y="1340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx16" edge="1" parent="1" source="g_mit" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#d79b00;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" target="tor_def" value="ระบุใน TOR">
+          <mxGeometry relative="1" x="-0.8552" as="geometry">
+            <mxPoint x="-1" as="offset" />
+            <Array as="points">
+              <mxPoint x="1450" y="1340" />
+              <mxPoint x="670" y="1340" />
+              <mxPoint x="670" y="910" />
+              <mxPoint x="730" y="910" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx17" edge="1" parent="1" source="s15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#27ae60;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.25;exitY=1;exitDx=0;exitDy=0;" target="g_contract" value="ทำสัญญา">
+          <mxGeometry relative="1" x="-0.5665" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1305" y="1360" />
+              <mxPoint x="795" y="1360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx18" edge="1" parent="1" source="g_contract" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#27ae60;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;" target="g_appeal" value="กรณีพิพาท">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cx19" edge="1" parent="1" source="g_appeal" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#27ae60;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" target="law_prb" value="ม.114–115">
+          <mxGeometry relative="1" x="-0.3761" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1130" y="1350" />
+              <mxPoint x="640" y="1350" />
+              <mxPoint x="640" y="233" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx20" edge="1" parent="1" source="g_trans" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#1565c0;strokeWidth=2;fontSize=20;fontFamily=FC Iconic;exitX=0.25;exitY=0;exitDx=0;exitDy=0;" target="egp_ebidding" value="Audit Trail">
+          <mxGeometry relative="1" x="0.0037" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="2035" y="1320" />
+              <mxPoint x="650" y="1320" />
+              <mxPoint x="650" y="683" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx21" edge="1" parent="1" source="tor_def" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7b68ee;strokeWidth=1.5;fontFamily=FC Iconic;fontSize=20;exitX=0.806;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;" target="tor_con">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="855" y="890" />
+              <mxPoint x="2020" y="890" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx22" edge="1" parent="1" source="tor_def" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7b68ee;strokeWidth=1.5;fontFamily=FC Iconic;fontSize=20;exitX=0.564;exitY=1.006;exitDx=0;exitDy=0;exitPerimeter=0;" target="tor_consult">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="900" />
+              <mxPoint x="2320" y="900" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx23" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7b68ee;strokeWidth=1.5;fontFamily=FC Iconic;fontSize=20;" target="tor_it">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="830" y="910" />
+              <mxPoint x="2620" y="910" />
+            </Array>
+            <mxPoint x="830" y="870" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cx24" edge="1" parent="1" source="tor_def" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7b68ee;strokeWidth=1.5;fontFamily=FC Iconic;fontSize=20;exitX=0.633;exitY=1.002;exitDx=0;exitDy=0;exitPerimeter=0;" target="tor_cloud">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="816" y="930" />
+              <mxPoint x="2940" y="930" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="inno_c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="5️⃣ 🔬 &lt;b&gt;บัญชีนวัตกรรมไทย&lt;/b&gt;&lt;br&gt;ม.56(2) ซื้อตรงวิธีเฉพาะเจาะจง&lt;br&gt;ขึ้นทะเบียน สนช. / วช." vertex="1">
+          <mxGeometry height="80" width="250" x="2010" y="498" as="geometry" />
+        </mxCell>
+        <mxCell id="e_direct_inno" edge="1" parent="1" source="m_direct" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#d6b656;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="inno_c" value="นวัตกรรม">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ph0" parent="1" style="text;html=1;strokeColor=none;fillColor=#ffd591;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;rounded=1;fontFamily=FC Iconic;" value="Phase 0: Pre-Project Planning" vertex="1">
+          <mxGeometry height="24" width="730" x="700" y="969" as="geometry" />
+        </mxCell>
+        <mxCell id="s0a" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;0a&lt;/b&gt;&lt;br&gt;จัดทำ/ประกาศ&lt;br&gt;แผนจัดซื้อจัดจ้างประจำปี&lt;br&gt;(ม.11 พ.ร.บ.2560)" vertex="1">
+          <mxGeometry height="97" width="165" x="700" y="1014" as="geometry" />
+        </mxCell>
+        <mxCell id="s0b" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;0b&lt;/b&gt;&lt;br&gt;สืบราคาตลาด&lt;br&gt;กำหนดราคากลาง&lt;br&gt;ก่อนเสนอโครงการ" vertex="1">
+          <mxGeometry height="104" width="170" x="890" y="1010.5" as="geometry" />
+        </mxCell>
+        <mxCell id="s0c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontFamily=FC Iconic;" value="🔬 &lt;b&gt;ตรวจสอบบัญชีนวัตกรรมไทย&lt;/b&gt;&lt;br&gt;(นโยบายสำคัญ) ม.56(2)&lt;br&gt;สินค้านวัตกรรม: ซื้อตรงได้&lt;br&gt;ไม่ต้องประกวดราคา" vertex="1">
+          <mxGeometry height="104" width="230" x="1200" y="1010.5" as="geometry" />
+        </mxCell>
+        <mxCell id="e_s0a_s0b" edge="1" parent="1" source="s0a" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s0b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_s0b_s0c" edge="1" parent="1" source="s0b" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#6c8ebf;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s0c" value="ตรวจสอบก่อน">
+          <mxGeometry relative="1" y="3" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_s0b_s1" edge="1" parent="1" source="s0b" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d79b00;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="s1" value="นำเข้ากระบวนการ">
+          <mxGeometry relative="1" x="0.0377" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="975" y="1130" />
+              <mxPoint x="1540" y="1130" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ph4" parent="1" style="text;html=1;strokeColor=none;fillColor=#b7e1cd;align=center;verticalAlign=middle;fontStyle=1;fontSize=20;rounded=1;fontFamily=FC Iconic;" value="Phase 4: Contract Management &amp;amp; Closeout (หลังทำสัญญา)" vertex="1">
+          <mxGeometry height="24" width="1090" x="1520" y="1159" as="geometry" />
+        </mxCell>
+        <mxCell id="s16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;16&lt;/b&gt;&lt;br&gt;ส่งมอบงาน&lt;br&gt;ตรวจรับ (ม.102)&lt;br&gt;คณะกรรมการตรวจรับ" vertex="1">
+          <mxGeometry height="104" width="155" x="1520" y="1195" as="geometry" />
+        </mxCell>
+        <mxCell id="s17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;17&lt;/b&gt;&lt;br&gt;เบิกจ่ายเงิน&lt;br&gt;(ตามงวดสัญญา)&lt;br&gt;ผ่านระบบ GFMIS" vertex="1">
+          <mxGeometry height="104" width="155" x="1695" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="s18" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;18&lt;/b&gt;&lt;br&gt;บริหารค่าปรับ&lt;br&gt;(ม.97) / ลดหย่อน&lt;br&gt;Force Majeure" vertex="1">
+          <mxGeometry height="104" width="160" x="1870" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="s19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;19&lt;/b&gt;&lt;br&gt;แก้ไขสัญญา (ม.93)&lt;br&gt;ขยายเวลา / ปริมาณ&lt;br&gt;ต้องมีเหตุจำเป็น" vertex="1">
+          <mxGeometry height="104" width="170" x="2130" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="s20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=20;fontFamily=FC Iconic;" value="&lt;b&gt;20&lt;/b&gt;&lt;br&gt;บอกเลิกสัญญา (ม.103)&lt;br&gt;Blacklist&lt;br&gt;แจ้ง สตง. / ป.ป.ช." vertex="1">
+          <mxGeometry height="104" width="175" x="2430" y="1195" as="geometry" />
+        </mxCell>
+        <mxCell id="e_s16_s17" edge="1" parent="1" source="s16" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_s17_s18" edge="1" parent="1" source="s17" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_s18_s19" edge="1" parent="1" source="s18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#d6b656;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s19" value="(กรณี&#xa;จำเป็น)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_s19_s20" edge="1" parent="1" source="s19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#b85450;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;" target="s20" value="(กรณี&#xa;ผิดสัญญา)">
+          <mxGeometry relative="1" x="-0.0062" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_s15_s16" edge="1" parent="1" source="s15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#27ae60;strokeWidth=2;fontFamily=FC Iconic;fontSize=20;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="s16" value="เริ่มบริหาร&#xa;สัญญา">
+          <mxGeometry relative="1" x="-0.2157" y="8" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1420" y="1242" />
+              <mxPoint x="1520" y="1242" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0_dBTeDyBr_3sEDzE-qr-6" edge="1" parent="1" source="ph2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;strokeWidth=3;" target="egp_emarket">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2590" y="950" />
+              <mxPoint x="3080" y="950" />
+              <mxPoint x="3080" y="750" />
+              <mxPoint x="1050" y="750" />
+            </Array>
+            <mxPoint x="2990" y="878" as="sourcePoint" />
+            <mxPoint x="1180" y="620" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0_dBTeDyBr_3sEDzE-qr-7" edge="1" parent="1" source="ph2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;strokeWidth=3;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="egp_direct_s">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2590" y="950" />
+              <mxPoint x="3080" y="950" />
+              <mxPoint x="3080" y="750" />
+              <mxPoint x="1650" y="750" />
+            </Array>
+            <mxPoint x="3410" y="901" as="sourcePoint" />
+            <mxPoint x="1670" y="720" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0_dBTeDyBr_3sEDzE-qr-12" connectable="0" parent="0_dBTeDyBr_3sEDzE-qr-7" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;span style=&quot;font-family: &amp;quot;FC Iconic&amp;quot;; font-size: 20px;&quot;&gt;ประกาศ TOR ขึ้นสุ่สาธารณชนให้เปิดเข้ารับการประมูลได้&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0956" y="-6" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0_dBTeDyBr_3sEDzE-qr-11" edge="1" parent="1" source="egp_ecatalog" style="endArrow=classic;startArrow=classic;html=1;rounded=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=3;strokeColor=#0000FF;" target="s2" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <Array as="points">
+              <mxPoint x="1520" y="683" />
+              <mxPoint x="1520" y="950" />
+              <mxPoint x="1480" y="950" />
+              <mxPoint x="1480" y="1000" />
+              <mxPoint x="1675" y="1000" />
+            </Array>
+            <mxPoint x="1560" y="940" as="sourcePoint" />
+            <mxPoint x="1610" y="890" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0_dBTeDyBr_3sEDzE-qr-14" connectable="0" parent="0_dBTeDyBr_3sEDzE-qr-11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;FC Iconic&quot;&gt;&lt;span style=&quot;font-size: 20px;&quot;&gt;เทียบรายการพัสดุในการตั้งราคากลาง&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.5171" y="1" as="geometry">
+            <mxPoint x="-1" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

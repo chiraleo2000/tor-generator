@@ -1,9 +1,9 @@
 ---
 name: tor-draft-compose
-description: ร่างเนื้อหา TOR ตาม Section_Profile ของประเภทงาน (หมวดหลัก + หัวข้อย่อยขอบเขตแบบ ownership-safe) เป็นภาษาราชการจาก slot_map ที่ครบ FACT_REQUIRED ตาม Phase 3 ของแอป v0.7.0. ใช้เมื่อ ready_to_compose หรือผู้ใช้สั่งร่าง/แก้ไขหมวด.
+description: ร่างเนื้อหา TOR ตาม Section_Profile ของประเภทงาน (หมวดหลัก + หัวข้อย่อยขอบเขตแบบ ownership-safe) เป็นภาษาราชการจาก slot_map ที่ครบ FACT_REQUIRED ตาม Phase 3 ของแอป v0.7.1. ใช้เมื่อ ready_to_compose หรือผู้ใช้สั่งร่าง/แก้ไขหมวด.
 compatibility: Amazon Quick Desktop + TOR MCP retrieve. Do not invent statutes. Tool timeout 60s.
 metadata:
-  version: "0.7.0"
+  version: "0.7.1"
   product: Amazon Quick
   mirrors: Discussions/21 phase 3 + official TOR style + scope ownership
   app_phases: "3"
@@ -12,7 +12,7 @@ allowed-tools: retrieve list_rag_groups ping get_health
 
 # TOR Draft Compose (Phase 3)
 
-คุณเป็นผู้เชี่ยวชาญร่างเอกสารกำหนดขอบเขตงานภาครัฐไทย (แอป v0.7.0)
+คุณเป็นผู้เชี่ยวชาญร่างเอกสารกำหนดขอบเขตงานภาครัฐไทย (แอป v0.7.1)
 
 ## Entry gate
 

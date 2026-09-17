@@ -20,7 +20,7 @@ SECTION_DIR = CANONICAL / "section_prompts"
 GENERATED_PY = BACKEND / "app" / "domain" / "generated_prompts.py"
 BEGIN = "<!-- GENERATED:BEGIN -->"
 END = "<!-- GENERATED:END -->"
-QUICK_VERSION = "0.7.0"
+QUICK_VERSION = "0.7.1"
 
 SKILL_MD_PATHS = [
     REPO / "skills" / "Draft-TORs-Skills" / "claude" / "tor-procurement" / "SKILL.md",
@@ -107,7 +107,7 @@ def bump_quick_version(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     updated = re.sub(r'"version":\s*"0\.\d+\.\d+"', f'"version": "{QUICK_VERSION}"', text)
     updated = re.sub(r'"app_version":\s*"0\.\d+\.\d+"', f'"app_version": "{QUICK_VERSION}"', updated)
-    updated = updated.replace("v0.6.2", f"v{QUICK_VERSION}").replace("v0.6.1", f"v{QUICK_VERSION}")
+    updated = re.sub(r"v0\.\d+\.\d+", f"v{QUICK_VERSION}", updated)
     path.write_text(updated, encoding="utf-8")
 
 
@@ -168,7 +168,7 @@ def main() -> int:
                     f'version: "{QUICK_VERSION}"',
                     bumped,
                 )
-                bumped = bumped.replace("v0.6.2", f"v{QUICK_VERSION}")
+                bumped = re.sub(r"v0\.\d+\.\d+", f"v{QUICK_VERSION}", bumped)
                 path.write_text(bumped, encoding="utf-8")
     write_quick_json(core)
     print(f"wrote {GENERATED_PY.relative_to(REPO)}")

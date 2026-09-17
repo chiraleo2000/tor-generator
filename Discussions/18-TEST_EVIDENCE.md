@@ -1,6 +1,7 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
 > **รอบ 15 กันยายน 2026 — harden live workflow:** gold pack `hire_develop` Phase 0→4 บน LM Studio · หัวข้อทอง **ขาด 0** / **16/16 หมวด** · ส่งออก DOCX+PDF ไม่มี `[*.txt]` / ไม่มีโทนผู้ขาย · ถาม-ตอบมี citation · KB อัปโหลดโซน+ลบ · standalone review **80/100** · smoke `hire_maintain` ถึงขั้นที่ ๑ (`asset_list` ครบ) ไม่เริ่มร่าง  
+> **v0.7.1 (17 กันยายน 2026):** ถาม-ตอบแบบบทสรุปผู้บริหาร (สรุป + ตาราง + ข้อควรระวัง) · ติดตาม `documents/sources/` และตัวอย่าง TOR ใน git  
 > **v0.7.0 (15 กันยายน 2026):** harden คุณภาพร่าง + ยืนยัน workflow สด · Amazon Quick skills `tor-agents-skills-v0.7.0.zip`  
 > **v0.6.2 (14 กันยายน 2026):** คู่มือติดตั้ง Amazon Quick บน AWS + zip skills `tor-agents-skills-v0.6.2.zip` — ไม่เปลี่ยนพฤติกรรมร่าง/ตรวจจากรอบ 11 ก.ย.  
 > **รอบ 11 กันยายน 2026 — v0.6.1 scope ownership + deep review + Amazon Quick:** focused redraft หัวข้อย่อยขอบเขตทุกคีย์ · กันเนื้อหาผิดหัวข้อ + fallback `1./1.1` · licenses ตาราง ICT · ขั้นตรวจท้ายงบ token/RAG หนา (law+standards) · Amazon Quick agents/skills **v0.6.1** · unit review/amazon-quick ผ่าน · live_llm LM Studio **8/8** · Docker frontend+backend healthy · UI `:3000` 200  

@@ -37,7 +37,7 @@ test.describe("Chat Q&A and draft intake", () => {
     await waitForLiveAssistant(page, 600_000);
     await expect.poll(
       async () =>
-        (await page.getByTestId("chat-msg-assistant").last().locator("p").first().innerText())
+        (await page.getByTestId("chat-msg-assistant").last().innerText())
           .trim().length,
       { timeout: 480_000 }
     ).toBeGreaterThan(80);
@@ -118,11 +118,10 @@ test.describe("Chat Q&A and draft intake", () => {
     await pauseLikeUser(page, 400);
     await page.getByTestId("chat-send").click();
     await waitForLiveAssistant(page, 600_000);
-    await expect(page.getByTestId("chat-msg-assistant").last().locator("p").first()).toBeVisible();
+    await expect(page.getByTestId("chat-msg-assistant").last()).toBeVisible();
     await expect.poll(
       async () =>
-        (await page.getByTestId("chat-msg-assistant").last().locator("p").first().innerText())
-          .length,
+        (await page.getByTestId("chat-msg-assistant").last().innerText()).length,
       { timeout: 120_000 }
     ).toBeGreaterThan(20);
     const chips = page.getByTestId("chat-msg-assistant").last().getByTestId("chat-citation");
