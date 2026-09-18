@@ -1,9 +1,9 @@
 ---
 name: tor-review-compliance
-description: ตรวจสอบ TOR ทั้งฉบับแบบลึกด้วย checklist กฎกำหนดได้ + RAG กฎหมายและมาตรฐานหลายคำค้น ตาม /review และ Phase 4 ของแอป v0.8.1 ให้คะแนนคุณภาพ ข้อค้นพบกลุ่ม ก/ข และข้อเสนอแนะ. ใช้เมื่อตรวจไฟล์ TOR หรือทบทวนร่างครบหมวด.
+description: ตรวจสอบ TOR ทั้งฉบับแบบลึกด้วย checklist กฎกำหนดได้ + RAG กฎหมายและมาตรฐานหลายคำค้น ตาม /review และ Phase 4 ของแอป v0.8.3 ให้คะแนนคุณภาพ ข้อค้นพบกลุ่ม ก/ข และข้อเสนอแนะ. ใช้เมื่อตรวจไฟล์ TOR หรือทบทวนร่างครบหมวด.
 compatibility: Amazon Quick Desktop + TOR MCP. Sequential multi-query retrieve (law then standards); 60s tool timeout; never invent citations; analyze deeply before JSON.
 metadata:
-  version: "0.8.1"
+  version: "0.8.3"
   product: Amazon Quick
   mirrors: Discussions/22 + rule_engine + review_agent + law_review
   app_surfaces: "/review, Phase 4, /review/comment"

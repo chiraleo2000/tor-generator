@@ -29,7 +29,7 @@ SECTION_DIR = CANONICAL / "section_prompts"
 GENERATED_PY = BACKEND / "app" / "domain" / "generated_prompts.py"
 BEGIN = "<!-- GENERATED:BEGIN -->"
 END = "<!-- GENERATED:END -->"
-QUICK_VERSION = "0.8.2"
+QUICK_VERSION = "0.8.3"
 
 SKILL_MD_PATHS = [
     REPO / "skills" / "Draft-TORs-Skills" / "claude" / "tor-procurement" / "SKILL.md",

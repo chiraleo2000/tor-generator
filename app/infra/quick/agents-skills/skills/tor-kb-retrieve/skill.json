@@ -3,7 +3,7 @@
   "description": "ค้นคลังความรู้จัดซื้อจัดจ้างภาครัฐไทยผ่าน Amazon Quick MCP (retrieve / list_rag_groups) สำหรับตอบคำถามระเบียบ ราคากลาง ค่าปรับ คุณสมบัติ มาตรฐาน ICT/ความมั่นคงปลอดภัย หรือหาบริบทก่อนร่าง/ตรวจ TOR. ใช้เมื่อผู้ใช้ถามกฎหมาย/ระเบียบ/มาตรฐาน หรือต้องการแหล่งอ้างอิง.",
   "compatibility": "Amazon Quick Desktop + TOR MCP connector on :8767 or HTTPS /mcp. Tools time out at 60s.",
   "metadata": {
-    "version": "0.8.1",
+    "version": "0.8.3",
     "product": "Amazon Quick",
     "mirrors": "Discussions/23-WORKFLOW_KB_QA.md + app/infra/quick/mcp_server.py + law_review query packs",
     "allowed-tools": "mcp:retrieve mcp:list_rag_groups mcp:ping mcp:get_health"
