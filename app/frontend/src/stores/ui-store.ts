@@ -26,7 +26,7 @@ export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
       theme: 'light',
-      sidebarOpen: true,
+      sidebarOpen: false,
       isLoading: false,
       toasts: [],
 
@@ -76,8 +76,14 @@ export const useUIStore = create<UIState>()(
       name: 'tor-ui-storage',
       partialize: (state) => ({
         theme: state.theme,
-        sidebarOpen: state.sidebarOpen,
       }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<UIState> | undefined;
+        return {
+          ...current,
+          theme: saved?.theme === 'dark' ? 'dark' : 'light',
+        };
+      },
     }
   )
 );

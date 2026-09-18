@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.sse import sse_streaming_response
 from app.deps import get_current_user, get_db
 from app.domain.section_profile import LEGACY_SCOPE_TITLES, profile_for_project
 from app.domain.tor_sections import TOR_SECTION_LABELS
@@ -1085,14 +1086,8 @@ async def start_draft_chat(
         project.project_type,
     )
 
-    return StreamingResponse(
-        _stream_start_draft_chat(session_factory, project_id, redis, job, queue),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    return sse_streaming_response(
+        _stream_start_draft_chat(session_factory, project_id, redis, job, queue)
     )
 
 
@@ -1209,6 +1204,7 @@ async def _stream_draft_chat_message(stream: _ChatStream) -> AsyncIterator[str]:
             stream.session_factory, stream.project_id, stream.section_key
         ):
             yield event
+        yield _sse("done", {"ok": True})
         return
 
     if not stream.section_key:
@@ -1228,6 +1224,7 @@ async def _stream_draft_chat_message(stream: _ChatStream) -> AsyncIterator[str]:
     if stream.section_key == "s4" and stream.intent == "redraft":
         async for event in _stream_s4_redraft(stream, redis, label):
             yield event
+        yield _sse("done", {"ok": True})
         return
 
     current_draft = await _load_section_draft(
@@ -1235,6 +1232,7 @@ async def _stream_draft_chat_message(stream: _ChatStream) -> AsyncIterator[str]:
     )
     async for event in _stream_section_revision(stream, redis, label, current_draft):
         yield event
+    yield _sse("done", {"ok": True})
 
 
 @router.post("/{project_id}/draft-chat/message", dependencies=[Depends(rate_limit_ai)])
@@ -1255,7 +1253,7 @@ async def draft_chat_message(
     ).strip()
     session_factory = request.app.state.db_session_factory
 
-    return StreamingResponse(
+    return sse_streaming_response(
         _stream_draft_chat_message(
             _ChatStream(
                 request=request,
@@ -1269,8 +1267,7 @@ async def draft_chat_message(
                 session_factory=session_factory,
                 project_type=project.project_type,
             )
-        ),
-        media_type="text/event-stream",
+        )
     )
 
 

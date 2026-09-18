@@ -316,17 +316,44 @@ export function DraftWorkspace() {
         .catch(() => undefined);
     }, 500);
     let succeeded = false;
+    const scoreBefore = reviewScore;
+    const resultPoll = window.setInterval(() => {
+      fetchProject(projectId)
+        .then((project) => {
+          if (succeeded) return;
+          if (project.qualityScore == null) return;
+          if (scoreBefore != null && project.qualityScore === scoreBefore) return;
+          succeeded = true;
+          setReviewScore(project.qualityScore);
+          const persisted = project.analysisJson?.review_findings;
+          if (Array.isArray(persisted)) {
+            setReviewFindings(
+              persisted
+                .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+                .map((item) => toReviewFinding(item))
+            );
+          }
+          const assessment = project.analysisJson?.review_assessment;
+          if (typeof assessment === "string" && assessment.trim()) {
+            setReviewAssessment(assessment);
+          }
+          setActionInfo(null);
+          setReviewBusy(false);
+        })
+        .catch(() => undefined);
+    }, 2000);
     try {
       const response = await apiClient.post(
         `/projects/${projectId}/review`,
         {},
-        { headers: { "X-AI-Request-Id": requestId } }
+        { headers: { "X-AI-Request-Id": requestId }, timeout: 900_000 }
       );
       const payload = unwrapData<{
         quality_score?: number;
         findings?: Record<string, unknown>[];
         overall_assessment?: string;
       }>(response);
+      succeeded = true;
       setReviewScore(payload.quality_score ?? null);
       setReviewFindings(
         (payload.findings || []).map((item) => toReviewFinding(item))
@@ -342,16 +369,18 @@ export function DraftWorkspace() {
         setReviewSuggestions([]);
       }
       setActionInfo(null);
-      succeeded = true;
     } catch (err: unknown) {
-      setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
-      setActionInfo(null);
+      if (!succeeded) {
+        setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+        setActionInfo(null);
+      }
     } finally {
       window.clearInterval(poll);
+      window.clearInterval(resultPoll);
       markProjectReviewFinished(projectId, succeeded);
       setReviewBusy(false);
     }
-  }, [projectId]);
+  }, [projectId, fetchProject, reviewScore]);
 
   async function exportDocument(
     format: "docx" | "pdf",
@@ -403,7 +432,7 @@ export function DraftWorkspace() {
   }
 
   return (
-    <div data-testid="draft-page">
+    <div className="min-w-0" data-testid="draft-page">
       {dialog}
       <div className="gov-card mb-5">
         <div className="mb-4 flex items-start justify-between gap-3">

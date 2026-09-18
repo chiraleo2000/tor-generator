@@ -325,7 +325,7 @@ export function Phase3Draft({
           />
         ))}
       </div>
-      <div className="mt-4 flex justify-between">
+      <div className="mt-4 flex flex-wrap justify-between gap-2">
         <Button variant="secondary" onClick={onBack} data-testid="phase2-back">
           ย้อนกลับ
         </Button>

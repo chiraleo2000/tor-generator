@@ -288,7 +288,7 @@ export function DraftChat({
     if (phase !== "drafting") return;
     const timer = window.setInterval(() => {
       void refreshStatus();
-    }, 4000);
+    }, 2000);
     return () => window.clearInterval(timer);
   }, [phase, refreshStatus]);
 
@@ -526,6 +526,10 @@ export function DraftChat({
             );
           }
           setDraftingLabel(null);
+          setPhase("complete");
+          setBusy(false);
+          onAllDrafted();
+          void refreshStatus();
           return;
         }
         if (event === "section_error") {
@@ -568,7 +572,10 @@ export function DraftChat({
       } catch {
         ok = false;
       }
-      if (!ok || !(await refreshStatus())) {
+      if (await refreshStatus()) {
+        return;
+      }
+      if (!ok) {
         try {
           ok = await streamBatchDraft();
         } catch {
@@ -577,7 +584,7 @@ export function DraftChat({
       }
       const done = await refreshStatus();
       if (!done) {
-        setPhase("drafting");
+        setPhase((prev) => (prev === "complete" ? prev : "drafting"));
       }
     } catch (err: unknown) {
       setError(apiErrorMessage(err, "เริ่มร่างไม่สำเร็จ"));
@@ -649,6 +656,7 @@ export function DraftChat({
               typeof data.section_key === "string" ? data.section_key : sectionKey || undefined,
               content2
             );
+            setBusy(false);
           }
           if (event === "accepted") {
             setMessages((prev) =>
@@ -659,6 +667,10 @@ export function DraftChat({
               )
             );
             onSectionDone?.();
+            setBusy(false);
+          }
+          if (event === "done") {
+            setBusy(false);
           }
           if (event === "error" || event === "section_error") {
             const msg = data.message as string;
@@ -670,6 +682,7 @@ export function DraftChat({
                   : m
               )
             );
+            setBusy(false);
           }
         },
         controller.signal

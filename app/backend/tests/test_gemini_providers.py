@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.providers.embedding.gemini_provider import GeminiEmbeddingProvider
-from app.providers.llm.gemini_provider import GeminiLLMProvider
+from app.providers.llm.gemini_provider import GeminiLLMProvider, gemini_sse_text_pieces
 
 
 def test_gemini_llm_requires_key():
@@ -150,3 +150,48 @@ async def test_gemini_timeout_http_error_and_stream():
     ):
         chunks = [part async for part in provider.stream([{"role": "user", "content": "hi"}])]
     assert chunks == ["ชิ้นเดียว"]
+
+
+def test_gemini_sse_text_pieces():
+    assert gemini_sse_text_pieces("") == []
+    assert gemini_sse_text_pieces("data: [DONE]") == []
+    assert gemini_sse_text_pieces("not-json") == []
+    assert gemini_sse_text_pieces(
+        'data: {"candidates":[{"content":{"parts":[{"text":"ก"}]}}]}'
+    ) == ["ก"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_stream_sse_yields_pieces():
+    provider = GeminiLLMProvider(api_key="fake")
+
+    class _SseResponse:
+        status_code = 200
+
+        async def aiter_lines(self):
+            yield 'data: {"candidates":[{"content":{"parts":[{"text":"ก"}]}}]}'
+            yield 'data: {"candidates":[{"content":{"parts":[{"text":"ข"}]}}]}'
+            yield "data: [DONE]"
+
+        async def aread(self):
+            return b""
+
+    class _StreamCtx:
+        async def __aenter__(self):
+            return _SseResponse()
+
+        async def __aexit__(self, *args):
+            return None
+
+    client = AsyncMock()
+    client.stream = MagicMock(return_value=_StreamCtx())
+    client.post = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    with patch(
+        "app.providers.llm.gemini_provider.httpx.AsyncClient",
+        return_value=client,
+    ):
+        chunks = [part async for part in provider.stream([{"role": "user", "content": "hi"}])]
+    assert chunks == ["ก", "ข"]
+    client.post.assert_not_called()

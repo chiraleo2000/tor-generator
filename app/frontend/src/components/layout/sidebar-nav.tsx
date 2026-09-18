@@ -47,7 +47,9 @@ const adminItems: NavItem[] = [
   { href: "/admin/ai-settings", label: "การตั้งค่า AI", icon: Cpu, testId: "nav-admin-ai-settings" },
 ];
 
-export function SidebarNav() {
+export function SidebarNav({
+  onNavigate,
+}: Readonly<{ onNavigate?: () => void }>) {
   const pathname = usePathname();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -55,23 +57,26 @@ export function SidebarNav() {
   const isAdmin = user?.role === "admin";
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 flex w-[255px] flex-col overflow-y-auto bg-gradient-to-b from-navy to-navy-dark p-[18px] text-white">
+    <aside
+      data-testid="app-sidebar"
+      className="flex h-full w-[min(255px,88vw)] flex-col overflow-y-auto bg-gradient-to-b from-navy to-navy-dark p-4 text-white sm:p-[18px]"
+    >
       <div className="mb-6 flex items-center gap-2.5 border-b border-white/12 pb-4">
-        <div className="flex h-[38px] w-[38px] items-center justify-center rounded-lg bg-brand-orange font-extrabold text-navy">
+        <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg bg-brand-orange font-extrabold text-navy">
           <ClipboardList className="h-5 w-5" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h1 className="text-[17px] font-bold leading-tight">TOR Generator</h1>
           <p className="text-[11px] text-white/75">ระบบจัดซื้อจัดจ้างภาครัฐ</p>
         </div>
       </div>
 
       <nav className="flex-1 space-y-5" aria-label="เมนูหลัก">
-        <NavSection title="หลัก" items={mainItems} pathname={pathname} />
-        <NavSection title="การทำงาน" items={workItems} pathname={pathname} />
-        <NavSection title="อื่นๆ" items={otherItems} pathname={pathname} />
+        <NavSection title="หลัก" items={mainItems} pathname={pathname} onNavigate={onNavigate} />
+        <NavSection title="การทำงาน" items={workItems} pathname={pathname} onNavigate={onNavigate} />
+        <NavSection title="อื่นๆ" items={otherItems} pathname={pathname} onNavigate={onNavigate} />
         {isAdmin ? (
-          <NavSection title="ผู้ดูแลระบบ" items={adminItems} pathname={pathname} />
+          <NavSection title="ผู้ดูแลระบบ" items={adminItems} pathname={pathname} onNavigate={onNavigate} />
         ) : null}
       </nav>
 
@@ -84,6 +89,7 @@ export function SidebarNav() {
         className="mt-2.5 text-center text-[12.5px] text-red-200 hover:underline"
         onClick={() => {
           logout();
+          onNavigate?.();
           router.push("/login");
         }}
       >
@@ -97,7 +103,13 @@ function NavSection({
   title,
   items,
   pathname,
-}: Readonly<{ title: string; items: NavItem[]; pathname: string }>) {
+  onNavigate,
+}: Readonly<{
+  title: string;
+  items: NavItem[];
+  pathname: string;
+  onNavigate?: () => void;
+}>) {
   return (
     <div>
       <p className="mb-2 text-[11px] uppercase tracking-wider text-white/55">{title}</p>
@@ -110,6 +122,7 @@ function NavSection({
             href={item.href}
             data-testid={item.testId}
             aria-current={active ? "page" : undefined}
+            onClick={() => onNavigate?.()}
             className={cn(
               "mb-1 flex items-center gap-2.5 rounded-lg border-l-[3px] px-3 py-2.5 text-sm transition-colors",
               active

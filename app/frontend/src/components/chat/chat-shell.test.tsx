@@ -542,6 +542,21 @@ describe("ChatShell MCP degraded banner", () => {
     await waitFor(() => expect(screen.getByTestId("chat-msg-assistant")).toHaveTextContent("7"));
   });
 
+  it("unfreezes when done arrives even if the stream never closes", async () => {
+    vi.mocked(streamSsePost).mockImplementation(async (_u, _b, _t, onEvent) => {
+      onEvent("token", { text: "คำตอบจาก Gemini" });
+      onEvent("done", { content: "คำตอบจาก Gemini", citations: [] });
+      await new Promise(() => undefined);
+    });
+    render(<ChatShell kind="kb" />);
+    const input = await screen.findByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "ถาม" } });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    expect(await screen.findByTestId("chat-msg-assistant")).toHaveTextContent("คำตอบจาก Gemini");
+    fireEvent.change(input, { target: { value: "ถามต่อ" } });
+    await waitFor(() => expect(screen.getByTestId("chat-send")).toBeEnabled());
+  });
+
   it("reports when attach cannot create a room", async () => {
     vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
       if (url === "/chat/rooms") {

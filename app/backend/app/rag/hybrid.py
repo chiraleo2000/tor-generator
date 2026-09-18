@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import replace
 from uuid import UUID
@@ -19,6 +20,7 @@ from app.rag.retrieval import RetrievalFilter, RetrievalResult, RetrievedChunk, 
 logger = logging.getLogger(__name__)
 
 _SOURCE_ORDER = {"local": 0, None: 0, "custom_rag": 1, "mcp": 2}
+EMBED_QUERY_TIMEOUT_SEC = 60.0
 
 
 def _chunk_sort_key(chunk: RetrievedChunk) -> tuple:
@@ -173,8 +175,11 @@ async def _retrieve_local_chunks(
         extra_filter=extra_filter,
     )
     try:
-        query_vector = await factory.get_embedding().embed_query(
-            query_with_section(query, section_relevance)
+        query_vector = await asyncio.wait_for(
+            factory.get_embedding().embed_query(
+                query_with_section(query, section_relevance)
+            ),
+            timeout=EMBED_QUERY_TIMEOUT_SEC,
         )
         search_results = await store.search(query_vector, top_k=top_k, filter=merged_filter)
     except Exception:  # NOSONAR python:S110 — fail-open local embeddings

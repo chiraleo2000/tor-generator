@@ -27,6 +27,7 @@ import {
   formatChatTimestamp,
   attachIngestFeedback,
   streamSsePost,
+  adoptServerChatMessages,
   type ChatCitation,
   type ChatKind,
   type ChatMessageItem,
@@ -130,15 +131,25 @@ export function ChatShell({
     return next;
   }, [kind, projectId]);
 
-  const loadMessages = useCallback(async (roomId: string) => {
+  const loadMessages = useCallback(async (roomId: string, mode: "replace" | "adopt" = "replace") => {
     const gen = ++loadGen.current;
     const response = await apiClient.get(`/chat/rooms/${roomId}/messages`);
     if (gen !== loadGen.current || pickedId.current !== roomId) {
-      return;
+      return false;
     }
     const payload = unwrapData<{ messages?: ChatMessageItem[] }>(response);
     const rows = Array.isArray(payload.messages) ? payload.messages : [];
+    if (mode === "adopt") {
+      let adopted = false;
+      setMessages((prev) => {
+        const result = adoptServerChatMessages(prev, rows);
+        adopted = result.adopted;
+        return result.next;
+      });
+      return adopted;
+    }
     setMessages(rows);
+    return rows.some((item) => item.role === "assistant" && String(item.content || "").trim());
   }, []);
 
   const loadMine = useCallback(async () => {
@@ -245,6 +256,29 @@ export function ChatShell({
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setCollapsed(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    if (!busy || !activeId) return undefined;
+    const roomId = activeId;
+    const timer = window.setInterval(() => {
+      void loadMessages(roomId, "adopt").then((adopted) => {
+        if (adopted) {
+          setBusy(false);
+          setQueueStatus(null);
+        }
+      });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [busy, activeId, loadMessages]);
 
   async function handleNew(loadHistory = false) {
     const blank = rooms.find((room) => isPlaceholderRoom(room));
@@ -372,10 +406,12 @@ export function ChatShell({
                 mcp_degraded: mcpDegraded,
               })
             );
+            setBusy(false);
             onReady?.();
           }
           if (event === "error") {
             setQueueStatus(null);
+            setBusy(false);
             setError(sseFieldText(data.message) || "แชทล้มเหลว");
           }
         },
@@ -383,6 +419,7 @@ export function ChatShell({
         { "X-AI-Request-Id": requestId }
       );
       await loadRooms();
+      await loadMessages(roomId, "adopt").catch(() => false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "ส่งข้อความไม่สำเร็จ");
     } finally {
@@ -464,11 +501,19 @@ export function ChatShell({
     <div
       className={cn(
         "flex overflow-hidden rounded-xl border bg-white",
-        compact ? "min-h-[52vh]" : "min-h-[70vh]",
+        compact ? "min-h-[52vh]" : "relative min-h-[70vh]",
         briefing && "bg-slate-50"
       )}
       data-testid="chat-shell"
     >
+      {compact || collapsed ? null : (
+        <button
+          type="button"
+          aria-label="ปิดรายการห้อง"
+          className="absolute inset-0 z-10 bg-navy/25 md:hidden"
+          onClick={() => setCollapsed(true)}
+        />
+      )}
       {compact ? null : (
       <MiniRoomList
         rooms={rooms}
@@ -478,6 +523,13 @@ export function ChatShell({
         onSearch={setSearch}
         onSelect={(id) => {
           void selectRoom(id);
+          if (
+            typeof window !== "undefined" &&
+            typeof window.matchMedia === "function" &&
+            window.matchMedia("(max-width: 767px)").matches
+          ) {
+            setCollapsed(true);
+          }
         }}
         onNew={() => {
           void handleNew(true);

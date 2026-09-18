@@ -256,4 +256,34 @@ describe("StandaloneReviewPage", () => {
     fireEvent.click(await screen.findByTestId("review-confirm-run"));
     expect(await screen.findByText("เทียบเคียง ก กับ ข")).toBeInTheDocument();
   });
+
+  it("shows the score from GET while the review POST is still open", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval"] });
+    vi.mocked(extractReviewFile).mockResolvedValue({
+      id: "job-poll",
+      extracted_text: "ร่าง TOR ทดสอบ",
+    });
+    vi.mocked(extractCompareFiles).mockResolvedValue([]);
+    vi.mocked(compareExtractJobs).mockResolvedValue({ comparisons: [] });
+    vi.mocked(apiClient.post).mockImplementation(() => new Promise(() => undefined));
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          id: "job-poll",
+          quality_score: 88,
+          findings: [],
+          extracted_text: "ร่าง TOR ทดสอบ",
+          status: "completed",
+        },
+      },
+    } as never);
+    render(<StandaloneReviewPage />);
+    fireEvent.click(screen.getAllByTestId("review-upload")[0]);
+    fireEvent.click(screen.getByTestId("review-extract"));
+    fireEvent.click(await screen.findByTestId("review-confirm-run"));
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(await screen.findByTestId("review-score")).toHaveTextContent("88");
+    vi.useRealTimers();
+  });
 });

@@ -60,6 +60,31 @@ export function attachIngestFeedback(
   return `กำลังประมวลผล «${name}» เข้าคลัง...`;
 }
 
+export function adoptServerChatMessages(
+  prev: ChatMessageItem[],
+  rows: ChatMessageItem[]
+): { next: ChatMessageItem[]; adopted: boolean } {
+  if (rows.length < prev.length) {
+    return { next: prev, adopted: false };
+  }
+  const serverLast = rows.at(-1);
+  const serverText = String(serverLast?.content || "").trim();
+  if (serverLast?.role !== "assistant" || !serverText) {
+    return { next: prev, adopted: false };
+  }
+  const localLast = prev.at(-1);
+  if (localLast?.role === "assistant") {
+    if (serverText.length < String(localLast.content || "").trim().length) {
+      return { next: prev, adopted: false };
+    }
+    return {
+      next: [...prev.slice(0, -1), { ...localLast, ...serverLast }],
+      adopted: true,
+    };
+  }
+  return { next: rows, adopted: true };
+}
+
 export function formatChatTimestamp(iso?: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
@@ -68,11 +93,15 @@ export function formatChatTimestamp(iso?: string | null): string {
 }
 
 const PAINT_SSE_EVENTS = new Set([
+  "token",
   "section_done",
   "subsection_done",
   "all_done",
   "done",
+  "error",
 ]);
+
+export const TERMINAL_SSE_EVENTS = new Set(["done", "all_done", "error"]);
 
 function yieldForPaint(): Promise<void> {
   return new Promise((resolve) => {
@@ -109,12 +138,15 @@ async function dispatchSseBlockAndPaint(
   block: string,
   eventName: string,
   onEvent: (event: string, data: Record<string, unknown>) => void
-): Promise<string> {
+): Promise<{ nextEvent: string; terminal: boolean }> {
   const result = dispatchSseBlock(block, eventName, onEvent);
   if (result.dispatched && PAINT_SSE_EVENTS.has(result.dispatched)) {
     await yieldForPaint();
   }
-  return result.nextEvent;
+  return {
+    nextEvent: result.nextEvent,
+    terminal: Boolean(result.dispatched && TERMINAL_SSE_EVENTS.has(result.dispatched)),
+  };
 }
 
 export async function streamSsePost(
@@ -165,20 +197,32 @@ export async function streamSsePost(
   let buffer = "";
   let eventName = "message";
   let more = true;
-  while (more) {
-    const { done, value } = await reader.read();
-    more = !done;
-    if (done) {
-      break;
+  try {
+    while (more) {
+      const { done, value } = await reader.read();
+      more = !done;
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() || "";
+      for (const block of parts) {
+        const dispatched = await dispatchSseBlockAndPaint(block, eventName, onEvent);
+        eventName = dispatched.nextEvent;
+        if (dispatched.terminal) {
+          return;
+        }
+      }
     }
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop() || "";
-    for (const block of parts) {
-      eventName = await dispatchSseBlockAndPaint(block, eventName, onEvent);
+    if (buffer.trim()) {
+      await dispatchSseBlockAndPaint(buffer, eventName, onEvent);
     }
-  }
-  if (buffer.trim()) {
-    await dispatchSseBlockAndPaint(buffer, eventName, onEvent);
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* already closed */
+    }
   }
 }

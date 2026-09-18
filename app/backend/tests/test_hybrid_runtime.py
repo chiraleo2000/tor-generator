@@ -216,6 +216,51 @@ async def test_hybrid_retrieve_fail_open_when_local_embedding_raises():
 
 
 @pytest.mark.asyncio
+async def test_hybrid_retrieve_fail_open_when_embed_query_times_out():
+    import asyncio
+
+    from app.rag.retrieval import RetrievedChunk
+
+    previous = runtime.session_factory
+    runtime.set_session_factory(MagicMock(name="live_session_factory"))
+    mcp_chunk = RetrievedChunk(
+        id="mcp-timeout",
+        text="mcp",
+        score=0.4,
+        source_document="mcp-retrieve-stub",
+        metadata={"rag_source": "mcp"},
+    )
+
+    async def slow_embed(_query: str):
+        await asyncio.sleep(1)
+        return [0.1]
+
+    embedding = MagicMock()
+    embedding.embed_query = slow_embed
+    try:
+        with (
+            patch.object(hybrid, "EMBED_QUERY_TIMEOUT_SEC", 0.05),
+            patch.object(hybrid.ProviderFactory, "get_vector_store", return_value=MagicMock()),
+            patch.object(hybrid.ProviderFactory, "get_embedding", return_value=embedding),
+            patch(
+                "app.rag.hybrid.retrieve_mcp_chunks_with_status",
+                new_callable=AsyncMock,
+                return_value=([mcp_chunk], False),
+            ),
+            patch("app.rag.hybrid._retrieve_custom_chunks", new_callable=AsyncMock, return_value=[]),
+        ):
+            result, citations, _graph, mcp_degraded = await hybrid.hybrid_retrieve(
+                "วงเงิน",
+                search_scope="global",
+            )
+        assert result.chunks[0].id == "mcp-timeout"
+        assert any(item.get("type") == "mcp" for item in citations)
+        assert mcp_degraded is False
+    finally:
+        runtime.set_session_factory(previous)
+
+
+@pytest.mark.asyncio
 async def test_hybrid_retrieve_surfaces_mcp_degraded_true():
     from app.rag.retrieval import RetrievedChunk
 

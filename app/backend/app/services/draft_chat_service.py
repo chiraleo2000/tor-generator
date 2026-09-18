@@ -21,6 +21,7 @@ from app.llm_tokens import (
     live_scope_max_tokens,
 )
 from app.providers.factory import ProviderFactory
+from app.providers.llm.stream_fallback import stream_llm_tokens
 from app.rag.kb_qa import draft_rag_top_k
 from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.services.intake_service import resolve_draft_section_key, slot_content
@@ -240,7 +241,8 @@ async def _collect_llm_text(
             "enable_thinking": compose_thinking_enabled(caps.provider),
         },
     )
-    async for token in llm.stream(
+    async for token in stream_llm_tokens(
+        llm,
         [
             {"role": "system", "content": system},
             {"role": "user", "content": user_prompt},

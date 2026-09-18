@@ -271,6 +271,8 @@ def test_message_accept_and_redraft(client, mock_officer_user, monkeypatch):
         accept_body = b"".join(accepted.iter_bytes()).decode("utf-8")
     assert accepted.status_code == 200
     assert "event: accepted" in accept_body
+    assert "event: done" in accept_body
+    assert accepted.headers.get("x-accel-buffering") == "no"
 
     async def fake_draft(*_args, **_kwargs):
         yield "ร่างใหม่หมวดหนึ่ง"
@@ -285,6 +287,7 @@ def test_message_accept_and_redraft(client, mock_officer_user, monkeypatch):
     assert "event: token" in redraft_body
     assert "ร่างใหม่หมวดหนึ่ง" in redraft_body
     assert "event: section_done" in redraft_body
+    assert "event: done" in redraft_body
 
 
 def test_message_requires_section(client, mock_officer_user):

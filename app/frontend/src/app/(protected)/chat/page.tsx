@@ -4,7 +4,7 @@ import { ChatShell } from "@/components/chat/chat-shell";
 
 export default function ChatPage() {
   return (
-    <div data-testid="chat-page">
+    <div className="min-w-0" data-testid="chat-page">
       <ChatShell kind="kb" />
     </div>
   );

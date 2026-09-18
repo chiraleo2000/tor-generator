@@ -56,7 +56,9 @@ export function MiniRoomList({
       data-testid="chat-room-list"
       className={cn(
         "flex shrink-0 flex-col border-r bg-white",
-        collapsed ? "w-14" : "w-[260px]"
+        collapsed
+          ? "w-12 sm:w-14"
+          : "absolute z-20 h-full w-[min(260px,85vw)] shadow-lg md:relative md:w-[260px] md:shadow-none"
       )}
     >
       <div className="flex items-center gap-1 border-b p-2">

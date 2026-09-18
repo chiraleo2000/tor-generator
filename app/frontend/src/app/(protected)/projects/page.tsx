@@ -73,7 +73,8 @@ export default function ProjectsPage() {
         {isLoading ? (
           <p className="p-8 text-sm text-muted-foreground">กำลังโหลดข้อมูล...</p>
         ) : (
-          <table className="w-full text-left text-[13.5px]">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[40rem] text-left text-[13.5px]">
             <thead>
               <tr className="bg-gray-100 text-[12.5px] uppercase text-gray-700">
                 <th className="px-4 py-3">ชื่อโครงการ</th>
@@ -137,6 +138,7 @@ export default function ProjectsPage() {
               ) : null}
             </tbody>
           </table>
+          </div>
         )}
       </div>
       <div className="mt-4 text-right">

@@ -261,11 +261,27 @@ export default function StandaloneReviewPage() {
     setBusy(true);
     setStatus("กำลังตรวจด้วยกฎระเบียบ...");
     setError(null);
+    let settled = false;
+    let gotResult = false;
+    const poll = window.setInterval(() => {
+      apiClient
+        .get(`/review/${extracted.id}`)
+        .then((response) => {
+          if (settled) return;
+          const data = unwrapData<Record<string, unknown>>(response);
+          if (typeof data.quality_score !== "number") return;
+          settled = true;
+          gotResult = true;
+          applyRestoredJob(data);
+          setBusy(false);
+        })
+        .catch(() => undefined);
+    }, 2000);
     try {
       const compareJobs = await extractCompareFiles(compares);
       const compared = await compareExtractJobs(extracted, compareJobs);
       const ran = unwrapData<ReviewResult>(
-        await apiClient.post("/review/run", { id: extracted.id })
+        await apiClient.post("/review/run", { id: extracted.id }, { timeout: 900_000 })
       );
       persistReviewJobId(extracted.id);
       const normalized: ReviewResult = {
@@ -274,6 +290,7 @@ export default function StandaloneReviewPage() {
           toReviewFinding(item as unknown as Record<string, unknown>)
         ),
       };
+      gotResult = true;
       setResult(normalized);
       setComparisons(compared.comparisons);
       setStep(3);
@@ -284,9 +301,13 @@ export default function StandaloneReviewPage() {
           : `ตรวจเสร็จ — ยังไม่ผ่านเกณฑ์ 70 (${score}/100)`
       );
     } catch (err: unknown) {
-      setStatus("");
-      setError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+      if (!gotResult) {
+        setStatus("");
+        setError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+      }
     } finally {
+      settled = true;
+      window.clearInterval(poll);
       setBusy(false);
     }
   }
@@ -295,7 +316,7 @@ export default function StandaloneReviewPage() {
   const preview = previewSnippet(extracted?.extracted_text || "");
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2" data-testid="review-page">
+    <div className="grid min-w-0 gap-4 lg:grid-cols-2" data-testid="review-page">
       <div className="gov-card">
         <h3 className="mb-3 text-navy">อัปโหลด TOR ที่ต้องการตรวจสอบ</h3>
         <ReviewStepper step={step} />

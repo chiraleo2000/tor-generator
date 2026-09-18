@@ -24,6 +24,13 @@ const nextConfig = {
           },
         ],
       },
+      {
+        source: "/api/v1/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-transform" },
+          { key: "X-Accel-Buffering", value: "no" },
+        ],
+      },
     ];
   },
   async rewrites() {

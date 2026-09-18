@@ -5,7 +5,7 @@ import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import { unwrapData } from "@/lib/api-unwrap";
-import { streamSsePost, type ChatMessageItem } from "@/lib/chat-sse";
+import { adoptServerChatMessages, streamSsePost, type ChatMessageItem } from "@/lib/chat-sse";
 import { factProgressFromCoverage } from "@/lib/intake-complete";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -135,6 +135,23 @@ export function DraftConversation({
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (!busy || !roomId) return undefined;
+    const id = roomId;
+    const timer = window.setInterval(() => {
+      void loadMessages(id).then((rows) => {
+        setMessages((prev) => {
+          const result = adoptServerChatMessages(prev, rows);
+          if (result.adopted) {
+            setBusy(false);
+          }
+          return result.next;
+        });
+      });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [busy, roomId, loadMessages]);
+
   async function sendIntake(content: string, withLegal: boolean) {
     const controller = new AbortController();
     abortRef.current = controller;
@@ -195,9 +212,11 @@ export function DraftConversation({
           } else if (Array.isArray(data.coverage)) {
             setProgress(factProgressFromCoverage(data.coverage as CoverageRow[]));
           }
+          setBusy(false);
         }
         if (event === "error") {
           setError(typeof data.message === "string" ? data.message : "แชทล้มเหลว");
+          setBusy(false);
         }
       },
       controller.signal

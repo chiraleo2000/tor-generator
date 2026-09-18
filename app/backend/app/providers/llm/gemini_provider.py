@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+import json
 import logging
 from typing import AsyncIterator
 
@@ -12,6 +14,36 @@ from app.providers.base import LLMProvider, LLMResponse
 logger = logging.getLogger(__name__)
 
 _GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+_FALLBACK_SLICE = 120
+
+
+def gemini_sse_text_pieces(line: str) -> list[str]:
+    """Parse one Gemini ``streamGenerateContent?alt=sse`` line into text chunks."""
+    raw = (line or "").strip()
+    if not raw or raw == "[DONE]":
+        return []
+    if raw.startswith("data:"):
+        raw = raw[5:].strip()
+    if not raw or raw == "[DONE]":
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    pieces: list[str] = []
+    for candidate in payload.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        parts = (candidate.get("content") or {}).get("parts") or []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            text = part.get("text") or ""
+            if text:
+                pieces.append(str(text))
+    return pieces
 
 
 def _to_gemini_contents(messages: list[dict]) -> tuple[str | None, list[dict]]:
@@ -104,7 +136,58 @@ class GeminiLLMProvider(LLMProvider):
             or "stop",
         )
 
+    def _generation_body(self, messages: list[dict], **kwargs) -> dict:
+        system, contents = _to_gemini_contents(messages)
+        body: dict = {"contents": contents}
+        if system:
+            body["systemInstruction"] = {"parts": [{"text": system}]}
+        generation: dict = {}
+        if "temperature" in kwargs:
+            generation["temperature"] = kwargs["temperature"]
+        if "max_tokens" in kwargs:
+            generation["maxOutputTokens"] = kwargs["max_tokens"]
+        if generation:
+            body["generationConfig"] = generation
+        return body
+
+    async def _stream_sse(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
+        body = self._generation_body(messages, **kwargs)
+        url = f"{self._url('streamGenerateContent')}&alt=sse"
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            stream_ctx = client.stream("POST", url, json=body)
+            if inspect.iscoroutine(stream_ctx):
+                stream_ctx.close()
+                raise TypeError("Gemini HTTP stream is unavailable")
+            async with stream_ctx as response:
+                raw_status = getattr(response, "status_code", 200)
+                try:
+                    status = int(raw_status)
+                except (TypeError, ValueError):
+                    status = 200
+                if status >= 400:
+                    detail = ""
+                    try:
+                        detail = (await response.aread()).decode("utf-8", errors="replace")[:500]
+                    except Exception:
+                        detail = str(getattr(response, "text", "") or "")[:500]
+                    raise ConnectionError(f"Gemini HTTP {status}: {detail}")
+                async for line in response.aiter_lines():
+                    for piece in gemini_sse_text_pieces(line):
+                        yield piece
+
     async def stream(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
+        streamed = False
+        try:
+            async for piece in self._stream_sse(messages, **kwargs):
+                streamed = True
+                yield piece
+            if streamed:
+                return
+        except Exception as exc:  # noqa: BLE001 — fall back to a single generateContent call
+            logger.info("Gemini SSE stream unavailable (%s); using generateContent", exc)
         result = await self.invoke(messages, **kwargs)
-        if result.content:
-            yield result.content
+        text = result.content or ""
+        if not text:
+            return
+        for index in range(0, len(text), _FALLBACK_SLICE):
+            yield text[index : index + _FALLBACK_SLICE]

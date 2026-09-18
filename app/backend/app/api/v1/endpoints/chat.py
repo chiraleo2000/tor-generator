@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import infra as runtime
+from app.api.sse import sse_streaming_response
 from app.api.v1.endpoints.knowledge_base import _validate_kb_bytes
 from app.deps import get_current_user, get_db
 from app.domain.corpus import GROUP_USER
@@ -28,6 +29,7 @@ from app.models.chat_prompt_template import ChatPromptTemplate
 from app.models.chat_room import ChatRoom
 from app.models.user import User
 from app.providers.factory import ProviderFactory
+from app.providers.llm.stream_fallback import stream_llm_tokens
 from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.hybrid import unpack_hybrid
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
@@ -498,7 +500,8 @@ async def _run_chat_llm(
             llm = ProviderFactory().get_llm()
             from app.providers.model_capabilities import llm_call_kwargs
 
-            async for token in llm.stream(
+            async for token in stream_llm_tokens(
+                llm,
                 messages,
                 **llm_call_kwargs(temperature=0.2, max_tokens=max_tokens),
             ):
@@ -613,7 +616,7 @@ async def send_message(
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()
-    return StreamingResponse(
+    return sse_streaming_response(
         _iter_chat_sse(
             request=request,
             room=room,
@@ -625,6 +628,5 @@ async def send_message(
             top_k=top_k,
             max_tokens=max_tokens,
             request_id=request_id,
-        ),
-        media_type="text/event-stream",
+        )
     )

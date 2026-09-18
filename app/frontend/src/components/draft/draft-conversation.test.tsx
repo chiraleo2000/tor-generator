@@ -11,9 +11,13 @@ vi.mock("@/lib/api-client", () => ({
   },
 }));
 
-vi.mock("@/lib/chat-sse", () => ({
-  streamSsePost: vi.fn(),
-}));
+vi.mock("@/lib/chat-sse", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/chat-sse")>();
+  return {
+    ...actual,
+    streamSsePost: vi.fn(),
+  };
+});
 
 vi.mock("@/stores/auth-store", () => ({
   useAuthStore: (select: (state: { token: string }) => string) => select({ token: "t" }),
@@ -246,6 +250,21 @@ describe("DraftConversation", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/การตอบใช้เวลานานเกินไป/)
     );
+  });
+
+  it("unfreezes when done arrives even if the stream never closes", async () => {
+    vi.mocked(streamSsePost).mockImplementation((_u, _b, _t, onEvent) => {
+      onEvent("token", { text: "คำตอบจากคลาวด์" });
+      onEvent("done", { content: "คำตอบจากคลาวด์" });
+      return new Promise(() => undefined);
+    });
+    render(<DraftConversation projectId="p1" mode="intake" apiBase="/api/v1" />);
+    await screen.findByTestId("chat-msg-assistant");
+    fireEvent.change(screen.getByTestId("chat-input"), { target: { value: "ถาม" } });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    expect(await screen.findByText("คำตอบจากคลาวด์")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("chat-input"), { target: { value: "ถามต่อ" } });
+    await waitFor(() => expect(screen.getByTestId("chat-send")).toBeEnabled());
   });
 
   it("surfaces stream error events and coverage-only progress", async () => {

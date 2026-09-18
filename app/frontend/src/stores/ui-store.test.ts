@@ -5,7 +5,7 @@ describe("ui-store", () => {
   beforeEach(() => {
     useUIStore.setState({
       theme: "light",
-      sidebarOpen: true,
+      sidebarOpen: false,
       isLoading: false,
       toasts: [],
     });
@@ -19,9 +19,9 @@ describe("ui-store", () => {
     useUIStore.getState().toggleTheme();
     expect(useUIStore.getState().theme).toBe("dark");
     useUIStore.getState().toggleSidebar();
-    expect(useUIStore.getState().sidebarOpen).toBe(false);
-    useUIStore.getState().setSidebarOpen(true);
     expect(useUIStore.getState().sidebarOpen).toBe(true);
+    useUIStore.getState().setSidebarOpen(false);
+    expect(useUIStore.getState().sidebarOpen).toBe(false);
     useUIStore.getState().setLoading(true);
     expect(useUIStore.getState().isLoading).toBe(true);
   });

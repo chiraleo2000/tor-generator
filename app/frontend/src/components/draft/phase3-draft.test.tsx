@@ -159,7 +159,7 @@ describe("Phase3Draft", () => {
         redraft: true,
         user_feedback: "ทำให้สั้นลงและชัดเจนขึ้น",
         current_draft_fields: expect.objectContaining({
-          body: expect.stringContaining("โครงการจัดซื้อ"),
+          history: expect.stringContaining("โครงการจัดซื้อ"),
         }),
       })
     );

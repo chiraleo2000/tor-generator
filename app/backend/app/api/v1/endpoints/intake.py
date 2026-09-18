@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.constants import PROJECT_NOT_FOUND
+from app.api.sse import sse_streaming_response
 from app.deps import get_current_user, get_db
 from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, empty_slot_keys, fact_required_slots
 from app.exceptions import NotFoundError, ValidationError
@@ -28,6 +29,7 @@ from app.models.project import Project
 from app.models.tor_section import TORSection
 from app.models.user import User
 from app.providers.factory import ProviderFactory
+from app.providers.llm.stream_fallback import stream_llm_tokens
 from app.rag.extraction import extract_text
 from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.rate_limiter import rate_limit_ai
@@ -473,7 +475,8 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
             llm = ProviderFactory().get_llm("chat")  # NOSONAR python:S930
             from app.providers.model_capabilities import llm_call_kwargs
 
-            async for token in llm.stream(
+            async for token in stream_llm_tokens(
+                llm,
                 [
                     {"role": "system", "content": INTAKE_CHAT_SYSTEM},
                     {"role": "user", "content": work.user_prompt},
@@ -1069,7 +1072,7 @@ async def intake_chat(
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
     ).strip()
-    return StreamingResponse(
+    return sse_streaming_response(
         _iter_intake_chat_sse(
             request=request,
             project=project,
@@ -1082,6 +1085,5 @@ async def intake_chat(
             asking=asking,
             ref_key=ref_key,
             request_id=request_id,
-        ),
-        media_type="text/event-stream",
+        )
     )

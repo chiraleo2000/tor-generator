@@ -352,6 +352,41 @@ describe("DraftChat", () => {
     expect(await screen.findByTestId("draft-chat")).toBeInTheDocument();
   });
 
+  it("unfreezes the composer after section_done even if the message stream never closes", async () => {
+    mockStream(async (url, onEvent) => {
+      if (url.includes("/message")) {
+        onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+        onEvent("section_done", { section_key: "s1", content: "ร่างใหม่แล้ว" });
+        await new Promise(() => undefined);
+        return;
+      }
+      onEvent("section_start", { section_key: "s1", title: "ความเป็นมา" });
+      onEvent("section_done", {
+        section_key: "s1",
+        content: "กรมบัญชีกลางจัดซื้อระบบ",
+        drafted_count: 1,
+      });
+      onEvent("all_done", { drafted_count: 13, total: 13 });
+    });
+    render(<DraftChat projectId="p-hang-message" onAllDrafted={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("draft-redraft-s1"));
+    await waitFor(() => expect(screen.getByText("ร่างใหม่แล้ว")).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId("draft-chat-input"), {
+      target: { value: "แก้ไขต่อ" },
+    });
+    await waitFor(() => expect(screen.getByTestId("draft-chat-send")).toBeEnabled());
+  });
+
+  it("marks complete when all_done arrives without waiting for the socket to close", async () => {
+    mockStream((_url, onEvent) => {
+      onEvent("all_done", { drafted_count: 13, total: 13 });
+    });
+    const onAllDrafted = vi.fn();
+    render(<DraftChat projectId="p-all-done-event" onAllDrafted={onAllDrafted} />);
+    await waitFor(() => expect(onAllDrafted).toHaveBeenCalled());
+    expect(screen.getByText(/ร่างครบทุกหมวดแล้ว/)).toBeInTheDocument();
+  });
+
   it("marks an accepted section from the message stream", async () => {
     mockStream((url, onEvent) => {
       if (url.includes("/message")) {

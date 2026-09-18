@@ -55,6 +55,30 @@ describe("streamSsePost", () => {
     expect(events).toEqual(["token", "done"]);
   });
 
+  it("returns after done even if the socket stays open", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'event: token\ndata: {"text":"ก"}\n\nevent: done\ndata: {"content":"ก"}\n\n'
+          )
+        );
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body }));
+    const events: string[] = [];
+    await Promise.race([
+      streamSsePost("/chat", { content: "hi" }, null, (event) => {
+        events.push(event);
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("stream hung after done")), 800);
+      }),
+    ]);
+    expect(events).toEqual(["token", "done"]);
+  });
+
   it("throws when the response is not ok", async () => {
     vi.stubGlobal(
       "fetch",
@@ -148,6 +172,26 @@ describe("streamSsePost", () => {
     ).rejects.toThrow(/เชื่อมต่อเซิร์ฟเวอร์ไม่ได้/);
   });
 
+  it("returns after a terminal event even if the socket stays open", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: done\ndata: {"content":"จบ"}\n\n'));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body }));
+    const events: string[] = [];
+    await Promise.race([
+      streamSsePost("/chat", { content: "hi" }, null, (event) => {
+        events.push(event);
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("hung after done")), 400);
+      }),
+    ]);
+    expect(events).toEqual(["done"]);
+  });
+
   it("skips empty SSE data lines and forwards extra headers", async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream({
@@ -174,6 +218,44 @@ describe("streamSsePost", () => {
     const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer tok");
     expect(headers["X-Extra"]).toBe("1");
+  });
+});
+
+describe("adoptServerChatMessages", () => {
+  it("adopts a longer server assistant without shrinking in-flight text", async () => {
+    const { adoptServerChatMessages } = await import("@/lib/chat-sse");
+    const prev = [
+      { id: "u1", role: "user" as const, content: "ถาม", citations: [] },
+      { id: "a1", role: "assistant" as const, content: "คำ", citations: [] },
+    ];
+    const rows = [
+      { id: "u1", role: "user" as const, content: "ถาม", citations: [] },
+      { id: "a1", role: "assistant" as const, content: "คำตอบเต็ม", citations: [{ type: "doc", label: "ก" }] },
+    ];
+    const result = adoptServerChatMessages(prev, rows);
+    expect(result.adopted).toBe(true);
+    expect(result.next.at(-1)?.content).toBe("คำตอบเต็ม");
+    expect(result.next.at(-1)?.citations).toEqual([{ type: "doc", label: "ก" }]);
+  });
+
+  it("does not adopt a shorter or older transcript while sending", async () => {
+    const { adoptServerChatMessages } = await import("@/lib/chat-sse");
+    const prev = [
+      { id: "u1", role: "user" as const, content: "เก่า", citations: [] },
+      { id: "a1", role: "assistant" as const, content: "ตอบแล้ว", citations: [] },
+      { id: "u2", role: "user" as const, content: "ใหม่", citations: [] },
+      { id: "a2", role: "assistant" as const, content: "กำลัง", citations: [] },
+    ];
+    const oldRows = [
+      { id: "u1", role: "user" as const, content: "เก่า", citations: [] },
+      { id: "a1", role: "assistant" as const, content: "ตอบแล้วทั้งก้อนยาวกว่า", citations: [] },
+    ];
+    expect(adoptServerChatMessages(prev, oldRows).adopted).toBe(false);
+    const shorter = [
+      ...prev.slice(0, 3),
+      { id: "a2", role: "assistant" as const, content: "ก", citations: [] },
+    ];
+    expect(adoptServerChatMessages(prev, shorter).adopted).toBe(false);
   });
 });
 
