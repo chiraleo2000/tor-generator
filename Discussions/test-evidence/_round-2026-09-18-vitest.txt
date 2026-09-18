@@ -1,0 +1,13 @@
+> tor-drafting-frontend@0.8.2 test
+> vitest run
+
+ RUN  v4.1.10
+
+ Test Files  52 passed (52)
+      Tests  336 passed (336)
+   Start at  09:41:44
+   Duration  160.40s
+
+Host: Windows · Node from Program Files · cwd app/frontend
+Round: 18 Sep 2026 provider-agnostic unfreeze + mobile drawer
+Commit: 9455826 Unfreeze chat, draft, and review as soon as any LLM provider finishes streaming.

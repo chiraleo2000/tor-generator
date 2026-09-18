@@ -1,6 +1,6 @@
 # รายงานการทำงานของแอป TOR Generator
 
-**เวอร์ชัน 0.8.1** · ค่า LLM/embedding ตาม `.env.example` (Gemma 4 + EmbeddingGemma 768-d + งบ `TOR_*`) · วันที่จัดทำ **24 สิงหาคม 2026** · อัปเดตคู่มือ AWS Quick **14 กันยายน 2026** · ผลทดสอบล่าสุด **17 กันยายน 2026** (ถาม-ตอบแบบบทสรุป · พื้นฐาน 15 ก.ย. harden live workflow · gold pack 16/16)  
+**เวอร์ชัน 0.8.2** · ค่า LLM/embedding ตาม `.env.example` (Gemma 4 + EmbeddingGemma 768-d + งบ `TOR_*`) · วันที่จัดทำ **24 สิงหาคม 2026** · อัปเดตคู่มือ AWS Quick **14 กันยายน 2026** · ผลทดสอบล่าสุด **18 กันยายน 2026** (unfreeze ทุกผู้ให้บริการ · Vitest 336 · pytest 2172 · Gemini ถาม-ตอบไม่ค้าง · ร่าง 16/16)  
 แหล่งความจริงของตัวเลขเทสต์รอบนี้: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) และ [`28-VERIFICATION-AND-MIGRATION.md`](28-VERIFICATION-AND-MIGRATION.md)
 
 แอปนี้ช่วยเจ้าหน้าที่พัสดุ**ร่างและตรวจ TOR** (ขอบเขตของงาน) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 โดยใช้ **Section_Profile ตามหมวดใหญ่ ๗ ประเภท** (ดู [37-TOR-PROFILES-BY-TYPE.md](37-TOR-PROFILES-BY-TYPE.md)) รับชุดเอกสาร จัดเข้าช่อง ตรวจด้วย Rule Engine แล้วส่งออก Word/PDF รูปแบบราชการ
@@ -229,6 +229,16 @@ flowchart LR
 ![Phase 4 ทบทวนและแชทรีวิว](test-evidence/e2e-phase-4-review-chat.png)
 
 ![Phase 4 ส่งออก](test-evidence/07-phase-4-publish.png)
+
+รอบ **18 ก.ย. 2026** ยืนยันสามเครื่องมือบนสแตกจริง (ภาพชุด `round-2026-09-18-*.png` — เปิด markdown แล้วเห็นหน้าจอ):
+
+![ถาม-ตอบ Gemini สรุปคำตอบ](test-evidence/round-2026-09-18-chat-answer.png)
+
+![มือถือไม่ทับเครื่องมือ](test-evidence/round-2026-09-18-chat-mobile.png)
+
+![ร่างครบ 16/16](test-evidence/round-2026-09-18-draft-complete.png)
+
+![ตรวจสอบ TOR](test-evidence/round-2026-09-18-review.png)
 
 ### 5.2 กราฟร่างรายหมวด (LangGraph)
 

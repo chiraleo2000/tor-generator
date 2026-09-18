@@ -1,5 +1,6 @@
 # หลักฐานการทดสอบ — ผ่านทั้งหมด
 
+> **รอบ 18 กันยายน 2026 — unfreeze ทุกผู้ให้บริการ + UI มือถือ:** Vitest **336 ผ่าน** / 52 ไฟล์ · pytest `-m "not live_llm and not integration"` **2172 ผ่าน** · Docker `tor-app` frontend+backend healthy · Gemini hybrid ถาม-ตอบขึ้นผลทันทีไม่ต้องรีเฟรช · มือถือ 390px เมนูเป็นลิ้นชักไม่ทับเครื่องมือ · ร่าง **16/16** · หน้า `/review` โหลดได้ · คอมมิต [`9455826`](https://github.com/chiraleo2000/tor-generator/commit/9455826)  
 > **รอบ 17 กันยายน 2026 — hybrid Gemini live (สามเครื่องมือ):** `DEPLOYMENT_MODE=hybrid` · `LLM_PROVIDER=gemini` (`gemini-3.5-flash-lite`) · ฝังเวกเตอร์ local EmbeddingGemma ผ่าน LM Studio · ถาม-ตอบมี **สรุปคำตอบ** + ตาราง + **ข้อควรระวัง** + citation (ไม่ใช้ stub) · gold pack `hire_develop` วิเคราะห์ **25/25** · ร่าง **16/16** · ส่งออก DOCX ไม่มี filename leak / type_forbidden · หัวข้อทองขาด 0 · ขั้นที่ ๔ คะแนนกฎ **93/100** · standalone `/review` **80/100** · จำกัดชิปอ้างอิงถาม-ตอบไม่ให้ล้นจอ  
 > **รอบ 15 กันยายน 2026 — harden live workflow:** gold pack `hire_develop` Phase 0→4 บน LM Studio · หัวข้อทอง **ขาด 0** / **16/16 หมวด** · ส่งออก DOCX+PDF ไม่มี `[*.txt]` / ไม่มีโทนผู้ขาย · ถาม-ตอบมี citation · KB อัปโหลดโซน+ลบ · standalone review **80/100** · smoke `hire_maintain` ถึงขั้นที่ ๑ (`asset_list` ครบ) ไม่เริ่มร่าง  
 > **v0.8.1 (17 กันยายน 2026):** ค่า LLM/embedding ตาม `.env.example` (Gemma 4 + EmbeddingGemma 768-d + `TOR_*`) ไม่ hardcode ใน constants · ยืนยัน live hybrid Gemini บนเครื่องนี้  
@@ -12,6 +13,63 @@
 > **รอบ 9 กันยายน 2026 ค่ำ — UI ร่าง TOR (เลขหมวดเทคนิค):** Docker rebuild `frontend` · health 200 · Vitest scoped **42 ผ่าน** / 4 ไฟล์ · bundle ไม่มี `หมวด N:` · มี `tabular-nums`/`รอร่าง`  
 > **รอบ 9 กันยายน 2026 เย็น — สไตล์ราชการ + Sonar + Docker:** pytest `-m "not live_llm and not integration"` **2059 ผ่าน** / 25 ตัด · Vitest **309 ผ่าน** / 50 ไฟล์ · Docker `tor-app` rebuild frontend+backend (healthy) · Amazon Quick skills อัปเดตสไตล์ราชการ · `pytest -m live_llm` **หยุดกลางคันตามคำสั่ง** (ECT ผ่าน 2 ข้อแรก แล้วยกเลิกตอนร่างครบหมวด)  
 > รอบเช้า 9 กันยายน 2026 — Section_Profile: pytest **2046** · Vitest **309** · live_llm **17/17** · Docker rebuild
+
+---
+
+## รอบ 18 กันยายน 2026 — ผลขึ้นทันทีทุก LLM + มือถือ + ยืนยันสามเครื่องมือ
+
+สแตก `tor-app` · `LLM_PROVIDER=gemini` · `GEMINI_MODEL=gemini-3.5-flash-lite` · ฝังเวกเตอร์ local · UI `:3000` healthy · API `:4000` healthy  
+คอมมิตโค้ด [`9455826`](https://github.com/chiraleo2000/tor-generator/commit/9455826) · ล็อก `test-evidence/_round-2026-09-18-summary.txt`
+
+| ชุด | ผล | หลักฐาน |
+|-----|-----|----------|
+| Vitest `run` | **336 ผ่าน** / 52 ไฟล์ · 160.40s | `test-evidence/_round-2026-09-18-vitest.txt` |
+| pytest `-m "not live_llm and not integration"` | **2172 ผ่าน** / 2 ข้าม / 25 ตัด · 4:29 | `test-evidence/_round-2026-09-18-pytest.txt` |
+| Docker rebuild frontend+backend | healthy | สแตก `tor-app` 18 ก.ย. เช้า |
+| ถาม-ตอบ Gemini บนหน้าเว็บ | สรุปคำตอบ + ตาราง + ข้อควรระวัง + citation · **ไม่ต้องรีเฟรช** · ปุ่มส่งกลับมาใช้ได้ | ภาพด้านล่าง |
+| UI มือถือ 390px | ลิ้นชักเมนู `translate(-255px)` · เนื้อหาเต็มกว้าง · แฮมเบอร์เกอร์ | ภาพด้านล่าง |
+| ร่าง TOR ขั้นที่ ๓ | **16/16 หมวด** · ช่องพิมพ์ใช้งานได้ | ภาพด้านล่าง |
+| ตรวจสอบ TOR `/review` | สเต็ปเปอร์อัปโหลด/สกัด/ผล โหลดได้ | ภาพด้านล่าง |
+
+### ภาพยืนยันบนสแตกจริง (ไม่ mock)
+
+![ถาม-ตอบ Gemini — สรุปคำตอบ วงเงินประกาศเชิญชวน](test-evidence/round-2026-09-18-chat-answer.png)
+
+![ถาม-ตอบ Gemini — ข้อควรระวัง citation และปุ่มส่งพร้อมใช้](test-evidence/round-2026-09-18-chat.png)
+
+![มือถือ 390px — เมนูเป็นลิ้นชัก ไม่ทับเครื่องมือ](test-evidence/round-2026-09-18-chat-mobile.png)
+
+![ร่าง TOR ขั้นที่ ๓ — ครบ 16/16 หมวด](test-evidence/round-2026-09-18-draft-complete.png)
+
+![ตรวจสอบ TOR หน้าล้วน](test-evidence/round-2026-09-18-review.png)
+
+### ภาพเวิร์กโฟลว์ 5 ขั้น (headed UI ล่าสุดในเอกสาร)
+
+ภาพชุดนี้ถูกถ่ายใหม่บนสแตกจริงแล้วถูกอ้างใน [13](13-USER_GUIDELINE.md) และ [19](19-APPLICATION_OPERATING_REPORT.md) — เปิดไฟล์ markdown แล้วเห็นหน้าจอปัจจุบัน
+
+![Phase 0 อัปโหลด](test-evidence/03-phase-0-upload.png)
+
+![Phase 0 กำลังวิเคราะห์](test-evidence/03b-phase-0-analyzing.png)
+
+![Phase 1 ตารางความครบ](test-evidence/04b-phase-1-coverage.png)
+
+![Phase 2 สอบถามเพิ่ม](test-evidence/05-phase-2-chat.png)
+
+![Phase 2 ตารางคู่แชท](test-evidence/e2e-phase-2-qa.png)
+
+![Phase 3 กำลังร่าง](test-evidence/08a-phase-3-drafting.png)
+
+![Phase 3 ร่างอัตโนมัติ](test-evidence/08-phase-2-ai-draft.png)
+
+![Phase 3 DraftChat](test-evidence/e2e-phase-3-draft.png)
+
+![Phase 4 กำลังตรวจ](test-evidence/07a-phase-4-reviewing.png)
+
+![Phase 4 ประกอบร่าง](test-evidence/07b-phase-4-assemble.png)
+
+![Phase 4 แชทรีวิว](test-evidence/e2e-phase-4-review-chat.png)
+
+![Phase 4 ส่งออก](test-evidence/07-phase-4-publish.png)
 
 ---
 

@@ -1,0 +1,13 @@
+=========================== short test summary info ============================
+2172 passed, 2 skipped, 25 deselected, 4 warnings in 269.96s (0:04:29)
+
+Command:
+  docker compose -p tor-app --env-file .env -f docker-compose.yml -f docker-compose.test.yml \
+    exec backend python -m pytest tests -q --tb=line -m "not live_llm and not integration"
+
+Stack: tor-app backend image after stream_fallback + SSE helper rebuild
+Round: 18 Sep 2026
+Commit: 9455826
+Deselected: live_llm + integration (25)
+Skipped: 2
+Failed: 0

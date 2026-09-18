@@ -1,0 +1,28 @@
+Round 18 Sep 2026 — provider-agnostic unfreeze + mobile UI
+
+Deploy
+  docker compose -p tor-app --env-file .env -f docker-compose.yml -f docker-compose.test.yml \
+    up -d --build backend frontend
+  frontend :3000 healthy · backend :4000 healthy
+  LLM_PROVIDER=gemini (gemini-3.5-flash-lite) · local embeddings
+
+Unit
+  Vitest run: 336 passed / 52 files (160.40s)
+  pytest -m "not live_llm and not integration": 2172 passed / 2 skipped / 25 deselected (4:29)
+
+Live UI (no page refresh)
+  /chat — Gemini answer on procurement threshold painted immediately; send re-enabled
+  /chat mobile 390px — drawer translate(-255px), main width 390, hamburger + overlay
+  /review — standalone review stepper loaded
+  /projects/.../draft — 16/16 sections complete, composer enabled
+
+Evidence images
+  round-2026-09-18-chat.png
+  round-2026-09-18-chat-mobile.png
+  round-2026-09-18-review.png
+  round-2026-09-18-draft-complete.png
+  plus refreshed 5-phase screenshots (03-phase-0-upload.png … e2e-phase-4-review-chat.png)
+
+Git
+  9455826 already on origin/main (code)
+  this round adds screenshots + markdown so Documents render the live proof

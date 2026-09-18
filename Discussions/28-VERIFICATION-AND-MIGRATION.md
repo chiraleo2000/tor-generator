@@ -3,7 +3,7 @@
 เอกสารฉบับเดียว (Combined_Report) ตาม `.kiro/specs/local-llm-verification-aws-migration-plan/`  
 ลำดับ: **(A) Verification** → **(B) Verification_Gate** → **(C) AWS Migration Plan** → **(D) Stability & Scale**
 
-ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · รอบ **11 ก.ย. 2026** (v0.6.1) · `test-evidence/_round-2026-09-10-skk-quality-thinking.json` · `test-evidence/_round-2026-09-09-live-llm.txt` (live_llm 17/17) · รอบ UI headed คู่: `test-evidence/_round-2026-09-07pm-summary.txt`
+ภาพและล็อกชุดล่าสุด: [`18-TEST_EVIDENCE.md`](18-TEST_EVIDENCE.md) · รอบ **18 ก.ย. 2026** (Vitest 336 · pytest 2172 · Gemini ไม่ค้าง · ภาพ `round-2026-09-18-*.png`) · พื้นฐาน **11 ก.ย. 2026** (v0.6.1) · `test-evidence/_round-2026-09-10-skk-quality-thinking.json` · `test-evidence/_round-2026-09-09-live-llm.txt` (live_llm 17/17) · รอบ UI headed คู่: `test-evidence/_round-2026-09-07pm-summary.txt`
 
 ---
 

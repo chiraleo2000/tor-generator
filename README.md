@@ -178,15 +178,17 @@ npm run test:e2e
 npm run test:e2e:headed
 ```
 
-ชุดล่าสุดที่ผ่านทั้งหมด (**9 ก.ย. 2026** · รายละเอียด [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)):
+ชุดล่าสุดที่ผ่านทั้งหมด (**18 ก.ย. 2026** · รายละเอียดและภาพ [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)):
 
 | ชุด | ผล |
 |-----|-----|
-| pytest `-m "not live_llm and not integration"` | **2046 ผ่าน** / 25 ตัด |
-| pytest `-m live_llm` | **17 ผ่าน** ในรอบเดียว (LM Studio + API + ECT โปรไฟล์ `hire_develop` 15 หมวด · 54:44) |
-| Vitest `run` | **309 ผ่าน** / 50 ไฟล์ |
-| Amazon Quick `:8767` | health `rag.reachable=true` (รอบนี้ไม่รัน unit ซ้ำ) |
-| UI ตามลำดับ ถาม-ตอบ → ร่าง TOR → ตรวจสอบ TOR | รอบ headed ล่าสุด **7 ก.ย. 2026 บ่าย** (**3 ผ่าน** · ร่าง **13/13**) |
+| pytest `-m "not live_llm and not integration"` | **2172 ผ่าน** / 2 ข้าม / 25 ตัด |
+| Vitest `run` | **336 ผ่าน** / 52 ไฟล์ |
+| Docker `tor-app` frontend+backend | healthy · UI `:3000` |
+| ถาม-ตอบ Gemini บนหน้าเว็บ | ผลขึ้นทันทีไม่ต้องรีเฟรช |
+| ร่าง TOR ขั้นที่ ๓ | **16/16 หมวด** |
+| ตรวจสอบ TOR `/review` | สเต็ปเปอร์โหลดได้ |
+| UI มือถือ | ลิ้นชักเมนู ไม่ทับเครื่องมือ |
 
 รายละเอียดและภาพ: [discussions/18-TEST_EVIDENCE.md](discussions/18-TEST_EVIDENCE.md)
 
