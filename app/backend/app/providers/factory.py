@@ -226,7 +226,22 @@ class ProviderFactory:
         provider = _attr(self._settings, "llm_provider", "lm_studio")
         if provider in LOCAL_LLM_PROVIDERS:
             return self._create_local_llm_provider(self._local_kind_for_task(task))
-        return self._create_cloud_llm_provider(provider)
+        primary = self._create_cloud_llm_provider(provider)
+        return self._with_llm_fallback(primary, provider)
+
+    def _with_llm_fallback(self, primary: LLMProvider, kind: str) -> LLMProvider:
+        """Wrap Bedrock with Gemini only when LLM_FALLBACK_PROVIDER=gemini."""
+        requested = str(_attr(self._settings, "llm_fallback_provider", "") or "").strip().lower()
+        if requested != "gemini" or kind != "bedrock":
+            return primary
+        if not _attr(self._settings, "gemini_api_key"):
+            logger.warning(
+                "LLM_FALLBACK_PROVIDER=gemini but GEMINI_API_KEY is empty; using Bedrock only"
+            )
+            return primary
+        from app.providers.llm.fallback_provider import FallbackLLMProvider
+
+        return FallbackLLMProvider(primary, self._create_cloud_llm_provider("gemini"))
 
     def _local_kind_for_task(self, task: str) -> str:
         configured = _attr(self._settings, "llm_provider", "lm_studio")

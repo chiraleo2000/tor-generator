@@ -206,6 +206,7 @@ class Settings(BaseSettings):
         "gemini_api_key",
         "bedrock_model_id",
         "llm_provider",
+        "llm_fallback_provider",
         "embedding_provider",
         "deployment_mode",
         "web_search_provider",
@@ -230,6 +231,8 @@ class Settings(BaseSettings):
     # Provider Selection (Hybrid Mode)
     # -------------------------------------------------------------------------
     llm_provider: str = "lm_studio"
+    # Empty keeps the primary chat provider. "gemini" fails over from Bedrock only.
+    llm_fallback_provider: str = ""
     embedding_provider: str = "local"
     vector_store_provider: Literal["pgvector", "qdrant"] = "pgvector"
 

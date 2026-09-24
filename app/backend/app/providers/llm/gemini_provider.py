@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 _FALLBACK_SLICE = 120
+GEMINI_OUTPUT_TOKEN_RETRY = 8192
 
 
 def gemini_sse_text_pieces(line: str) -> list[str]:
@@ -44,6 +45,30 @@ def gemini_sse_text_pieces(line: str) -> list[str]:
             if text:
                 pieces.append(str(text))
     return pieces
+
+
+def gemini_output_token_rejected(detail: str) -> bool:
+    """True when Gemini refuses the requested maxOutputTokens."""
+    compact = (detail or "").lower().replace("_", "").replace(" ", "")
+    return "maxoutputtokens" in compact or "outputtoken" in compact
+
+
+def _should_retry_output_tokens(detail: str, kwargs: dict) -> bool:
+    if not gemini_output_token_rejected(detail):
+        return False
+    current = kwargs.get("max_tokens")
+    if current is None:
+        return True
+    try:
+        return int(current) > GEMINI_OUTPUT_TOKEN_RETRY
+    except (TypeError, ValueError):
+        return True
+
+
+def _capped_output_kwargs(kwargs: dict) -> dict:
+    updated = dict(kwargs)
+    updated["max_tokens"] = GEMINI_OUTPUT_TOKEN_RETRY
+    return updated
 
 
 def _to_gemini_contents(messages: list[dict]) -> tuple[str | None, list[dict]]:
@@ -84,17 +109,19 @@ class GeminiLLMProvider(LLMProvider):
         tools: list[dict] | None = None,
         **kwargs,
     ) -> LLMResponse:
-        system, contents = _to_gemini_contents(messages)
-        body: dict = {"contents": contents}
-        if system:
-            body["systemInstruction"] = {"parts": [{"text": system}]}
-        generation: dict = {}
-        if "temperature" in kwargs:
-            generation["temperature"] = kwargs["temperature"]
-        if "max_tokens" in kwargs:
-            generation["maxOutputTokens"] = kwargs["max_tokens"]
-        if generation:
-            body["generationConfig"] = generation
+        try:
+            return await self._invoke_once(messages, **kwargs)
+        except ConnectionError as exc:
+            if not _should_retry_output_tokens(str(exc), kwargs):
+                raise
+            logger.info(
+                "Gemini rejected maxOutputTokens; retrying generateContent with %s",
+                GEMINI_OUTPUT_TOKEN_RETRY,
+            )
+            return await self._invoke_once(messages, **_capped_output_kwargs(kwargs))
+
+    async def _invoke_once(self, messages: list[dict], **kwargs) -> LLMResponse:
+        body = self._generation_body(messages, **kwargs)
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(self._url("generateContent"), json=body)
@@ -176,16 +203,34 @@ class GeminiLLMProvider(LLMProvider):
                         yield piece
 
     async def stream(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
+        call_kwargs = dict(kwargs)
         streamed = False
-        try:
-            async for piece in self._stream_sse(messages, **kwargs):
-                streamed = True
-                yield piece
-            if streamed:
-                return
-        except Exception as exc:  # noqa: BLE001 — fall back to a single generateContent call
-            logger.info("Gemini SSE stream unavailable (%s); using generateContent", exc)
-        result = await self.invoke(messages, **kwargs)
+        for attempt in (1, 2):
+            try:
+                async for piece in self._stream_sse(messages, **call_kwargs):
+                    streamed = True
+                    yield piece
+                if streamed:
+                    return
+                break
+            except ConnectionError as exc:
+                if attempt == 1 and _should_retry_output_tokens(str(exc), call_kwargs):
+                    logger.info(
+                        "Gemini rejected maxOutputTokens; retrying stream with %s",
+                        GEMINI_OUTPUT_TOKEN_RETRY,
+                    )
+                    call_kwargs = _capped_output_kwargs(call_kwargs)
+                    continue
+                logger.info(
+                    "Gemini SSE stream unavailable (%s); using generateContent", exc
+                )
+                break
+            except Exception as exc:  # noqa: BLE001 — fall back to a single generateContent call
+                logger.info(
+                    "Gemini SSE stream unavailable (%s); using generateContent", exc
+                )
+                break
+        result = await self.invoke(messages, **call_kwargs)
         text = result.content or ""
         if not text:
             return

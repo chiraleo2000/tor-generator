@@ -195,3 +195,80 @@ async def test_gemini_stream_sse_yields_pieces():
         chunks = [part async for part in provider.stream([{"role": "user", "content": "hi"}])]
     assert chunks == ["ก", "ข"]
     client.post.assert_not_called()
+
+
+def _status_response(status: int, text: str = "", payload: dict | None = None) -> MagicMock:
+    response = MagicMock()
+    response.status_code = status
+    response.text = text
+    response.json.return_value = payload or {}
+    return response
+
+
+@pytest.mark.asyncio
+async def test_gemini_retries_rejected_max_output_tokens_once():
+    provider = GeminiLLMProvider(api_key="fake")
+    rejected = _status_response(
+        400,
+        '{"error":{"message":"maxOutputTokens exceeds the limit"}}',
+    )
+    ok = _status_response(
+        200,
+        payload={
+            "candidates": [
+                {"content": {"parts": [{"text": "ได้"}]}, "finishReason": "STOP"}
+            ],
+            "usageMetadata": {},
+        },
+    )
+    bodies: list[dict] = []
+
+    async def capture(_url, json=None):
+        bodies.append(json)
+        return rejected if len(bodies) == 1 else ok
+
+    client = _async_client(ok)
+    client.post = AsyncMock(side_effect=capture)
+    with patch(
+        "app.providers.llm.gemini_provider.httpx.AsyncClient",
+        return_value=client,
+    ):
+        result = await provider.invoke(
+            [{"role": "user", "content": "hi"}],
+            max_tokens=16384,
+        )
+    assert result.content == "ได้"
+    assert bodies[0]["generationConfig"]["maxOutputTokens"] == 16384
+    assert bodies[1]["generationConfig"]["maxOutputTokens"] == 8192
+
+
+@pytest.mark.asyncio
+async def test_gemini_output_token_retry_stops_at_cap():
+    provider = GeminiLLMProvider(api_key="fake")
+    rejected = _status_response(
+        400,
+        '{"error":{"message":"maxOutputTokens exceeds the limit"}}',
+    )
+    client = _async_client(rejected)
+    with patch(
+        "app.providers.llm.gemini_provider.httpx.AsyncClient",
+        return_value=client,
+    ):
+        with pytest.raises(ConnectionError, match="Gemini HTTP 400"):
+            await provider.invoke(
+                [{"role": "user", "content": "hi"}],
+                max_tokens=16384,
+            )
+    assert client.post.await_count == 2
+
+    client.post.reset_mock()
+    with patch(
+        "app.providers.llm.gemini_provider.httpx.AsyncClient",
+        return_value=client,
+    ):
+        with pytest.raises(ConnectionError, match="Gemini HTTP 400"):
+            await provider.invoke(
+                [{"role": "user", "content": "hi"}],
+                max_tokens=8192,
+            )
+    assert client.post.await_count == 1
