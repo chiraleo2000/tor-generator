@@ -22,7 +22,7 @@ from app.services.session_cache import SessionCacheService
 
 logger = logging.getLogger("tor_app.full_draft")
 
-TOTAL_TIMEOUT = 14400
+TOTAL_TIMEOUT = 28800
 MAX_CORRECTIONS_PER_SECTION = 3
 RAG_THRESHOLD = 0.25
 RAG_TOP_K = 24

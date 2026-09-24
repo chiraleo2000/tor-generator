@@ -20,6 +20,12 @@ interface SectionStatus {
   human_confirmed: boolean;
 }
 
+interface SearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
 interface DraftMessage {
   id: string;
   role: "user" | "bot" | "system";
@@ -28,6 +34,9 @@ interface DraftMessage {
   sectionTitle?: string;
   isDraft?: boolean;
   status?: "drafting" | "done" | "error" | "accepted" | "editing";
+  searchHits?: SearchHit[];
+  searchDisclaimer?: string;
+  awaitingConfirm?: boolean;
 }
 
 function sectionTitle(key: string): string {
@@ -46,10 +55,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
 type DraftPhase = "idle" | "drafting" | "reviewing" | "complete";
 
-const startedProjects = new Set<string>();
-
 export function resetDraftChatStartsForTests(): void {
-  startedProjects.clear();
+  // Draft start state lives on the component instance. Tests call this between cases.
 }
 
 function phaseStatusCopy(
@@ -92,18 +99,35 @@ function sectionBadgeClass(status?: DraftMessage["status"]): string {
   return "text-amber-800";
 }
 
+function asSearchHits(value: unknown): SearchHit[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      return {
+        title: typeof row.title === "string" ? row.title : "",
+        url: typeof row.url === "string" ? row.url : "",
+        snippet: typeof row.snippet === "string" ? row.snippet : "",
+      };
+    })
+    .filter((item): item is SearchHit => Boolean(item && (item.title || item.url || item.snippet)));
+}
+
 function DraftChatMessage({
   msg,
   busy,
   onAccept,
   onEdit,
   onRedraft,
+  onConfirmSearch,
 }: Readonly<{
   msg: DraftMessage;
   busy: boolean;
   onAccept: (key: string) => void;
   onEdit: (key: string) => void;
   onRedraft: (key: string) => void;
+  onConfirmSearch?: (hits: SearchHit[]) => void;
 }>) {
   if (msg.role === "system") {
     return (
@@ -145,6 +169,37 @@ function DraftChatMessage({
             <span className="animate-pulse text-muted-foreground">กำลังคิด...</span>
           )}
         </div>
+        {msg.searchHits?.length ? (
+          <div className="mt-3 space-y-2 border-t pt-2" data-testid="draft-search-results">
+            <p className="text-xs text-amber-800" data-testid="draft-search-disclaimer">
+              {msg.searchDisclaimer ||
+                "แหล่งอ้างอิงเท่านั้น ไม่ใช่สเปกที่ผูกยี่ห้อ ต้องยืนยันก่อนแทรกลง TOR"}
+            </p>
+            <ul className="space-y-2">
+              {msg.searchHits.map((hit) => (
+                <li key={`${hit.url}-${hit.title}`} className="text-xs">
+                  <p className="font-medium text-navy">{hit.title || hit.url}</p>
+                  {hit.url ? (
+                    <p className="break-all text-muted-foreground">{hit.url}</p>
+                  ) : null}
+                  {hit.snippet ? <p className="text-gray-700">{hit.snippet}</p> : null}
+                </li>
+              ))}
+            </ul>
+            {msg.awaitingConfirm && onConfirmSearch ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={busy}
+                data-testid="draft-search-confirm"
+                onClick={() => onConfirmSearch(msg.searchHits || [])}
+              >
+                ยืนยันแทรกลง TOR
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         {msg.isDraft && msg.status === "done" && msg.sectionKey ? (
           <div className="mt-3 flex gap-2 border-t pt-2">
             <Button
@@ -346,9 +401,7 @@ export function DraftChat({
               patchDraftMessage(prev, messageId, { content, status: "done" })
             );
             onSectionDone?.(sectionKey, content);
-            if (seenDraftedKeysRef.current === null) {
-              seenDraftedKeysRef.current = new Set();
-            }
+            seenDraftedKeysRef.current ??= new Set();
             seenDraftedKeysRef.current.add(sectionKey);
             void refreshStatus();
             return;
@@ -485,9 +538,7 @@ export function DraftChat({
             );
           }
           onSectionDone?.(key, content);
-          if (seenDraftedKeysRef.current === null) {
-            seenDraftedKeysRef.current = new Set();
-          }
+          seenDraftedKeysRef.current ??= new Set();
           seenDraftedKeysRef.current.add(key);
           void refreshStatus();
           return;
@@ -593,7 +644,11 @@ export function DraftChat({
     }
   }
 
-  async function sendMessage(text?: string, sectionKeyOverride?: string) {
+  async function sendMessage(
+    text?: string,
+    sectionKeyOverride?: string,
+    extras?: { confirmInsert?: boolean; searchHits?: SearchHit[] }
+  ) {
     const content = (text || draft).trim();
     if (!content || busy) return;
     if (!text) setDraft("");
@@ -619,7 +674,12 @@ export function DraftChat({
     try {
       await streamSsePost(
         `${API_BASE}/projects/${projectId}/draft-chat/message`,
-        { content, section_key: sectionKey },
+        {
+          content,
+          section_key: sectionKey,
+          confirm_insert: Boolean(extras?.confirmInsert),
+          search_hits: extras?.searchHits,
+        },
         token,
         (event: string, data: Record<string, unknown>) => {
           if (event === "section_start") {
@@ -649,6 +709,51 @@ export function DraftChat({
               prev.map((m) =>
                 m.id === responseMsgId
                   ? { ...m, content: content2, status: "done", isDraft: true }
+                  : m
+              )
+            );
+            onSectionDone?.(
+              typeof data.section_key === "string" ? data.section_key : sectionKey || undefined,
+              content2
+            );
+            setBusy(false);
+          }
+          if (event === "product_search") {
+            const hits = asSearchHits(data.results);
+            const disclaimer =
+              typeof data.disclaimer === "string" ? data.disclaimer : undefined;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === responseMsgId
+                  ? {
+                      ...m,
+                      content:
+                        hits.length
+                          ? "พบแหล่งอ้างอิงผลิตภัณฑ์/ผู้ขาย — ยืนยันก่อนแทรกลง TOR"
+                          : "ค้นแล้วไม่พบแหล่งอ้างอิง",
+                      status: "done",
+                      searchHits: hits,
+                      searchDisclaimer: disclaimer,
+                      awaitingConfirm: hits.length > 0,
+                    }
+                  : m
+              )
+            );
+            setBusy(false);
+          }
+          if (event === "search_inserted") {
+            const content2 = typeof data.content === "string" ? data.content : "";
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === responseMsgId
+                  ? {
+                      ...m,
+                      content: content2 || "แทรกแหล่งอ้างอิงแล้ว — ไม่ใช่สเปกที่ผูกยี่ห้อ",
+                      status: "done",
+                      awaitingConfirm: false,
+                      sectionKey:
+                        typeof data.section_key === "string" ? data.section_key : m.sectionKey,
+                    }
                   : m
               )
             );
@@ -711,6 +816,13 @@ export function DraftChat({
     setDraft(`แก้ไข ${formatTorSectionHeading(sectionKey)}: `);
   }
 
+  function handleConfirmSearch(hits: SearchHit[]) {
+    sendMessage("ยืนยันแทรกแหล่งค้นหา", currentEditSection || "s4", {
+      confirmInsert: true,
+      searchHits: hits,
+    });
+  }
+
   const hint = phaseStatusCopy(phase, draftingLabel);
 
   return (
@@ -743,6 +855,7 @@ export function DraftChat({
               onAccept={handleAccept}
               onEdit={handleEdit}
               onRedraft={handleRedraft}
+              onConfirmSearch={handleConfirmSearch}
             />
           </div>
         ))}

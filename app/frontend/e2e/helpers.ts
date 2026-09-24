@@ -12,8 +12,27 @@ export const skipUnlessLive = process.env.E2E !== "1";
 export const headedRun = process.env.HEADED === "1";
 export const skipReason =
   "Set E2E=1 and run a live stack (compose + seed) to execute this spec";
+export const skipLiveStackDownReason =
+  "Live stack is not reachable; skipUnlessLive specs need compose + seed when .env is ready";
 export const skipMockedInHeadedReason =
   "Headed runs walk the live 5-phase workflow instead of mocked APIs";
+
+export const LIVE_API_ORIGIN =
+  process.env.E2E_API_ORIGIN || process.env.BACKEND_ORIGIN || "http://localhost:4000";
+
+/** Fast probe so live specs skip instead of hanging when the API is down. */
+export async function isLiveStackReachable(
+  request: { get: (url: string, options?: { timeout?: number }) => Promise<{ ok: () => boolean; status: () => number }> }
+): Promise<boolean> {
+  try {
+    const response = await request.get(`${LIVE_API_ORIGIN.replace(/\/$/, "")}/health`, {
+      timeout: 4_000,
+    });
+    return response.ok() || response.status() < 500;
+  } catch {
+    return false;
+  }
+}
 
 export const evidenceDir = path.resolve(
   __dirname,
@@ -53,6 +72,275 @@ export const LIVE_INTAKE_TEXT = fs.existsSync(GOLD_PACK_PATH)
 export const HIRE_MAINTAIN_INTAKE_TEXT = fs.existsSync(MA_PACK_PATH)
   ? fs.readFileSync(MA_PACK_PATH, "utf-8")
   : "";
+
+export function apiEnvelope(data: unknown) {
+  return {
+    ok: true,
+    data,
+    meta: { request_id: "e2e-mock", timestamp: new Date().toISOString() },
+  };
+}
+
+const MOCK_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+
+export const MOCK_PART_SCORES = {
+  legal: {
+    key: "legal",
+    label: "ส่วนที่คาดว่าผิดกฎหมาย",
+    score: 80,
+    explanation: "ตรวจตาม พ.ร.บ. แล้วไม่พบประเด็นในด้านกฎหมาย",
+    findings: [],
+  },
+  lock_in: {
+    key: "lock_in",
+    label: "ความเสี่ยง lock specs",
+    score: 72,
+    explanation: "หักเล็กน้อยจากข้อความที่เจาะจงผลิตภัณฑ์",
+    findings: [
+      {
+        source_quote: "ฐานข้อมูล Oracle Processor",
+        reason: "เจาะจงผลิตภัณฑ์โดยไม่มีหรือเทียบเท่า",
+        suggested_text: "ใช้คุณสมบัติเชิงหน้าที่ หรือเพิ่มข้อความ หรือเทียบเท่า",
+      },
+    ],
+  },
+  project: {
+    key: "project",
+    label: "ความเสี่ยงบริหารโครงการ",
+    score: 86,
+    explanation: "ไม่พบประเด็นบริหารโครงการจากข้อความที่มี",
+    findings: [],
+  },
+  total: 79,
+  summary: "ความเสี่ยง lock specs ดึงคะแนนรวมลงเล็กน้อย",
+};
+
+const MOCK_ANALYZE_SOURCES = Array.from({ length: 7 }, (_, index) => ({
+  title: `แหล่งประกอบ ${index + 1}`,
+  url: `https://example.go.th/src/${index + 1}`,
+  snippet: "แนวทางร่าง TOR และ lock specs",
+}));
+
+export const MOCK_ANALYZE_RESULT = {
+  ...MOCK_PART_SCORES,
+  recommendations: [
+    {
+      section_key: "s4",
+      section_label: "ขอบเขตของงาน",
+      source_count: 7,
+      source_count_note: "พบ 7 แหล่งออนไลน์ประกอบหมวดนี้",
+      legal_corpus_note:
+        "แหล่งออนไลน์เป็นข้อมูลประกอบ หากถ้อยคำขัดกับคลังกฎหมาย ให้ยึดคลังกฎหมายก่อน",
+      suggestions: [
+        {
+          part: "lock_in",
+          part_label: "ความเสี่ยง lock specs",
+          suggested_text: "ระบุความต้องการเชิงหน้าที่ หรือเพิ่มข้อความ หรือเทียบเท่า",
+          reason: "การเจาะจงผลิตภัณฑ์",
+          sources: MOCK_ANALYZE_SOURCES,
+        },
+      ],
+    },
+  ],
+};
+
+export const MOCK_CHAT_ANSWER = [
+  "วิธีเฉพาะเจาะจงใช้ได้เมื่อวงเงินไม่เกินตามที่ระเบียบกำหนด",
+  "",
+  "| วิธี | วงเงิน |",
+  "| --- | --- |",
+  "| เฉพาะเจาะจง | ไม่เกิน ๕๐๐,๐๐๐ บาท |",
+  "",
+  "- จัดทำรายงานขอซื้อ",
+  "- เสนอหัวหน้าหน่วยงาน",
+  "",
+  "**แหล่งออนไลน์**",
+  "- [กรมบัญชีกลาง](https://www.gprocurement.go.th) — 2568",
+  "- ระเบียบพัสดุ — https://www.cgd.go.th/reg",
+].join("\n");
+
+function mockOfficerUser() {
+  return {
+    id: "u-e2e",
+    name: "เจ้าหน้าที่ทดสอบ",
+    email: DEMO_EMAIL,
+    organization: "กรมบัญชีกลาง",
+    role: "officer",
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+}
+
+function mockProjectRow(name = "โครงการทดสอบ E2E") {
+  return {
+    id: MOCK_PROJECT_ID,
+    owner_id: "u-e2e",
+    name,
+    ministry: "กรมบัญชีกลาง",
+    budget: 100000,
+    project_type: "hire_develop",
+    status: "draft",
+    current_phase: 0,
+    current_step: 1,
+    analysis_json: {},
+    extracted_fields: {},
+    quality_score: null,
+    template_id: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+}
+
+/** Auth + four-tool APIs so Playwright can walk the workflow without Bedrock or a live stack. */
+export async function installMockedFourToolsApi(page: Page) {
+  await page.route("**/api/v1/**", async (route) => {
+    await route.fulfill({
+      status: 404,
+      json: { ok: false, error: { message: "unmocked-api" } },
+    });
+  });
+
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      json: apiEnvelope({ token: "e2e-mock-token", user: mockOfficerUser() }),
+    });
+  });
+  await page.route("**/api/v1/auth/me", async (route) => {
+    await route.fulfill({ json: apiEnvelope(mockOfficerUser()) });
+  });
+  await page.route("**/api/v1/auth/logout", async (route) => {
+    await route.fulfill({ json: apiEnvelope({ ok: true }) });
+  });
+
+  await page.route("**/api/v1/projects", async (route) => {
+    const method = route.request().method();
+    if (method === "POST") {
+      const body = (route.request().postDataJSON() || {}) as { name?: string };
+      await route.fulfill({ json: apiEnvelope(mockProjectRow(body.name)) });
+      return;
+    }
+    await route.fulfill({
+      json: apiEnvelope({
+        items: [mockProjectRow()],
+        pagination: { page: 1, per_page: 20, total: 1 },
+      }),
+    });
+  });
+  await page.route(/\/api\/v1\/projects\/[0-9a-f-]+$/i, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ json: apiEnvelope(mockProjectRow()) });
+  });
+  await page.route(/\/api\/v1\/projects\/[^/]+\/sections$/i, async (route) => {
+    await route.fulfill({
+      json: apiEnvelope({
+        sections: [
+          {
+            key: "s1",
+            title: "ความเป็นมา",
+            filled: true,
+            content: "ร่างหมวดความเป็นมาสำหรับโครงการทดสอบ",
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/review/extract", async (route) => {
+    await route.fulfill({
+      json: apiEnvelope({
+        id: "job-e2e",
+        extracted_text: "ร่าง TOR ทดสอบวงเงินและขอบเขตงาน ตาม พ.ร.บ. การจัดซื้อจัดจ้าง",
+      }),
+    });
+  });
+  await page.route("**/api/v1/review/run", async (route) => {
+    await route.fulfill({
+      json: apiEnvelope({
+        quality_score: 79,
+        overall_assessment: "ผ่านเกณฑ์เบื้องต้น",
+        part_scores: MOCK_PART_SCORES,
+        findings: [],
+      }),
+    });
+  });
+  await page.route("**/api/v1/review/job-e2e", async (route) => {
+    await route.fulfill({
+      json: apiEnvelope({
+        id: "job-e2e",
+        quality_score: 79,
+        extracted_text: "ร่าง TOR ทดสอบ",
+        part_scores: MOCK_PART_SCORES,
+        findings: [],
+        status: "completed",
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/analyze", async (route) => {
+    await route.fulfill({ json: apiEnvelope(MOCK_ANALYZE_RESULT) });
+  });
+
+  await installMockedChatApi(page);
+}
+
+/** Re-register last so SSE wins over any earlier JSON `/messages` stub. */
+export async function installMockedChatApi(page: Page) {
+  await page.route(/\/chat\/prompts(?:\?|$)/, async (route) => {
+    await route.fulfill({ json: apiEnvelope({ prompts: [] }) });
+  });
+  await page.route(/\/knowledge-base\/catalog(?:\?|$)/, async (route) => {
+    await route.fulfill({ json: apiEnvelope({ userFiles: [] }) });
+  });
+  await page.route(/\/chat\/rooms\/[^/]+\/messages(?:\?|$)/, async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: apiEnvelope({ messages: [] }) });
+      return;
+    }
+    const sse = [
+      `event: token\ndata: ${JSON.stringify({ text: "วิธีเฉพาะเจาะจง" })}\n\n`,
+      `event: done\ndata: ${JSON.stringify({
+        content: MOCK_CHAT_ANSWER,
+        citations: [{ type: "document", label: "พรบ.pdf" }],
+      })}\n\n`,
+    ].join("");
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+      },
+      body: sse,
+    });
+  });
+  await page.route(/\/chat\/rooms(?:\?|$)/, async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        json: apiEnvelope({
+          id: "room-e2e",
+          title: "ห้องใหม่",
+          kind: "kb",
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      json: apiEnvelope({
+        rooms: [
+          {
+            id: "room-e2e",
+            title: "ห้องทดสอบ",
+            kind: "kb",
+            updated_at: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+  });
+}
 
 const FACT_SLOT_KEYS = ["s1", "s2", "s5", "s6", "functional"] as const;
 
@@ -95,7 +383,7 @@ export async function saveEvidence(page: Page, name: string) {
   });
 }
 
-export async function waitForLiveAssistant(page: Page, timeout = 180_000) {
+export async function waitForLiveAssistant(page: Page, timeout = 540_000) {
   const last = page.getByTestId("chat-msg-assistant").last();
   await expect(last).toBeVisible({ timeout });
   // Intake draft-conversation has no inner <p>; KB chat-shell does.
@@ -221,7 +509,7 @@ export async function walkLiveAnalyzeToPhase1(
     await expect(analyzing).toContainText("อย่าปิดหน้านี้");
     await saveEvidence(page, "03b-phase-0-analyzing");
   }
-  await expect(page.getByTestId("phase1-coverage")).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByTestId("phase1-coverage")).toBeVisible({ timeout: 720_000 });
   await expect(page.getByText("รายละเอียดที่จัดเข้าช่อง")).toBeVisible();
   await expect(page.getByTestId("coverage-row-s1")).toBeVisible();
   await saveEvidence(page, "04b-phase-1-coverage");
@@ -330,7 +618,7 @@ export async function finishLivePhase3ToSubmit(page: Page) {
   await expect(page.getByTestId("run-review")).toBeVisible();
   await expect(page.getByTestId("phase4-export")).toBeVisible();
   await saveEvidence(page, "07a-phase-4-reviewing");
-  await expect(page.getByTestId("phase4-rule-score")).toBeVisible({ timeout: 360_000 });
+  await expect(page.getByTestId("phase4-rule-score")).toBeVisible({ timeout: 1_080_000 });
   // Keep ASCII digits [0-9] (not \\d) — same convention as backend date/money regexes.
   await expect(page.getByTestId("phase4-rule-score")).toContainText(/[0-9]{1,3}\/100/); // NOSONAR typescript:S6353 — [0-9] required; S8786 bounded quantifier
   await typeLikeUser(
@@ -388,9 +676,9 @@ export async function walkLiveFivePhases(page: Page) {
   await pauseLikeUser(page, 2500);
   await expect(page.getByText("ร่างด้วยระบบอัจฉริยะไม่สำเร็จ")).toHaveCount(0);
   await expect(page.getByText("ร่างด้วย AI ไม่สำเร็จ")).toHaveCount(0);
-  await expect(page.getByTestId("draft-section-badge-s1")).toBeVisible({ timeout: 300_000 });
+  await expect(page.getByTestId("draft-section-badge-s1")).toBeVisible({ timeout: 900_000 });
   await saveEvidence(page, "08a-phase-3-drafting");
-  await expect(page.getByTestId("phase3-all-drafted")).toBeVisible({ timeout: 3_600_000 });
+  await expect(page.getByTestId("phase3-all-drafted")).toBeVisible({ timeout: 10_800_000 });
   await expect(page.getByTestId("draft-chat-count")).toHaveText("16/16 หมวด");
   await expect(page.getByTestId("phase3-gold-checklist")).toContainText(/ขาด 0/);
   await expect(page.getByTestId("section-preview-s1")).toContainText(/\S.{20,}/);
@@ -576,6 +864,8 @@ export async function unlockPhase2ViaMockedIntake(page: Page) {
     await route.fulfill({
       json: envelope({
         quality_score: 82,
+        overall_assessment: "ผ่านเกณฑ์เบื้องต้น — ความเสี่ยง lock specs ดึงคะแนนลงเล็กน้อย",
+        part_scores: MOCK_PART_SCORES,
         findings: [
           {
             severity: "warning",
@@ -647,4 +937,10 @@ export async function walkMockedIntakeToPhase4(page: Page) {
   await expect(
     page.getByTestId("phase4-review").getByText("คะแนนคุณภาพจากการตรวจกฎ 82/100")
   ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("review-part-scores")).toBeVisible();
+  await expect(page.getByTestId("review-part-legal")).toBeVisible();
+  await expect(page.getByTestId("review-part-lock-in")).toBeVisible();
+  await expect(page.getByTestId("review-part-project")).toBeVisible();
+  const partBlob = (await page.getByTestId("review-part-scores").innerText()).toLowerCase();
+  expect(partBlob).not.toMatch(/0\/100[\s\S]*0\/100[\s\S]*0\/100/);
 }

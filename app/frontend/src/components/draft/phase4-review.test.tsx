@@ -81,6 +81,7 @@ describe("Phase4Review", () => {
     );
     expect(await screen.findByText("ข้อมูลครบถ้วนทุกหมวด พร้อมส่งทบทวน")).toBeInTheDocument();
     expect(screen.getByText("คะแนนคุณภาพจากการตรวจกฎ 82/100")).toBeInTheDocument();
+    expect(screen.queryByTestId("review-part-scores")).not.toBeInTheDocument();
     expect(screen.getByTestId("review-legal-findings")).toHaveTextContent("วงเงินไม่สอดคล้อง");
     expect(screen.getByTestId("review-risk-findings")).toHaveTextContent("ไม่พบรายการในกลุ่มนี้");
     expect(screen.getByText("ความชัดเจน: ระบุหน่วยงานให้ชัด")).toBeInTheDocument();
@@ -91,6 +92,62 @@ describe("Phase4Review", () => {
     expect(onSubmit).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("phase3-back"));
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it("shows three-part scores and the part that pulled the total down", async () => {
+    render(
+      <Phase4Review
+        projectId="p1"
+        filledCount={13}
+        total={13}
+        score={64}
+        partScores={{
+          legal: {
+            key: "legal",
+            label: "ส่วนที่คาดว่าผิดกฎหมาย",
+            score: 80,
+            explanation: "ตรวจตาม พ.ร.บ. แล้วไม่พบประเด็นในด้านกฎหมาย",
+            findings: [],
+          },
+          lock_in: {
+            key: "lock_in",
+            label: "ความเสี่ยง lock specs",
+            score: 40,
+            explanation: "หักเพราะระบุ Oracle โดยไม่มีหรือเทียบเท่า",
+            findings: [
+              {
+                source_quote: "ฐานข้อมูล Oracle Processor",
+                reason: "เจาะจงผลิตภัณฑ์โดยไม่มีหรือเทียบเท่า",
+                suggested_text: "ใช้คุณสมบัติเชิงหน้าที่ หรือเทียบเท่า",
+              },
+            ],
+          },
+          project: {
+            key: "project",
+            label: "ความเสี่ยงบริหารโครงการ",
+            score: 70,
+            explanation: "มีประเด็นระยะเวลา",
+            findings: [],
+          },
+          total: 64,
+          summary: "คะแนนรวมถูกดึงลงจากความเสี่ยง lock specs (40/100) มากที่สุด",
+        }}
+        findings={[]}
+        suggestions={[]}
+        busy={false}
+        error={null}
+        onBack={vi.fn()}
+        onReview={vi.fn().mockResolvedValue(undefined)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(await screen.findByTestId("review-part-scores")).toHaveTextContent(
+      "คะแนนรวมสามด้าน 64/100"
+    );
+    expect(screen.getByTestId("review-part-legal")).toHaveTextContent("ไม่พบประเด็นในด้านกฎหมาย");
+    expect(screen.getByTestId("review-part-lock-in")).toHaveTextContent("Oracle");
+    expect(screen.getByTestId("review-part-project")).toHaveTextContent("บริหารโครงการ");
+    expect(screen.getByText(/ดึงลงจากความเสี่ยง lock specs/)).toBeInTheDocument();
   });
 
   it("shows a review error and busy label", async () => {

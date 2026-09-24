@@ -1,7 +1,8 @@
-"""ถาม-ตอบคลังความรู้: deep pgvector context + content-style Gemma answers."""
+"""ถาม-ตอบคลังความรู้: RAG + แหล่งออนไลน์ แล้วตอบให้เข้ากับคำถาม."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.llm_tokens import (
@@ -9,6 +10,13 @@ from app.llm_tokens import (
     live_chat_max_tokens,
     live_context_window,
 )
+from app.services.web_search import search_web
+
+logger = logging.getLogger("tor_app.kb_qa")
+
+QA_WEB_MIN = 5
+QA_WEB_MAX = 10
+QA_WEB_SNIPPET_CHARS = 220
 
 # Catalog aliases for tests / older imports; runtime uses live_* below.
 CHAT_MAX_TOKENS = 32_768
@@ -28,49 +36,28 @@ DRAFT_INTAKE_CONTEXT_CHUNKS = 6
 
 KB_QA_SYSTEM = (
     "คุณเป็นผู้ช่วยกฎหมายจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐไทย "
-    "เขียนเป็นข้อความเนื้อหาแบบบทสรุปผู้บริหารที่สแกนได้ในไม่กี่วินาที "
-    "ยึดเฉพาะข้อความในบริบทจากเอกสารคลังความรู้ที่ให้มา ไม่ใช่บันทึกข้อความหรือหนังสือราชการ\n"
+    "ตอบให้ชัดและเข้ากับคำถาม โครงยืดหยุ่นตามชนิดคำถาม "
+    "ยึดข้อเท็จจริงจากบริบทคลังความรู้และแหล่งออนไลน์ที่ให้มา ไม่ใช่บันทึกข้อความหรือหนังสือราชการ\n"
     "คุณภาพการเขียน:\n"
-    "- **สรุปคำตอบ** = 2–4 ประโยค ตอบคำถามให้จบในย่อหน้าแรก "
-    "มีมาตรา ข้อ วงเงิน หรือระยะเวลาที่ตัดสินใจได้ทันที "
+    "- เปิดด้วยคำตอบตรงคำถามทันที ใช้ภาษาพัสดุ อ่านจบในย่อหน้าแรก "
+    "มีมาตรา ข้อ วงเงิน หรือระยะเวลาที่ตัดสินใจได้ "
     "ห้ามเปิดด้วยคำว่า ตามที่ / จากการศึกษา / จากบริบท\n"
-    "- ข้อเท็จจริง ตัวเลข วงเงิน ระยะเวลา หลายมาตรา หลายฉบับ → ตาราง markdown เท่านั้น "
-    "ห้ามเรียงเป็นย่อหน้ายาว\n"
-    "- **ข้อควรระวัง** = 2–4 บุลเล็ต เป็นข้อสังเกตเชิงปฏิบัติ "
-    "(ความเสี่ยง ข้อยกเว้น สิ่งที่คลังยังไม่ตอบ) ไม่คัดลอกแถวตารางซ้ำ\n"
+    "- โครงตามคำถาม: ตาราง markdown เฉพาะเมื่อมีหลายมาตรา วงเงิน หรือเปรียบเทียบ "
+    "รายการสั้นเมื่อเป็นขั้นตอน ย่อหน้าสั้นเมื่อคำถามใช่/ไม่ใช่หรือคำถามสั้น "
+    "ห้ามบังคับหัวข้อตายตัว และห้ามใช้โครงสามหัวเดิมทุกครั้ง\n"
     "- ย่อหน้าละไม่เกิน 4 ประโยค ห้ามเรียงความ ห้ามคัดลอกบริบททั้งก้อน\n"
-    "- ตอบให้ครบถ้วนตามเอกสารด้วยตารางและรายการสั้น ไม่เติมความยาว "
+    "- ตอบให้ครบถ้วนตามเอกสารด้วยตารางหรือรายการเมื่อเข้ากับคำถาม "
     "อย่าหายเงื่อนไข ข้อยกเว้น วงเงิน ระยะเวลา หรือขั้นตอน\n"
-    "- ถ้าบริบทมีหลายฉบับ ให้ถักทอสาระลงแถวตาราง ชี้จุดที่สอดคล้องหรือต่างกัน "
-    "อย่าเล่าทีละไฟล์\n"
-    "- คำถามเชิงควร/ไม่ควร: ขึ้นต้นว่าคลังให้หลักเกณฑ์ได้ ไม่แทนมติผู้บริหาร "
-    "แล้ววางข้อเท็จจริงในตาราง\n"
+    "- ถ้าบริบทมีหลายฉบับ ให้ถักทอสาระ ชี้จุดที่สอดคล้องหรือต่างกัน อย่าเล่าทีละไฟล์\n"
+    "- เมื่อแหล่งเว็บขัดกับคลังกฎหมาย ให้ยึดคลังก่อน แล้วบอกว่าแหล่งออนไลน์ต่างจากคลังอย่างไร\n"
     "- ถ้าข้อมูลไม่พอหรือไม่มีสิทธิ์: บอกตรง ๆ ว่าดึงคลังไม่ได้ "
     "แล้วแนะนำคำถามที่ถามได้จากคลังกลาง เช่น คุณสมบัติผู้เสนอราคา งวดจ่าย ค่าปรับ ราคากลาง\n"
-    "โครง markdown ทุกครั้ง (หัวข้อต้องขึ้นบรรทัดใหม่):\n"
-    "**สรุปคำตอบ**\n"
-    "**หลักที่เกี่ยวข้อง**\n"
-    "| เรื่อง | ค่าในเอกสาร | แหล่ง (มาตรา/ข้อ, หน้า) |\n"
-    "| --- | --- | --- |\n"
-    "**ข้อควรระวัง**\n"
-    "- …\n"
-    "แหล่งข้อมูล: ชื่อไฟล์ (หน้า n), …\n"
-    "หัวข้อบังคับต้องตรงอักษรทุกตัว: **สรุปคำตอบ** / **หลักที่เกี่ยวข้อง** / **ข้อควรระวัง** "
-    "ห้ามย่อเป็น สรุปตอบ หรือ สรุป หรือ หลัก หรือ ข้อควรระวังอื่น\n"
-    "ตัวอย่างน้ำเสียงและความสั้น (เลียนโครงและระดับความกระชับ ไม่เลียนเนื้อหา):\n"
-    "**สรุปคำตอบ**\n"
-    "ผู้ยื่นต้องไม่เป็นผู้ทิ้งงาน และมีคุณสมบัติตามที่หน่วยงานกำหนดในเอกสารประกวดราคา "
-    "หากขาดคุณสมบัติคณะกรรมการต้องไม่ผ่าน (พ.ร.บ. การจัดซื้อจัดจ้างฯ พ.ศ. 2560 มาตรา 82)\n"
-    "**หลักที่เกี่ยวข้อง**\n"
-    "| เรื่อง | ค่าในเอกสาร | แหล่ง |\n"
-    "| --- | --- | --- |\n"
-    "| ผู้มีสิทธิ์เสนอราคา | ไม่เป็นผู้ทิ้งงานตามที่กรมบัญชีกลางประกาศ | พ.ร.บ. มาตรา 82 หน้า n |\n"
-    "| เอกสารคุณสมบัติ | ตามที่กำหนดในเอกสารประกวดราคา | ระเบียบฯ ข้อ … หน้า n |\n"
-    "**ข้อควรระวัง**\n"
-    "- คุณสมบัติเฉพาะของงานนี้ถ้าไม่มีในคลัง ต้องดูเอกสารประกวดราคาของโครงการ "
-    "ห้ามหยิบจากตัวอย่างงานอื่น\n"
-    "- ถ้าหนังสือเวียนใหม่กว่าขัดระเบียบหลัก ให้ยึดฉบับที่ระบุวันล่าสุดในบริบท\n"
-    "แหล่งข้อมูล: พ.ร.บ.2560.pdf (หน้า n)\n"
+    "- อ้างแหล่งเมื่อมีข้อมูล: เอกสารคลังเป็นชื่อไฟล์กับหน้า "
+    "แหล่งออนไลน์เป็นชื่อเรื่องกับ URL "
+    "ถ้าแหล่งออนไลน์น้อยกว่า 5 รายการ ให้ตอบจากคลังต่อได้และบอกจำนวนที่ดึงได้จริง\n"
+    "ท้ายคำตอบจัดแหล่งเป็นสองกลุ่มเมื่อมีข้อมูล "
+    "เอกสารในคลัง: ชื่อไฟล์ (หน้า n) "
+    "แหล่งออนไลน์: ชื่อเรื่อง — URL\n"
     "ห้ามใช้โครงหัวข้อบังคับแบบหนังสือ เช่น ประเด็นคำถาม, หลักกฎหมายและระเบียบที่เกี่ยวข้อง, "
     "คำอธิบายและการตีความเชิงปฏิบัติ, ขั้นตอน เงื่อนไข ข้อยกเว้น, สรุปแนวทางปฏิบัติ, แหล่งอ้างอิง "
     "ห้ามจัดเป็นแบบฟอร์ม บันทึกข้อความ หรือรายงานราชการ\n"
@@ -230,25 +217,85 @@ def trim_history(history: list[dict[str, Any]] | None) -> list[dict[str, str]]:
 
 
 def normalize_kb_qa_answer(text: str) -> str:
-    """Map common LLM heading abbreviations to the required KB Q&A skeleton."""
-    if not text:
-        return text
-    out = text
-    replacements = (
-        ("**สรุปตอบ**", "**สรุปคำตอบ**"),
-        ("**สรุป**", "**สรุปคำตอบ**"),
-        ("**หลัก**", "**หลักที่เกี่ยวข้อง**"),
-        ("**หลักเกณฑ์ที่เกี่ยวข้อง**", "**หลักที่เกี่ยวข้อง**"),
-        ("**ข้อควรระวังและข้อสังเกต**", "**ข้อควรระวัง**"),
+    """Return the model answer unchanged; do not force a fixed heading skeleton."""
+    return text or ""
+
+
+def _source_attr(item: Any, *names: str) -> str:
+    for name in names:
+        if isinstance(item, dict):
+            value = item.get(name)
+        else:
+            value = getattr(item, name, None)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def select_web_sources(sources: list[Any] | None) -> list[Any]:
+    """Keep unique URLs and cap at 10 (the top of the 5–10 window)."""
+    picked: list[Any] = []
+    seen: set[str] = set()
+    for item in sources or []:
+        url = _source_attr(item, "url").rstrip("/").lower()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        picked.append(item)
+        if len(picked) >= QA_WEB_MAX:
+            break
+    return picked
+
+
+def _short_snippet(text: str) -> str:
+    snippet = (text or "").strip().replace("\n", " ")
+    if len(snippet) <= QA_WEB_SNIPPET_CHARS:
+        return snippet
+    return snippet[: QA_WEB_SNIPPET_CHARS - 1].rstrip() + "…"
+
+
+def format_web_sources(sources: list[Any] | None) -> str:
+    selected = select_web_sources(sources)
+    if not selected:
+        return "แหล่งออนไลน์ที่ค้นได้: 0 แหล่ง"
+    lines = [f"แหล่งออนไลน์ที่ค้นได้: {len(selected)} แหล่ง"]
+    for index, item in enumerate(selected, start=1):
+        title = _source_attr(item, "title") or "(ไม่มีชื่อเรื่อง)"
+        url = _source_attr(item, "url")
+        published = _source_attr(item, "published", "date") or "ไม่ระบุวัน"
+        snippet = _short_snippet(_source_attr(item, "snippet", "content"))
+        lines.append(
+            f"{index}. {title}\n"
+            f"   URL: {url}\n"
+            f"   วันที่: {published}\n"
+            f"   ข้อความสั้น: {snippet or '—'}"
+        )
+    return "\n".join(lines)
+
+
+async def retrieve_web_sources(query: str) -> list[Any]:
+    """Call search_web and keep at most 10 unique sources for the prompt."""
+    try:
+        results = await search_web(query)
+    except Exception:
+        logger.warning("web search failed for KB Q&A")
+        return []
+    return select_web_sources(list(results or []))
+
+
+def _web_instruction(web_count: int) -> str:
+    if web_count < QA_WEB_MIN:
+        return (
+            f"ค้นออนไลน์ได้ {web_count} แหล่ง ซึ่งน้อยกว่า 5 แหล่ง "
+            "ตอบจากคลังความรู้ต่อได้ และบอกจำนวนแหล่งออนไลน์ที่ดึงได้จริง "
+        )
+    return (
+        f"ใช้แหล่งออนไลน์ {web_count} แหล่งประกอบคลัง "
+        "อ้างชื่อเรื่องกับ URL เมื่อหยิบสาระจากเว็บ "
     )
-    for old, new in replacements:
-        # Only rewrite bare short headings; avoid double-rewriting longer forms.
-        if old == "**สรุป**" and "**สรุปคำตอบ**" in out:
-            continue
-        if old == "**หลัก**" and "**หลักที่เกี่ยวข้อง**" in out:
-            continue
-        out = out.replace(old, new)
-    return out
 
 
 def build_kb_qa_messages(
@@ -257,29 +304,58 @@ def build_kb_qa_messages(
     chunks: list[Any] | None,
     history: list[dict[str, Any]] | None = None,
     degraded: bool = False,
+    web_sources: list[Any] | None = None,
 ) -> list[dict[str, str]]:
     system = KB_QA_SYSTEM
     if degraded:
         system += "\n(กราฟ Neo4j ไม่พร้อม ใช้เฉพาะชิ้นข้อความจากคลังเวกเตอร์)"
     context = pack_kb_context(chunks)
+    selected_web = select_web_sources(web_sources)
+    web_block = format_web_sources(selected_web)
+    web_note = _web_instruction(len(selected_web))
+    shape = (
+        "ตอบให้เข้ากับคำถาม เปิดด้วยคำตอบตรง ๆ ภาษาพัสดุ "
+        "ใช้ตารางเฉพาะหลายมาตรา วงเงิน หรือเปรียบเทียบ "
+        "ใช้รายการสั้นเมื่อเป็นขั้นตอน ใช้ย่อหน้าเมื่อคำถามสั้นหรือใช่/ไม่ใช่ "
+        "ห้ามบังคับหัวข้อตายตัว "
+        "อ้างไฟล์กับหน้าจากคลัง และชื่อกับ URL จากแหล่งออนไลน์เมื่อมี "
+    )
     if context:
         user = (
             "บริบทจากคลังความรู้ (pgvector / RAG) — อ่านให้ครบแล้วคัดเฉพาะสาระที่ตอบคำถาม "
-            "เขียนบทสรุปผู้บริหารตามโครงใน system "
-            "(หัวข้อบังคับ **สรุปคำตอบ** + ตาราง **หลักที่เกี่ยวข้อง** + **ข้อควรระวัง**) "
-            "ครอบคลุมเงื่อนไข ข้อยกเว้น วงเงิน ระยะเวลาในตารางหรือบุลเล็ต "
-            "ห้ามเรียงความจากทุกชิ้น ห้ามย่อหน้ายาว ห้ามย่อหัวข้อ:\n"
-            f"{context}\n\nคำถามของเจ้าหน้าที่:\n{question}"
+            f"{shape}{web_note}"
+            "ครอบคลุมเงื่อนไข ข้อยกเว้น วงเงิน ระยะเวลาเมื่ออยู่ในบริบท "
+            "ห้ามเรียงความจากทุกชิ้น ห้ามย่อหน้ายาว:\n"
+            f"{context}\n\n{web_block}\n\nคำถามของเจ้าหน้าที่:\n{question}"
         )
     else:
         user = (
             "ไม่พบชิ้นข้อความจากคลังความรู้ที่ตรงคำถาม "
-            "ตอบโครงเดิมให้สั้น: **สรุปคำตอบ** ว่าดึงคลังไม่ได้เพราะไม่มีชิ้นที่ตรง "
-            "แล้วบุลเล็ตว่าถามได้จากคลังกลางเรื่องใด (คุณสมบัติผู้เสนอราคา งวดจ่าย ค่าปรับ ราคากลาง) "
-            "ปิดท้าย แหล่งข้อมูล: ไม่มีการเรียกใช้ข้อมูลจากคลัง\n\n"
-            f"คำถามของเจ้าหน้าที่:\n{question}"
+            f"{web_note}"
+            "ถ้าแหล่งออนไลน์ก็ไม่มี ให้บอกตรง ๆ ว่าดึงคลังไม่ได้ "
+            "แล้วแนะนำว่าถามได้จากคลังกลางเรื่องใด (คุณสมบัติผู้เสนอราคา งวดจ่าย ค่าปรับ ราคากลาง) "
+            "ปิดท้ายด้วยจำนวนแหล่งออนไลน์ที่ดึงได้จริง\n\n"
+            f"{web_block}\n\nคำถามของเจ้าหน้าที่:\n{question}"
         )
     messages: list[dict[str, str]] = [{"role": "system", "content": system}]
     messages.extend(trim_history(history))
     messages.append({"role": "user", "content": user})
     return messages
+
+
+async def prepare_kb_qa_messages(
+    *,
+    question: str,
+    chunks: list[Any] | None,
+    history: list[dict[str, Any]] | None = None,
+    degraded: bool = False,
+) -> list[dict[str, str]]:
+    """Retrieve 5–10 web sources then pack them with RAG chunks into the prompt."""
+    web_sources = await retrieve_web_sources(question)
+    return build_kb_qa_messages(
+        question=question,
+        chunks=chunks,
+        history=history,
+        degraded=degraded,
+        web_sources=web_sources,
+    )

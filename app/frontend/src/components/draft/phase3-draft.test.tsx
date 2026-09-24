@@ -586,4 +586,75 @@ describe("Phase3Draft", () => {
     expect(onExpand).toHaveBeenCalledWith("s3");
     expect(onRefresh).toHaveBeenCalled();
   });
+
+  it("shows a cost worksheet on the budget section that is not ราคากลาง", () => {
+    const s6: SectionPayload = {
+      key: "s6",
+      title: "วงเงินงบประมาณ",
+      filled: true,
+      content: JSON.stringify({ budgetAmount: "5000000", announcedPrice: "4800000" }),
+      human_confirmed: false,
+      hitl: true,
+      matchStatus: "matched",
+    };
+    render(
+      <Phase3Draft
+        sections={[s6]}
+        expanded="s6"
+        openSub=""
+        extracted={{ budget: 5000000 }}
+        analysisJson={{
+          cost_worksheet: { license: 100, labor: 200, maintenance: 0, training: 0 },
+        }}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByTestId("cost-worksheet")).toBeInTheDocument();
+    expect(screen.getByTestId("cost-worksheet-disclaimer")).toHaveTextContent("ไม่ใช่ราคากลาง");
+    expect(screen.getByDisplayValue("4800000")).toBeInTheDocument();
+  });
+
+  it("shows a training scope draft on the training subsection", () => {
+    const scoped: SectionPayload = {
+      ...s4,
+      subs: [
+        {
+          key: "training",
+          title: "การฝึกอบรมและการถ่ายทอดความรู้",
+          content: "",
+          filled: false,
+        },
+      ],
+    };
+    render(
+      <Phase3Draft
+        sections={[scoped]}
+        expanded="s4"
+        openSub="training"
+        extracted={{}}
+        busy={false}
+        actionError={null}
+        actionInfo={null}
+        onExpand={vi.fn()}
+        onOpenSub={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDraft={vi.fn()}
+        onBack={vi.fn()}
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(screen.getByTestId("training-scope")).toBeInTheDocument();
+    expect(screen.getByTestId("training-scope-cohorts")).toBeInTheDocument();
+    expect(screen.getByTestId("training-scope-hours")).toBeInTheDocument();
+    expect(screen.getByTestId("training-scope-attendees")).toBeInTheDocument();
+    expect(screen.getByTestId("training-scope-documents")).toBeInTheDocument();
+  });
 });

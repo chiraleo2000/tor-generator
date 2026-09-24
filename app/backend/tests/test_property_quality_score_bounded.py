@@ -247,10 +247,11 @@ class TestQualityScoreBoundedRange:
         engine = create_fully_loaded_engine()
         result = engine.validate(tor_doc)
 
-        # If halted (missing required sections), categories may be empty
+        # Halted results still keep category scores so the weighted total
+        # remains a partial score instead of a forced 0.
         if result.halted:
-            assert result.quality_score == 0
-            return
+            assert result.missing_sections
+            assert result.categories
 
         # Compute weighted sum from category breakdown
         weighted_sum = 0.0

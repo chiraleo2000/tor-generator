@@ -180,6 +180,31 @@ describe("StandaloneReviewPage", () => {
           quality_score: 88,
           overall_assessment: "ผ่านเกณฑ์เบื้องต้น",
           findings: [],
+          part_scores: {
+            legal: {
+              key: "legal",
+              label: "ส่วนที่คาดว่าผิดกฎหมาย",
+              score: 90,
+              explanation: "ตรวจตาม พ.ร.บ. แล้วไม่พบประเด็นในด้านกฎหมาย",
+              findings: [],
+            },
+            lock_in: {
+              key: "lock_in",
+              label: "ความเสี่ยง lock specs",
+              score: 88,
+              explanation: "ไม่พบการเจาะจงผลิตภัณฑ์",
+              findings: [],
+            },
+            project: {
+              key: "project",
+              label: "ความเสี่ยงบริหารโครงการ",
+              score: 86,
+              explanation: "ไม่พบประเด็นบริหารโครงการจากข้อความที่มี",
+              findings: [],
+            },
+            total: 88,
+            summary: "ทั้งสามด้านได้คะแนนสูงใกล้เคียงกัน ไม่มีด้านใดดึงคะแนนรวมลงอย่างเด่นชัด",
+          },
         },
       },
     } as never);
@@ -201,6 +226,8 @@ describe("StandaloneReviewPage", () => {
       "คะแนนความพร้อม 88/100"
     );
     expect(screen.getByTestId("review-assessment")).toHaveTextContent("ผ่านเกณฑ์เบื้องต้น");
+    expect(screen.getByTestId("review-part-scores")).toHaveTextContent("คะแนนรวมสามด้าน 88/100");
+    expect(screen.getByTestId("review-part-legal")).toHaveTextContent("ไม่พบประเด็นในด้านกฎหมาย");
     expect(screen.getByText("เทียบเคียง หลัก กับ คู่")).toBeInTheDocument();
     expect(screen.getByText("ตรวจเสร็จ — ผ่านเกณฑ์เบื้องต้น (88/100)")).toBeInTheDocument();
   });

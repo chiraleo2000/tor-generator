@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 # Phase 0→1: LLM reads document windows and fills slots. Heuristics are
 # fallback only when the model fails or leaves a slot empty — never a skip gate.
 ANALYZE_USE_LLM = True
-ANALYZE_LLM_TIMEOUT_SEC = 1800
+ANALYZE_LLM_TIMEOUT_SEC = 10800
 ANALYZE_MAX_TOKENS = DRAFT_MAX_TOKENS
 ANALYZE_CHUNK_OVERLAP = 2_400
 ANALYZE_MAX_CHUNKS = 4
@@ -74,8 +74,8 @@ def _analyze_chunk_chars() -> int:
 INTAKE_TEXT_CHAR_LIMIT = 500_000
 INTAKE_PACK_LIMIT = 200_000
 # LM Studio often serves embeddings/chat sequentially — allow long waits, avoid skip.
-FILL_REFERENCES_TOTAL_SEC = 600.0
-FILL_ONE_REFERENCE_SEC = 120.0
+FILL_REFERENCES_TOTAL_SEC = 1200.0
+FILL_ONE_REFERENCE_SEC = 240.0
 _FILE_CHUNK_MARK = "===== ไฟล์:"
 
 ANALYZE_PROMPT = """คุณเป็นผู้ช่วยจัดทำ TOR ภาครัฐไทย

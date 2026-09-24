@@ -48,13 +48,13 @@ def test_on_prem_claude_uses_cloud_timeout():
     assert settings.drafting_agent_timeout_seconds() == 60
 
 
-def test_timeout_is_clamped_to_1800():
+def test_timeout_is_clamped_to_10800():
     settings = Settings(
         llm_provider="lm_studio",
         deployment_mode="on_prem",
-        lm_studio_timeout=9999.0,
+        lm_studio_timeout=99999.0,
     )
-    assert settings.drafting_agent_timeout_seconds() == 1800
+    assert settings.drafting_agent_timeout_seconds() == 10800
 
 
 def test_ollama_on_prem_uses_local_timeout():
@@ -156,6 +156,26 @@ def test_on_prem_pin_off_keeps_bedrock_overlay(monkeypatch: pytest.MonkeyPatch) 
     apply_runtime_overlay({"lm_studio_model": "overlay-only-model"})
     try:
         assert get_settings().lm_studio_model == "overlay-only-model"
+    finally:
+        clear_runtime_overlay()
+
+
+def test_process_env_bedrock_chat_keeps_local_embeddings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.config import apply_runtime_overlay, clear_runtime_overlay, get_settings
+
+    monkeypatch.setenv("PIN_ON_PREM_LLM", "false")
+    monkeypatch.setenv("LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "local")
+    clear_runtime_overlay()
+    apply_runtime_overlay(
+        {"llm_provider": "lm_studio", "embedding_provider": "bedrock"}
+    )
+    try:
+        settings = get_settings()
+        assert settings.llm_provider == "bedrock"
+        assert settings.embedding_provider == "local"
     finally:
         clear_runtime_overlay()
 

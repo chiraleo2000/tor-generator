@@ -1,0 +1,70 @@
+{
+  "skk": {
+    "ok": true,
+    "keys": [
+      "slug",
+      "filename",
+      "bytes",
+      "path",
+      "extract",
+      "review",
+      "analyze",
+      "total_seconds"
+    ]
+  },
+  "amazon-quick": {
+    "ok": true,
+    "keys": [
+      "slug",
+      "filename",
+      "bytes",
+      "path",
+      "extract",
+      "review",
+      "analyze",
+      "total_seconds"
+    ]
+  },
+  "local": {
+    "ok": true,
+    "keys": [
+      "slug",
+      "filename",
+      "bytes",
+      "path",
+      "extract",
+      "review",
+      "analyze",
+      "total_seconds"
+    ]
+  },
+  "draft": {
+    "ok": true,
+    "keys": [
+      "ok",
+      "source_files",
+      "project_id",
+      "project",
+      "upload_errors",
+      "uploaded",
+      "intake_analyze_seconds",
+      "coverage",
+      "analyzed",
+      "gap_questions",
+      "filled_slots",
+      "slot_preview",
+      "fill_references",
+      "coverage_after_refs",
+      "confirm_ready",
+      "confirm_ready_error",
+      "chat_filled_slots",
+      "draft_stream_error",
+      "draft_stream_seconds",
+      "sse_event_count",
+      "draft_status",
+      "sections",
+      "draft_md",
+      "seconds"
+    ]
+  }
+}

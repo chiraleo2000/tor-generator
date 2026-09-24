@@ -1,8 +1,11 @@
-"""KB Q&A context packing and content-style prompt."""
+"""KB Q&A context packing and adaptive prompt with web sources."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.rag.kb_qa import (
     CHAT_MAX_TOKENS,
@@ -13,6 +16,7 @@ from app.rag.kb_qa import (
     diversify_chunks,
     normalize_kb_qa_answer,
     pack_kb_context,
+    prepare_kb_qa_messages,
     trim_history,
 )
 
@@ -26,6 +30,10 @@ def _chunk(text: str, source: str, *, page: int | None = 1, score: float = 0.9):
         legal_reference=None,
         score=score,
     )
+
+
+def _web(*, title: str, url: str, snippet: str = "ข้อความสั้น", published: str = "2024-05-01"):
+    return SimpleNamespace(title=title, url=url, snippet=snippet, published=published)
 
 
 def test_diversify_chunks_round_robins_sources():
@@ -57,21 +65,25 @@ def test_pack_kb_context_keeps_multiple_documents_and_stops_at_budget():
     assert tight.count("[") == 1
 
 
-def test_build_kb_qa_messages_is_content_style_and_uses_rag():
+def test_build_kb_qa_messages_is_adaptive_and_uses_rag():
     chunks = [_chunk("ห้ามแบ่งซื้อแบ่งจ้าง", "พ.ร.บ.2560.pdf")]
     messages = build_kb_qa_messages(
         question="แบ่งซื้อได้หรือไม่",
         chunks=chunks,
         history=[{"role": "user", "content": "สวัสดี"}],
         degraded=True,
+        web_sources=[],
     )
     assert messages[0]["role"] == "system"
-    assert "ข้อความเนื้อหา" in messages[0]["content"]
+    assert "ภาษาพัสดุ" in messages[0]["content"]
+    assert "ห้ามบังคับหัวข้อตายตัว" in messages[0]["content"]
     assert "ห้ามใช้โครงหัวข้อบังคับ" in messages[0]["content"]
     assert "ประเด็นคำถาม" in messages[0]["content"]
-    assert "สรุปคำตอบ" in messages[0]["content"]
+    assert "หัวข้อบังคับต้องตรงอักษร" not in messages[0]["content"]
+    assert "**สรุปคำตอบ**" not in messages[0]["content"]
+    assert "**หลักที่เกี่ยวข้อง**" not in messages[0]["content"]
+    assert "**ข้อควรระวัง**" not in messages[0]["content"]
     assert "ตอบให้ครบถ้วนตามเอกสาร" in messages[0]["content"]
-    assert "บทสรุปผู้บริหาร" in messages[0]["content"]
     assert "Neo4j" in messages[0]["content"]
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "สวัสดี"
@@ -80,21 +92,23 @@ def test_build_kb_qa_messages_is_content_style_and_uses_rag():
     assert "ห้ามแบ่งซื้อแบ่งจ้าง" in user
     assert "แบ่งซื้อได้หรือไม่" in user
     assert "ครอบคลุม" in user
+    assert "แหล่งออนไลน์ที่ค้นได้: 0 แหล่ง" in user
+    assert "หัวข้อบังคับ" not in user
     assert CHAT_RAG_TOP_K >= 96
     assert chat_rag_top_k() >= 64
     assert CHAT_MAX_TOKENS == 32_768
     assert "ตอบให้ครบถ้วนตามเอกสาร" in KB_QA_SYSTEM
     assert "ถักทอสาระ" in KB_QA_SYSTEM
     assert "6144" not in KB_QA_SYSTEM
+    assert "ห้ามบังคับหัวข้อตายตัว" in KB_QA_SYSTEM
 
 
-def test_normalize_kb_qa_answer_expands_abbreviated_headings():
+def test_normalize_kb_qa_answer_does_not_force_headings():
     raw = "**สรุปตอบ**\nข้อความ\n**หลักที่เกี่ยวข้อง**\n| a | b | c |"
-    fixed = normalize_kb_qa_answer(raw)
-    assert "**สรุปคำตอบ**" in fixed
-    assert "**สรุปตอบ**" not in fixed
-    already = "**สรุปคำตอบ**\nok\n**ข้อควรระวัง**\n- x"
+    assert normalize_kb_qa_answer(raw) == raw
+    already = "วิธีเฉพาะเจาะจงใช้ได้เมื่อวงเงินไม่เกินตามระเบียบ"
     assert normalize_kb_qa_answer(already) == already
+    assert normalize_kb_qa_answer("") == ""
 
 
 def test_trim_history_caps_long_officer_answers():
@@ -107,3 +121,58 @@ def test_trim_history_caps_long_officer_answers():
     assert len(trimmed) == 2
     assert trimmed[1]["content"].endswith("…")
     assert len(trimmed[1]["content"]) < 13000
+
+
+@pytest.mark.asyncio
+async def test_prepare_kb_qa_messages_includes_rag_and_web_sources():
+    chunks = [_chunk("ห้ามแบ่งซื้อแบ่งจ้าง", "พ.ร.บ.2560.pdf", page=12)]
+    web = [
+        _web(
+            title="หนังสือเวียนกรมบัญชีกลาง",
+            url="https://cgd.go.th/a",
+            snippet="ห้ามแบ่งซื้อแบ่งจ้างเพื่อเลี่ยงวิธีประกวดราคา",
+        ),
+        _web(title="ระเบียบพัสดุ", url="https://www.gprocurement.go.th/b"),
+        _web(title="คู่มือวิธีจัดซื้อ", url="https://www.cgd.go.th/c"),
+        _web(title="มาตรา 55", url="https://www.ratchakitcha.soc.go.th/d"),
+        _web(title="แนวปฏิบัติวงเงิน", url="https://www.cgd.go.th/e"),
+        _web(title="ซ้ำ", url="https://cgd.go.th/a"),
+    ]
+    with patch("app.rag.kb_qa.search_web", new=AsyncMock(return_value=web)) as mocked:
+        messages = await prepare_kb_qa_messages(
+            question="แบ่งซื้อได้หรือไม่",
+            chunks=chunks,
+        )
+        mocked.assert_awaited()
+    system = messages[0]["content"]
+    user = messages[-1]["content"]
+    assert "ห้ามบังคับหัวข้อตายตัว" in system
+    assert "**สรุปคำตอบ**" not in system
+    assert "**หลักที่เกี่ยวข้อง**" not in system
+    assert "**ข้อควรระวัง**" not in system
+    assert "พ.ร.บ.2560.pdf" in user
+    assert "ห้ามแบ่งซื้อแบ่งจ้าง" in user
+    assert "หนังสือเวียนกรมบัญชีกลาง" in user
+    assert "https://cgd.go.th/a" in user
+    assert "แหล่งออนไลน์ที่ค้นได้: 5 แหล่ง" in user
+    assert "หัวข้อบังคับ" not in user
+
+
+@pytest.mark.asyncio
+async def test_prepare_kb_qa_messages_states_actual_web_count_when_below_five():
+    chunks = [_chunk("วางหลักประกันสัญญาก่อนจ่ายงวด", "ระเบียบพัสดุ.pdf", page=8)]
+    web = [
+        _web(title="กรมบัญชีกลาง", url="https://www.cgd.go.th/one"),
+        _web(title="ประกาศเพิ่มเติม", url="https://www.cgd.go.th/two"),
+    ]
+    with patch("app.rag.kb_qa.search_web", new=AsyncMock(return_value=web)):
+        messages = await prepare_kb_qa_messages(
+            question="ต้องวางหลักประกันเมื่อใด",
+            chunks=chunks,
+        )
+    user = messages[-1]["content"]
+    assert "ระเบียบพัสดุ.pdf" in user
+    assert "แหล่งออนไลน์ที่ค้นได้: 2 แหล่ง" in user
+    assert "น้อยกว่า 5 แหล่ง" in user
+    assert "https://www.cgd.go.th/one" in user
+    assert "**สรุปคำตอบ**" not in messages[0]["content"]

@@ -17,6 +17,10 @@ import { useProjectStore } from "@/stores/project-store";
 import { TOR_SECTION_ORDER, isSectionFilled } from "@/lib/tor-sections";
 import { toReviewFinding, type ReviewFinding } from "@/lib/review-findings";
 import {
+  isTorPartScores,
+  type TorPartScoresView,
+} from "@/components/review/three-part-scores";
+import {
   markProjectReviewFinished,
   markProjectReviewStarted,
   shouldSkipProjectReview,
@@ -73,6 +77,9 @@ export function DraftWorkspace() {
     []
   );
   const [reviewAssessment, setReviewAssessment] = useState("");
+  const [reviewPartScores, setReviewPartScores] = useState<TorPartScoresView | null>(
+    null
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -147,6 +154,10 @@ export function DraftWorkspace() {
         const assessment = project.analysisJson?.review_assessment;
         if (typeof assessment === "string" && assessment.trim()) {
           setReviewAssessment(assessment);
+        }
+        const persistedParts = project.analysisJson?.review_part_scores;
+        if (isTorPartScores(persistedParts)) {
+          setReviewPartScores(persistedParts);
         }
         setHydrated(true);
       })
@@ -254,7 +265,7 @@ export function DraftWorkspace() {
       }
       const response = await apiClient.post(`/projects/${projectId}/draft-section`, body, {
         headers: { "X-AI-Request-Id": requestId },
-        timeout: 900_000,
+        timeout: 2_700_000,
       });
       const payload = unwrapData<{
         section_key?: string;
@@ -337,6 +348,10 @@ export function DraftWorkspace() {
           if (typeof assessment === "string" && assessment.trim()) {
             setReviewAssessment(assessment);
           }
+          const persistedParts = project.analysisJson?.review_part_scores;
+          if (isTorPartScores(persistedParts)) {
+            setReviewPartScores(persistedParts);
+          }
           setActionInfo(null);
           setReviewBusy(false);
         })
@@ -346,12 +361,13 @@ export function DraftWorkspace() {
       const response = await apiClient.post(
         `/projects/${projectId}/review`,
         {},
-        { headers: { "X-AI-Request-Id": requestId }, timeout: 900_000 }
+        { headers: { "X-AI-Request-Id": requestId }, timeout: 2_700_000 }
       );
       const payload = unwrapData<{
         quality_score?: number;
         findings?: Record<string, unknown>[];
         overall_assessment?: string;
+        part_scores?: TorPartScoresView;
       }>(response);
       succeeded = true;
       setReviewScore(payload.quality_score ?? null);
@@ -360,6 +376,9 @@ export function DraftWorkspace() {
       );
       if (payload.overall_assessment) {
         setReviewAssessment(payload.overall_assessment);
+      }
+      if (isTorPartScores(payload.part_scores)) {
+        setReviewPartScores(payload.part_scores);
       }
       try {
         const sugRes = await apiClient.get(`/projects/${projectId}/suggestions`);
@@ -490,6 +509,7 @@ export function DraftWorkspace() {
           expanded={expanded}
           openSub={openSub}
           extracted={extracted}
+          analysisJson={activeProject?.analysisJson}
           busy={busy || chatDrafting}
           actionError={actionError}
           actionInfo={actionInfo}
@@ -555,6 +575,7 @@ export function DraftWorkspace() {
             findings={reviewFindings}
             suggestions={reviewSuggestions}
             assessment={reviewAssessment}
+            partScores={reviewPartScores}
             busy={reviewBusy}
             error={actionError}
             onBack={() => persistPhase(3, unlocked, { allowDowngrade: true })}

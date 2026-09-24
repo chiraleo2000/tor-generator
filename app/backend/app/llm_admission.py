@@ -124,9 +124,9 @@ def slot_ttl_seconds(kind: Kind, settings: Any) -> int:
     if kind == "embedding":
         return max(300, wait + 120)
     try:
-        local_to = int(getattr(settings, "lm_studio_timeout", 1800) or 1800)
+        local_to = int(getattr(settings, "lm_studio_timeout", 10800) or 10800)
     except (TypeError, ValueError):
-        local_to = 1800
+        local_to = 10800
     return max(600, wait + local_to)
 
 

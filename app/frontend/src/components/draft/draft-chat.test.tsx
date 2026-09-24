@@ -405,4 +405,59 @@ describe("DraftChat", () => {
     fireEvent.click(await screen.findByTestId("draft-accept-s1"));
     expect(await screen.findByText("ยอมรับแล้ว ✓")).toBeInTheDocument();
   });
+
+  it("shows product search hits and requires confirm before inserting", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          sections: [],
+          drafted_count: 13,
+          total: 13,
+          all_drafted: true,
+        },
+      },
+    } as never);
+    mockStream((url, onEvent) => {
+      if (!url.includes("/message")) return;
+      onEvent("product_search", {
+        query: "ขอสเปกจากผู้ขาย",
+        results: [
+          {
+            title: "สินค้าอ้างอิง",
+            url: "https://example.go.th/p",
+            snippet: "สเปกกลาง",
+          },
+        ],
+        disclaimer: "แหล่งอ้างอิงเท่านั้น ไม่ใช่สเปกที่ผูกยี่ห้อ",
+        pending_insert: true,
+      });
+    });
+    render(<DraftChat projectId="p-search" onAllDrafted={vi.fn()} />);
+    const input = await screen.findByTestId("draft-chat-input");
+    await waitFor(() => expect(input).not.toBeDisabled());
+    fireEvent.change(input, { target: { value: "ขอสเปกเซิร์ฟเวอร์จากผู้ขาย" } });
+    fireEvent.click(screen.getByTestId("draft-chat-send"));
+    expect(await screen.findByTestId("draft-search-results")).toBeInTheDocument();
+    expect(screen.getByTestId("draft-search-disclaimer")).toHaveTextContent("ไม่ใช่สเปกที่ผูกยี่ห้อ");
+    expect(screen.getByText("สินค้าอ้างอิง")).toBeInTheDocument();
+    const confirm = screen.getByTestId("draft-search-confirm");
+    expect(confirm).toBeInTheDocument();
+    mockStream((url, onEvent) => {
+      if (!url.includes("/message")) return;
+      onEvent("search_inserted", {
+        section_key: "s4",
+        content: "ข้อมูลอ้างอิงจากแหล่งออนไลน์",
+      });
+    });
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(
+        vi.mocked(streamSsePost).mock.calls.some((call) => {
+          const body = call[1] as { confirm_insert?: boolean; search_hits?: unknown[] };
+          return body?.confirm_insert === true && Array.isArray(body.search_hits);
+        })
+      ).toBe(true)
+    );
+  });
 });

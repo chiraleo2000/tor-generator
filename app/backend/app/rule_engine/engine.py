@@ -155,9 +155,10 @@ class RuleEngine:
         Executes all registered rules per category, computes per-category scores
         based on severity deductions, then aggregates into a weighted total score.
 
-        If a rule raises MissingSectionsHalt (from completeness rules), scoring
-        is halted and the result is returned with halted=True and the list of
-        missing sections (Requirement 6.9).
+        If a rule raises MissingSectionsHalt (from completeness rules), the
+        engine records missing sections and keeps halted=True, but still scores
+        every category from the text that exists. quality_score is a partial
+        weighted total — it is not forced to 0 (Requirement 6.9, updated).
 
         Args:
             tor_document: Dict with section_key -> content mapping.
@@ -166,13 +167,16 @@ class RuleEngine:
 
         Returns:
             ValidationResult with quality_score, category breakdown, and findings.
-            If halted, quality_score is 0 and missing_sections is populated.
+            If halted, missing_sections is populated and categories still hold
+            partial scores from remaining text.
         """
         # Lazy import to avoid circular imports
         from app.rule_engine.rules.completeness import MissingSectionsHalt
 
         all_findings: list[Finding] = []
         category_scores: list[CategoryScore] = []
+        halted = False
+        missing_sections: dict[str, str] = {}
 
         for category, weight in CATEGORY_WEIGHTS.items():
             # Collect findings from all rules in this category
@@ -182,15 +186,9 @@ class RuleEngine:
                     findings = rule.validate(tor_document)
                     category_findings.extend(findings)
                 except MissingSectionsHalt as halt:
-                    # Halt scoring: return immediately with missing sections info
-                    return ValidationResult(
-                        quality_score=0,
-                        categories=[],
-                        findings=halt.findings,
-                        is_valid=False,
-                        halted=True,
-                        missing_sections=halt.missing_sections,
-                    )
+                    halted = True
+                    missing_sections.update(halt.missing_sections)
+                    category_findings.extend(halt.findings)
 
             # Compute category score based on findings
             score = self._compute_category_score(category_findings)
@@ -205,14 +203,16 @@ class RuleEngine:
             )
             all_findings.extend(category_findings)
 
-        # Compute weighted total score
+        # Compute weighted total score from remaining text (even when halted)
         total_score = self._compute_total_score(category_scores)
 
         return ValidationResult(
             quality_score=total_score,
             categories=category_scores,
             findings=all_findings,
-            is_valid=total_score >= PASSING_THRESHOLD,
+            is_valid=total_score >= PASSING_THRESHOLD and not halted,
+            halted=halted,
+            missing_sections=missing_sections,
         )
 
     def _compute_category_score(self, findings: list[Finding]) -> float:

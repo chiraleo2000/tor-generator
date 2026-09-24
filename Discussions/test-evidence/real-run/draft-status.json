@@ -1,0 +1,136 @@
+{
+  "sections": [
+    {
+      "section_key": "s1",
+      "title": "ความเป็นมา",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"history\": \"ศูนย์ประเมินผล สํานักงานเศรษฐกิจการเกษตร (สศก.) เป็นหน่วยงานที่มีภารกิจหลักในการติดตาม\\nและประเมินผลความสําเร็จและผลกระทบจากการดําเนินงานตามนโยบาย มาตรการ แผนงาน และโครงการ\\nสําคัญของกระท",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s2",
+      "title": "วัตถุประสงค์",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"mainObj\": \"วัตถุประสงค์ และหน่วยงานได้\\n4.1.9 สามารถจัดเก็บข้อมูลจราจรทางคอมพิวเตอร์ (Log Management) ระบบจะต้องมีฟังก์ชัน\\nในการบันทึกข้อมูลจราจรทางคอมพิวเตอร์ (Log File) ที่สามารถระบุตัวตนผู้ใช้งา",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s3",
+      "title": "คุณสมบัติของผู้ยื่นข้อเสนอ",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"general\": \"๒.๑    มีความสามารถตามกฎหมาย \\n                         ๒.๒    ไม่เป็นบุคคลล้มละลาย \\n                         ๒.๓    ไม่อยู่ระหว่างเลิกกิจการ\\n                         ๒.๔    ไม่เป็นบุคค",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s4",
+      "title": "ขอบเขตของงาน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s11",
+      "title": "หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"evalMethod\": \"6.1 ในการพิจารณาผลการยื่นข้อเสนอประกวดราคาครั้งนี้ จะพิจารณาตัดสินโดยใช้เกณฑ์ราคา\", \"evalWeight\": \"6.2 การพิจารณาผู้ชนะการยื่นข้อเสนอ ใช้หลักเกณฑ์ราคาในการพิจารณา ผู้ชนะการยื่นข้อเสนอ\\",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s18",
+      "title": "การสำรองข้อมูล",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "คะแนนข.บริการหลังการขาย(น้ำหนักรวมร้อยละ20)หัวข้อการประเมินย่อยเงื่อนไขและข้อกำหนดคะแนนที่ได้รับ1.แผนการซ่อมบำรุงรักษาหลังหมดประกัน(น้ำหนักร้อยละ10)ยื่นเอกสารครบถ้วน1รายการ25คะแนนยื่นเอกสารครบถ้วน2ราย",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s19",
+      "title": "เอกสารส่งมอบ",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "นั้นเป็นผู้เบิกให้หัวหน้าหน่วยพัสดุซึ่งเป็นหัวหน้าหน่วยงานระดับแผนกหรือต่ํากว่าระดับแผนกที่มีหน้าที่เกี่ยวกับการควบคุมพัสดุหรือข้าราชการอื่นซึ่งได้รับการแต่งตั้งจากหัวหน้าส่วนราชการเป็นหัวหน้าหน่วยพัส",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s6",
+      "title": "วงเงินงบประมาณ",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"budgetAmount\": \"/ วงเงินทิได้รับจัดสรร\\nงบประมาณ 7,920,600 บาท (เจ็ดล้านเก้าแสนสองหมืนหกร้อยบาทถ้วน) ซึงเป็นราคารวมภาษี\", \"budgetSource\": \"toa        เ๑บขเ   เท      vy    เว\\nมูลคาเพม และค่าใช้จ่าย",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s5",
+      "title": "ระยะเวลาดำเนินการ",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"timelineRange\": \"ระยะเวลาดำเนินการกี่วัน/เดือน? นับจากเมื่อไร?\", \"milestones\": \"ข้อความจากเอกสาร:\\ns1: ศูนย์ประเมินผล สํานักงานเศรษฐกิจการเกษตร (สศก.) เป็นหน่วยงานที่มีภารกิจหลักในการติดตาม\\nและประเ",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s8",
+      "title": "งวดงานและการจ่ายเงิน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s20",
+      "title": "เงินประกันผลงาน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s10",
+      "title": "อัตราค่าปรับ",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"penalty\": \"ค่าปรับตามแบบสัญญาจ้างแนบท้ายเอกสารประกวดราคาอิเล็กทรอนิกส์นี้ หรือข้อตกลงจ้\\n                         ๙.๑     กรณีที่ผู้รับจ้างนำงานที่รับจ้างไปจ้างช่วงให้ผู้อื่นทำอีกทอดหนึ่งโดยไม่ได้รั",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s9",
+      "title": "การรับประกัน",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"warranty\": \"แผนการส่งมอบ แผนการทดสอบระบบ แผนการฝึกอบรม ซึ่งระบุถึง\\nกิจกรรม ขั้นตอน การดําเนินการตามแผนงานอย่างละเอียด โดยต้องจัดส่งให้ผู้ว่าจ้างภายใน 30 วัน นับถัดจาก\\nวันลงนามในสัญญา และต้องได้ซีบ",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s15",
+      "title": "ลิขสิทธิ์และกรรมสิทธิ์ในผลงาน",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "องหรือความเสียหายดังกลาวในขอ7เทานั้นผูรับจางจะตองรับผิดตอบุคคลภายนอกในความเสียหายใดๆอันเกิดจากการปฏิบัติงานของผูรับจางหรือลูกจางหรือตัวแทนของผูรับจางรวมถึงผูรับจางชวง(ถามี)ตามสัญญานี้ห",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s16",
+      "title": "การรักษาความลับของข้อมูลและการคุ้มครองข้อมูลส่วนบุคคล",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "ข้างต้นกรมบัญชีกลางจะจัดให้มีนโยบายหรือประกาศเกี่ยวกับการคุ้มครองข้อมูลส่วนบุคคลเพิ่มเติมโดยท่านควรอ่านนโยบายหรือประกาศเพิ่มเติมที่เกี่ยวข้องร่วมกับนโยบายฯนี้5.5กรมบัญชีกลางขอแนะนำให้ท่านตรวจสอบนโยบาย",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s17",
+      "title": "หน่วยงานผู้รับผิดชอบและสถานที่ติดต่อ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    }
+  ],
+  "drafted_count": 12,
+  "total": 16,
+  "all_drafted": false,
+  "job_status": "running"
+}

@@ -42,6 +42,7 @@ from app.rag.kb_qa import (
     build_kb_qa_messages,
     chat_rag_top_k,
     normalize_kb_qa_answer,
+    prepare_kb_qa_messages,
     trim_history,
 )
 from app.rate_limiter import rate_limit_ai
@@ -435,6 +436,7 @@ def _room_llm_messages(
     chunks: Any,
     history: list[dict[str, str]],
     degraded: bool,
+    web_sources: list[Any] | None = None,
 ) -> list[dict[str, str]]:
     if is_kb:
         return build_kb_qa_messages(
@@ -442,6 +444,7 @@ def _room_llm_messages(
             chunks=chunks,
             history=history,
             degraded=degraded,
+            web_sources=web_sources,
         )
     return _intake_messages(question, chunks, degraded)
 
@@ -552,13 +555,21 @@ async def _iter_chat_sse(
             top_k=top_k,
         )
     )
-    messages = _room_llm_messages(
-        is_kb=is_kb,
-        question=question,
-        chunks=result.chunks,
-        history=prior,
-        degraded=degraded,
-    )
+    if is_kb:
+        messages = await prepare_kb_qa_messages(
+            question=question,
+            chunks=result.chunks,
+            history=prior,
+            degraded=degraded,
+        )
+    else:
+        messages = _room_llm_messages(
+            is_kb=False,
+            question=question,
+            chunks=result.chunks,
+            history=prior,
+            degraded=degraded,
+        )
     event_q: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
     task = asyncio.create_task(
         _run_chat_llm(

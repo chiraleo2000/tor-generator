@@ -1,0 +1,17 @@
+{
+  "id": "e0bd0d2c-397b-485e-8c6a-d02ec82099b4",
+  "owner_id": "c2abc39e-a427-4b30-aed1-4e6a1ff397a6",
+  "name": "จ้างพัฒนาระบบฐานข้อมูลงานติดตามและประเมินผลด้านเศรษฐกิจการเกษตร",
+  "ministry": "สำนักงานเศรษฐกิจการเกษตร",
+  "budget": 15000000,
+  "project_type": "hire_develop",
+  "status": "draft",
+  "current_step": 1,
+  "current_phase": 0,
+  "analysis_json": {},
+  "extracted_fields": {},
+  "quality_score": null,
+  "template_id": null,
+  "created_at": "2026-09-24T07:36:58.414160Z",
+  "updated_at": "2026-09-24T07:36:58.414160Z"
+}

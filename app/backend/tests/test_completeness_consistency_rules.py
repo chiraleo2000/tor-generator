@@ -548,10 +548,14 @@ class TestQualificationsComplexityConsistencyRule:
 
 
 class TestEngineHaltingOnMissingSections:
-    """Test that the engine halts scoring when sections are missing."""
+    """Missing sections keep halted=True but still score remaining text."""
 
     def test_engine_halts_when_sections_missing(self, incomplete_tor_document: dict):
-        """Engine returns halted=True with missing_sections when sections missing."""
+        """Halt records missing sections and returns a partial score, not a forced 0.
+
+        quality_score is no longer zeroed on MissingSectionsHalt so the three-part
+        review can still explain legal / lock-in / project from the text that exists.
+        """
         engine = RuleEngine()
         engine.register_rule("completeness", SectionPresenceRule())
         engine.register_rule("completeness", RequiredSubsectionsRule())
@@ -560,10 +564,14 @@ class TestEngineHaltingOnMissingSections:
         result = engine.validate(incomplete_tor_document)
 
         assert result.halted is True
-        assert result.quality_score == 0
-        assert result.is_valid is False
-        assert len(result.missing_sections) > 0
+        assert result.missing_sections
         assert "s3" in result.missing_sections
+        assert result.is_valid is False
+        assert result.categories
+        assert 0 <= result.quality_score <= 100
+        assert result.quality_score > 0 or any(
+            category.findings for category in result.categories
+        )
 
     def test_engine_does_not_halt_when_all_present(self, complete_tor_document: dict):
         """Engine does not halt when all sections are present."""
@@ -578,27 +586,36 @@ class TestEngineHaltingOnMissingSections:
         assert result.quality_score > 0
         assert len(result.missing_sections) == 0
 
-    def test_engine_halt_prevents_other_category_validation(
+    def test_engine_halt_still_scores_other_categories(
         self, incomplete_tor_document: dict
     ):
-        """When halted, other categories are not validated."""
+        """Halt no longer discards other categories or zeros the whole score.
+
+        Missing-section halt used to return quality_score=0 and categories=[].
+        The new contract keeps halted=True and missing_sections, then still
+        scores legal/consistency/format from the sections that exist.
+        """
         engine = RuleEngine()
-        # Register SectionPresenceRule first in completeness (will halt)
         engine.register_rule("completeness", SectionPresenceRule())
-        # Register consistency rules (should NOT execute)
         engine.register_rule("consistency", BudgetScopeConsistencyRule())
         engine.register_rule("consistency", TimelineDeliverablesConsistencyRule())
 
         result = engine.validate(incomplete_tor_document)
 
         assert result.halted is True
-        # Only completeness findings should be present
-        assert all(
-            f.rule_violated == "COMPLETENESS_SECTION_MISSING"
-            for f in result.findings
+        assert result.missing_sections
+        assert any(
+            finding.rule_violated == "COMPLETENESS_SECTION_MISSING"
+            for finding in result.findings
         )
-        # No category breakdown when halted
-        assert result.categories == []
+        assert len(result.categories) == 4
+        assert {item.category for item in result.categories} == {
+            "legal",
+            "completeness",
+            "consistency",
+            "format",
+        }
+        assert 0 <= result.quality_score <= 100
 
     def test_engine_returns_all_missing_sections_in_list(
         self, incomplete_tor_document: dict

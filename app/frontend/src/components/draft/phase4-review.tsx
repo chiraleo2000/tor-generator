@@ -12,6 +12,10 @@ import { ReviewChat } from "@/components/draft/review-chat";
 import { RichDraftText } from "@/components/draft/rich-draft-text";
 import { ReviewFindingBuckets } from "@/components/review/finding-buckets";
 import {
+  ThreePartScores,
+  type TorPartScoresView,
+} from "@/components/review/three-part-scores";
+import {
   TOR_SECTION_LABELS,
   formatScopeSubHeading,
   formatTorSectionHeading,
@@ -28,6 +32,7 @@ export function Phase4Review({
   findings,
   suggestions,
   assessment,
+  partScores,
   busy,
   error,
   onBack,
@@ -43,6 +48,7 @@ export function Phase4Review({
   findings: ReviewFinding[];
   suggestions: ReviewSuggestion[];
   assessment?: string;
+  partScores?: TorPartScoresView | null;
   busy: boolean;
   error: string | null;
   onBack: () => void;
@@ -88,6 +94,7 @@ export function Phase4Review({
       ) : (
         <CheckItem tone="warn" title="ยังไม่ได้รันตรวจสอบ" detail="กดตรวจกฎเพื่อตรวจกฎหมาย ความครบถ้วน และความสอดคล้อง" />
       )}
+      {partScores ? <ThreePartScores analysis={partScores} /> : null}
       <ReviewFindingBuckets findings={findings} />
       {suggestions.length ? (
         <h4 className="mb-1 mt-3 text-sm font-bold text-navy">

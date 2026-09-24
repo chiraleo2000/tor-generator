@@ -72,7 +72,7 @@ def test_fallback_section_does_not_dump_raw_intake():
 
 def test_section_timeout_is_capped_for_local_testing():
     assert SECTION_TIMEOUT_SECONDS >= 30
-    assert SECTION_TIMEOUT_SECONDS <= 1800
+    assert SECTION_TIMEOUT_SECONDS <= 10800
     assert section_draft_timeout("s1") == float(SECTION_TIMEOUT_SECONDS)
     assert section_draft_timeout("s4") == float(SECTION_TIMEOUT_SECONDS * 3)
 

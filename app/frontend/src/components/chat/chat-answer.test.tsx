@@ -46,6 +46,14 @@ describe("parseChatBlocks", () => {
       kind: "heading",
       text: "สรุปคำตอบ",
     });
+    const online = parseChatBlocks(
+      "**แหล่งออนไลน์**\n- [กรมบัญชีกลาง](https://www.gprocurement.go.th) — 2568"
+    );
+    expect(online.map((block) => block.kind)).toEqual(["online"]);
+    expect(online[0]).toMatchObject({
+      kind: "online",
+      items: [{ title: "กรมบัญชีกลาง", url: "https://www.gprocurement.go.th", date: "2568" }],
+    });
   });
 });
 
@@ -70,16 +78,42 @@ describe("looksLikeNoRetrieve", () => {
 });
 
 describe("ChatAnswerBody", () => {
-  it("renders a markdown table and heading", () => {
+  it("renders paragraphs, tables, lists, and online sources without required headings", () => {
     render(
       <ChatAnswerBody
-        text={"**สรุปคำตอบ**\nรายละเอียด\n\n| ปี | ปริมาณ |\n| --- | --- |\n| 2568 | 10 |"}
+        text={[
+          "วิธีเฉพาะเจาะจงใช้ได้เมื่อวงเงินไม่เกินตามที่ระเบียบกำหนด (พ.ร.บ.2560.pdf หน้า 12)",
+          "",
+          "| วิธี | วงเงิน |",
+          "| --- | --- |",
+          "| เฉพาะเจาะจง | ไม่เกิน ๕๐๐,๐๐๐ บาท |",
+          "",
+          "- จัดทำรายงานขอซื้อ",
+          "- เสนอหัวหน้าหน่วยงาน",
+          "",
+          "**แหล่งออนไลน์**",
+          "- [กรมบัญชีกลาง](https://www.gprocurement.go.th) — 2568",
+          "- ระเบียบพัสดุ — https://www.cgd.go.th/reg",
+        ].join("\n")}
       />
     );
-    expect(screen.getByRole("heading", { name: "สรุปคำตอบ" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "ปี" })).toBeInTheDocument();
-    expect(screen.getByText("2568")).toBeInTheDocument();
-    expect(screen.getByText("10")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "สรุปคำตอบ" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "หลักที่เกี่ยวข้อง" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "ข้อควรระวัง" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/วิธีเฉพาะเจาะจงใช้ได้เมื่อวงเงินไม่เกินตามที่ระเบียบกำหนด/)
+    ).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "วิธี" })).toBeInTheDocument();
+    expect(screen.getByText("จัดทำรายงานขอซื้อ")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-online-sources")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "กรมบัญชีกลาง" })).toHaveAttribute(
+      "href",
+      "https://www.gprocurement.go.th"
+    );
+    expect(screen.getByRole("link", { name: "ระเบียบพัสดุ" })).toHaveAttribute(
+      "href",
+      "https://www.cgd.go.th/reg"
+    );
   });
 });
 

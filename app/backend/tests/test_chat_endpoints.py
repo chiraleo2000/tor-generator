@@ -223,7 +223,11 @@ def test_chat_sse_streams_tokens(client, mock_officer_user, monkeypatch):
     assert captured["max_tokens"] == live_chat_max_tokens()
     # Local models may pass enable_thinking; cloud (Gemini) strips it.
     assert captured.get("disable_thinking") is not True
-    assert "ข้อความเนื้อหา" in captured["messages"][0]["content"]
+    system = captured["messages"][0]["content"]
+    assert "ภาษาพัสดุ" in system
+    assert "ห้ามบังคับหัวข้อตายตัว" in system
+    assert "**สรุปคำตอบ**" not in system
+    assert "ข้อความเนื้อหา" not in system
 
 
 def test_rename_and_delete_room(client, mock_officer_user):

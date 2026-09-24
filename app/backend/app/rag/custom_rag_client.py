@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import httpx
@@ -18,7 +19,8 @@ def resolve_custom_rag_url(base_url: str, retrieve_path: str = "") -> str:
     """Build POST URL. Empty path keeps /api/search bases as-is; else /v1/retrieve."""
     base = (base_url or "").strip().rstrip("/")
     path = (retrieve_path or "").strip()
-    if path.startswith(("http://", "https://")):
+    parsed = urlparse(path)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
         return path.rstrip("/")
     if path:
         if not path.startswith("/"):

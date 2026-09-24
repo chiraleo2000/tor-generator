@@ -40,6 +40,7 @@ from app.schemas.drafting import (
     FindingResponse,
     ReviewRequest,
     ReviewResponse,
+    TorAnalysisResponse,
     SuggestionListResponse,
     SuggestionResponse,
     SuggestionStatus,
@@ -48,6 +49,7 @@ from app.schemas.drafting import (
     ValidateRequest,
     ValidateResponse,
 )
+from app.services.tor_analysis import analysis_as_dict, analyze_tor
 from app.schemas.responses import MetaInfo, SuccessResponse
 
 logger = logging.getLogger("tor_app.review")
@@ -224,6 +226,13 @@ async def run_review(
         ) from exc
 
     legal_context = await _law_review_context(project.project_type)
+    requirements = _project_requirements_text(project)
+    part_analysis = analyze_tor(
+        tor_document,
+        user_documents=requirements,
+        rag_text=legal_context,
+    )
+    part_scores = TorAnalysisResponse.model_validate(analysis_as_dict(part_analysis))
     findings_response = _findings_response(validation_result.findings, legal_context)
 
     # Build category scores response
@@ -248,6 +257,7 @@ async def run_review(
     analysis = dict(project.analysis_json or {})
     analysis["review_score"] = validation_result.quality_score
     analysis["review_is_valid"] = validation_result.is_valid
+    analysis["review_part_scores"] = analysis_as_dict(part_analysis)
     analysis["review_findings"] = [
         item.model_dump(mode="json") for item in findings_response
     ]
@@ -263,7 +273,6 @@ async def run_review(
             request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
         ).strip()
         redis = getattr(request.app.state, "redis", None)
-        requirements = _project_requirements_text(project)
         suggestions_generated, overall_assessment = await _generate_suggestions(
             project_id=project_id,
             sections_map=sections_map,
@@ -278,6 +287,8 @@ async def run_review(
             redis=redis,
             request_id=request_id,
         )
+        if not overall_assessment:
+            overall_assessment = part_analysis.summary
         if overall_assessment:
             analysis["review_assessment"] = overall_assessment
             persist_analysis_json(project, analysis)
@@ -300,7 +311,8 @@ async def run_review(
         categories=categories_response,
         findings=findings_response,
         suggestions_generated=suggestions_generated,
-        overall_assessment=overall_assessment,
+        overall_assessment=overall_assessment or part_analysis.summary,
+        part_scores=part_scores,
     )
 
     logger.info(

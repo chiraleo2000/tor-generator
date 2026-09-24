@@ -162,6 +162,18 @@ def test_merged_settings_overlays_nonempty_payload():
     assert merged.get("openai_api_key") != "sk-ant-live"
 
 
+def test_merged_settings_follow_process_env_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "local")
+    row = AiRuntimeSettings(
+        id=1,
+        payload={"llm_provider": "lm_studio", "embedding_provider": "bedrock"},
+    )
+    merged = _merged_settings_dict(row)
+    assert merged["llm_provider"] == "bedrock"
+    assert merged["embedding_provider"] == "local"
+
+
 def test_public_payload_includes_reingest_flag():
     public = _public_payload({"deployment_mode": "on_prem"}, reingest_required=True)
     assert public["restart_required"] is False
@@ -812,9 +824,11 @@ async def test_probe_openai_compatible_hits_models():
 def test_pinned_on_prem_rejects_bedrock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PIN_ON_PREM_LLM", "true")
     monkeypatch.setenv("DEPLOYMENT_MODE", "on_prem")
+    cloud_body = _local_body(deployment_mode="cloud")
     with pytest.raises(ValidationError) as cloud_mode:
-        _validate_update(_local_body(deployment_mode="cloud"), {})
+        _validate_update(cloud_body, {})
     assert cloud_mode.value.field == "deployment_mode"
+    bedrock_body = _local_body(llm_provider="bedrock")
     with pytest.raises(ValidationError) as cloud_llm:
-        _validate_update(_local_body(llm_provider="bedrock"), {})
+        _validate_update(bedrock_body, {})
     assert cloud_llm.value.field == "llm_provider"

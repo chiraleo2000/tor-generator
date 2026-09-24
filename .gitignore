@@ -9,6 +9,7 @@
 .env
 .env.local
 .env.*.local
+.env.bedrock
 *.pem
 *.key
 
@@ -99,6 +100,7 @@ data/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+!.vscode/tsconfig-placeholder.ts
 
 # JetBrains (PyCharm, WebStorm, IntelliJ)
 .idea/

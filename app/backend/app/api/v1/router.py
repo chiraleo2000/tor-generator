@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     admin_users,
     agent,
     ai_queue,
+    analyze,
     auth,
     chat,
     draft_chat,
@@ -70,5 +71,6 @@ api_router.include_router(
     admin_ai_settings.router, prefix="/admin/ai-settings", tags=["admin-ai-settings"]
 )
 api_router.include_router(standalone_review.router, prefix="/review", tags=["standalone-review"])
+api_router.include_router(analyze.router, prefix="/analyze", tags=["analyze"])
 
 

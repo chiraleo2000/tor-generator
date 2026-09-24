@@ -13,6 +13,7 @@ import {
   Cpu,
   ClipboardList,
   MessagesSquare,
+  FileSearch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navItemIsActive } from "@/lib/nav-active";
@@ -34,6 +35,7 @@ const workItems: NavItem[] = [
   { href: "/draft", label: "ร่าง TOR", icon: PenLine, testId: "nav-draft" },
   { href: "/review", label: "ตรวจสอบ TOR", icon: ScanSearch, testId: "nav-review" },
   { href: "/chat", label: "ถาม-ตอบ", icon: MessagesSquare, testId: "nav-chat" },
+  { href: "/analyze", label: "วิเคราะห์ TOR", icon: FileSearch, testId: "nav-analyze" },
 ];
 
 const otherItems: NavItem[] = [

@@ -15,7 +15,7 @@ from app.models.kb_chat_session import KBChatSession
 from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.rag.hybrid import unpack_hybrid
-from app.rag.kb_qa import build_kb_qa_messages, chat_rag_top_k, normalize_kb_qa_answer
+from app.rag.kb_qa import chat_rag_top_k, normalize_kb_qa_answer, prepare_kb_qa_messages
 from app.llm_tokens import live_chat_max_tokens
 from app.services.session_cache import SessionCacheService
 
@@ -130,7 +130,7 @@ class KnowledgeChatService:
     async def _synthesize(self, message: str, chunks: list, history: list[dict]) -> str:
         llm = self._llm or ProviderFactory().get_llm()
         response = await llm.invoke(
-            build_kb_qa_messages(question=message, chunks=chunks, history=history),
+            await prepare_kb_qa_messages(question=message, chunks=chunks, history=history),
             temperature=0.2,
             max_tokens=live_chat_max_tokens(),
         )

@@ -23,6 +23,9 @@ describe("navItemIsActive", () => {
     expect(navItemIsActive("/chat", "/chat")).toBe(true);
     expect(navItemIsActive("/chat/room", "/chat")).toBe(true);
     expect(navItemIsActive("/review", "/review")).toBe(true);
+    expect(navItemIsActive("/analyze", "/analyze")).toBe(true);
+    expect(navItemIsActive("/analyze/extra", "/analyze")).toBe(true);
+    expect(navItemIsActive("/chat", "/analyze")).toBe(false);
     expect(navItemIsActive("/help", "/help")).toBe(true);
     expect(navItemIsActive("/admin/users", "/admin/users")).toBe(true);
     expect(navItemIsActive("/admin/users", "/admin/templates")).toBe(false);

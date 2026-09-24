@@ -7,8 +7,57 @@ import logging
 from typing import Any, AsyncIterator
 
 from app.providers.base import LLMProvider, LLMResponse
+from app.providers.bedrock_client import call_bedrock_with_retry
 
 logger = logging.getLogger(__name__)
+
+
+def _bedrock_tool_spec(tool: Any) -> dict[str, Any] | None:
+    """Map one OpenAI-style tool, or a native toolSpec, to a Converse tool entry."""
+    if not isinstance(tool, dict):
+        return None
+    if "toolSpec" in tool:
+        return tool
+    function = tool.get("function") if isinstance(tool.get("function"), dict) else tool
+    name = str(function.get("name") or tool.get("name") or "").strip()
+    if not name:
+        return None
+    description = str(function.get("description") or tool.get("description") or name)
+    parameters = (
+        function.get("parameters")
+        or function.get("input_schema")
+        or tool.get("parameters")
+        or tool.get("input_schema")
+        or {"type": "object", "properties": {}}
+    )
+    if isinstance(parameters, dict) and "json" in parameters and len(parameters) == 1:
+        schema = parameters
+    else:
+        schema = {"json": parameters}
+    return {
+        "toolSpec": {
+            "name": name,
+            "description": description,
+            "inputSchema": schema,
+        }
+    }
+
+
+def openai_tools_to_bedrock_tool_config(
+    tools: list[dict] | None,
+) -> dict[str, Any] | None:
+    """Map OpenAI-style tools (or Bedrock toolSpec) to Converse toolConfig."""
+    if not tools:
+        return None
+    specs: list[dict[str, Any]] = []
+    for tool in tools:
+        spec = _bedrock_tool_spec(tool)
+        if spec is None:
+            continue
+        specs.append(spec)
+    if not specs:
+        return None
+    return {"tools": specs}
 
 
 class BedrockLLMProvider(LLMProvider):
@@ -38,7 +87,16 @@ class BedrockLLMProvider(LLMProvider):
         self._model_id = model_id
         self._timeout = timeout
 
-    def _build_request(self, messages: list[dict], **kwargs: Any) -> dict[str, Any]:
+    def _build_request(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        if tools is None:
+            tools = kwargs.pop("tools", None)
+        else:
+            kwargs.pop("tools", None)
         system_parts: list[dict[str, str]] = []
         converse_messages: list[dict] = []
         for item in messages:
@@ -62,13 +120,36 @@ class BedrockLLMProvider(LLMProvider):
             inference["temperature"] = float(kwargs["temperature"])
         if inference:
             request["inferenceConfig"] = inference
+        tool_config = openai_tools_to_bedrock_tool_config(tools)
+        if tool_config:
+            request["toolConfig"] = tool_config
         return request
 
-    def _converse(self, messages: list[dict], **kwargs: Any) -> dict:
-        return self._client.converse(**self._build_request(messages, **kwargs))
+    def _converse(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        request = self._build_request(messages, tools=tools, **kwargs)
+        return call_bedrock_with_retry(
+            lambda: self._client.converse(**request),
+            model_id=self._model_id,
+            op="converse",
+        )
 
-    def _collect_stream_tokens(self, messages: list[dict], **kwargs: Any) -> list[str]:
-        response = self._client.converse_stream(**self._build_request(messages, **kwargs))
+    def _collect_stream_tokens(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        **kwargs: Any,
+    ) -> list[str]:
+        request = self._build_request(messages, tools=tools, **kwargs)
+        response = call_bedrock_with_retry(
+            lambda: self._client.converse_stream(**request),
+            model_id=self._model_id,
+            op="converse_stream",
+        )
         tokens: list[str] = []
         for event in response.get("stream") or []:
             delta = (event.get("contentBlockDelta") or {}).get("delta") or {}
@@ -83,10 +164,9 @@ class BedrockLLMProvider(LLMProvider):
         tools: list[dict] | None = None,
         **kwargs,
     ) -> LLMResponse:
-        del tools
         try:
             response = await asyncio.wait_for(
-                asyncio.to_thread(self._converse, messages, **kwargs),
+                asyncio.to_thread(self._converse, messages, tools, **kwargs),
                 timeout=self._timeout,
             )
         except TimeoutError as exc:
@@ -108,9 +188,10 @@ class BedrockLLMProvider(LLMProvider):
         )
 
     async def stream(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
+        tools = kwargs.pop("tools", None)
         try:
             tokens = await asyncio.wait_for(
-                asyncio.to_thread(self._collect_stream_tokens, messages, **kwargs),
+                asyncio.to_thread(self._collect_stream_tokens, messages, tools, **kwargs),
                 timeout=self._timeout,
             )
             for token in tokens:
@@ -119,8 +200,8 @@ class BedrockLLMProvider(LLMProvider):
         except Exception as exc:
             logger.warning(
                 "Bedrock converse_stream failed (%s); falling back to invoke",
-                exc,
+                type(exc).__name__,
             )
-        response = await self.invoke(messages, **kwargs)
+        response = await self.invoke(messages, tools=tools, **kwargs)
         if response.content:
             yield response.content

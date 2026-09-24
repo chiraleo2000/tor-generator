@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.sse import sse_streaming_response
 from app.deps import get_current_user, get_db
-from app.domain.section_profile import LEGACY_SCOPE_TITLES, profile_for_project
+from app.domain.section_profile import LEGACY_SCOPE_TITLES, parse_section_ref, profile_for_project
 from app.domain.tor_sections import TOR_SECTION_LABELS
 from app.draft_job_store import bump_progress, get_job, mark_status, set_job
 from app.exceptions import NotFoundError, ValidationError
@@ -37,6 +37,15 @@ from app.models.user import User
 from app.rate_limiter import rate_limit_ai
 from app.rbac import require_project_access
 from app.schemas.responses import MetaInfo, SuccessResponse
+from app.services.cost_training import (
+    category_has_training,
+    cost_worksheet_of,
+    merge_cost_worksheet,
+    merge_training_scope,
+    persist_analysis_patch,
+    training_scope_of,
+    training_scope_prose,
+)
 from app.services.draft_chat_service import (
     build_merged_scope,
     build_scope_overview,
@@ -46,6 +55,12 @@ from app.services.draft_chat_service import (
     fallback_scope_subsection,
     fallback_section_text,
     parse_draft_message_intent,
+)
+from app.services.draft_product_search import (
+    SEARCH_DISCLAIMER,
+    format_search_reference,
+    normalize_search_hits,
+    run_product_search,
 )
 from app.services.intake_service import is_ready_to_compose, slot_map_of, with_project_intake
 
@@ -136,7 +151,7 @@ def _section_timeout_seconds() -> int:
         return 180
 
 
-# Per-section cap. Local Gemma compose often needs 4–5 minutes; 1800s blocked 13/13 for hours.
+# Per-section cap. Env DRAFT_SECTION_TIMEOUT_SECONDS defaults to 10800s.
 SECTION_TIMEOUT_SECONDS = _section_timeout_seconds()
 
 
@@ -196,6 +211,7 @@ class _ChatStream:
     request_id: str
     session_factory: Any
     project_type: str | None = None
+    search_hits: list[dict[str, str]] | None = None
 
 
 async def _consume_sse(events: AsyncIterator[str]) -> int:
@@ -223,6 +239,22 @@ async def _relay_job_sse(project_id: uuid.UUID, events: AsyncIterator[str]) -> i
 class DraftChatMessageBody(BaseModel):
     content: str = Field(..., min_length=1)
     section_key: str | None = None
+    search_hits: list[dict[str, Any]] | None = None
+    confirm_insert: bool = False
+
+
+class CostWorksheetBody(BaseModel):
+    license: float = 0
+    labor: float = 0
+    maintenance: float = 0
+    training: float = 0
+
+
+class TrainingScopeBody(BaseModel):
+    cohorts: str = ""
+    hours: str = ""
+    attendees: str = ""
+    documents: str = ""
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -758,6 +790,41 @@ async def _publish_section_done(
     )
 
 
+async def _draft_wave_serially(job: _SeqDraft, wave: list[str], drafted_count: int) -> int:
+    for section_key in wave:
+        saved = await _try_draft_one_section(job, section_key)
+        if not saved:
+            continue
+        drafted_count += 1
+        await bump_progress(job.redis, job.project_id, drafted_count)
+        await _publish_section_done(job, section_key, drafted_count)
+    return drafted_count
+
+
+async def _draft_wave_in_parallel(job: _SeqDraft, wave: list[str], drafted_count: int) -> int:
+    sem = asyncio.Semaphore(3)
+
+    async def _one(key: str) -> tuple[str, bool]:
+        async with sem:
+            return key, await _try_draft_one_section(job, key)
+
+    results = await asyncio.gather(
+        *(_one(key) for key in wave),
+        return_exceptions=True,
+    )
+    for item in results:
+        if isinstance(item, Exception):
+            logger.exception("Parallel draft wave failed: %s", item)
+            continue
+        section_key, saved = item
+        if not saved:
+            continue
+        drafted_count += 1
+        await bump_progress(job.redis, job.project_id, drafted_count)
+        await _publish_section_done(job, section_key, drafted_count)
+    return drafted_count
+
+
 async def _run_sequential_draft(
     job: _SeqDraft, remaining_passes: int = 2, reset_store: bool = True
 ) -> int:
@@ -772,34 +839,9 @@ async def _run_sequential_draft(
     try:
         for wave in draft_waves(job.project_type):
             if len(wave) == 1 or wave[0] in {"s1", "s4"}:
-                for section_key in wave:
-                    saved = await _try_draft_one_section(job, section_key)
-                    if not saved:
-                        continue
-                    drafted_count += 1
-                    await bump_progress(job.redis, job.project_id, drafted_count)
-                    await _publish_section_done(job, section_key, drafted_count)
+                drafted_count = await _draft_wave_serially(job, wave, drafted_count)
                 continue
-            sem = asyncio.Semaphore(3)
-
-            async def _one(key: str) -> tuple[str, bool]:
-                async with sem:
-                    return key, await _try_draft_one_section(job, key)
-
-            results = await asyncio.gather(
-                *(_one(key) for key in wave),
-                return_exceptions=True,
-            )
-            for item in results:
-                if isinstance(item, Exception):
-                    logger.exception("Parallel draft wave failed: %s", item)
-                    continue
-                section_key, saved = item
-                if not saved:
-                    continue
-                drafted_count += 1
-                await bump_progress(job.redis, job.project_id, drafted_count)
-                await _publish_section_done(job, section_key, drafted_count)
+            drafted_count = await _draft_wave_in_parallel(job, wave, drafted_count)
         if drafted_count < total and remaining_passes > 0:
             logger.info(
                 "Retry incomplete draft for %s (%s/%s)",
@@ -1198,6 +1240,101 @@ async def _stream_section_revision(
     )
 
 
+async def _stream_product_search(stream: _ChatStream) -> AsyncIterator[str]:
+    hits = await run_product_search(stream.detail)
+    yield _sse(
+        "product_search",
+        {
+            "query": stream.detail,
+            "results": hits,
+            "disclaimer": SEARCH_DISCLAIMER,
+            "pending_insert": True,
+        },
+    )
+    yield _sse("done", {"ok": True, "awaiting_confirm": True})
+
+
+async def _append_search_reference(
+    session_factory: Any,
+    project_id: uuid.UUID,
+    section_key: str | None,
+    project_type: str | None,
+    text: str,
+) -> tuple[str, str]:
+    parsed = parse_section_ref(section_key or "s4", project_type)
+    main_key, sub_key = parsed if parsed else ("s4", None)
+    async with session_factory() as persist:
+        if sub_key:
+            current = ""
+            row = (
+                await persist.execute(
+                    select(TORSection).where(
+                        TORSection.project_id == project_id,
+                        TORSection.section_key == "s4",
+                        TORSection.sub_key == sub_key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is not None:
+                current = row.content or ""
+            merged = f"{current.rstrip()}\n\n{text}".strip()
+            await _upsert_sub(persist, project_id, sub_key, merged)
+            await persist.commit()
+            return sub_key, merged
+        current = ""
+        row = await _get_section(persist, project_id, main_key)
+        if row is not None:
+            current = row.content or ""
+            merged = f"{current.rstrip()}\n\n{text}".strip()
+            row.content = merged
+        else:
+            merged = text.strip()
+            persist.add(
+                TORSection(
+                    project_id=project_id,
+                    section_key=main_key,
+                    content=merged,
+                    ai_draft=merged,
+                    version=1,
+                )
+            )
+        await persist.commit()
+        return main_key, merged
+
+
+async def _stream_insert_search(stream: _ChatStream) -> AsyncIterator[str]:
+    hits = normalize_search_hits(stream.search_hits)
+    if not hits:
+        yield _sse(
+            "error",
+            {"message": "ยังไม่มีแหล่งที่เลือก — ยืนยันก่อนแทรกลง TOR"},
+        )
+        return
+    text = format_search_reference(hits, query=stream.detail)
+    target, content = await _append_search_reference(
+        stream.session_factory,
+        stream.project_id,
+        stream.section_key,
+        stream.project_type,
+        text,
+    )
+    label = TOR_SECTION_LABELS.get(target, target)
+    yield _sse(
+        "search_inserted",
+        {
+            "section_key": target,
+            "title": label,
+            "content": content,
+            "disclaimer": SEARCH_DISCLAIMER,
+        },
+    )
+    yield _sse(
+        "section_done",
+        {"section_key": target, "title": label, "content": content, "intent": "insert_search"},
+    )
+    yield _sse("done", {"ok": True})
+
+
 async def _stream_draft_chat_message(stream: _ChatStream) -> AsyncIterator[str]:
     if stream.intent == "accept":
         async for event in _stream_accept_intent(
@@ -1205,6 +1342,16 @@ async def _stream_draft_chat_message(stream: _ChatStream) -> AsyncIterator[str]:
         ):
             yield event
         yield _sse("done", {"ok": True})
+        return
+
+    if stream.intent == "product_search":
+        async for event in _stream_product_search(stream):
+            yield event
+        return
+
+    if stream.intent == "insert_search":
+        async for event in _stream_insert_search(stream):
+            yield event
         return
 
     if not stream.section_key:
@@ -1247,6 +1394,8 @@ async def draft_chat_message(
     project = await _project(db, project_id, current_user)
     slot_map = with_project_intake(slot_map_of(project), project)
     intent, target_key, detail = parse_draft_message_intent(body.content)
+    if body.confirm_insert:
+        intent = "insert_search"
     section_key = body.section_key or target_key
     request_id = (
         request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
@@ -1266,6 +1415,7 @@ async def draft_chat_message(
                 request_id=request_id,
                 session_factory=session_factory,
                 project_type=project.project_type,
+                search_hits=normalize_search_hits(body.search_hits),
             )
         )
     )
@@ -1357,3 +1507,84 @@ async def draft_chat_status(
             payload["drafted_count"] = drafted_count
         payload["all_drafted"] = sections_complete
     return _ok(request, payload)
+
+
+@router.get("/{project_id}/draft-chat/cost-worksheet")
+async def get_cost_worksheet(
+    request: Request,
+    project_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JSONResponse:
+    project = await _project(db, project_id, current_user)
+    return _ok(request, cost_worksheet_of(project.analysis_json))
+
+
+@router.put("/{project_id}/draft-chat/cost-worksheet")
+async def put_cost_worksheet(
+    request: Request,
+    project_id: uuid.UUID,
+    body: CostWorksheetBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JSONResponse:
+    project = await _project(db, project_id, current_user)
+    persist_analysis_patch(
+        project,
+        merge_cost_worksheet(
+            project.analysis_json,
+            body.model_dump(),
+        ),
+    )
+    await db.flush()
+    return _ok(request, cost_worksheet_of(project.analysis_json))
+
+
+@router.get("/{project_id}/draft-chat/training-scope")
+async def get_training_scope(
+    request: Request,
+    project_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JSONResponse:
+    project = await _project(db, project_id, current_user)
+    return _ok(
+        request,
+        {
+            "enabled": category_has_training(project.project_type),
+            "fields": training_scope_of(project.analysis_json),
+            "prose": training_scope_prose(
+                training_scope_of(project.analysis_json),
+                project_type=project.project_type,
+            ),
+        },
+    )
+
+
+@router.put("/{project_id}/draft-chat/training-scope")
+async def put_training_scope(
+    request: Request,
+    project_id: uuid.UUID,
+    body: TrainingScopeBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JSONResponse:
+    project = await _project(db, project_id, current_user)
+    if not category_has_training(project.project_type):
+        raise ValidationError(
+            message="ประเภทงานนี้ไม่มีหัวข้อการฝึกอบรมในขอบเขตงาน",
+            field="training",
+        )
+    fields = body.model_dump()
+    persist_analysis_patch(project, merge_training_scope(project.analysis_json, fields))
+    prose = training_scope_prose(fields, project_type=project.project_type)
+    await _upsert_sub(db, project_id, "training", prose)
+    await db.flush()
+    return _ok(
+        request,
+        {
+            "enabled": True,
+            "fields": training_scope_of(project.analysis_json),
+            "prose": prose,
+        },
+    )

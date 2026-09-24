@@ -23,12 +23,18 @@ import {
   type ReviewExtractJob,
 } from "@/lib/review-compare";
 import { ReviewFindingBuckets } from "@/components/review/finding-buckets";
+import {
+  ThreePartScores,
+  isTorPartScores,
+  type TorPartScoresView,
+} from "@/components/review/three-part-scores";
 import { cn } from "@/lib/utils";
 
 interface ReviewResult {
   quality_score?: number;
   findings?: ReviewFinding[];
   overall_assessment?: string;
+  part_scores?: TorPartScoresView;
 }
 
 interface CompareRow {
@@ -153,6 +159,7 @@ function ReviewResults({
           {result.overall_assessment}
         </p>
       ) : null}
+      {result.part_scores ? <ThreePartScores analysis={result.part_scores} /> : null}
       <ReviewFindingBuckets findings={findings} />
       {comparisons.map((row) => (
         <CheckItem
@@ -194,6 +201,7 @@ export default function StandaloneReviewPage() {
         findings: restored.findings
           .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
           .map((item) => toReviewFinding(item)),
+        part_scores: isTorPartScores(data.part_scores) ? data.part_scores : undefined,
       });
       setStep(3);
       setStatus(reviewRestoreStatus(restored.qualityScore));
@@ -281,7 +289,7 @@ export default function StandaloneReviewPage() {
       const compareJobs = await extractCompareFiles(compares);
       const compared = await compareExtractJobs(extracted, compareJobs);
       const ran = unwrapData<ReviewResult>(
-        await apiClient.post("/review/run", { id: extracted.id }, { timeout: 900_000 })
+        await apiClient.post("/review/run", { id: extracted.id }, { timeout: 2_700_000 })
       );
       persistReviewJobId(extracted.id);
       const normalized: ReviewResult = {

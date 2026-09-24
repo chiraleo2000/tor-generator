@@ -44,7 +44,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Sync KB PDFs from S3 then seed")
     parser.add_argument("--bucket", default=os.environ.get("KB_SOURCE_BUCKET", ""))
     parser.add_argument("--prefix", default=os.environ.get("KB_SOURCE_PREFIX", "sources/"))
-    parser.add_argument("--dest", default=os.environ.get("KB_LOCAL_DIR", "/tmp/kb"))
+    parser.add_argument(
+        "--dest",
+        default=os.environ.get("KB_LOCAL_DIR", str(Path.home() / ".tor-kb-sync")),
+    )
     parser.add_argument("--sync-only", action="store_true", help="Do not run seed_raw_docs")
     args = parser.parse_args(argv)
     if not args.bucket:
@@ -60,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     from app.seed_raw_docs import wipe_and_seed
 
     asyncio.run(wipe_and_seed())
-    return 0
+    return 0 if n > 0 else 1
 
 
 if __name__ == "__main__":

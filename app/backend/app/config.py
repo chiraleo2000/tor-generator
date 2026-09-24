@@ -3,8 +3,11 @@
 Loads all configuration from environment variables with sensible defaults
 for local development. Supports three deployment modes: on_prem, cloud, hybrid.
 Runtime admin settings overlay env defaults at startup and immediately after PUT /admin/ai-settings.
-Local Compose sets PIN_ON_PREM_LLM=true so a leftover Admin Bedrock overlay cannot
-call AWS Converse.
+LLM_PROVIDER and EMBEDDING_PROVIDER in the process environment win over that overlay,
+so a saved LM Studio row cannot replace Bedrock chat or move embeddings onto a cloud
+model that would require re-embedding the knowledge base.
+Local Compose may set PIN_ON_PREM_LLM=true to keep chat on a local model when
+LLM_PROVIDER is itself local.
 """
 
 from functools import cached_property
@@ -32,7 +35,7 @@ _TRUE_FLAGS = frozenset({"1", "true", "yes", "on"})
 logger = logging.getLogger("tor_app.config")
 
 # Per-section local LLM headroom for 32k-token TOR drafts / KB answers
-LOCAL_LLM_TIMEOUT_CAP_SECONDS = 1800
+LOCAL_LLM_TIMEOUT_CAP_SECONDS = 10800
 
 
 def env_flag(name: str, *, default: bool = False) -> bool:
@@ -105,7 +108,7 @@ class Settings(BaseSettings):
     lm_studio_base_url: str = LOCAL_LLM_DEFAULT_URLS["lm_studio"]
     lm_studio_model: str = DEFAULT_CHAT_MODEL
     lm_studio_embedding_model: str = DEFAULT_EMBEDDING_MODEL
-    lm_studio_timeout: float = 1800.0
+    lm_studio_timeout: float = 10800.0
     ollama_base_url: str = LOCAL_LLM_DEFAULT_URLS["ollama"]
     llama_cpp_base_url: str = LOCAL_LLM_DEFAULT_URLS["llama_cpp"]
     sglang_base_url: str = LOCAL_LLM_DEFAULT_URLS["sglang"]
@@ -163,6 +166,16 @@ class Settings(BaseSettings):
     mcp_rag_auth_value: str = ""
 
     # -------------------------------------------------------------------------
+    # Web search (Tavily / Brave) — optional; empty key skips online search
+    # -------------------------------------------------------------------------
+    web_search_enabled: bool = True
+    web_search_provider: str = "tavily"
+    web_search_api_key: str = ""
+    web_search_min_results: int = 5
+    web_search_max_results: int = 10
+    web_search_timeout_seconds: float = 20.0
+
+    # -------------------------------------------------------------------------
     # Cloud model ids
     # -------------------------------------------------------------------------
     openai_chat_model: str = "gpt-4o-mini"
@@ -172,7 +185,7 @@ class Settings(BaseSettings):
     bedrock_region: str = "ap-southeast-1"
     bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
-    cloud_llm_timeout: float = 900.0
+    cloud_llm_timeout: float = 10800.0
     azure_foundry_endpoint: str = ""
     azure_foundry_deployment: str = ""
     azure_foundry_embedding_deployment: str = ""
@@ -195,6 +208,7 @@ class Settings(BaseSettings):
         "llm_provider",
         "embedding_provider",
         "deployment_mode",
+        "web_search_provider",
         mode="before",
     )
     @classmethod
@@ -236,7 +250,7 @@ class Settings(BaseSettings):
     rate_limit_ai_per_minute: int = 30
     llm_max_concurrent: int = 8
     embedding_max_concurrent: int = 16
-    llm_queue_wait_timeout_seconds: float = 120.0
+    llm_queue_wait_timeout_seconds: float = 720.0
 
     # -------------------------------------------------------------------------
     # Qdrant (Optional)
@@ -305,24 +319,77 @@ def clear_runtime_overlay() -> None:
     _runtime_overlay = {}
 
 
-def apply_on_prem_llm_pin(settings: Settings) -> Settings:
-    """Keep Compose on-prem chat on local LLM when Admin overlay still says Bedrock.
+def _pinned_on_prem_env() -> tuple[str, str, str]:
+    """Process-env mode and provider names used when PIN_ON_PREM_LLM is set."""
+    env_mode = (os.environ.get("DEPLOYMENT_MODE") or "on_prem").strip().lower()
+    env_llm = (os.environ.get("LLM_PROVIDER") or "lm_studio").strip() or "lm_studio"
+    env_embed = (os.environ.get("EMBEDDING_PROVIDER") or "local").strip() or "local"
+    return env_mode, env_llm, env_embed
 
-    If ``LLM_PROVIDER`` in the process env is already a cloud provider (e.g. gemini),
-    honor that choice — do not force LM Studio.
+
+def _provider_from_process_env(name: str, allowed: frozenset[str]) -> str | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    value = raw.strip()
+    if value in allowed:
+        return value
+    return None
+
+
+def process_env_provider_updates() -> dict[str, str]:
+    """Provider ids explicitly set in the process environment, if they are known."""
+    updates: dict[str, str] = {}
+    llm = _provider_from_process_env(
+        "LLM_PROVIDER", CLOUD_LLM_PROVIDERS | LOCAL_LLM_PROVIDERS
+    )
+    if llm:
+        updates["llm_provider"] = llm
+    embed = _provider_from_process_env(
+        "EMBEDDING_PROVIDER",
+        LOCAL_EMBEDDING_PROVIDERS | CLOUD_EMBEDDING_PROVIDERS | frozenset({"none"}),
+    )
+    if embed:
+        updates["embedding_provider"] = embed
+    return updates
+
+
+def apply_process_env_providers(settings: Settings) -> Settings:
+    """Keep chat and embedding providers aligned with the process environment.
+
+    Docker injects ``LLM_PROVIDER`` and ``EMBEDDING_PROVIDER`` from ``.env``.
+    The admin overlay may still change model ids and URLs, but it must not send
+    chat back to LM Studio when chat is Bedrock, and it must not switch
+    embeddings to Bedrock while embeddings are local.
+    """
+    updates = {
+        key: value
+        for key, value in process_env_provider_updates().items()
+        if getattr(settings, key) != value
+    }
+    if not updates:
+        return settings
+    logger.warning("process env provider overrides overlay: %s", sorted(updates))
+    return settings.model_copy(update=updates)
+
+
+def apply_on_prem_llm_pin(settings: Settings) -> Settings:
+    """Keep Compose on-prem chat on a local LLM when Admin overlay still says Bedrock.
+
+    If ``LLM_PROVIDER`` in the process env is already a cloud provider (e.g. bedrock),
+    leave chat on that provider. ``apply_process_env_providers`` then keeps embeddings
+    on the env choice as well.
     """
     if not env_flag("PIN_ON_PREM_LLM", default=False):
         return settings
-    env_mode = (os.environ.get("DEPLOYMENT_MODE") or "on_prem").strip().lower()
+    env_mode, env_llm, env_embed = _pinned_on_prem_env()
     if env_mode != "on_prem":
         return settings
-    env_llm = (os.environ.get("LLM_PROVIDER") or "lm_studio").strip() or "lm_studio"
-    # Explicit cloud in .env wins (hybrid workstation: Gemini chat + local embed).
+    # Explicit cloud in .env wins (Bedrock or Gemini chat + local embeddings).
     if env_llm in CLOUD_LLM_PROVIDERS:
         return settings
     if env_llm not in LOCAL_LLM_PROVIDERS:
         env_llm = "lm_studio"
-    env_embed = (os.environ.get("EMBEDDING_PROVIDER") or "local").strip() or "local"
     if env_embed not in LOCAL_EMBEDDING_PROVIDERS and env_embed != "none":
         env_embed = "local"
     updates: dict[str, Any] = {}
@@ -351,4 +418,4 @@ def get_settings() -> Settings:
     settings = Settings()
     if _runtime_overlay:
         settings = settings.model_copy(update=_runtime_overlay)
-    return apply_on_prem_llm_pin(settings)
+    return apply_process_env_providers(apply_on_prem_llm_pin(settings))

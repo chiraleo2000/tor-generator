@@ -5,17 +5,25 @@ import { splitDraftBlocks } from "@/components/draft/rich-draft-text";
 import type { ChatCitation } from "@/lib/chat-sse";
 import { cn } from "@/lib/utils";
 
+export type OnlineSourceItem = { title: string; url: string; date?: string };
+
 export type ChatBlock =
   | { kind: "heading"; text: string }
   | { kind: "para"; text: string }
   | { kind: "list"; items: string[] }
   | { kind: "table"; rows: string[][] }
-  | { kind: "source"; text: string };
+  | { kind: "source"; text: string }
+  | { kind: "online"; items: OnlineSourceItem[] };
 
 export type ChatSection = { heading: string | null; blocks: ChatBlock[] };
 
-const SOURCE_LINE = /^(แหล่งข้อมูล|แหล่งอ้างอิง)\s*[:：]/;
+const SOURCE_LINE = /^(แหล่งข้อมูล|แหล่งอ้างอิง|แหล่งออนไลน์|เอกสารในคลัง)\s*[:：]/;
 const LIST_ITEM = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
+const ONLINE_HEADINGS = new Set([
+  "แหล่งออนไลน์",
+  "แหล่งจากเว็บ",
+  "แหล่งข้อมูลออนไลน์",
+]);
 const SECTION_TITLES = new Set([
   "สรุปคำตอบ",
   "สรุปภาพรวม",
@@ -24,6 +32,8 @@ const SECTION_TITLES = new Set([
   "ข้อควรระวัง",
   "ข้อสังเกตเชิงนโยบาย",
   "สาระสำคัญ",
+  "เอกสารในคลัง",
+  ...Array.from(ONLINE_HEADINGS),
 ]);
 
 export function looksLikeNoRetrieve(
@@ -111,6 +121,89 @@ function listItemText(line: string): string | null {
   return match ? match[1].trim() : null;
 }
 
+function isHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function parseOnlineSourceItem(text: string): OnlineSourceItem | null {
+  const markdown = text.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/);
+  if (markdown && isHttpUrl(markdown[2])) {
+    const rest = text
+      .replace(markdown[0], "")
+      .replace(/^[—–\-|,:.\s]+/, "")
+      .trim();
+    return { title: stripMarkdown(markdown[1]), url: markdown[2], date: rest || undefined };
+  }
+  const labeled = stripMarkdown(text).match(
+    /^(.*?)\s*[—–\-|:]\s*(https?:\/\/\S+?)(?:\s+[—–\-|:]\s*(.+))?$/
+  );
+  if (labeled && isHttpUrl(labeled[2])) {
+    return {
+      title: labeled[1].trim() || labeled[2],
+      url: labeled[2],
+      date: labeled[3]?.trim(),
+    };
+  }
+  const bare = stripMarkdown(text).match(/https?:\/\/\S+/);
+  if (bare && isHttpUrl(bare[0])) {
+    const title = stripMarkdown(text)
+      .replace(bare[0], "")
+      .replace(/^[—–\-|:.\s]+|[—–\-|:.\s]+$/g, "")
+      .trim();
+    return { title: title || bare[0], url: bare[0] };
+  }
+  return null;
+}
+
+function collectOnlineItems(blocks: ChatBlock[]): OnlineSourceItem[] {
+  const items: OnlineSourceItem[] = [];
+  for (const block of blocks) {
+    if (block.kind === "list") {
+      for (const item of block.items) {
+        const parsed = parseOnlineSourceItem(item);
+        if (parsed) items.push(parsed);
+      }
+    } else if (block.kind === "para" || block.kind === "source") {
+      const parsed = parseOnlineSourceItem(block.text);
+      if (parsed) items.push(parsed);
+    } else if (block.kind === "online") {
+      items.push(...block.items);
+    }
+  }
+  return items;
+}
+
+function attachOnlineBlocks(blocks: ChatBlock[]): ChatBlock[] {
+  const out: ChatBlock[] = [];
+  let index = 0;
+  while (index < blocks.length) {
+    const block = blocks[index];
+    if (block.kind === "heading" && ONLINE_HEADINGS.has(block.text)) {
+      index += 1;
+      const consumed: ChatBlock[] = [];
+      while (index < blocks.length && blocks[index].kind !== "heading") {
+        consumed.push(blocks[index]);
+        index += 1;
+      }
+      const items = collectOnlineItems(consumed);
+      if (items.length) {
+        out.push({ kind: "online", items });
+      } else {
+        out.push(block, ...consumed);
+      }
+      continue;
+    }
+    out.push(block);
+    index += 1;
+  }
+  return out;
+}
+
 export function parseChatBlocks(text: string): ChatBlock[] {
   const out: ChatBlock[] = [];
   for (const block of splitDraftBlocks(text)) {
@@ -120,7 +213,7 @@ export function parseChatBlocks(text: string): ChatBlock[] {
     }
     out.push(...parseRichParagraph(block.text));
   }
-  return out;
+  return attachOnlineBlocks(out);
 }
 
 export function groupChatSections(blocks: ChatBlock[]): ChatSection[] {
@@ -173,7 +266,15 @@ function parseRichParagraph(text: string): ChatBlock[] {
     if (SOURCE_LINE.test(line.trim())) {
       flushPara();
       flushList();
-      blocks.push({ kind: "source", text: line.trim() });
+      const sourceLine = line.trim();
+      if (/^แหล่งออนไลน์/.test(sourceLine)) {
+        const parsed = parseOnlineSourceItem(sourceLine);
+        if (parsed) {
+          blocks.push({ kind: "online", items: [parsed] });
+          continue;
+        }
+      }
+      blocks.push({ kind: "source", text: sourceLine });
       continue;
     }
     const item = listItemText(line);
@@ -217,6 +318,7 @@ function InlineMd({ text }: Readonly<{ text: string }>) {
 function blockKey(block: ChatBlock, index: number): string {
   if (block.kind === "heading") return `h-${index}-${block.text.slice(0, 20)}`;
   if (block.kind === "source") return `s-${index}-${block.text.slice(0, 20)}`;
+  if (block.kind === "online") return `o-${index}-${block.items[0]?.url || ""}`;
   if (block.kind === "list") return `l-${index}-${block.items[0]?.slice(0, 16) || ""}`;
   if (block.kind === "table") {
     return `t-${index}-${block.rows[0]?.join("|").slice(0, 20) || ""}`;
@@ -286,6 +388,32 @@ function renderBodyBlock(block: ChatBlock, index: number) {
   }
   if (block.kind === "table") {
     return <BriefTable key={key} rows={block.rows} blockKey={key} />;
+  }
+  if (block.kind === "online") {
+    return (
+      <div
+        key={key}
+        data-testid="chat-online-sources"
+        className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5"
+      >
+        <p className="text-[12px] font-medium text-slate-500">แหล่งออนไลน์</p>
+        <ul className="mt-1.5 space-y-1.5">
+          {block.items.map((item) => (
+            <li key={`${item.url}-${item.title}`} className="text-[13px] leading-relaxed">
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-navy underline-offset-2 hover:underline"
+              >
+                {item.title}
+              </a>
+              {item.date ? <span className="text-slate-500"> · {item.date}</span> : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
   }
   if (block.kind === "source") {
     return (

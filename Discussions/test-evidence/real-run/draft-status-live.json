@@ -1,0 +1,136 @@
+{
+  "sections": [
+    {
+      "section_key": "s1",
+      "title": "ความเป็นมา",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"history\": \"ศูนย์ประเมินผล สํานักงานเศรษฐกิจการเกษตร (สศก.) เป็นหน่วยงานที่มีภารกิจหลักในการติดตาม\\nและประเมินผลความสําเร็จและผลกระทบจากการดําเนินงานตามนโยบาย มาตรการ แผนงาน และโครงการ\\nสําคัญของกระท",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s2",
+      "title": "วัตถุประสงค์",
+      "has_content": true,
+      "ai_drafted": true,
+      "content_preview": "{\"mainObj\": \"วัตถุประสงค์ และหน่วยงานได้\\n4.1.9 สามารถจัดเก็บข้อมูลจราจรทางคอมพิวเตอร์ (Log Management) ระบบจะต้องมีฟังก์ชัน\\nในการบันทึกข้อมูลจราจรทางคอมพิวเตอร์ (Log File) ที่สามารถระบุตัวตนผู้ใช้งา",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s3",
+      "title": "คุณสมบัติของผู้ยื่นข้อเสนอ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s4",
+      "title": "ขอบเขตของงาน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s11",
+      "title": "หลักเกณฑ์การพิจารณาคัดเลือกข้อเสนอ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s18",
+      "title": "การสำรองข้อมูล",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s19",
+      "title": "เอกสารส่งมอบ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s6",
+      "title": "วงเงินงบประมาณ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s5",
+      "title": "ระยะเวลาดำเนินการ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s8",
+      "title": "งวดงานและการจ่ายเงิน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s20",
+      "title": "เงินประกันผลงาน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s10",
+      "title": "อัตราค่าปรับ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s9",
+      "title": "การรับประกัน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s15",
+      "title": "ลิขสิทธิ์และกรรมสิทธิ์ในผลงาน",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s16",
+      "title": "การรักษาความลับของข้อมูลและการคุ้มครองข้อมูลส่วนบุคคล",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    },
+    {
+      "section_key": "s17",
+      "title": "หน่วยงานผู้รับผิดชอบและสถานที่ติดต่อ",
+      "has_content": false,
+      "ai_drafted": false,
+      "content_preview": "",
+      "human_confirmed": false
+    }
+  ],
+  "drafted_count": 2,
+  "total": 16,
+  "all_drafted": false,
+  "job_status": "running"
+}

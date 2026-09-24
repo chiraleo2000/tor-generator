@@ -123,6 +123,39 @@ class CategoryScoreResponse(BaseModel):
     weight: float
 
 
+class AnalyzerFindingResponse(BaseModel):
+    """One three-part analyzer finding (quote, reason, suggested text)."""
+
+    source_quote: str = ""
+    reason: str = ""
+    suggested_text: str = ""
+    section_key: str = ""
+    legal_basis: str | None = None
+    severity: str = "warning"
+
+
+class PartScoreResponse(BaseModel):
+    """Score and explanation for legal, lock_in, or project."""
+
+    key: str
+    label: str
+    score: int = Field(..., ge=0, le=100)
+    explanation: str = ""
+    findings: list[AnalyzerFindingResponse] = Field(default_factory=list)
+
+
+class TorAnalysisResponse(BaseModel):
+    """Weighted three-part TOR analysis shown on draft review and /review."""
+
+    legal: PartScoreResponse
+    lock_in: PartScoreResponse
+    project: PartScoreResponse
+    total: int = Field(..., ge=0, le=100)
+    summary: str = ""
+    missing_sections: dict[str, str] = Field(default_factory=dict)
+    halted: bool = False
+
+
 class ReviewResponse(BaseModel):
     """Response for POST /projects/{id}/review.
 
@@ -138,6 +171,7 @@ class ReviewResponse(BaseModel):
     findings: list[FindingResponse] = Field(default_factory=list)
     suggestions_generated: int = 0
     overall_assessment: str = ""
+    part_scores: TorAnalysisResponse | None = None
     message: str = "ตรวจสอบเอกสารเรียบร้อยแล้ว"
 
 

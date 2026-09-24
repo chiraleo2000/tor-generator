@@ -344,6 +344,39 @@ async def draft_scope_subsection(
             yield text
 
 
+async def _collect_one_scope_subsection(
+    sub_key: str,
+    slot_map: dict[str, Any],
+    user_id: UUID | str | None,
+    *,
+    only_missing: bool,
+    existing: dict[str, str] | None,
+    category: str | None,
+) -> str:
+    prior = str((existing or {}).get(sub_key) or "").strip()
+    if only_missing and prior:
+        return prior
+    parts: list[str] = []
+    async for token in draft_scope_subsection(
+        sub_key, slot_map, user_id=user_id, category=category
+    ):
+        parts.append(token)
+    text = "".join(parts).strip()
+    if not text:
+        return ""
+    from app.services.thai_draft import (
+        polish_scope_subsection_draft,
+        reject_intake_echo,
+    )
+
+    polished = polish_scope_subsection_draft(text, sub_key)
+    intake = slot_content(slot_map, "_project_intake")
+    polished = reject_intake_echo(polished, intake)
+    if not polished:
+        polished = fallback_scope_subsection(sub_key, slot_map, category)
+    return polished or ""
+
+
 async def collect_scope_subsection_drafts(
     slot_map: dict[str, Any],
     user_id: UUID | str | None = None,
@@ -356,29 +389,16 @@ async def collect_scope_subsection_drafts(
     out: dict[str, str] = {}
     for item in profile_for_project(category).scope_subsections:
         sub_key = item.storage_key
-        prior = str((existing or {}).get(sub_key) or "").strip()
-        if only_missing and prior:
-            out[sub_key] = prior
-            continue
-        parts: list[str] = []
-        async for token in draft_scope_subsection(
-            sub_key, slot_map, user_id=user_id, category=category
-        ):
-            parts.append(token)
-        text = "".join(parts).strip()
+        text = await _collect_one_scope_subsection(
+            sub_key,
+            slot_map,
+            user_id,
+            only_missing=only_missing,
+            existing=existing,
+            category=category,
+        )
         if text:
-            from app.services.thai_draft import (
-                polish_scope_subsection_draft,
-                reject_intake_echo,
-            )
-
-            polished = polish_scope_subsection_draft(text, sub_key)
-            intake = slot_content(slot_map, "_project_intake")
-            polished = reject_intake_echo(polished, intake)
-            if not polished:
-                polished = fallback_scope_subsection(sub_key, slot_map, category)
-            if polished:
-                out[sub_key] = polished
+            out[sub_key] = text
     return out
 
 
@@ -430,8 +450,13 @@ def parse_draft_message_intent(
     """Parse user message intent for draft chat.
 
     Returns: (intent, section_key, detail)
-    intent: "accept" | "edit" | "redraft" | "freeform"
+    intent: "accept" | "edit" | "redraft" | "product_search" | "insert_search" | "freeform"
     """
+    from app.services.draft_product_search import (
+        is_insert_search_confirm,
+        is_product_search_query,
+    )
+
     raw = message.strip()
     lower = raw.lower()
     key = resolve_draft_section_key(raw)
@@ -441,4 +466,8 @@ def parse_draft_message_intent(
         return "redraft", key, message
     if lower.startswith(("แก้ไข", "แก้")):
         return "edit", key, message
+    if is_insert_search_confirm(raw):
+        return "insert_search", key, message
+    if is_product_search_query(raw):
+        return "product_search", key, message
     return "freeform", key, message

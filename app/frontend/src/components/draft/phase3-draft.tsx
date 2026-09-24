@@ -20,7 +20,15 @@ import {
 import { cn } from "@/lib/utils";
 import type { SectionPayload } from "@/components/draft/draft-types";
 import { DraftChat } from "@/components/draft/draft-chat";
+import { CostWorksheetEditor } from "@/components/draft/cost-worksheet";
+import { TrainingScopeEditor } from "@/components/draft/training-scope";
 import { RichDraftText } from "@/components/draft/rich-draft-text";
+import { TRAINING_SUB_KEY } from "@/lib/training-scope";
+import {
+  emptyCostWorksheet,
+  saveCostWorksheet,
+  type CostWorksheet,
+} from "@/lib/cost-worksheet";
 
 function parseFields(sectionKey: string, content: string): Record<string, string> {
   return parseSectionDraft(sectionKey, content);
@@ -186,6 +194,7 @@ export function Phase3Draft({
   onBack,
   onConfirm,
   projectId,
+  analysisJson,
   onRefresh,
   onSectionPatch,
   onDraftingChange,
@@ -207,6 +216,7 @@ export function Phase3Draft({
   onBack: () => void;
   onConfirm: () => Promise<void>;
   projectId?: string;
+  analysisJson?: Record<string, unknown> | null;
   onRefresh?: () => void | Promise<void>;
   onSectionPatch?: (sectionKey: string, content: string) => void;
   onDraftingChange?: (busy: boolean) => void;
@@ -318,6 +328,8 @@ export function Phase3Draft({
             openSub={openSub}
             extracted={extracted}
             busy={busy}
+            projectId={projectId}
+            analysisJson={analysisJson}
             onToggle={() => onExpand(expanded === section.key ? "" : section.key)}
             onOpenSub={onOpenSub}
             onSave={onSave}
@@ -351,6 +363,8 @@ function SectionCard({
   openSub,
   extracted,
   busy,
+  projectId,
+  analysisJson,
   onToggle,
   onOpenSub,
   onSave,
@@ -362,6 +376,8 @@ function SectionCard({
   openSub: string;
   extracted: Record<string, unknown>;
   busy: boolean;
+  projectId?: string;
+  analysisJson?: Record<string, unknown> | null;
   onToggle: () => void;
   onOpenSub: (key: string) => void;
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
@@ -376,6 +392,7 @@ function SectionCard({
   const values = parseFields(section.key, section.content);
   const [draft, setDraft] = useState(values);
   const [scopeDrafts, setScopeDrafts] = useState<Record<string, string>>({});
+  const [costSheet, setCostSheet] = useState<CostWorksheet>(emptyCostWorksheet);
   const [promptOpen, setPromptOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
   useEffect(() => {
@@ -555,21 +572,33 @@ function SectionCard({
                 subs={section.subs}
                 openSub={openSub}
                 busy={busy}
+                projectId={projectId}
+                analysisJson={analysisJson}
                 onOpenSub={onOpenSub}
                 onSave={onSave}
                 onDraft={onDraft}
                 onDraftsChange={setScopeDrafts}
               />
             ) : (
-              <StandardSectionFields
-                fields={fields}
-                draft={draft}
-                extracted={extracted}
-                suggested={suggested}
-                onChange={(key, next) =>
-                  setDraft((prev) => ({ ...prev, [key]: next }))
-                }
-              />
+              <>
+                {section.key === "s6" ? (
+                  <CostWorksheetEditor
+                    projectId={projectId}
+                    analysis={analysisJson}
+                    sectionContent={section.content}
+                    onChange={setCostSheet}
+                  />
+                ) : null}
+                <StandardSectionFields
+                  fields={fields}
+                  draft={draft}
+                  extracted={extracted}
+                  suggested={suggested}
+                  onChange={(key, next) =>
+                    setDraft((prev) => ({ ...prev, [key]: next }))
+                  }
+                />
+              </>
             )}
             <div className="flex justify-end gap-2">
               <Button
@@ -592,7 +621,14 @@ function SectionCard({
                 size="sm"
                 variant="outline"
                 data-testid={`save-section-${section.key}`}
-                onClick={() => onSave(section.key, serializeSectionDraft(draft), false)}
+                onClick={() => {
+                  void (async () => {
+                    await onSave(section.key, serializeSectionDraft(draft), false);
+                    if (section.key === "s6" && projectId) {
+                      await saveCostWorksheet(projectId, costSheet).catch(() => undefined);
+                    }
+                  })();
+                }}
               >
                 บันทึกหมวดนี้
               </Button>
@@ -622,6 +658,8 @@ function ScopeSubsectionEditor({
   subs,
   openSub,
   busy,
+  projectId,
+  analysisJson,
   onOpenSub,
   onSave,
   onDraft,
@@ -630,6 +668,8 @@ function ScopeSubsectionEditor({
   subs: SectionPayload["subs"];
   openSub: string;
   busy: boolean;
+  projectId?: string;
+  analysisJson?: Record<string, unknown> | null;
   onOpenSub: (key: string) => void;
   onSave: (key: string, content: string, confirmed?: boolean) => Promise<void>;
   onDraft: (
@@ -735,6 +775,19 @@ function ScopeSubsectionEditor({
               <Label className="font-mono text-xs tabular-nums">
                 {formatScopeSubHeading(sub.key, sub.title)}
               </Label>
+              {sub.key === TRAINING_SUB_KEY ? (
+                <TrainingScopeEditor
+                  projectId={projectId}
+                  hint={sub.title}
+                  content={
+                    typeof analysisJson?.training_scope === "object"
+                      ? JSON.stringify(analysisJson.training_scope)
+                      : text
+                  }
+                  onDraftChange={(prose) => applyLocalDraft(sub.key, prose)}
+                  onSave={(prose) => onSave(sub.key, prose)}
+                />
+              ) : null}
               {text.trim() ? (
                 <div className="mt-1 mb-2 border bg-slate-50/80 p-2">
                   <RichDraftText text={text} />

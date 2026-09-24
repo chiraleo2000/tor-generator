@@ -39,6 +39,7 @@ from app.services.review_job_store import (
     save_review_result,
     store_review_original,
 )
+from app.services.tor_analysis import analysis_as_dict, analyze_tor
 
 router = APIRouter()
 
@@ -183,15 +184,21 @@ def _validate_document(text: str) -> tuple[Any, dict[str, Any]]:
     return engine.validate(document), document
 
 
+def _part_scores_payload(document: dict[str, Any], rag_text: str = "") -> dict[str, Any]:
+    return analysis_as_dict(analyze_tor(document, rag_text=rag_text))
+
+
 def _run_engine(text: str, job_id: str) -> dict[str, Any]:
-    result, _document = _validate_document(text)
+    result, document = _validate_document(text)
     attach_legal_basis(result.findings, "")
+    part_scores = _part_scores_payload(document)
     return {
         "id": job_id,
         "quality_score": result.quality_score,
         "findings": [finding_as_dict(f, aliases=True) for f in result.findings],
         "status": "completed",
-        "overall_assessment": "",
+        "overall_assessment": str(part_scores.get("summary") or ""),
+        "part_scores": part_scores,
     }
 
 
@@ -269,12 +276,14 @@ async def _run_full_review(text: str, job_id: str) -> dict[str, Any]:
             continue
         findings.append(item)
         seen.add(key)
+    part_scores = _part_scores_payload(document, rag_text)
     return {
         "id": job_id,
         "quality_score": result.quality_score,
         "findings": findings,
         "status": "completed",
-        "overall_assessment": assessment,
+        "overall_assessment": assessment or str(part_scores.get("summary") or ""),
+        "part_scores": part_scores,
     }
 
 

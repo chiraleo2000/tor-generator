@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import apply_runtime_overlay, env_flag, get_settings
+from app.config import apply_runtime_overlay, env_flag, get_settings, process_env_provider_updates
 from app.deps import get_db
 from app.exceptions import ValidationError
 from app.models.ai_runtime_settings import AiRuntimeSettings
@@ -99,6 +99,8 @@ def _merged_settings_dict(row: AiRuntimeSettings | None) -> dict[str, Any]:
         for key, value in row.payload.items():
             if key in AI_OVERLAY_FIELDS and value not in (None, ""):
                 merged[key] = value
+    # The connection test uses this payload. Keep it on the same providers as live chat.
+    merged.update(process_env_provider_updates())
     return merged
 
 

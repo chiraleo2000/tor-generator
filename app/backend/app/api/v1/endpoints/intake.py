@@ -508,6 +508,8 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
                 ),
             )
         )
+    except AdmissionTimeoutError as exc:
+        await event_q.put(("error", {"message": str(exc)}))
     except TimeoutError:
         fallback = phase2_template_reply(
             filled_keys=work.filled_keys,
@@ -531,8 +533,6 @@ async def _run_intake_llm_job(work: _IntakeLlmWork, event_q) -> None:
                 ),
             )
         )
-    except AdmissionTimeoutError as exc:
-        await event_q.put(("error", {"message": str(exc)}))
     except Exception as exc:
         logger.exception("intake chat failed")
         await event_q.put(("error", {"message": str(exc)}))
