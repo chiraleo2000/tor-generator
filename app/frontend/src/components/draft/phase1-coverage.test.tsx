@@ -156,4 +156,27 @@ describe("Phase1Coverage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("วิเคราะห์ไม่สำเร็จ");
     expect(screen.getByText("ยังขาดวงเงิน")).toBeInTheDocument();
   });
+
+  it("shows the extracted passage instead of clipping it to one line", () => {
+    const passage = `รายการคุณลักษณะเฉพาะ\n${"ครุภัณฑ์คอมพิวเตอร์ ".repeat(40)}`;
+    render(
+      <Phase1Coverage
+        {...emptyHandlers}
+        coverage={[
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "filled",
+            filled: true,
+            fact_required: true,
+            preview: passage,
+          },
+        ]}
+      />
+    );
+    const row = screen.getByTestId("coverage-row-s1");
+    expect(row).toHaveTextContent("รายการคุณลักษณะเฉพาะ");
+    expect(row).toHaveTextContent("ครุภัณฑ์คอมพิวเตอร์");
+    expect(row.querySelector(".truncate")).toBeNull();
+  });
 });

@@ -315,7 +315,37 @@ def test_reply_options_default_for_optional_slots():
 
     opts = reply_options_for_slot("s10")
     assert opts[0] == DEFAULT_MOF_STANDARD_ANSWER
-    assert reply_options_for_slot("s1") == []
+    assert opts.count(DEFAULT_MOF_STANDARD_ANSWER) == 1
+    assert reply_options_for_slot("s1") == [DEFAULT_MOF_STANDARD_ANSWER]
+    assert reply_options_for_slot(None) == [DEFAULT_MOF_STANDARD_ANSWER]
+
+
+def test_live_status_counts_answered_facts_for_profile():
+    from app.domain.slots import fact_required_slots
+    from app.services.intake_service import intake_live_status
+
+    category = "hire_develop"
+    required = fact_required_slots(category)
+    facts = [key for key in intake_slot_order(category) if key in required]
+    slots = empty_slot_map(category)
+    for key in facts[:3]:
+        slots[key] = {"content": "มีจากเอกสาร", "status": "filled", "sources": []}
+    before = intake_live_status(slots, category)
+    assert before["progress"]["filled"] == 3
+    assert before["all_fact_filled"] is False
+    assert before["reply_options"]
+    for key in facts[3:]:
+        apply_chat_answer_to_slots(
+            slots,
+            "บันทึกตามที่หน่วยงานแจ้งในแชทสำหรับช่องนี้",
+            current_slot=key,
+            category=category,
+        )
+    after = intake_live_status(slots, category)
+    assert after["all_fact_filled"] is True
+    assert after["progress"]["filled"] == after["progress"]["total"]
+    assert after["progress"]["total"] == len(facts)
+    assert after["reply_options"]
 
 
 def test_phase2_opening_includes_phase1_text():
@@ -530,8 +560,10 @@ def test_analyze_prompt_chunks_covers_long_pack_evenly(monkeypatch):
     raw = "".join(parts)
     chunks = _analyze_prompt_chunks(raw)
     assert 2 <= len(chunks) <= ANALYZE_MAX_CHUNKS
+    blob = "".join(chunks)
     assert "PART0" in chunks[0]
-    assert any(f"PART{i}" in "".join(chunks) for i in (0, 2, 5))
+    for index in range(6):
+        assert f"PART{index}" in blob
 
 
 def test_analyze_prompt_chunks_prefers_single_pass_for_typical_pack(monkeypatch):
@@ -570,6 +602,54 @@ def test_analyze_prompt_chunks_splits_multi_file_markers():
     chunks = _analyze_prompt_chunks(pack)
     assert any("a.pdf" in chunk for chunk in chunks)
     assert any("b.pdf" in chunk for chunk in chunks)
+
+
+def test_analyze_prompt_chunks_keeps_tail_and_annex_past_the_old_four_window_cap(monkeypatch):
+    """A long TOR plus a short annex must both be read. The old cap of 4 dropped them."""
+    from app.providers.model_capabilities import reset_capability_cache
+    from app.services.intake_service import (
+        ANALYZE_MAX_CHUNKS,
+        _analyze_chunk_chars,
+        _analyze_prompt_chunks,
+    )
+
+    monkeypatch.setenv("TOR_CONTEXT_WINDOW", "8192")
+    reset_capability_cache()
+    try:
+        chunk_chars = _analyze_chunk_chars()
+        pack = (
+            "===== ไฟล์: tor.pdf =====\n"
+            + "HEAD-SPEC\n"
+            + ("ก" * (chunk_chars * (ANALYZE_MAX_CHUNKS + 2)))
+            + "\nTAIL-SPEC\n\n"
+            + "===== ไฟล์: annex.pdf =====\n"
+            + "ANNEX-ONLY-คุณลักษณะครุภัณฑ์"
+        )
+        chunks = _analyze_prompt_chunks(pack)
+        blob = "\n".join(chunks)
+        assert 4 < len(chunks) <= ANALYZE_MAX_CHUNKS
+        assert "HEAD-SPEC" in blob
+        assert "TAIL-SPEC" in blob
+        assert "ANNEX-ONLY-คุณลักษณะครุภัณฑ์" in blob
+        assert "annex.pdf" in blob
+    finally:
+        monkeypatch.undo()
+        reset_capability_cache()
+
+
+def test_analyze_output_budget_stays_large_on_a_short_window(monkeypatch):
+    from app.providers.model_capabilities import reset_capability_cache
+    from app.services.intake_service import ANALYZE_OUTPUT_TOKENS, _analyze_completion_tokens
+
+    monkeypatch.setenv("TOR_CONTEXT_WINDOW", "131072")
+    reset_capability_cache()
+    try:
+        tokens = _analyze_completion_tokens("วงเงิน 1 บาท", "ระบบ")
+        assert tokens >= 8_192
+        assert tokens == ANALYZE_OUTPUT_TOKENS
+    finally:
+        monkeypatch.undo()
+        reset_capability_cache()
 
 
 def test_next_asking_slot_continues_optional_after_facts():
@@ -655,6 +735,56 @@ async def test_analyze_pack_prefers_llm_over_heuristic_on_same_slot():
     assert result["slot_map"]["s1"]["content"] == "ความเป็นมาจากโมเดลอ่านเอกสารจริง"
     assert result["slot_map"]["s6"]["status"] == "filled"  # heuristic gap-fill
     llm.invoke.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_analyze_pack_reads_later_windows_and_keeps_their_text(monkeypatch):
+    """Filling the first pages must not skip the annex, and both quotes must survive."""
+    from app.providers.model_capabilities import reset_capability_cache
+    from app.services.intake_service import _analyze_chunk_chars, _analyze_prompt_chunks
+
+    monkeypatch.setenv("TOR_CONTEXT_WINDOW", "8192")
+    reset_capability_cache()
+    try:
+        chunk_chars = _analyze_chunk_chars()
+        pack = "หน้าแรกของเอกสาร\n" + ("ก" * (chunk_chars + 800)) + "\nONLY-TAIL-SPEC"
+        expected = _analyze_prompt_chunks(pack)
+        assert len(expected) >= 2
+
+        async def _invoke(messages, **_kwargs):
+            user = messages[-1]["content"]
+            detail = (
+                "ONLY-TAIL-SPEC ตารางคุณลักษณะครุภัณฑ์สี่สิบรายการ"
+                if "ONLY-TAIL-SPEC" in user
+                else "สรุปสั้นจากหน้าแรก"
+            )
+            payload = {
+                "slot_map": {
+                    "s8": {"content": detail, "status": "filled", "sources": ["llm"]},
+                },
+                "gap_questions": [],
+            }
+            return MagicMock(content=json.dumps(payload, ensure_ascii=False))
+
+        llm = MagicMock()
+        llm.invoke = AsyncMock(side_effect=_invoke)
+        project = _project()
+        project.project_type = "buy_goods"
+        project.current_step = 1
+        project.current_phase = 0
+        with (
+            patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+            patch("app.services.intake_service.ProviderFactory") as factory,
+        ):
+            factory.return_value.get_llm.return_value = llm
+            result = await analyze_pack(project, pack, ["tor.pdf"])
+        assert llm.invoke.await_count == len(expected)
+        body = result["slot_map"]["s8"]["content"]
+        assert "สรุปสั้นจากหน้าแรก" in body
+        assert "ONLY-TAIL-SPEC" in body
+    finally:
+        monkeypatch.undo()
+        reset_capability_cache()
 
 
 @pytest.mark.asyncio

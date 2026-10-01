@@ -84,6 +84,12 @@ export function Phase1Coverage({
   );
 }
 
+function clipPreview(text: string, limit = 360) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= limit) return clean;
+  return `${clean.slice(0, limit)}…`;
+}
+
 function FilledFactList({ coverage }: Readonly<{ coverage: CoverageRow[] }>) {
   const filled = coverage.filter((row) => row.fact_required && row.filled && row.preview);
   if (!filled.length) return null;
@@ -91,7 +97,7 @@ function FilledFactList({ coverage }: Readonly<{ coverage: CoverageRow[] }>) {
     <ul className="mt-3 space-y-1 text-sm" data-testid="phase1-fact-summary">
       {filled.map((row) => (
         <li key={row.key}>
-          <span className="font-bold text-navy">{row.label}:</span> {row.preview}
+          <span className="font-bold text-navy">{row.label}:</span> {clipPreview(row.preview || "")}
         </li>
       ))}
     </ul>
@@ -129,8 +135,10 @@ export function CoverageTable({
                 {row.fact_required ? " *" : ""}
               </td>
               <td>{coverageStatusLabel(row.status)}</td>
-              <td className="max-w-xs truncate text-xs text-muted-foreground">
-                {row.preview || "—"}
+              <td className="max-w-xl text-xs text-muted-foreground">
+                <div className="max-h-40 overflow-y-auto whitespace-pre-wrap">
+                  {row.preview || "—"}
+                </div>
               </td>
             </tr>
           ))}

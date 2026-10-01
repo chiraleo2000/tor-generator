@@ -36,10 +36,8 @@ from app.domain.tor_sections import (
     TOR_SECTION_ORDER,
 )
 from app.llm_tokens import (
-    DRAFT_MAX_TOKENS,
     chars_for_tokens,
     clamp_max_tokens,
-    estimate_tokens,
     live_context_window,
 )
 from app.models.project import Project
@@ -58,19 +56,37 @@ from app.services.intake_heuristic import (
 
 logger = logging.getLogger(__name__)
 
-# Phase 0→1: LLM reads document windows and fills slots. Heuristics are
+# Phase 0→1: LLM reads every file window and fills slots. Heuristics are
 # fallback only when the model fails or leaves a slot empty — never a skip gate.
 ANALYZE_USE_LLM = True
 ANALYZE_LLM_TIMEOUT_SEC = 10800
-ANALYZE_MAX_TOKENS = DRAFT_MAX_TOKENS
+# Safety cap on LLM round-trips. Within the cap every file keeps its head
+# and tail, so a long TOR cannot drop annexes that fall between four samples.
+ANALYZE_MAX_CHUNKS = 24
 ANALYZE_CHUNK_OVERLAP = 2_400
-ANALYZE_MAX_CHUNKS = 4
+# Fixed answer budget. Tying it to input length made short windows summarize
+# and huge windows spend the context on the prompt instead of the quote.
+ANALYZE_OUTPUT_TOKENS = 16_384
+_ANALYZE_SOURCE_TOKEN_TARGET = 24_000
+_ANALYZE_OUTPUT_RESERVE = ANALYZE_OUTPUT_TOKENS + 2_048
+_SLOT_MERGE_CAP_DEFAULT = 20_000
+_SLOT_MERGE_CAPS = {
+    "s1": 8_000,
+    "s2": 6_000,
+    "s5": 2_500,
+    "s6": 4_000,
+    "s7": 2_000,
+}
 
 
 def _analyze_chunk_chars() -> int:
-    """Fit intake windows inside TOR_CONTEXT_WINDOW (≈ chars/2 tokens)."""
-    # Leave headroom for system prompt + JSON completion.
-    return max(4_000, chars_for_tokens(max(1_024, live_context_window() // 2)))
+    """Source window that still leaves room to quote the passage back."""
+    window = live_context_window()
+    source_tokens = max(
+        3_000,
+        min(_ANALYZE_SOURCE_TOKEN_TARGET, window - _ANALYZE_OUTPUT_RESERVE),
+    )
+    return max(6_000, chars_for_tokens(source_tokens))
 INTAKE_TEXT_CHAR_LIMIT = 500_000
 INTAKE_PACK_LIMIT = 200_000
 # LM Studio often serves embeddings/chat sequentially — allow long waits, avoid skip.
@@ -119,6 +135,8 @@ s13 เงื่อนไขอื่น ๆ ลิขสิทธิ์ NDA ข
 - อย่าสวมข้อความกฎหมาย/ระเบียบเป็นข้อเท็จจริงโครงการ — ใส่ reference_only
 - ข้อความเรื่องนิติบุคคล/ทุนจดทะเบียน/ผลงาน → s3 เท่านั้น ไม่ใช่ s5
 - คัดลอกข้อความจากเอกสารให้ยาวพอใช้ร่างต่อได้ ห้ามสรุปจนหายสาระ — ตารางและรายการข้อย่อยให้เก็บครบ
+- ในชิ้นนี้ให้คัดลอกย่อหน้า ตาราง และรายการข้อที่เกี่ยวข้องทั้งก้อน ห้ามย่อเหลือประโยคเดียว
+- ถ้าช่องมีข้อความจากรอบก่อนแล้ว ให้เพิ่มเฉพาะรายละเอียดใหม่ที่ยังไม่มีในข้อความเดิม
 - เติมทุกช่องในรายการประเภทงานที่เอกสารมีข้อมูลจริงให้ filled ให้มากที่สุด รวมหัวข้อย่อยขอบเขตงานทั้งหมด
 - ห้ามสร้างหัวข้อ «ระบบงานปัจจุบัน» ถ้าไม่มีในรายการหัวข้อย่อยของประเภทงานนี้
 - ชิ้นนี้เป็นส่วนหนึ่งของเอกสารยาว: เติมเฉพาะข้อมูลที่ปรากฏในชิ้นนี้ ไม่ต้องเว้นช่องที่ยังไม่มีในชิ้นนี้
@@ -201,7 +219,7 @@ def coverage_table(
                 "status": "filled" if filled else status,
                 "filled": filled,
                 "fact_required": key in facts,
-                "preview": _slot_preview(slot_map, key)[:180],
+                "preview": _slot_preview(slot_map, key)[:4000],
             }
         )
     return rows
@@ -460,15 +478,33 @@ SLOT_REPLY_OPTIONS: dict[str, tuple[str, ...]] = {
 }
 
 
-def reply_options_for_slot(slot_key: str | None) -> list[str]:
+def reply_options_for_slot(slot_key: str | None, category: str | None = None) -> list[str]:
+    """Quick replies for the slot being asked. The central-standard chip always stays."""
+    del category  # reserved so callers can pass the project profile without a second lookup
     if not slot_key:
-        return []
-    if slot_key in FACT_REQUIRED_SLOTS:
-        return []
-    options = SLOT_REPLY_OPTIONS.get(slot_key)
-    if options:
-        return list(options)
-    return [DEFAULT_MOF_STANDARD_ANSWER]
+        return [DEFAULT_MOF_STANDARD_ANSWER]
+    options = list(SLOT_REPLY_OPTIONS.get(slot_key) or ())
+    if DEFAULT_MOF_STANDARD_ANSWER not in options:
+        options.insert(0, DEFAULT_MOF_STANDARD_ANSWER)
+    return options
+
+
+def intake_live_status(
+    slot_map: dict[str, Any],
+    category: str | None = None,
+    asking_key: str | None = None,
+) -> dict[str, Any]:
+    """Coverage, progress, and quick replies for the slot map the officer just saved."""
+    asking = asking_key if asking_key else next_asking_slot(slot_map, category=category)
+    missing = missing_fact_keys(slot_map, category)
+    return {
+        "coverage": coverage_table(slot_map, category),
+        "progress": coverage_progress(slot_map, category),
+        "all_fact_filled": not missing,
+        "reply_options": reply_options_for_slot(asking, category),
+        "current_slot": asking,
+        "missing_fact_labels": [slot_label(key, category) for key in missing],
+    }
 
 
 def _extracted_new_slots(
@@ -952,6 +988,7 @@ def _chunk_text_window(text: str) -> list[str]:
     chunk_chars = _analyze_chunk_chars()
     if len(raw) <= chunk_chars:
         return [raw]
+    overlap = min(ANALYZE_CHUNK_OVERLAP, max(200, chunk_chars // 5))
     chunks: list[str] = []
     start = 0
     while start < len(raw):
@@ -959,43 +996,86 @@ def _chunk_text_window(text: str) -> list[str]:
         chunks.append(raw[start:end])
         if end >= len(raw):
             break
-        start = max(end - ANALYZE_CHUNK_OVERLAP, start + 1)
+        start = max(end - overlap, start + 1)
     return chunks
 
 
-def _sample_chunks_evenly(chunks: list[str], limit: int) -> list[str]:
-    if len(chunks) <= limit:
-        return chunks
-    if limit <= 1:
-        return [chunks[0]]
-    picked: list[str] = []
-    seen: set[int] = set()
-    last_index = len(chunks) - 1
-    for i in range(limit):
-        index = round(i * last_index / (limit - 1))
-        if index in seen:
-            continue
-        seen.add(index)
-        picked.append(chunks[index])
-    return picked
+def _indexes_covering(count: int, keep: int) -> list[int]:
+    """Indexes that always include the first and last window when keep > 1."""
+    if keep <= 0 or count <= 0:
+        return []
+    if count <= keep:
+        return list(range(count))
+    if keep == 1:
+        return [0]
+    chosen = {0, count - 1}
+    slots = keep - 2
+    if slots > 0:
+        for step in range(1, slots + 1):
+            chosen.add(round(step * (count - 1) / (slots + 1)))
+    cursor = 1
+    while len(chosen) < keep and cursor < count - 1:
+        if cursor not in chosen:
+            chosen.add(cursor)
+        cursor += 1
+    return sorted(chosen)[:keep]
+
+
+def _budgets_for_files(lengths: list[int], limit: int) -> list[int]:
+    """Share the round-trip cap so a long file cannot erase a short annex."""
+    count = len(lengths)
+    if count == 0:
+        return []
+    if sum(lengths) <= limit:
+        return list(lengths)
+    if count >= limit:
+        picked = set(_indexes_covering(count, limit))
+        return [1 if index in picked else 0 for index in range(count)]
+    budgets = [1] * count
+    remaining = limit - count
+    weights = [max(0, length - 1) for length in lengths]
+    weight_total = sum(weights)
+    if weight_total == 0 or remaining <= 0:
+        return [min(lengths[index], budgets[index]) for index in range(count)]
+    for index, weight in enumerate(weights):
+        extra = min(max(0, lengths[index] - 1), (remaining * weight) // weight_total)
+        budgets[index] += extra
+    leftover = limit - sum(budgets)
+    order = sorted(range(count), key=lambda index: lengths[index] - budgets[index], reverse=True)
+    guard = 0
+    while leftover > 0 and guard < limit * count:
+        progressed = False
+        for index in order:
+            if lengths[index] - budgets[index] <= 0:
+                continue
+            budgets[index] += 1
+            leftover -= 1
+            progressed = True
+            if leftover <= 0:
+                break
+        if not progressed:
+            break
+        guard += 1
+    return budgets
 
 
 def _analyze_prompt_chunks(pack_text: str) -> list[str]:
-    """Window the whole pack; keep file markers inside text. Cap round-trips."""
+    """Window each file. Keep every window until the cap, then head+tail per file."""
     raw = (pack_text or "").strip()
     if not raw:
         return []
-    if len(raw) <= _analyze_chunk_chars():
-        return [raw]
-    pieces = _chunk_text_window(raw)
-    return _sample_chunks_evenly(pieces, ANALYZE_MAX_CHUNKS)
-
-
-def _critical_slots_filled(slot_map: dict[str, Any], category: str | None) -> bool:
-    """True when fact + required-scope slots are filled (safe to stop extra LLM rounds)."""
-    keys = list(fact_required_slots(category))
-    keys.extend(profile_for_project(category).required_scope_keys())
-    return all(_slot_is_filled(slot_map, key) for key in keys)
+    files = _split_pack_by_file(raw) or [raw]
+    windows = [group for group in (_chunk_text_window(part) for part in files) if group]
+    if not windows:
+        return []
+    lengths = [len(group) for group in windows]
+    if sum(lengths) <= ANALYZE_MAX_CHUNKS:
+        return [chunk for group in windows for chunk in group]
+    picked: list[str] = []
+    for group, budget in zip(windows, _budgets_for_files(lengths, ANALYZE_MAX_CHUNKS), strict=True):
+        for index in _indexes_covering(len(group), budget):
+            picked.append(group[index])
+    return picked
 
 
 def _filled_slots_brief(
@@ -1007,7 +1087,7 @@ def _filled_slots_brief(
         if not _slot_is_filled(slot_map, key):
             continue
         label = labels.get(key, key)
-        content = str((slot_map.get(key) or {}).get("content") or "").strip()[:120]
+        content = str((slot_map.get(key) or {}).get("content") or "").strip()[:360]
         lines.append(f"{key} {label}: {content}")
         if len(lines) >= limit:
             break
@@ -1015,15 +1095,67 @@ def _filled_slots_brief(
 
 
 def _analyze_completion_tokens(user: str, system: str) -> int:
-    """Aim ~1:1 input:output, clamped to analyze max and context window."""
-    in_tokens = estimate_tokens(system) + estimate_tokens(user)
-    requested = min(ANALYZE_MAX_TOKENS, max(1_024, in_tokens))
+    """Reserve a long answer so the model can quote tables instead of summarizing."""
     return clamp_max_tokens(
         user,
-        requested,
+        ANALYZE_OUTPUT_TOKENS,
         context_window=live_context_window(),
         system=system,
     )
+
+
+def _slot_merge_cap(key: str) -> int:
+    return _SLOT_MERGE_CAPS.get(key, _SLOT_MERGE_CAP_DEFAULT)
+
+
+def _merge_slot_text(current: str, incoming: str, *, cap: int) -> str:
+    """Keep text already captured and append passages that are not in it yet."""
+    cur = (current or "").strip()
+    inc = (incoming or "").strip()
+    if not inc:
+        return cur[:cap]
+    if not cur or inc in cur:
+        return (cur or inc)[:cap]
+    if cur in inc:
+        return inc[:cap]
+    merged = f"{cur}\n\n{inc}"
+    if len(merged) <= cap:
+        return merged
+    room = cap - len(cur) - 2
+    if room < 80:
+        return (inc if len(inc) > len(cur) else cur)[:cap]
+    return f"{cur}\n\n{inc[:room]}".rstrip()
+
+
+def _merge_llm_slot_maps(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """Fold a later document window into slots without dropping the earlier quote."""
+    merged = {key: dict(value) if isinstance(value, dict) else value for key, value in base.items()}
+    for key, value in incoming.items():
+        if key not in merged or not isinstance(value, dict):
+            continue
+        content = str(value.get("content") or "").strip()
+        status = value.get("status")
+        if status not in {"filled", "reference_only"} or not content:
+            continue
+        current = merged[key] if isinstance(merged[key], dict) else {}
+        if status == "reference_only" and current.get("status") == "filled":
+            continue
+        sources = list(current.get("sources") or [])
+        for item in value.get("sources") or []:
+            if item not in sources:
+                sources.append(item)
+        filled_now = status == "filled" or current.get("status") == "filled"
+        new_status = "filled" if filled_now else "reference_only"
+        merged[key] = {
+            "content": _merge_slot_text(
+                str(current.get("content") or ""),
+                content,
+                cap=_slot_merge_cap(key),
+            ),
+            "status": new_status,
+            "sources": sources,
+        }
+    return merged
 
 
 def _unfilled_slot_keys(
@@ -1064,14 +1196,17 @@ async def _llm_analyze_one_chunk(
             "เติมเฉพาะช่องว่างหรือรายละเอียดที่ชิ้นนี้มีเพิ่ม):\n"
             f"{prior_filled.strip()}\n\n"
         )
-    focus = ""
     labels_map = intake_slot_labels(category)
+    focus = (
+        "ถ้าชิ้นนี้มีตาราง รายการข้อ หรือย่อหน้าที่ยังไม่มีในช่องที่เติมแล้ว "
+        "ให้คัดลอกส่วนที่เพิ่มเข้าช่องนั้นทั้งก้อน ห้ามย่อเหลือประโยคเดียว\n\n"
+    )
     if focus_slots:
         labels = [
             f"{key} {labels_map.get(key, key)}" for key in focus_slots[:40]
         ]
-        focus = (
-            "ช่องที่ยังว่าง — หาข้อมูลในชิ้นนี้แล้วเติมเฉพาะช่องเหล่านี้ถ้ามี "
+        focus += (
+            "ช่องที่ยังว่าง — หาข้อมูลในชิ้นนี้แล้วเติมถ้ามี "
             "(คัดลอกข้อความยาวพอใช้ร่าง รวมตาราง/ข้อย่อย):\n"
             + "\n".join(labels)
             + "\n\n"
@@ -1113,7 +1248,7 @@ async def _llm_analyze_slot_map(
     filenames: list[str],
     category: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Read document windows with the LLM and merge slot fills (few large passes)."""
+    """Read every document window and append newly found passages into each slot."""
     llm = ProviderFactory().get_llm("structured")  # NOSONAR python:S930
     merged = empty_slot_map(category)
     extra: list[str] = []
@@ -1139,7 +1274,7 @@ async def _llm_analyze_slot_map(
             focus_slots=focus or None,
             category=category,
         )
-        merged = overlay_filled_slots(merged, part)
+        merged = _merge_llm_slot_maps(merged, part)
         extra.extend(gaps)
         filled_n = sum(1 for key in order if _slot_is_filled(merged, key))
         remaining = _unfilled_slot_keys(merged, category)
@@ -1150,14 +1285,6 @@ async def _llm_analyze_slot_map(
             filled_n,
             len(remaining),
         )
-        # Stop extra windows once critical facts are in — heuristics gap-fill the rest.
-        if index + 1 < total and _critical_slots_filled(merged, category):
-            logger.info(
-                "intake analyze early stop after chunk %s/%s (critical slots filled)",
-                index + 1,
-                total,
-            )
-            break
     return merged, extra
 
 
