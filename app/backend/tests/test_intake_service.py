@@ -642,11 +642,27 @@ def test_analyze_output_budget_stays_large_on_a_short_window(monkeypatch):
     from app.services.intake_service import ANALYZE_OUTPUT_TOKENS, _analyze_completion_tokens
 
     monkeypatch.setenv("TOR_CONTEXT_WINDOW", "131072")
+    monkeypatch.setenv("TOR_REVIEW_ANALYZE_MAX_TOKENS", "16384")
     reset_capability_cache()
     try:
         tokens = _analyze_completion_tokens("วงเงิน 1 บาท", "ระบบ")
         assert tokens >= 8_192
         assert tokens == ANALYZE_OUTPUT_TOKENS
+    finally:
+        monkeypatch.undo()
+        reset_capability_cache()
+
+
+def test_analyze_output_budget_follows_live_analyze_token_cap(monkeypatch):
+    from app.providers.model_capabilities import reset_capability_cache
+    from app.services.intake_service import _analyze_completion_tokens
+
+    monkeypatch.setenv("TOR_CONTEXT_WINDOW", "200000")
+    monkeypatch.setenv("TOR_REVIEW_ANALYZE_MAX_TOKENS", "65536")
+    reset_capability_cache()
+    try:
+        tokens = _analyze_completion_tokens("วงเงิน 1 บาท", "ระบบ")
+        assert tokens == 65_536
     finally:
         monkeypatch.undo()
         reset_capability_cache()
@@ -735,6 +751,72 @@ async def test_analyze_pack_prefers_llm_over_heuristic_on_same_slot():
     assert result["slot_map"]["s1"]["content"] == "ความเป็นมาจากโมเดลอ่านเอกสารจริง"
     assert result["slot_map"]["s6"]["status"] == "filled"  # heuristic gap-fill
     llm.invoke.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_analyze_pack_replaces_short_model_summary_with_document_passage():
+    """A one-line model fill must not hide the longer passage from the file."""
+    detail = "รายละเอียดสภาพปัจจุบันของระบบเดิมที่ใช้งานมาหลายปี "
+    pack = (
+        "ความเป็นมา (s1): สำนักงานเศรษฐกิจการเกษตรต้องจัดทำระบบฐานข้อมูลติดตามแปลง "
+        "ต้องเชื่อมข้อมูลทะเบียนเกษตรกรรายแปลงกับผลผลิตรายฤดู "
+        + (detail * 30)
+    )
+    payload = {
+        "slot_map": {
+            "s1": {
+                "content": "หน่วยงานต้องการระบบฐานข้อมูล",
+                "status": "filled",
+                "sources": ["llm"],
+            },
+        },
+        "gap_questions": [],
+    }
+    llm = MagicMock()
+    llm.invoke = AsyncMock(
+        return_value=MagicMock(content=json.dumps(payload, ensure_ascii=False))
+    )
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
+        factory.return_value.get_llm.return_value = llm
+        result = await analyze_pack(_project(), pack, ["tor.pdf"])
+    body = result["slot_map"]["s1"]["content"]
+    assert "ทะเบียนเกษตรกรรายแปลง" in body
+    assert len(body) > 400
+
+
+@pytest.mark.asyncio
+async def test_analyze_pack_keeps_duration_when_long_text_is_not_the_period():
+    pack = (
+        "ระยะเวลาดำเนินการ (s5): 540 วัน นับถัดจากวันลงนามในสัญญา\n"
+        "คุณสมบัติของผู้ยื่นข้อเสนอ (s3): "
+        + ("นิติบุคคลไทย ทุนจดทะเบียนชำระแล้วเต็มจำนวน " * 40)
+    )
+    payload = {
+        "slot_map": {
+            "s5": {
+                "content": "540 วัน นับถัดจากวันลงนามในสัญญา",
+                "status": "filled",
+                "sources": ["llm"],
+            },
+        },
+        "gap_questions": [],
+    }
+    llm = MagicMock()
+    llm.invoke = AsyncMock(
+        return_value=MagicMock(content=json.dumps(payload, ensure_ascii=False))
+    )
+    with (
+        patch("app.services.intake_service.ANALYZE_USE_LLM", True),
+        patch("app.services.intake_service.ProviderFactory") as factory,
+    ):
+        factory.return_value.get_llm.return_value = llm
+        result = await analyze_pack(_project(), pack, ["tor.pdf"])
+    duration = result["slot_map"]["s5"]["content"]
+    assert "540" in duration
+    assert "ทุนจดทะเบียน" not in duration
 
 
 @pytest.mark.asyncio

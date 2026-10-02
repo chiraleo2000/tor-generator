@@ -234,22 +234,22 @@ _FACT_ALIASES: dict[str, tuple[str, ...]] = {
 
 # Cap noisy heading captures for fact slots (forms often lack clean stop markers).
 _FACT_BODY_CAPS: dict[str, int] = {
-    "s1": 5000,
-    "s2": 3500,
-    "s5": 400,
-    "s6": 500,
-    "s7": 400,
-    "s4.1": 12000,
-    "functional": 12000,
-    "items": 12000,
-    "deliverable_docs": 8000,
-    "testing": 6000,
-    "specification": 8000,
-    "methodology": 8000,
-    "works": 8000,
-    "service_spec": 8000,
-    "workload": 6000,
-    "asset_list": 8000,
+    "s1": 16_000,
+    "s2": 12_000,
+    "s5": 1_200,
+    "s6": 2_500,
+    "s7": 1_500,
+    "s4.1": 20_000,
+    "functional": 20_000,
+    "items": 20_000,
+    "deliverable_docs": 12_000,
+    "testing": 8_000,
+    "specification": 12_000,
+    "methodology": 12_000,
+    "works": 12_000,
+    "service_spec": 12_000,
+    "workload": 8_000,
+    "asset_list": 12_000,
 }
 
 _QUAL_HINT = re.compile(

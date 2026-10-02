@@ -39,6 +39,7 @@ from app.llm_tokens import (
     chars_for_tokens,
     clamp_max_tokens,
     live_context_window,
+    live_review_analyze_max_tokens,
 )
 from app.models.project import Project
 from app.models.tor_section import TORSection
@@ -47,8 +48,11 @@ from app.providers.structured_invoke import invoke_with_schema
 from app.schemas.llm_structured import IntakeAnalyzeResult, json_schema_for
 from app.rag.hybrid import hybrid_retrieve, unpack_hybrid
 from app.services.intake_heuristic import (
+    _looks_like_compact_fact,
     extract_slot_contents,
     guess_slot_for_answer,
+    looks_like_duration,
+    looks_like_qualifications,
     overlay_filled_slots,
     repair_misplaced_slots,
     suggest_procurement_category,
@@ -62,29 +66,38 @@ ANALYZE_USE_LLM = True
 ANALYZE_LLM_TIMEOUT_SEC = 10800
 # Safety cap on LLM round-trips. Within the cap every file keeps its head
 # and tail, so a long TOR cannot drop annexes that fall between four samples.
-ANALYZE_MAX_CHUNKS = 24
+ANALYZE_MAX_CHUNKS = 40
 ANALYZE_CHUNK_OVERLAP = 2_400
-# Fixed answer budget. Tying it to input length made short windows summarize
-# and huge windows spend the context on the prompt instead of the quote.
-ANALYZE_OUTPUT_TOKENS = 16_384
-_ANALYZE_SOURCE_TOKEN_TARGET = 24_000
-_ANALYZE_OUTPUT_RESERVE = ANALYZE_OUTPUT_TOKENS + 2_048
-_SLOT_MERGE_CAP_DEFAULT = 20_000
+# Floor for the quote-back budget. Live TOR_REVIEW_ANALYZE_MAX_TOKENS can raise it.
+ANALYZE_OUTPUT_TOKENS = 32_768
+_ANALYZE_SOURCE_TOKEN_TARGET = 48_000
+_SLOT_MERGE_CAP_DEFAULT = 24_000
 _SLOT_MERGE_CAPS = {
-    "s1": 8_000,
-    "s2": 6_000,
-    "s5": 2_500,
-    "s6": 4_000,
-    "s7": 2_000,
+    "s1": 16_000,
+    "s2": 12_000,
+    "s5": 4_000,
+    "s6": 8_000,
+    "s7": 4_000,
 }
 
 
+def _analyze_output_budget() -> int:
+    """Completion cap: code floor, or the larger live analyze budget from env."""
+    return max(ANALYZE_OUTPUT_TOKENS, live_review_analyze_max_tokens())
+
+
 def _analyze_chunk_chars() -> int:
-    """Source window that still leaves room to quote the passage back."""
+    """Source window that still leaves room to quote the passage back.
+
+    Reserve only a third of the context for the answer on smaller models.
+    Reserving the full output budget used to shrink each window to a few
+    thousand characters, so supporting documents were sampled instead of read.
+    """
     window = live_context_window()
+    output_budget = min(_analyze_output_budget(), max(4_096, window // 3))
     source_tokens = max(
         3_000,
-        min(_ANALYZE_SOURCE_TOKEN_TARGET, window - _ANALYZE_OUTPUT_RESERVE),
+        min(_ANALYZE_SOURCE_TOKEN_TARGET, window - output_budget - 2_048),
     )
     return max(6_000, chars_for_tokens(source_tokens))
 INTAKE_TEXT_CHAR_LIMIT = 500_000
@@ -219,7 +232,7 @@ def coverage_table(
                 "status": "filled" if filled else status,
                 "filled": filled,
                 "fact_required": key in facts,
-                "preview": _slot_preview(slot_map, key)[:4000],
+                "preview": _slot_preview(slot_map, key)[:12_000],
             }
         )
     return rows
@@ -1098,10 +1111,73 @@ def _analyze_completion_tokens(user: str, system: str) -> int:
     """Reserve a long answer so the model can quote tables instead of summarizing."""
     return clamp_max_tokens(
         user,
-        ANALYZE_OUTPUT_TOKENS,
+        _analyze_output_budget(),
         context_window=live_context_window(),
         system=system,
     )
+
+
+def _passage_on_topic(key: str, text: str) -> bool:
+    """Reject a long extract that belongs in a different fact slot."""
+    if key == "s5":
+        return looks_like_duration(text) and not (
+            looks_like_qualifications(text) and not looks_like_duration(text)
+        )
+    if key == "s6":
+        return any(word in text for word in ("งบประมาณ", "วงเงิน", "ราคากลาง", "บาท"))
+    if key == "s3":
+        return looks_like_qualifications(text) or "คุณสมบัติ" in text
+    return True
+
+
+def _document_passage_replaces(key: str, current: str, document: str) -> bool:
+    """True when the model quote is a short paraphrase of a longer source passage."""
+    if not document or not _passage_on_topic(key, document):
+        return False
+    if not current:
+        return True
+    if len(document) < len(current) + 120 or len(document) < int(len(current) * 1.8):
+        return False
+    if key in {"s5", "s6"} and _looks_like_compact_fact(key, current):
+        return current in document or _looks_like_compact_fact(key, document)
+    return True
+
+
+def expand_shallow_slots(
+    slot_map: dict[str, Any], document_map: dict[str, Any]
+) -> dict[str, Any]:
+    """Keep the document passage when phase-1 JSON only stored a short summary.
+
+    Automated tests treat any non-empty ``filled`` slot as success. A manual
+    run then shows one sentence because the model paraphrase blocked the
+    longer extract from the same file.
+    """
+    expanded = {
+        key: dict(value) if isinstance(value, dict) else value
+        for key, value in slot_map.items()
+    }
+    for key, value in document_map.items():
+        if key not in expanded or not isinstance(value, dict):
+            continue
+        document = str(value.get("content") or "").strip()
+        current_slot = expanded[key] if isinstance(expanded[key], dict) else {}
+        current = str(current_slot.get("content") or "").strip()
+        if not _document_passage_replaces(key, current, document):
+            continue
+        cap = _slot_merge_cap(key)
+        document = document[:cap]
+        if current and current not in document and len(current) >= 240:
+            content = _merge_slot_text(current, document, cap=cap)
+        else:
+            content = document
+        sources = list(current_slot.get("sources") or [])
+        for item in value.get("sources") or []:
+            if item not in sources:
+                sources.append(item)
+        if "เอกสารประกอบ" not in sources:
+            sources.append("เอกสารประกอบ")
+        expanded[key] = {"content": content, "status": "filled", "sources": sources}
+    return expanded
 
 
 def _slot_merge_cap(key: str) -> int:
@@ -1341,10 +1417,12 @@ async def analyze_pack(
             len(pack_text or ""),
         )
 
-    # Gap-fill only: never overwrite LLM-filled slots with heuristic text.
+    # Empty slots take the document extract. A short model paraphrase of the
+    # same slot is replaced by the longer passage from the file.
     order = intake_slot_order(category)
     before_fallback = sum(1 for key in order if _slot_is_filled(slot_map, key))
     slot_map = overlay_filled_slots(slot_map, heuristic_map)
+    slot_map = expand_shallow_slots(slot_map, heuristic_map)
     slot_map = repair_misplaced_slots(slot_map)
     after_fallback = sum(1 for key in order if _slot_is_filled(slot_map, key))
     if after_fallback > before_fallback:

@@ -84,7 +84,7 @@ export function Phase1Coverage({
   );
 }
 
-function clipPreview(text: string, limit = 360) {
+function clipPreview(text: string, limit = 1600) {
   const clean = text.replace(/\s+/g, " ").trim();
   if (clean.length <= limit) return clean;
   return `${clean.slice(0, limit)}…`;
