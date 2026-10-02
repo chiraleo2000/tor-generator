@@ -68,8 +68,8 @@ ANALYZE_LLM_TIMEOUT_SEC = 10800
 # and tail, so a long TOR cannot drop annexes that fall between four samples.
 ANALYZE_MAX_CHUNKS = 40
 ANALYZE_CHUNK_OVERLAP = 2_400
-# Floor for the quote-back budget. Live TOR_REVIEW_ANALYZE_MAX_TOKENS can raise it.
-ANALYZE_OUTPUT_TOKENS = 32_768
+# Answer length follows TOR_REVIEW_ANALYZE_MAX_TOKENS so a local model is not
+# forced to emit a 32k JSON blob.
 _ANALYZE_SOURCE_TOKEN_TARGET = 48_000
 _SLOT_MERGE_CAP_DEFAULT = 24_000
 _SLOT_MERGE_CAPS = {
@@ -82,8 +82,8 @@ _SLOT_MERGE_CAPS = {
 
 
 def _analyze_output_budget() -> int:
-    """Completion cap: code floor, or the larger live analyze budget from env."""
-    return max(ANALYZE_OUTPUT_TOKENS, live_review_analyze_max_tokens())
+    """Use the configured analyze cap so a local model is not asked for 32k tokens."""
+    return live_review_analyze_max_tokens()
 
 
 def _analyze_chunk_chars() -> int:

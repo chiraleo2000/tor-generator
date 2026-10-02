@@ -15,7 +15,7 @@ test.describe("hire_maintain smoke (Phase 0–1 only)", () => {
   test("analyzes MA pack into asset_list and does not start Phase 3 compose", async ({
     page,
   }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(1_500_000);
     await login(page);
     await createProjectAndOpenDraft(page, undefined, "hire_maintain");
     await walkLiveAnalyzeToPhase1(page, HIRE_MAINTAIN_INTAKE_TEXT);

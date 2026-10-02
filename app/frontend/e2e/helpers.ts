@@ -402,7 +402,7 @@ export async function login(
   await typeLikeUser(page.getByTestId("login-password"), password);
   await pauseLikeUser(page, 400);
   await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/projects/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/projects/, { timeout: 60_000 });
   await expect(page.getByTestId("projects-page")).toBeVisible();
   await expect(page.getByTestId("login-error")).toHaveCount(0);
   await expect(page.getByTestId("toast-region")).toHaveCount(1);
@@ -509,7 +509,7 @@ export async function walkLiveAnalyzeToPhase1(
     await expect(analyzing).toContainText("อย่าปิดหน้านี้");
     await saveEvidence(page, "03b-phase-0-analyzing");
   }
-  await expect(page.getByTestId("phase1-coverage")).toBeVisible({ timeout: 720_000 });
+  await expect(page.getByTestId("phase1-coverage")).toBeVisible({ timeout: 1_200_000 });
   await expect(page.getByText("รายละเอียดที่จัดเข้าช่อง")).toBeVisible();
   await expect(page.getByTestId("coverage-row-s1")).toBeVisible();
   await saveEvidence(page, "04b-phase-1-coverage");

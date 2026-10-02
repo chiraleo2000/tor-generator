@@ -639,7 +639,7 @@ def test_analyze_prompt_chunks_keeps_tail_and_annex_past_the_old_four_window_cap
 
 def test_analyze_output_budget_stays_large_on_a_short_window(monkeypatch):
     from app.providers.model_capabilities import reset_capability_cache
-    from app.services.intake_service import ANALYZE_OUTPUT_TOKENS, _analyze_completion_tokens
+    from app.services.intake_service import _analyze_completion_tokens
 
     monkeypatch.setenv("TOR_CONTEXT_WINDOW", "131072")
     monkeypatch.setenv("TOR_REVIEW_ANALYZE_MAX_TOKENS", "16384")
@@ -647,7 +647,7 @@ def test_analyze_output_budget_stays_large_on_a_short_window(monkeypatch):
     try:
         tokens = _analyze_completion_tokens("วงเงิน 1 บาท", "ระบบ")
         assert tokens >= 8_192
-        assert tokens == ANALYZE_OUTPUT_TOKENS
+        assert tokens == 16_384
     finally:
         monkeypatch.undo()
         reset_capability_cache()

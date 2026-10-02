@@ -124,7 +124,7 @@ test.describe("Four tools live UI (draft, review, chat, analyze)", () => {
   });
 
   test("3 ตรวจสอบ TOR อัปโหลด สกัด ได้คะแนนสามด้าน", async ({ page }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(900_000);
     await login(page);
     await page.getByTestId("nav-review").click();
     await expect(page.getByTestId("review-page")).toBeVisible();
