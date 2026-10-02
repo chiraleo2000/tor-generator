@@ -38,6 +38,11 @@ const EXPORT_WAIT_MESSAGE: Record<"failed" | "timeout", string> = {
   timeout: "สร้างเอกสารใช้เวลานานเกินไป กรุณาลองใหม่",
 };
 
+function keepExportNotice(current: string | null, next: string | null): string | null {
+  if (current === "ดาวน์โหลดเอกสารแล้ว" || current === "กำลังสร้างเอกสาร...") return current;
+  return next;
+}
+
 async function waitForExportReady(
   projectId: string
 ): Promise<{ status: "completed" | "failed" | "timeout"; error?: string }> {
@@ -333,11 +338,14 @@ export function DraftWorkspace() {
           const payload = unwrapData<{ status?: string; position?: number }>(response);
           if (payload.status === "waiting") {
             const position = Number(payload.position || 0);
-            setActionInfo(
-              position > 0 ? `รอคิว (ลำดับ ${position})...` : "รอคิวระบบอัจฉริยะ..."
+            setActionInfo((current) =>
+              keepExportNotice(
+                current,
+                position > 0 ? `รอคิว (ลำดับ ${position})...` : "รอคิวระบบอัจฉริยะ..."
+              )
             );
           } else if (payload.status === "running") {
-            setActionInfo("กำลังตรวจสอบ...");
+            setActionInfo((current) => keepExportNotice(current, "กำลังตรวจสอบ..."));
           }
         })
         .catch(() => undefined);
@@ -368,9 +376,7 @@ export function DraftWorkspace() {
           if (isTorPartScores(persistedParts)) {
             setReviewPartScores(persistedParts);
           }
-          setActionInfo((current) =>
-            current === "ดาวน์โหลดเอกสารแล้ว" || current === "กำลังสร้างเอกสาร..." ? current : null
-          );
+          setActionInfo((current) => keepExportNotice(current, null));
           setReviewBusy(false);
         })
         .catch(() => undefined);
@@ -405,13 +411,11 @@ export function DraftWorkspace() {
       } catch {
         setReviewSuggestions([]);
       }
-      setActionInfo((current) =>
-        current === "ดาวน์โหลดเอกสารแล้ว" || current === "กำลังสร้างเอกสาร..." ? current : null
-      );
+      setActionInfo((current) => keepExportNotice(current, null));
     } catch (err: unknown) {
       if (!succeeded) {
         setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
-        setActionInfo(null);
+        setActionInfo((current) => keepExportNotice(current, null));
       }
     } finally {
       window.clearInterval(poll);

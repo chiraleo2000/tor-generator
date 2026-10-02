@@ -25,6 +25,8 @@ test.describe("Dashboard", () => {
     await pauseLikeUser(page, 300);
     await typeLikeUser(page.getByTestId("new-project-ministry"), "กรมบัญชีกลาง");
     await pauseLikeUser(page, 300);
+    await page.getByTestId("new-project-type").selectOption("hire_develop");
+    await pauseLikeUser(page, 200);
     await typeLikeUser(page.getByTestId("new-project-budget"), "100000");
     await pauseLikeUser(page, 400);
     await page.getByTestId("create-project-submit").click();

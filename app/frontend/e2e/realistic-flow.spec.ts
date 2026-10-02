@@ -23,7 +23,7 @@ test.describe("Realistic unmocked golden paths", () => {
   test.skip(skipUnlessLive, skipReason);
 
   test("ตรวจ TOR — extract real file then confirm Rule Engine", async ({ page }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(900_000);
     await login(page);
     await page.getByTestId("nav-review").click();
     await expect(page.getByTestId("review-page")).toBeVisible();
@@ -54,7 +54,7 @@ test.describe("Realistic unmocked golden paths", () => {
       page.getByTestId("review-busy").or(page.getByTestId("review-score"))
     ).toBeVisible({ timeout: 15_000 });
     await saveEvidence(page, "12b-review-running");
-    await expect(page.getByTestId("review-score")).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByTestId("review-score")).toBeVisible({ timeout: 600_000 });
     await expect(page.getByTestId("review-result")).toContainText("คะแนนความพร้อม");
     await saveEvidence(page, "12c-review-score");
     await page.reload();

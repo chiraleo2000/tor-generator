@@ -22,6 +22,25 @@ describe("phase-gate", () => {
     expect(canSelectPhase(0, 0, 1)).toBe(false);
   });
 
+  it("treats stored files and filled slots as intake material", () => {
+    expect(
+      hasIntakeMaterial({
+        analysisJson: { intake_files: [{ name: "ประกาศ.pdf" }] },
+      })
+    ).toBe(true);
+    expect(
+      hasIntakeMaterial({
+        analysisJson: { slot_map: { s1: { status: "filled", content: "มีเนื้อหา" } } },
+      })
+    ).toBe(true);
+    expect(
+      hasIntakeMaterial({
+        extractedFields: { intake_texts: [null, { text: "  " }] },
+        analysisJson: { intake_files: [] },
+      })
+    ).toBe(false);
+  });
+
   it("unlocks Q&A (phase 2) after analysis, not compose", () => {
     expect(
       intakeUnlockedPhase({

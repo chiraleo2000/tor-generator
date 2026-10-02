@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisMappingReady, factTopicsComplete } from "@/lib/intake-complete";
+import { analysisMappingReady, factProgressFromCoverage, factTopicsComplete } from "@/lib/intake-complete";
 
 describe("intake-complete", () => {
   it("requires analyzed plus coverage rows before leaving Phase 0", () => {
@@ -46,5 +46,20 @@ describe("intake-complete", () => {
       fact_required: false,
     }));
     expect(factTopicsComplete(rows)).toBe(true);
+  });
+
+  it("reports zero progress when no coverage rows exist", () => {
+    expect(factProgressFromCoverage([])).toEqual({
+      filled: 0,
+      total: expect.any(Number),
+      percent: 0,
+    });
+    const progress = factProgressFromCoverage([
+      { key: "s1", label: "s1", status: "filled", filled: true, fact_required: true },
+      { key: "s2", label: "s2", status: "gap", filled: false, fact_required: true },
+    ]);
+    expect(progress.filled).toBe(1);
+    expect(progress.total).toBe(2);
+    expect(progress.percent).toBe(50);
   });
 });

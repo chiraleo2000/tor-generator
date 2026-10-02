@@ -42,6 +42,7 @@ export default defineConfig({
         "src/app/**/admin/knowledge-base/page.tsx",
         "src/components/draft/draft-workspace.tsx",
         "src/stores/index.ts",
+        "src/lib/**/*.generated.ts",
       ],
     },
   },

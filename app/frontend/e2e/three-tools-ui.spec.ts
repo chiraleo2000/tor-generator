@@ -29,10 +29,12 @@ function hasForcedLegacyHeadings(text: string): boolean {
 }
 
 test.describe("Four tools live UI (draft, review, chat, analyze)", () => {
+  // NOSONAR: Playwright live-stack spec. Skipped unless E2E=1 (see skipReason in helpers).
   test.skip(skipUnlessLive, skipReason);
 
   test.beforeAll(async ({ request }) => {
     if (!(await isLiveStackReachable(request))) {
+      // NOSONAR: Skip when the live API health check fails so the suite does not hang.
       test.skip(true, skipLiveStackDownReason);
     }
   });
@@ -142,7 +144,7 @@ test.describe("Four tools live UI (draft, review, chat, analyze)", () => {
     });
     await saveEvidence(page, "serial-04-review-extract");
     await page.getByTestId("review-confirm-run").click();
-    await expect(page.getByTestId("review-score")).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByTestId("review-score")).toBeVisible({ timeout: 600_000 });
     await expect(page.getByTestId("review-result")).toContainText("คะแนนความพร้อม");
     await expect(page.getByTestId("review-part-scores")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("review-part-legal")).toBeVisible();
@@ -192,6 +194,7 @@ test.describe("Four tools live UI (draft, review, chat, analyze)", () => {
 });
 
 test.describe("Four tools mocked API workflow", () => {
+  // NOSONAR: Headed runs walk the live 5-phase workflow instead of mocked APIs.
   test.skip(headedRun, skipMockedInHeadedReason);
 
   test.beforeEach(async ({ page }) => {

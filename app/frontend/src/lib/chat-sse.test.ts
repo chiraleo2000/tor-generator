@@ -1,9 +1,26 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { streamSsePost } from "@/lib/chat-sse";
+import { adoptServerChatMessages, streamSsePost } from "@/lib/chat-sse";
 
 describe("streamSsePost", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("keeps the local thread when the server row is not a longer assistant reply", () => {
+    const local = [
+      { id: "u1", role: "user" as const, content: "ถาม", citations: [] },
+    ];
+    const userOnly = [
+      { id: "u1", role: "user" as const, content: "ถาม", citations: [] },
+    ];
+    expect(adoptServerChatMessages(local, userOnly).adopted).toBe(false);
+    const assistant = [
+      { id: "a1", role: "assistant" as const, content: "ตอบจากคลัง", citations: [] },
+    ];
+    expect(adoptServerChatMessages(local, assistant)).toMatchObject({
+      adopted: true,
+      next: assistant,
+    });
   });
 
   it("yields after section_done so the UI can paint mid-stream", async () => {

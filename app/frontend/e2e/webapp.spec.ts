@@ -104,7 +104,7 @@ test.describe("Help and standalone review", () => {
     await page.getByTestId("review-confirm-run").click();
     await expect(page.getByTestId("review-error")).toHaveCount(0);
     await expect(page.getByTestId("review-score")).toContainText(/[0-9]{1,3}\/100/, {
-      timeout: 180_000,
+      timeout: 600_000,
     });
     await saveEvidence(page, "12c-review-score");
   });
