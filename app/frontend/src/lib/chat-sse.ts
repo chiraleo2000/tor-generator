@@ -149,6 +149,44 @@ async function dispatchSseBlockAndPaint(
   };
 }
 
+async function paintSseBlocks(
+  blocks: string[],
+  eventName: string,
+  onEvent: (event: string, data: Record<string, unknown>) => void
+): Promise<{ nextEvent: string; terminal: boolean }> {
+  return blocks.reduce<Promise<{ nextEvent: string; terminal: boolean }>>(
+    async (previous, block) => {
+      const state = await previous;
+      if (state.terminal) return state;
+      return dispatchSseBlockAndPaint(block, state.nextEvent, onEvent);
+    },
+    Promise.resolve({ nextEvent: eventName, terminal: false })
+  );
+}
+
+async function readSseStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  decoder: TextDecoder,
+  onEvent: (event: string, data: Record<string, unknown>) => void
+): Promise<void> {
+  const step = async (buffer: string, eventName: string): Promise<void> => {
+    const { done, value } = await reader.read();
+    if (done) {
+      if (buffer.trim()) {
+        await dispatchSseBlockAndPaint(buffer, eventName, onEvent);
+      }
+      return;
+    }
+    const combined = buffer + decoder.decode(value, { stream: true });
+    const parts = combined.split(/\r?\n\r?\n/);
+    const rest = parts.pop() || "";
+    const painted = await paintSseBlocks(parts, eventName, onEvent);
+    if (painted.terminal) return;
+    await step(rest, painted.nextEvent);
+  };
+  await step("", "message");
+}
+
 export async function streamSsePost(
   url: string,
   body: unknown,
@@ -194,30 +232,8 @@ export async function streamSsePost(
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
-  let eventName = "message";
-  let more = true;
   try {
-    while (more) {
-      const { done, value } = await reader.read();
-      more = !done;
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split(/\r?\n\r?\n/);
-      buffer = parts.pop() || "";
-      for (const block of parts) {
-        const dispatched = await dispatchSseBlockAndPaint(block, eventName, onEvent);
-        eventName = dispatched.nextEvent;
-        if (dispatched.terminal) {
-          return;
-        }
-      }
-    }
-    if (buffer.trim()) {
-      await dispatchSseBlockAndPaint(buffer, eventName, onEvent);
-    }
+    await readSseStream(reader, decoder, onEvent);
   } finally {
     try {
       await reader.cancel();

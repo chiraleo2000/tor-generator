@@ -1034,6 +1034,56 @@ def _indexes_covering(count: int, keep: int) -> list[int]:
     return sorted(chosen)[:keep]
 
 
+def _one_window_each(count: int, limit: int) -> list[int]:
+    picked = set(_indexes_covering(count, limit))
+    return [1 if index in picked else 0 for index in range(count)]
+
+
+def _weighted_budget_share(lengths: list[int], remaining: int) -> list[int]:
+    budgets = [1] * len(lengths)
+    weights = [max(0, length - 1) for length in lengths]
+    weight_total = sum(weights)
+    for index, weight in enumerate(weights):
+        room = max(0, lengths[index] - 1)
+        budgets[index] += min(room, (remaining * weight) // weight_total)
+    return budgets
+
+
+def _grant_one_pass(
+    lengths: list[int], budgets: list[int], order: list[int], leftover: int
+) -> int:
+    """Give one extra window per file that still has unread text. -1 means stuck."""
+    progressed = False
+    for index in order:
+        if lengths[index] - budgets[index] <= 0:
+            continue
+        budgets[index] += 1
+        leftover -= 1
+        progressed = True
+        if leftover <= 0:
+            return 0
+    if not progressed:
+        return -1
+    return leftover
+
+
+def _grant_leftover_windows(
+    lengths: list[int], budgets: list[int], leftover: int, limit: int
+) -> None:
+    order = sorted(
+        range(len(lengths)),
+        key=lambda index: lengths[index] - budgets[index],
+        reverse=True,
+    )
+    guard = 0
+    cap = limit * len(lengths)
+    while leftover > 0 and guard < cap:
+        leftover = _grant_one_pass(lengths, budgets, order, leftover)
+        if leftover < 0:
+            return
+        guard += 1
+
+
 def _budgets_for_files(lengths: list[int], limit: int) -> list[int]:
     """Share the round-trip cap so a long file cannot erase a short annex."""
     count = len(lengths)
@@ -1042,33 +1092,13 @@ def _budgets_for_files(lengths: list[int], limit: int) -> list[int]:
     if sum(lengths) <= limit:
         return list(lengths)
     if count >= limit:
-        picked = set(_indexes_covering(count, limit))
-        return [1 if index in picked else 0 for index in range(count)]
-    budgets = [1] * count
+        return _one_window_each(count, limit)
     remaining = limit - count
     weights = [max(0, length - 1) for length in lengths]
-    weight_total = sum(weights)
-    if weight_total == 0 or remaining <= 0:
-        return [min(lengths[index], budgets[index]) for index in range(count)]
-    for index, weight in enumerate(weights):
-        extra = min(max(0, lengths[index] - 1), (remaining * weight) // weight_total)
-        budgets[index] += extra
-    leftover = limit - sum(budgets)
-    order = sorted(range(count), key=lambda index: lengths[index] - budgets[index], reverse=True)
-    guard = 0
-    while leftover > 0 and guard < limit * count:
-        progressed = False
-        for index in order:
-            if lengths[index] - budgets[index] <= 0:
-                continue
-            budgets[index] += 1
-            leftover -= 1
-            progressed = True
-            if leftover <= 0:
-                break
-        if not progressed:
-            break
-        guard += 1
+    if sum(weights) == 0 or remaining <= 0:
+        return [min(lengths[index], 1) for index in range(count)]
+    budgets = _weighted_budget_share(lengths, remaining)
+    _grant_leftover_windows(lengths, budgets, limit - sum(budgets), limit)
     return budgets
 
 
@@ -1143,6 +1173,40 @@ def _document_passage_replaces(key: str, current: str, document: str) -> bool:
     return True
 
 
+def _expanded_slot_content(current: str, document: str, cap: int) -> str:
+    clipped = document[:cap]
+    keep_model_quote = current and current not in clipped and len(current) >= 240
+    if keep_model_quote:
+        return _merge_slot_text(current, clipped, cap=cap)
+    return clipped
+
+
+def _sources_plus_document(current: list, incoming: list) -> list:
+    sources = list(current)
+    for item in incoming:
+        if item not in sources:
+            sources.append(item)
+    if "เอกสารประกอบ" not in sources:
+        sources.append("เอกสารประกอบ")
+    return sources
+
+
+def _expand_one_slot(current_slot: dict, value: dict, key: str) -> dict[str, Any] | None:
+    document = str(value.get("content") or "").strip()
+    current = str(current_slot.get("content") or "").strip()
+    if not _document_passage_replaces(key, current, document):
+        return None
+    cap = _slot_merge_cap(key)
+    return {
+        "content": _expanded_slot_content(current, document, cap),
+        "status": "filled",
+        "sources": _sources_plus_document(
+            list(current_slot.get("sources") or []),
+            list(value.get("sources") or []),
+        ),
+    }
+
+
 def expand_shallow_slots(
     slot_map: dict[str, Any], document_map: dict[str, Any]
 ) -> dict[str, Any]:
@@ -1159,24 +1223,11 @@ def expand_shallow_slots(
     for key, value in document_map.items():
         if key not in expanded or not isinstance(value, dict):
             continue
-        document = str(value.get("content") or "").strip()
         current_slot = expanded[key] if isinstance(expanded[key], dict) else {}
-        current = str(current_slot.get("content") or "").strip()
-        if not _document_passage_replaces(key, current, document):
+        replacement = _expand_one_slot(current_slot, value, key)
+        if replacement is None:
             continue
-        cap = _slot_merge_cap(key)
-        document = document[:cap]
-        if current and current not in document and len(current) >= 240:
-            content = _merge_slot_text(current, document, cap=cap)
-        else:
-            content = document
-        sources = list(current_slot.get("sources") or [])
-        for item in value.get("sources") or []:
-            if item not in sources:
-                sources.append(item)
-        if "เอกสารประกอบ" not in sources:
-            sources.append("เอกสารประกอบ")
-        expanded[key] = {"content": content, "status": "filled", "sources": sources}
+        expanded[key] = replacement
     return expanded
 
 
@@ -1203,34 +1254,52 @@ def _merge_slot_text(current: str, incoming: str, *, cap: int) -> str:
     return f"{cur}\n\n{inc[:room]}".rstrip()
 
 
+def _accepted_llm_fill(value: dict[str, Any]) -> tuple[str, str] | None:
+    content = str(value.get("content") or "").strip()
+    status = value.get("status")
+    if status not in {"filled", "reference_only"} or not content:
+        return None
+    return content, str(status)
+
+
+def _merged_source_list(current: dict, value: dict) -> list:
+    sources = list(current.get("sources") or [])
+    for item in value.get("sources") or []:
+        if item not in sources:
+            sources.append(item)
+    return sources
+
+
+def _merge_one_llm_slot(current: dict, value: dict, key: str) -> dict[str, Any] | None:
+    accepted = _accepted_llm_fill(value)
+    if accepted is None:
+        return None
+    content, status = accepted
+    if status == "reference_only" and current.get("status") == "filled":
+        return None
+    filled_now = status == "filled" or current.get("status") == "filled"
+    return {
+        "content": _merge_slot_text(
+            str(current.get("content") or ""),
+            content,
+            cap=_slot_merge_cap(key),
+        ),
+        "status": "filled" if filled_now else "reference_only",
+        "sources": _merged_source_list(current, value),
+    }
+
+
 def _merge_llm_slot_maps(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
     """Fold a later document window into slots without dropping the earlier quote."""
     merged = {key: dict(value) if isinstance(value, dict) else value for key, value in base.items()}
     for key, value in incoming.items():
         if key not in merged or not isinstance(value, dict):
             continue
-        content = str(value.get("content") or "").strip()
-        status = value.get("status")
-        if status not in {"filled", "reference_only"} or not content:
-            continue
         current = merged[key] if isinstance(merged[key], dict) else {}
-        if status == "reference_only" and current.get("status") == "filled":
+        replacement = _merge_one_llm_slot(current, value, key)
+        if replacement is None:
             continue
-        sources = list(current.get("sources") or [])
-        for item in value.get("sources") or []:
-            if item not in sources:
-                sources.append(item)
-        filled_now = status == "filled" or current.get("status") == "filled"
-        new_status = "filled" if filled_now else "reference_only"
-        merged[key] = {
-            "content": _merge_slot_text(
-                str(current.get("content") or ""),
-                content,
-                cap=_slot_merge_cap(key),
-            ),
-            "status": new_status,
-            "sources": sources,
-        }
+        merged[key] = replacement
     return merged
 
 

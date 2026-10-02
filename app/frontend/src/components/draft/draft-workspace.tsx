@@ -41,7 +41,10 @@ const EXPORT_WAIT_MESSAGE: Record<"failed" | "timeout", string> = {
 async function waitForExportReady(
   projectId: string
 ): Promise<{ status: "completed" | "failed" | "timeout"; error?: string }> {
-  for (let attempt = 0; attempt < 66; attempt += 1) {
+  const readExportStatus = async (): Promise<{
+    status: "completed" | "failed";
+    error?: string;
+  } | null> => {
     const statusRes = await apiClient.get(`/projects/${projectId}/export/status`);
     const payload = unwrapData<{ status?: string; error_message?: string | null }>(
       statusRes
@@ -53,9 +56,22 @@ async function waitForExportReady(
         error: payload.error_message || EXPORT_WAIT_MESSAGE.failed,
       };
     }
+    return null;
+  };
+
+  const pollExport = async (
+    attempt: number
+  ): Promise<{ status: "completed" | "failed" | "timeout"; error?: string }> => {
+    if (attempt >= 66) {
+      return { status: "timeout", error: EXPORT_WAIT_MESSAGE.timeout };
+    }
+    const ready = await readExportStatus();
+    if (ready) return ready;
     await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-  return { status: "timeout", error: EXPORT_WAIT_MESSAGE.timeout };
+    return pollExport(attempt + 1);
+  };
+
+  return pollExport(0);
 }
 
 export function DraftWorkspace() {
@@ -352,7 +368,9 @@ export function DraftWorkspace() {
           if (isTorPartScores(persistedParts)) {
             setReviewPartScores(persistedParts);
           }
-          setActionInfo(null);
+          setActionInfo((current) =>
+            current === "ดาวน์โหลดเอกสารแล้ว" || current === "กำลังสร้างเอกสาร..." ? current : null
+          );
           setReviewBusy(false);
         })
         .catch(() => undefined);
@@ -387,7 +405,9 @@ export function DraftWorkspace() {
       } catch {
         setReviewSuggestions([]);
       }
-      setActionInfo(null);
+      setActionInfo((current) =>
+        current === "ดาวน์โหลดเอกสารแล้ว" || current === "กำลังสร้างเอกสาร..." ? current : null
+      );
     } catch (err: unknown) {
       if (!succeeded) {
         setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));

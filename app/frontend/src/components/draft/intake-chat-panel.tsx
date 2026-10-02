@@ -82,23 +82,33 @@ export function IntakeChatPanel({
   }, [onAnalyzed]);
 
   const pollUntilMapped = useCallback(
-    async (maxMs: number) => {
+    (maxMs: number) => {
       const deadline = Date.now() + maxMs;
-      while (Date.now() < deadline) {
+      const waitForNextPoll = () =>
+        new Promise((resolve) => window.setTimeout(resolve, ANALYZE_POLL_MS));
+
+      const readCoverageOnce = async (): Promise<boolean | null> => {
         if (advancedRef.current) return true;
+        if (Date.now() >= deadline) return false;
         try {
           const payload = await refreshCoverage();
-          const readyMapped = analysisMappingReady(payload);
-          if (readyMapped) {
-            await advanceAfterAnalyze();
-            return true;
-          }
+          if (!analysisMappingReady(payload)) return null;
+          await advanceAfterAnalyze();
+          return true;
         } catch {
           /* keep polling while backend may still be writing */
+          return null;
         }
-        await new Promise((resolve) => window.setTimeout(resolve, ANALYZE_POLL_MS));
-      }
-      return false;
+      };
+
+      const pollStep = async (): Promise<boolean> => {
+        const ready = await readCoverageOnce();
+        if (ready !== null) return ready;
+        await waitForNextPoll();
+        return pollStep();
+      };
+
+      return pollStep();
     },
     [advanceAfterAnalyze, refreshCoverage]
   );
