@@ -21,17 +21,19 @@ def setup_function() -> None:
 def test_local_gemma_uses_large_window_and_768d(monkeypatch):
     monkeypatch.delenv("TOR_CONTEXT_WINDOW", raising=False)
     monkeypatch.delenv("EMBEDDING_DIMENSIONS", raising=False)
+    monkeypatch.delenv("EMBEDDING_MAX_TOKENS", raising=False)
     reset_capability_cache()
     caps = capabilities_for(
         "lm_studio",
         "google/gemma-4-e4b",
         "local",
-        "text-embedding-embeddinggemma-300m",
+        "text-embedding-embeddinggemma-2",
     )
     assert caps.context_window == GEMMA_CONTEXT_WINDOW
     assert caps.section_max_tokens >= 4_096
     assert caps.thinking_supported is True
     assert caps.embedding_dimensions == EMBEDDING_DIM_GEMMA
+    assert caps.embedding_max_input == 4_096
     assert compose_thinking_enabled("lm_studio") is False
 
 
@@ -42,7 +44,7 @@ def test_local_non_gemma_defaults_to_32k(monkeypatch):
         "lm_studio",
         "typhoon2.5-qwen3-4b",
         "local",
-        "text-embedding-embeddinggemma-300m",
+        "text-embedding-embeddinggemma-2",
     )
     assert caps.context_window == DEFAULT_CONTEXT_WINDOW
 

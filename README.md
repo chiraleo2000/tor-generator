@@ -2,7 +2,7 @@
 
 ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
 
-แอปที่รันจริงคือ **v0.8.3**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) และ Amazon Quick connector (`amazon-quick :8767` → live pgvector) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)  
+แอปที่รันจริงคือ **v0.8.4**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) และ Amazon Quick connector (`amazon-quick :8767` → live pgvector) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)  
 **Production แนะนำ:** Amazon Bedrock — แผนขึ้น webapp บน AWS: [Discussions/38-AWS-WEBAPP-DEPLOYMENT-PLAN.md](Discussions/38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) (เส้น PN/EC2 หรือ ECS) · ทางลัด Bedrock บน EC2: [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md)  
 **Amazon Quick บน AWS:** [app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md](app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md)  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
@@ -95,8 +95,8 @@ python -m app.seed_raw_docs
 
 ### LM Studio (ค่าเริ่มต้น)
 
-1. โหลดแชท **google/gemma-4-e4b** และ embeddings **text-embedding-embeddinggemma-300m** (ชุดเดียวกับ [`.env.example`](.env.example))
-2. ตั้ง context ใน LM Studio ให้ตรง `TOR_CONTEXT_WINDOW` (Gemma 4 = 131072)
+1. โหลดแชท **google/gemma-4-e4b** และ embeddings **text-embedding-embeddinggemma-2** (Unsloth EmbeddingGemma 2 GGUF — ชุดเดียวกับ [`.env.example`](.env.example))
+2. ตั้ง context ใน LM Studio ให้ตรง `TOR_CONTEXT_WINDOW` (Gemma 4 = 131072); ฝั่ง embeddings ใช้ `EMBEDDING_MAX_TOKENS=4096`
 3. เปิดเซิร์ฟเวอร์ OpenAI-compatible ที่ `http://127.0.0.1:1234/v1`
 4. จาก Docker backend ใช้ `http://host.docker.internal:1234/v1`
 5. คัดลอก [`.env.example`](.env.example) เป็น `.env` — ชื่อโมเดลและงบโทเคนอ่านจากไฟล์นั้น ไม่ hardcode ในแอป:
@@ -105,13 +105,13 @@ python -m app.seed_raw_docs
 
 ```env
 LM_STUDIO_MODEL=google/gemma-4-e4b
-LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m
+LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-2
 TOR_CONTEXT_WINDOW=131072
 TOR_SECTION_MAX_TOKENS=32768
 TOR_SCOPE_SUB_MAX_TOKENS=8192
 TOR_CHAT_MAX_TOKENS=32768
 TOR_REVIEW_MAX_TOKENS=131072
-EMBEDDING_MAX_TOKENS=2048
+EMBEDDING_MAX_TOKENS=4096
 EMBEDDING_DIMENSIONS=768
 ```
 

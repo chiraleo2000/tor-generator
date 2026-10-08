@@ -25,10 +25,10 @@ def _env_int(name: str, fallback: int) -> int:
 
 DEFAULT_CHAT_MODEL = _env_str("LM_STUDIO_MODEL", "google/gemma-4-e4b")
 DEFAULT_EMBEDDING_MODEL = _env_str(
-    "LM_STUDIO_EMBEDDING_MODEL", "text-embedding-embeddinggemma-300m"
+    "LM_STUDIO_EMBEDDING_MODEL", "text-embedding-embeddinggemma-2"
 )
 DEFAULT_SGLANG_EMBEDDING_MODEL = _env_str(
-    "SGLANG_EMBEDDING_MODEL", "google/embeddinggemma-300m"
+    "SGLANG_EMBEDDING_MODEL", "google/embeddinggemma-2"
 )
 EMBEDDING_DIMENSIONS = _env_int("EMBEDDING_DIMENSIONS", 768)
 

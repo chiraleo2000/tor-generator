@@ -138,7 +138,7 @@ def test_factory_creates_openai_compatible_llm():
         openai_compatible_model="demo",
         lm_studio_base_url="http://127.0.0.1:1234/v1",
         lm_studio_model="google/gemma-4-e4b",
-        lm_studio_embedding_model="text-embedding-embeddinggemma-300m",
+        lm_studio_embedding_model="text-embedding-embeddinggemma-2",
         jwt_secret="changeme_jwt_secret_at_least_32_characters_long",
     )
     factory = ProviderFactory(settings=settings)

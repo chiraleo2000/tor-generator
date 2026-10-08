@@ -71,7 +71,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       - LM_STUDIO_MODEL=${LM_STUDIO_MODEL:-google/gemma-4-e4b}
-      - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-300m}
+      - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-2}
       - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-10800}
       - TOR_CONTEXT_WINDOW=${TOR_CONTEXT_WINDOW:-}
       - TOR_SECTION_MAX_TOKENS=${TOR_SECTION_MAX_TOKENS:-}
@@ -125,7 +125,7 @@ services:
       - SGLANG_BASE_URL=${SGLANG_BASE_URL:-http://sglang-llm:30000/v1}
       - SGLANG_EMBEDDING_BASE_URL=${SGLANG_EMBEDDING_BASE_URL:-http://sglang-embed:30001/v1}
       - SGLANG_MODEL=${SGLANG_MODEL:-google/gemma-4-e4b}
-      - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
+      - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-2}
       - CUSTOM_RAG_ENABLED=${CUSTOM_RAG_ENABLED:-false}
       - CUSTOM_RAG_BASE_URL=${CUSTOM_RAG_BASE_URL:-}
       - CUSTOM_RAG_RETRIEVE_PATH=${CUSTOM_RAG_RETRIEVE_PATH:-}
@@ -203,7 +203,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-tor_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
-      - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-300m}
+      - LM_STUDIO_EMBEDDING_MODEL=${LM_STUDIO_EMBEDDING_MODEL:-text-embedding-embeddinggemma-2}
       - LM_STUDIO_TIMEOUT=${LM_STUDIO_TIMEOUT:-10800}
       - EMBEDDING_MAX_TOKENS=${EMBEDDING_MAX_TOKENS:-}
       - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-}
@@ -212,7 +212,7 @@ services:
       - LOCAL_EMBEDDING_BASE_URL=${LOCAL_EMBEDDING_BASE_URL:-}
       - VECTOR_STORE_PROVIDER=${VECTOR_STORE_PROVIDER:-pgvector}
       - SGLANG_EMBEDDING_BASE_URL=${SGLANG_EMBEDDING_BASE_URL:-http://sglang-embed:30001/v1}
-      - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
+      - SGLANG_EMBEDDING_MODEL=${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-2}
     depends_on:
       postgres:
         condition: service_healthy
@@ -519,7 +519,7 @@ services:
     entrypoint: python3 -m sglang.launch_server
     command:
       - --model-path
-      - ${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-300m}
+      - ${SGLANG_EMBEDDING_MODEL:-google/embeddinggemma-2}
       - --is-embedding
       - --host
       - 0.0.0.0

@@ -66,7 +66,7 @@ def _make_settings(
     gemini_api_key: str = "fake-gemini-key-for-testing",
     lm_studio_base_url: str = "http://localhost:1234/v1",
     lm_studio_model: str = "test-model",
-    lm_studio_embedding_model: str = "text-embedding-embeddinggemma-300m",
+    lm_studio_embedding_model: str = "text-embedding-embeddinggemma-2",
     lm_studio_timeout: float = 180.0,
     ollama_base_url: str = "http://host.docker.internal:11434/v1",
     llama_cpp_base_url: str = "http://host.docker.internal:8080/v1",

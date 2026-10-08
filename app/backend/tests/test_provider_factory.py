@@ -45,7 +45,7 @@ def make_settings(**overrides) -> Settings:
         "gemini_api_key": "",
         "lm_studio_base_url": "http://localhost:1234/v1",
         "lm_studio_model": "test-model",
-        "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
+        "lm_studio_embedding_model": "text-embedding-embeddinggemma-2",
         "lm_studio_timeout": 180.0,
         "ollama_base_url": "http://host.docker.internal:11434/v1",
         "llama_cpp_base_url": "http://host.docker.internal:8080/v1",
@@ -377,7 +377,7 @@ class TestExpandedProviders:
         )
         embedding = ProviderFactory(settings=settings).get_embedding()
         assert isinstance(embedding, Qwen3LocalEmbeddingProvider)
-        assert embedding.model == "text-embedding-embeddinggemma-300m"
+        assert embedding.model == "text-embedding-embeddinggemma-2"
 
     def test_hybrid_openai_chat(self):
         from app.providers.llm.openai_provider import OpenAILLMProvider
@@ -496,7 +496,7 @@ class TestExpandedProviders:
                 "embedding_provider": "local",
                 "ollama_base_url": "http://127.0.0.1:11434/v1",
                 "lm_studio_model": "overlay-chat",
-                "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
+                "lm_studio_embedding_model": "text-embedding-embeddinggemma-2",
             }
         )
         llm = ProviderFactory().get_llm()

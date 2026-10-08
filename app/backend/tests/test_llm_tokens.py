@@ -33,7 +33,7 @@ def test_draft_and_chat_budgets(monkeypatch):
     monkeypatch.setenv("LM_STUDIO_MODEL", "typhoon2.5-qwen3-4b")
     reset_capability_cache()
     assert GEMMA_CONTEXT_WINDOW == 131_072
-    assert EMBEDDING_MAX_TOKENS == 2_048
+    assert EMBEDDING_MAX_TOKENS == 4_096
     assert DRAFT_MAX_TOKENS >= 8_192
     assert DRAFT_MIN_TOKENS == 192
     assert CHAT_MAX_TOKENS == 32_768
@@ -109,6 +109,6 @@ def test_clamp_uses_provider_window(provider, model, monkeypatch):
 
     monkeypatch.delenv("TOR_CONTEXT_WINDOW", raising=False)
     reset_capability_cache()
-    caps = capabilities_for(provider, model, "local", "text-embedding-embeddinggemma-300m")
+    caps = capabilities_for(provider, model, "local", "text-embedding-embeddinggemma-2")
     capped = clamp_max_tokens("ก" * 200, 999_999, context_window=caps.context_window)
     assert 256 <= capped < caps.context_window

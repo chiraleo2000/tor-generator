@@ -194,7 +194,7 @@ class TestQwen3LocalEmbeddingProviderInit:
 
     def test_default_model(self):
         provider = Qwen3LocalEmbeddingProvider(base_url="http://localhost:1234/v1")
-        assert provider.model == "text-embedding-embeddinggemma-300m"
+        assert provider.model == "text-embedding-embeddinggemma-2"
 
     def test_custom_model(self):
         provider = Qwen3LocalEmbeddingProvider(
@@ -240,7 +240,7 @@ class TestQwen3LocalEmbedQuery:
         assert result == _padded([0.5, 0.6, 0.7])
         assert len(result) == EMBEDDING_DIMENSIONS
         provider._client.embeddings.create.assert_called_once_with(
-            model="text-embedding-embeddinggemma-300m",
+            model="text-embedding-embeddinggemma-2",
             input="ทดสอบข้อความภาษาไทย",
         )
 

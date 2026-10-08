@@ -55,7 +55,7 @@ test.describe("Help and standalone review", () => {
     await expect(page.getByText("แชทรีวิวสรุปคะแนน")).toBeVisible();
     await page.getByTestId("help-tab-faq").click();
     await expect(page.getByText(/google\/gemma-4-e4b/)).toBeVisible();
-    await expect(page.getByText(/text-embedding-embeddinggemma-300m/)).toBeVisible();
+    await expect(page.getByText(/text-embedding-embeddinggemma-2/)).toBeVisible();
     await expect(page.getByText(/127\.0\.0\.1:1234/)).toBeVisible();
     await saveEvidence(page, "10-help-faq");
   });

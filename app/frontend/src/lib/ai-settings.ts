@@ -109,7 +109,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   local_embedding_base_url: "",
   lm_studio_base_url: "http://host.docker.internal:1234/v1",
   lm_studio_model: "google/gemma-4-e4b",
-  lm_studio_embedding_model: "text-embedding-embeddinggemma-300m",
+  lm_studio_embedding_model: "text-embedding-embeddinggemma-2",
   lm_studio_timeout: 600,
   ollama_base_url: "http://host.docker.internal:11434/v1",
   llama_cpp_base_url: "http://host.docker.internal:8080/v1",
@@ -117,7 +117,7 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   sglang_base_url: "http://sglang-llm:30000/v1", // NOSONAR typescript:S5332
   sglang_embedding_base_url: "http://sglang-embed:30001/v1", // NOSONAR typescript:S5332
   sglang_model: "google/gemma-4-e4b",
-  sglang_embedding_model: "google/embeddinggemma-300m",
+  sglang_embedding_model: "google/embeddinggemma-2",
   anthropic_api_key: "",
   openai_api_key: "",
   gemini_api_key: "",

@@ -4,7 +4,7 @@
 เดโม UX/UI ที่คลิกได้คือ GitHub Pages (`index.html` ที่ราก) ไม่ใช่ไฟล์ 06  
 ภาพเวิร์กโฟลว์ 5 ขั้นในคู่มือนี้ชี้ไปที่ `test-evidence/` ชุดล่าสุดถ่ายบนสแตกจริง **18 ก.ย. 2026** (Gemini hybrid) — เปิด markdown แล้วเห็นหน้าจอปัจจุบัน  
 รอบตรวจสด **18 ก.ย. 2026** ยืนยันสามเครื่องมือใช้งานได้จริง (ถาม-ตอบไม่ค้าง / ร่าง 16/16 / ตรวจสอบ TOR) — ตัวเลขเทสต์และภาพเพิ่มใน `18-TEST_EVIDENCE.md`  
-แอปปัจจุบัน **v0.8.3** (18 ก.ย. 2026 — ผล LLM ขึ้นทันทีทุกผู้ให้บริการ + UI มือถือลิ้นชัก; พื้นฐาน v0.8.2 Gemini hybrid สามเครื่องมือ; v0.8.1 ค่าโมเดลตาม `.env.example`: Gemma 4 + EmbeddingGemma 768-d + งบโทเคน `TOR_*`; v0.8.0 อ่านงบจาก `.env`; v0.7.1 ถาม-ตอบแบบบทสรุป + คลัง `documents/sources/` ใน git; พื้นฐาน 15 ก.ย. v0.7.0 harden คุณภาพร่าง): หัวข้อทองตามประเภทงาน · กันไฟล์รั่ว/โทนผู้ขาย · ตรวจท้ายดึงกฎหมายและมาตรฐานหนา · Amazon Quick agents/skills v0.8.3 · พื้นฐาน v0.6.0: วิเคราะห์ขั้นที่ ๐ บันทึก `analyzed` · เกณฑ์คุณภาพตอนร่างคิดต่อหมวด · คู่มือในแอป (`/help`) สรุปเนื้อหาจากเอกสาร 13–19 พร้อมภาพประกอบใน `app/frontend/public/help/` (และโฟลเดอร์ `help/` สำหรับ GitHub Pages)
+แอปปัจจุบัน **v0.8.4** (18 ก.ย. 2026 — ผล LLM ขึ้นทันทีทุกผู้ให้บริการ + UI มือถือลิ้นชัก; พื้นฐาน v0.8.2 Gemini hybrid สามเครื่องมือ; v0.8.1 ค่าโมเดลตาม `.env.example`: Gemma 4 + EmbeddingGemma 768-d + งบโทเคน `TOR_*`; v0.8.0 อ่านงบจาก `.env`; v0.7.1 ถาม-ตอบแบบบทสรุป + คลัง `documents/sources/` ใน git; พื้นฐาน 15 ก.ย. v0.7.0 harden คุณภาพร่าง): หัวข้อทองตามประเภทงาน · กันไฟล์รั่ว/โทนผู้ขาย · ตรวจท้ายดึงกฎหมายและมาตรฐานหนา · Amazon Quick agents/skills v0.8.3 · พื้นฐาน v0.6.0: วิเคราะห์ขั้นที่ ๐ บันทึก `analyzed` · เกณฑ์คุณภาพตอนร่างคิดต่อหมวด · คู่มือในแอป (`/help`) สรุปเนื้อหาจากเอกสาร 13–19 พร้อมภาพประกอบใน `app/frontend/public/help/` (และโฟลเดอร์ `help/` สำหรับ GitHub Pages)
 
 | | |
 |--|--|
@@ -378,7 +378,7 @@
 
 ![ขั้นที่ 8 — คู่มือแท็บผู้ดูแล](test-evidence/10h-help-admin.png)
 
-**FAQ** — ลืมรหัสผ่าน: ให้ผู้ดูแลปิดใช้บัญชีเก่าแล้วสร้างบัญชีใหม่ (หน้าผู้ใช้ยังไม่มีปุ่มรีเซ็ตรหัสของแถวที่มีอยู่); LLM ไม่ตอบให้เปิด LM Studio ที่ `http://127.0.0.1:1234` โหลด `google/gemma-4-e4b` และ `text-embedding-embeddinggemma-300m` หรือใส่คีย์คลาวด์โดยคง embeddings ในเครื่อง; seed คลังจากโฮสต์ `python -m app.seed_raw_docs`; ถ้าเลือกแชทคลาวด์ เนื้อหาแชทออกนอกเครื่อง
+**FAQ** — ลืมรหัสผ่าน: ให้ผู้ดูแลปิดใช้บัญชีเก่าแล้วสร้างบัญชีใหม่ (หน้าผู้ใช้ยังไม่มีปุ่มรีเซ็ตรหัสของแถวที่มีอยู่); LLM ไม่ตอบให้เปิด LM Studio ที่ `http://127.0.0.1:1234` โหลด `google/gemma-4-e4b` และ `text-embedding-embeddinggemma-2` หรือใส่คีย์คลาวด์โดยคง embeddings ในเครื่อง; seed คลังจากโฮสต์ `python -m app.seed_raw_docs`; ถ้าเลือกแชทคลาวด์ เนื้อหาแชทออกนอกเครื่อง
 
 ![ขั้นที่ 8 — คู่มือแท็บ FAQ](test-evidence/10-help-faq.png)
 
@@ -420,7 +420,7 @@
 
 1. เปิด **การตั้งค่า AI**
 2. โหมด (`on_prem` / `cloud` / `hybrid`) เป็นป้ายกำกับเท่านั้น — **ไม่สลับคู่** แชทกับ embeddings
-3. ค่าเริ่มต้นแชท LM Studio `google/gemma-4-e4b` embeddings `text-embedding-embeddinggemma-300m` timeout 180 คลังเวกเตอร์ `pgvector`
+3. ค่าเริ่มต้นแชท LM Studio `google/gemma-4-e4b` embeddings `text-embedding-embeddinggemma-2` timeout 180 คลังเวกเตอร์ `pgvector`
 4. เลือกแชทและ embeddings คนละแหล่งได้ เช่น Claude API + EmbeddingGemma ในเครื่อง (`LOCAL_EMBEDDING_SERVER=lm_studio`)
 5. กด **ทดสอบการเชื่อมต่อ** — ยิงทั้งแชทและ embeddings คนละปลายทางได้ (ไม่ต้องรีสตาร์ท)
 6. กด **บันทึก** — มีผลทันทีในกระบวนการร่าง (ไม่ต้องรีสตาร์ท backend)
@@ -438,7 +438,7 @@
 
 | เป้าหมาย | โหมด | โมเดลแชท | ฝังเวกเตอร์ | คีย์ / เซิร์ฟเวอร์ | ต้อง seed ใหม่? |
 |----------|------|-----------|-------------|-------------------|----------------|
-| Claude + EmbeddingGemma ในเครื่อง | ผสม | Claude (Anthropic) | ในเครื่อง | Anthropic API key + LM Studio :1234 โหลด `text-embedding-embeddinggemma-300m` · URL จาก Docker = `http://host.docker.internal:1234/v1` | ไม่ (ถ้าเคยใช้ EmbeddingGemma อยู่แล้ว) |
+| Claude + EmbeddingGemma ในเครื่อง | ผสม | Claude (Anthropic) | ในเครื่อง | Anthropic API key + LM Studio :1234 โหลด `text-embedding-embeddinggemma-2` · URL จาก Docker = `http://host.docker.internal:1234/v1` | ไม่ (ถ้าเคยใช้ EmbeddingGemma อยู่แล้ว) |
 | Claude + OpenAI embeddings | ผสม หรือ คลาวด์ | Claude (Anthropic) | ฝังเวกเตอร์ OpenAI | Anthropic + OpenAI API key · โมเดลฝังเวกเตอร์ OpenAI ค่าเริ่มต้น `text-embedding-3-small` | **ใช่** — รัน `python -m app.seed_raw_docs` หลังบันทึก |
 | Gemma ในเครื่อง (ค่าเริ่มต้น) | รันในเครื่อง | LM Studio | ในเครื่อง | LM Studio โหลดทั้ง `google/gemma-4-e4b` และ EmbeddingGemma | ไม่ |
 
@@ -458,7 +458,7 @@ Claude ใช้โมเดล `claude-sonnet-4-20250514` ในโค้ด (�
 | LM Studio บนโฮสต์ | `http://127.0.0.1:1234` |
 | จาก Docker | `http://host.docker.internal:1234/v1` |
 | แชท | `google/gemma-4-e4b` |
-| Embeddings | `text-embedding-embeddinggemma-300m` (768 มิติ) |
+| Embeddings | `text-embedding-embeddinggemma-2` (768 มิติ) |
 | Timeout | 180 วินาทีต่อหมวด |
 | Ollama | `http://host.docker.internal:11434/v1` |
 | llama.cpp | `http://host.docker.internal:8080/v1` |

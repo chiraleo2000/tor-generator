@@ -185,7 +185,7 @@ def _write_report(project_id: str, drafts: dict[str, str], new_scan: dict, old_s
     report = {
         "project_id": project_id,
         "chat_model": "google/gemma-4-e4b",
-        "embedding_model": "text-embedding-embeddinggemma-300m",
+        "embedding_model": "text-embedding-embeddinggemma-2",
         "thinking": "enabled",
         "old_tor4": old_scan,
         "new_export": new_scan,

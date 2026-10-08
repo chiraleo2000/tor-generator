@@ -563,7 +563,7 @@ function AdminTab() {
         </li>
         <li>
           ค่าเริ่มต้นตาม <code>.env.example</code>: <code>LM_STUDIO_MODEL=google/gemma-4-e4b</code> +{" "}
-          <code>LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m</code> ·{" "}
+          <code>LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-2</code> ·{" "}
           <code>EMBEDDING_DIMENSIONS=768</code> · pgvector
         </li>
         <li>
@@ -624,7 +624,7 @@ function FaqTab() {
         </li>
         <li>
           Dev ตาม <code>.env.example</code>: <code>LM_STUDIO_MODEL=google/gemma-4-e4b</code> ·{" "}
-          <code>LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m</code> (768 มิติ)
+          <code>LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-2</code> (768 มิติ)
         </li>
         <li>
           Production บน AWS ของแอปนี้: Amazon Bedrock — คู่มือ{" "}

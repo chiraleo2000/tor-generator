@@ -39,7 +39,7 @@ def _local_body(**overrides) -> AiSettingsUpdate:
         "embedding_provider": "local",
         "lm_studio_base_url": "http://127.0.0.1:1234/v1",
         "lm_studio_model": "google/gemma-4-e4b",
-        "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
+        "lm_studio_embedding_model": "text-embedding-embeddinggemma-2",
     }
     data.update(overrides)
     return AiSettingsUpdate(**data)
@@ -183,7 +183,7 @@ def test_public_payload_includes_reingest_flag():
 def test_embedding_changed_vendor_and_model():
     existing = {
         "embedding_provider": "local",
-        "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
+        "lm_studio_embedding_model": "text-embedding-embeddinggemma-2",
         "gemini_embedding_model": "text-embedding-004",
     }
     same = dict(existing)
@@ -288,7 +288,7 @@ def test_put_ai_settings_applies_overlay_without_restart(admin_client):
             "embedding_provider": "local",
             "lm_studio_base_url": "http://127.0.0.1:1234/v1",
             "lm_studio_model": "overlay-gemma-test",
-            "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
+            "lm_studio_embedding_model": "text-embedding-embeddinggemma-2",
             "vector_store_provider": "pgvector",
         },
     )
@@ -308,7 +308,7 @@ def test_put_ai_settings_sets_reingest_when_embed_model_changes(admin_client):
             "embedding_provider": "local",
             "lm_studio_base_url": "http://127.0.0.1:1234/v1",
             "lm_studio_model": "google/gemma-4-e4b",
-            "lm_studio_embedding_model": "text-embedding-embeddinggemma-300m",
+            "lm_studio_embedding_model": "text-embedding-embeddinggemma-2",
         },
     )
     mock_db = AsyncMock()
@@ -531,7 +531,7 @@ def test_validate_hybrid_requires_cloud_key():
         deployment_mode="hybrid",
         llm_provider="claude",
         embedding_provider="local",
-        lm_studio_embedding_model="text-embedding-embeddinggemma-300m",
+        lm_studio_embedding_model="text-embedding-embeddinggemma-2",
     )
     with pytest.raises(ValidationError) as exc:
         _validate_update(body, {})
@@ -557,7 +557,7 @@ def test_validate_cloud_allows_local_embeddings():
             embedding_provider="local",
             openai_api_key="sk-test",
             lm_studio_base_url="http://127.0.0.1:1234/v1",
-            lm_studio_embedding_model="text-embedding-embeddinggemma-300m",
+            lm_studio_embedding_model="text-embedding-embeddinggemma-2",
         ),
         {},
     )

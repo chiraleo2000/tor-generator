@@ -13,8 +13,8 @@ def test_lm_studio_model_key_matches_env_example(monkeypatch):
 def test_embedding_model_key_matches_env_example(monkeypatch):
     monkeypatch.delenv("LM_STUDIO_EMBEDDING_MODEL", raising=False)
     assert (
-        _env_str("LM_STUDIO_EMBEDDING_MODEL", "text-embedding-embeddinggemma-300m")
-        == "text-embedding-embeddinggemma-300m"
+        _env_str("LM_STUDIO_EMBEDDING_MODEL", "text-embedding-embeddinggemma-2")
+        == "text-embedding-embeddinggemma-2"
     )
 
 
