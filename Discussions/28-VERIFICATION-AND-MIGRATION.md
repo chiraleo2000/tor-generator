@@ -22,7 +22,7 @@
 | โมเดล | ค่า |
 |--------|-----|
 | Chat / draft | `google/gemma-4-e4b` ผ่าน LM Studio |
-| Embeddings | `text-embedding-embeddinggemma-300m` (768 มิติ) |
+| Embeddings | `text-embedding-embeddinggemma-2` (768 มิติ · context 4096) |
 | `DEPLOYMENT_MODE` | `on_prem` |
 | `LLM_PROVIDER` | `lm_studio` |
 | `EMBEDDING_PROVIDER` | `local` |
@@ -96,7 +96,7 @@ curl -m 10 http://localhost:4000/health
 
 บริการหลักทั้งห้าพร้อม (ค่าใน JSON เป็น `up` ภายใต้ `status: healthy`)
 
-LM Studio `:1234/v1/models` โหลด `google/gemma-4-e4b` และ `text-embedding-embeddinggemma-300m`
+LM Studio `:1234/v1/models` โหลด `google/gemma-4-e4b` และ `text-embedding-embeddinggemma-2`
 
 **ผลเฟสนี้: ผ่าน**
 

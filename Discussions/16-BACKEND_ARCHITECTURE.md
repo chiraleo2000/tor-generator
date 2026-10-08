@@ -82,7 +82,7 @@ Alembic `006_kb_corpus_group` adds `knowledge_base_documents.corpus_group`.
 Default `DEPLOYMENT_MODE=on_prem` and `LLM_PROVIDER=lm_studio`:
 
 - Chat completions: `google/gemma-4-e4b` at `http://host.docker.internal:1234/v1`
-- Embeddings: `text-embedding-embeddinggemma-300m` (OpenAI-compatible `/embeddings`, **768** dimensions)
+- Embeddings: `text-embedding-embeddinggemma-2` (OpenAI-compatible `/embeddings`, **768** dimensions, `EMBEDDING_MAX_TOKENS=4096`)
 - Vector store: pgvector by default; Admin can select Qdrant in any mode including `on_prem`
 - Per-section LLM timeout: `LM_STUDIO_TIMEOUT` (default **180s**, clamped to 300s). Gemma E4B often exceeds the 60s cloud default.
 

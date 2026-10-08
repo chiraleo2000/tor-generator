@@ -184,7 +184,7 @@ Docker Compose เมานต์ `./documents/sources:/documents/sources:ro` �
 - **ทดสอบการเชื่อมต่อ** ยิงทั้งแชทและ embeddings ไม่ต้องรีสตาร์ท
 - **บันทึก** มีผลทันทีในกระบวนการ — ไม่ต้อง `restart backend`
 
-ถ้าเปลี่ยนผู้ให้บริการ embeddings หรือชื่อโมเดลฝังตัว ต้อง `python -m app.seed_raw_docs` อีกครั้ง (หน้าผู้ดูแลจะเตือน `reingest_required`)
+ถ้าเปลี่ยนผู้ให้บริการ embeddings หรือชื่อโมเดลฝังตัว ต้อง `python -m app.seed_raw_docs --wipe-baseline` (incremental ไม่พอ — หน้าผู้ดูแลจะเตือน `reingest_required`) แล้วตรวจด้วย `python -m scripts.verify_rag_embeddings`
 
 ### ตัวอย่างการตั้งค่าผสม (ผู้ดูแล → การตั้งค่า AI)
 

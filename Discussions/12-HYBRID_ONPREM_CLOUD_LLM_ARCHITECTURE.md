@@ -4,7 +4,7 @@
 > **Production บน AWS:** โหมดเป้าหมายคือ **Cloud ล้วน** (`DEPLOYMENT_MODE=cloud` + Bedrock ทั้งแชทและ embeddings) — **ไม่ใช้ Hybrid** ใน task production  
 > RAG ยังมีได้ **สองแหล่งข้อมูล** (คลังกลาง + ของฉัน/ระบบอื่น) โดยโมเดลยังอยู่บน AWS — ดู [`29-TBD-AWS-CLOUD-ONLY.md`](29-TBD-AWS-CLOUD-ONLY.md)  
 > คู่มือ ECS/RDS: [`24-AWS_CLOUD_OVERVIEW.md`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md) ไม่ใช่ไฟล์นี้  
-> **Dev ค่าเริ่มต้น:** LM Studio `google/gemma-4-e4b` + `text-embedding-embeddinggemma-300m` (768 มิติ), pgvector, Mongo GridFS, Neo4j GraphRAG  
+> **Dev ค่าเริ่มต้น:** LM Studio `google/gemma-4-e4b` + `text-embedding-embeddinggemma-2` (768 มิติ · context 4096), pgvector, Mongo GridFS, Neo4j GraphRAG  
 > **ทางลัด Bedrock บน EC2+Compose (ไม่ใช่ ECS ล้วน):** [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
 > On-prem ที่สลับได้: LM Studio, Ollama, llama.cpp, **SGLang** · คลาวด์: Bedrock, Anthropic, OpenAI, Gemini, Azure Foundry, OpenAI-compatible  
 > **Custom RAG HTTP** เป็นแหล่งดึงความรู้เสริมได้คู่กับคลังในเครื่อง  
@@ -469,7 +469,7 @@ LM_STUDIO_MODEL=google/gemma-4-e4b
 # ===== Embedding Provider (อิสระจากแชท) =====
 EMBEDDING_PROVIDER=local           # local | openai | gemini | bedrock | azure_foundry | openai_compatible
 LOCAL_EMBEDDING_SERVER=lm_studio   # lm_studio | ollama | llama_cpp — ไม่ตาม LLM_PROVIDER
-LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-300m
+LM_STUDIO_EMBEDDING_MODEL=text-embedding-embeddinggemma-2
 LOCAL_EMBEDDING_BASE_URL=          # ว่าง = ใช้ URL ของ LOCAL_EMBEDDING_SERVER
 OPENAI_API_KEY=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small

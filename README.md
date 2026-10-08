@@ -69,6 +69,15 @@ set NEO4J_URI=bolt://127.0.0.1:7687
 python -m app.seed_raw_docs
 ```
 
+เมื่อเปลี่ยนโมเดล embeddings (เช่นจาก EmbeddingGemma 1 → **text-embedding-embeddinggemma-2**) ต้องล้างแล้วฝังใหม่ — มิติยังเป็น 768 แต่พื้นที่เวกเตอร์คนละชุด การ seed แบบ incremental จะข้ามไฟล์เดิม:
+
+```bash
+python -m app.seed_raw_docs --wipe-baseline
+```
+
+จาก Docker: `docker compose -p tor-app --env-file .env exec backend python -m app.seed_raw_docs --wipe-baseline`  
+ตรวจว่าค้นหาได้: `python -m scripts.verify_rag_embeddings` (ในคอนเทนเนอร์ตั้ง `PYTHONPATH=/app`)
+
 | กลุ่ม | แหล่ง | ใครเห็น |
 |-------|--------|---------|
 | `mandatory_handbook` | `documents/sources/คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf` | ทุกบัญชี |
@@ -91,7 +100,7 @@ python -m app.seed_raw_docs
 
 ตัวอย่าง: `DEPLOYMENT_MODE=hybrid`, `LLM_PROVIDER=gemini`, `EMBEDDING_PROVIDER=local`, `PIN_ON_PREM_LLM=false` — แชทใช้ Gemini, ฝังเวกเตอร์ใช้ EmbeddingGemma บน LM Studio (`LOCAL_EMBEDDING_SERVER=lm_studio`). คีย์คลาวด์ (`GEMINI_API_KEY`, Bedrock, Azure) ใส่ใน `.env` ได้โดยไม่ต้องตัดออก
 
-ผู้ดูแลสลับผู้ให้บริการได้ที่ **การตั้งค่า AI** — บันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend ถ้าเปลี่ยนโมเดล embeddings ต้อง `seed_raw_docs` ใหม่
+ผู้ดูแลสลับผู้ให้บริการได้ที่ **การตั้งค่า AI** — บันทึกมีผลทันที ไม่ต้องรีสตาร์ท backend ถ้าเปลี่ยนโมเดล embeddings ต้อง `python -m app.seed_raw_docs --wipe-baseline` (incremental ไม่พอ)
 
 ### LM Studio (ค่าเริ่มต้น)
 
