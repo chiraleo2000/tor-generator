@@ -33,7 +33,7 @@ from app.providers.llm.stream_fallback import stream_llm_tokens
 from app.rag.document_pipeline import ingest_file_bytes
 from app.rag.hybrid import unpack_hybrid
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
-from app.llm_tokens import live_chat_max_tokens
+from app.llm_tokens import clamp_max_tokens, live_chat_max_tokens
 from app.rag.kb_qa import (
     DRAFT_INTAKE_CONTEXT_CHUNKS,
     DRAFT_INTAKE_MAX_TOKENS,
@@ -41,8 +41,12 @@ from app.rag.kb_qa import (
     DRAFT_INTAKE_TOP_K,
     build_kb_qa_messages,
     chat_rag_top_k,
+    is_context_overflow_error,
+    messages_token_estimate,
     normalize_kb_qa_answer,
     prepare_kb_qa_messages,
+    select_rag_chunks_for_qa,
+    shrink_kb_qa_messages,
     trim_history,
 )
 from app.rate_limiter import rate_limit_ai
@@ -483,6 +487,25 @@ def _queued_event(event_q: Any, request_id: str):
     return on_wait
 
 
+async def _stream_chat_tokens(
+    llm: Any,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+) -> list[str]:
+    from app.providers.model_capabilities import llm_call_kwargs
+
+    prompt_blob = "\n".join(str(item.get("content") or "") for item in messages)
+    capped = clamp_max_tokens(prompt_blob, max_tokens)
+    parts: list[str] = []
+    async for token in stream_llm_tokens(
+        llm,
+        messages,
+        **llm_call_kwargs(temperature=0.2, max_tokens=capped),
+    ):
+        parts.append(token)
+    return parts
+
+
 async def _run_chat_llm(
     *,
     redis: Any,
@@ -501,15 +524,20 @@ async def _run_chat_llm(
         async with admit(redis, "llm", request_id, on_wait=_queued_event(event_q, request_id)):
             await event_q.put(("started", {"request_id": request_id}))
             llm = ProviderFactory().get_llm()
-            from app.providers.model_capabilities import llm_call_kwargs
-
-            async for token in stream_llm_tokens(
-                llm,
-                messages,
-                **llm_call_kwargs(temperature=0.2, max_tokens=max_tokens),
-            ):
-                parts_local.append(token)
-                await event_q.put(("token", {"text": token}))
+            active_messages = messages
+            active_max = max_tokens
+            try:
+                parts_local = await _stream_chat_tokens(llm, active_messages, active_max)
+            except Exception as first_exc:
+                if not is_context_overflow_error(first_exc):
+                    raise
+                logger.warning(
+                    "chat context overflow (est_tokens=%s); shrinking prompt and retrying",
+                    messages_token_estimate(active_messages),
+                )
+                active_messages = shrink_kb_qa_messages(active_messages, ratio=0.4)
+                active_max = min(active_max, 4_096)
+                parts_local = await _stream_chat_tokens(llm, active_messages, active_max)
         full_text = normalize_kb_qa_answer("".join(parts_local))
         await _persist_assistant_reply(session_factory, room_id, full_text, citations)
         await event_q.put(
@@ -555,10 +583,26 @@ async def _iter_chat_sse(
             top_k=top_k,
         )
     )
+    qa_chunks = select_rag_chunks_for_qa(result.chunks) if is_kb else list(result.chunks)
     if is_kb:
+        keep_docs = {
+            str(getattr(chunk, "source_document", None) or "")
+            for chunk in qa_chunks
+        }
+        citations = [
+            cite
+            for cite in (citations or [])
+            if str(
+                (cite.get("document") if isinstance(cite, dict) else None)
+                or (cite.get("source_document") if isinstance(cite, dict) else None)
+                or ""
+            )
+            in keep_docs
+            or not keep_docs
+        ]
         messages = await prepare_kb_qa_messages(
             question=question,
-            chunks=result.chunks,
+            chunks=qa_chunks,
             history=prior,
             degraded=degraded,
         )
@@ -566,7 +610,7 @@ async def _iter_chat_sse(
         messages = _room_llm_messages(
             is_kb=False,
             question=question,
-            chunks=result.chunks,
+            chunks=qa_chunks,
             history=prior,
             degraded=degraded,
         )

@@ -15,8 +15,17 @@ from app.models.kb_chat_session import KBChatSession
 from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.rag.hybrid import unpack_hybrid
-from app.rag.kb_qa import chat_rag_top_k, normalize_kb_qa_answer, prepare_kb_qa_messages
-from app.llm_tokens import live_chat_max_tokens
+from app.rag.kb_qa import (
+    CHAT_RAG_FALLBACK_TOP_N,
+    CHAT_RAG_SCORE_THRESHOLD,
+    chat_rag_top_k,
+    is_context_overflow_error,
+    normalize_kb_qa_answer,
+    prepare_kb_qa_messages,
+    select_rag_chunks_for_qa,
+    shrink_kb_qa_messages,
+)
+from app.llm_tokens import clamp_max_tokens, live_chat_max_tokens
 from app.services.session_cache import SessionCacheService
 
 logger = logging.getLogger("tor_app.kb_chat")
@@ -24,23 +33,13 @@ logger = logging.getLogger("tor_app.kb_chat")
 MAX_HISTORY = 20
 MAX_MESSAGE_LENGTH = 1000
 SESSION_TIMEOUT_MINUTES = 30
-RELEVANCE_THRESHOLD = 0.25
+RELEVANCE_THRESHOLD = CHAT_RAG_SCORE_THRESHOLD
 NO_RESULTS = "ไม่พบข้อมูลที่เกี่ยวข้อง"
-LOW_SCORE_KEEP = 12
+LOW_SCORE_KEEP = CHAT_RAG_FALLBACK_TOP_N
 
 
 def _chunks_for_answer(chunks: list) -> list:
-    scored = list(chunks or [])
-    if not scored:
-        return []
-    strong = [
-        chunk
-        for chunk in scored
-        if float(getattr(chunk, "score", 0) or 0) >= RELEVANCE_THRESHOLD
-    ]
-    if strong:
-        return strong
-    return scored[: min(LOW_SCORE_KEEP, len(scored))]
+    return select_rag_chunks_for_qa(chunks)
 
 
 @dataclass
@@ -129,11 +128,25 @@ class KnowledgeChatService:
 
     async def _synthesize(self, message: str, chunks: list, history: list[dict]) -> str:
         llm = self._llm or ProviderFactory().get_llm()
-        response = await llm.invoke(
-            await prepare_kb_qa_messages(question=message, chunks=chunks, history=history),
-            temperature=0.2,
-            max_tokens=live_chat_max_tokens(),
+        messages = await prepare_kb_qa_messages(
+            question=message, chunks=chunks, history=history
         )
+        prompt_blob = "\n".join(str(item.get("content") or "") for item in messages)
+        max_tokens = clamp_max_tokens(prompt_blob, live_chat_max_tokens())
+        try:
+            response = await llm.invoke(
+                messages, temperature=0.2, max_tokens=max_tokens
+            )
+        except Exception as exc:
+            if not is_context_overflow_error(exc):
+                raise
+            logger.warning("kb_chat context overflow; shrinking prompt and retrying")
+            messages = shrink_kb_qa_messages(messages, ratio=0.4)
+            prompt_blob = "\n".join(str(item.get("content") or "") for item in messages)
+            max_tokens = clamp_max_tokens(prompt_blob, min(max_tokens, 4_096))
+            response = await llm.invoke(
+                messages, temperature=0.2, max_tokens=max_tokens
+            )
         return normalize_kb_qa_answer(getattr(response, "content", "") or "")
 
     async def _append(

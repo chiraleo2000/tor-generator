@@ -115,7 +115,28 @@ class BedrockLLMProvider(LLMProvider):
             request["system"] = system_parts
         inference: dict[str, Any] = {}
         if "max_tokens" in kwargs:
-            inference["maxTokens"] = int(kwargs["max_tokens"])
+            # Keep input + maxTokens inside the model window (Bedrock ValidationException).
+            try:
+                from app.llm_tokens import clamp_max_tokens, estimate_tokens
+
+                blob = "\n".join(
+                    str(part.get("text") or "") for part in system_parts
+                ) + "\n".join(
+                    str((block.get("text") if isinstance(block, dict) else "") or "")
+                    for msg in converse_messages
+                    for block in (msg.get("content") or [])
+                )
+                inference["maxTokens"] = clamp_max_tokens(
+                    blob, int(kwargs["max_tokens"])
+                )
+                # Extra guard when Thai estimate undercounts.
+                used = estimate_tokens(blob)
+                from app.llm_tokens import live_context_window
+
+                room = max(256, live_context_window() - used - 512)
+                inference["maxTokens"] = max(256, min(inference["maxTokens"], room))
+            except Exception:  # noqa: BLE001 — never block the request on clamp helpers
+                inference["maxTokens"] = int(kwargs["max_tokens"])
         if "temperature" in kwargs:
             inference["temperature"] = float(kwargs["temperature"])
         if inference:

@@ -17,6 +17,7 @@ from app.rag.kb_qa import (
     normalize_kb_qa_answer,
     pack_kb_context,
     prepare_kb_qa_messages,
+    select_rag_chunks_for_qa,
     trim_history,
 )
 
@@ -34,6 +35,15 @@ def _chunk(text: str, source: str, *, page: int | None = 1, score: float = 0.9):
 
 def _web(*, title: str, url: str, snippet: str = "ข้อความสั้น", published: str = "2024-05-01"):
     return SimpleNamespace(title=title, url=url, snippet=snippet, published=published)
+
+
+def test_select_rag_chunks_threshold_or_top3():
+    strong = _chunk("แรง", "a.pdf", score=0.8)
+    weak = [_chunk(f"อ่อน{i}", f"w{i}.pdf", score=0.05 - i * 0.001) for i in range(5)]
+    assert select_rag_chunks_for_qa([strong, weak[0]]) == [strong]
+    picked = select_rag_chunks_for_qa(weak)
+    assert len(picked) == 3
+    assert picked[0].score >= picked[1].score >= picked[2].score
 
 
 def test_diversify_chunks_round_robins_sources():
@@ -94,8 +104,8 @@ def test_build_kb_qa_messages_is_adaptive_and_uses_rag():
     assert "ครอบคลุม" in user
     assert "แหล่งออนไลน์ที่ค้นได้: 0 แหล่ง" in user
     assert "หัวข้อบังคับ" not in user
-    assert CHAT_RAG_TOP_K >= 96
-    assert chat_rag_top_k() >= 64
+    assert CHAT_RAG_TOP_K == 24
+    assert 3 <= chat_rag_top_k() <= 64
     assert CHAT_MAX_TOKENS == 32_768
     assert "ตอบให้ครบถ้วนตามเอกสาร" in KB_QA_SYSTEM
     assert "ถักทอสาระ" in KB_QA_SYSTEM

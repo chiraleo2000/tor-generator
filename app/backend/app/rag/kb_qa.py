@@ -21,14 +21,72 @@ QA_WEB_SNIPPET_CHARS = 220
 # Catalog aliases for tests / older imports; runtime uses live_* below.
 CHAT_MAX_TOKENS = 32_768
 CHAT_CONTEXT_WINDOW = 32_768
-CHAT_RAG_TOP_K = 96
-CHAT_MAX_CONTEXT_CHUNKS = 96
+# Retrieve modestly; pack only strong hits (or top-3 fallback) up to RAG token cap.
+CHAT_RAG_TOP_K = 24
+CHAT_MAX_CONTEXT_CHUNKS = 24
+CHAT_RAG_SCORE_THRESHOLD = 0.25
+CHAT_RAG_FALLBACK_TOP_N = 3
 CHAT_HISTORY_MESSAGES = 6
 CHAT_HISTORY_CHAR_CAP = 12_000
 
 
+# Leave room for system + history + web + Bedrock input+maxTokens validation.
+# Thai underestimates easily; hard-cap RAG pack so Q&A stays inside the window.
+_CHAT_PROMPT_OVERHEAD_TOKENS = 12_000
+_CHAT_RAG_PACK_CAP_TOKENS = 36_000
+
+
 def chat_context_token_budget() -> int:
-    return max(1_024, live_context_window() - live_chat_max_tokens() - 4_000)
+    """Tokens available for packed RAG chunks (not the full model window)."""
+    room = live_context_window() - live_chat_max_tokens() - _CHAT_PROMPT_OVERHEAD_TOKENS
+    return max(1_024, min(room, _CHAT_RAG_PACK_CAP_TOKENS))
+
+
+def messages_token_estimate(messages: list[dict[str, Any]] | None) -> int:
+    total = 0
+    for item in messages or []:
+        if not isinstance(item, dict):
+            continue
+        total += estimate_tokens(str(item.get("content") or ""))
+    return total
+
+
+def shrink_kb_qa_messages(
+    messages: list[dict[str, str]],
+    *,
+    ratio: float = 0.45,
+) -> list[dict[str, str]]:
+    """Trim the last user turn (RAG block) so a retry fits Bedrock limits."""
+    if not messages:
+        return []
+    out = [dict(item) for item in messages]
+    for index in range(len(out) - 1, -1, -1):
+        if out[index].get("role") != "user":
+            continue
+        content = str(out[index].get("content") or "")
+        keep = max(2_000, int(len(content) * max(0.2, min(0.8, ratio))))
+        if len(content) > keep:
+            out[index]["content"] = content[:keep] + "\n…\n(ตัดบริบทให้พอดีหน้าต่างโมเดล)"
+        break
+    return out
+
+
+def is_context_overflow_error(exc: BaseException) -> bool:
+    blob = f"{type(exc).__name__} {exc}".lower()
+    cause = getattr(exc, "__cause__", None)
+    if cause is not None:
+        blob = f"{blob} {type(cause).__name__} {cause}".lower()
+    return any(
+        marker in blob
+        for marker in (
+            "input is too long",
+            "toomanytokens",
+            "prompt is too long",
+            "context length",
+            "maximum context length",
+            "validationexception",
+        )
+    )
 
 DRAFT_INTAKE_TOP_K = 5
 DRAFT_INTAKE_MAX_TOKENS = 2048
@@ -92,8 +150,8 @@ def chat_rag_top_k() -> int:
     return _clamp_int(
         getattr(settings, "chat_rag_top_k", CHAT_RAG_TOP_K),
         default=CHAT_RAG_TOP_K,
-        low=8,
-        high=128,
+        low=3,
+        high=64,
     )
 
 
@@ -105,9 +163,41 @@ def chat_max_context_chunks() -> int:
     return _clamp_int(
         getattr(settings, "chat_max_context_chunks", CHAT_MAX_CONTEXT_CHUNKS),
         default=CHAT_MAX_CONTEXT_CHUNKS,
-        low=16,
-        high=128,
+        low=3,
+        high=64,
     )
+
+
+def chat_rag_score_threshold() -> float:
+    from app.config import get_settings
+
+    settings = get_settings()
+    raw = getattr(settings, "chat_rag_score_threshold", CHAT_RAG_SCORE_THRESHOLD)
+    try:
+        value = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        value = CHAT_RAG_SCORE_THRESHOLD
+    return max(0.0, min(1.0, value))
+
+
+def select_rag_chunks_for_qa(chunks: list[Any] | None) -> list[Any]:
+    """Keep score>=threshold chunks; if none meet it, keep top-3 only."""
+    scored = sorted(
+        list(chunks or []),
+        key=lambda chunk: float(getattr(chunk, "score", 0) or 0),
+        reverse=True,
+    )
+    if not scored:
+        return []
+    threshold = chat_rag_score_threshold()
+    strong = [
+        chunk
+        for chunk in scored
+        if float(getattr(chunk, "score", 0) or 0) >= threshold
+    ]
+    if strong:
+        return strong
+    return scored[:CHAT_RAG_FALLBACK_TOP_N]
 
 
 def draft_rag_top_k() -> int:
@@ -179,17 +269,21 @@ def pack_kb_context(
     token_budget: int | None = None,
     char_budget: int | None = None,
     max_chunks: int | None = None,
+    apply_score_filter: bool = True,
 ) -> str:
-    """Pack diversified RAG chunks until the Gemma context budget is filled."""
+    """Pack score-filtered RAG chunks up to the max RAG token budget."""
     budget = token_budget
     if budget is None and char_budget is not None:
         budget = estimate_tokens("x" * max(0, char_budget))
     if budget is None:
         budget = chat_context_token_budget()
     limit = chat_max_context_chunks() if max_chunks is None else max_chunks
+    selected = (
+        select_rag_chunks_for_qa(chunks) if apply_score_filter else list(chunks or [])
+    )
     packed: list[str] = []
     used = 0
-    for index, chunk in enumerate(diversify_chunks(list(chunks or []))):
+    for index, chunk in enumerate(diversify_chunks(selected)):
         if index >= limit:
             break
         block = format_chunk(chunk)

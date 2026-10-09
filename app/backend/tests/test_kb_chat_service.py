@@ -27,8 +27,12 @@ def test_bound_history_trims_oldest_pairs() -> None:
 def test_chunks_for_answer_keeps_strong_or_fallback() -> None:
     strong = RetrievedChunk(id="1", text="ก", score=0.9)
     weak = RetrievedChunk(id="2", text="ข", score=0.01)
+    weak2 = RetrievedChunk(id="3", text="ค", score=0.02)
+    weak3 = RetrievedChunk(id="4", text="ง", score=0.015)
+    weak4 = RetrievedChunk(id="5", text="จ", score=0.005)
     assert _chunks_for_answer([strong, weak]) == [strong]
     assert _chunks_for_answer([weak]) == [weak]
+    assert _chunks_for_answer([weak4, weak2, weak3, weak]) == [weak2, weak3, weak]
     assert _chunks_for_answer([]) == []
 
 
