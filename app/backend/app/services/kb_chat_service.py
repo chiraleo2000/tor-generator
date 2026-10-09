@@ -16,8 +16,6 @@ from app.providers.factory import ProviderFactory
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.rag.hybrid import unpack_hybrid
 from app.rag.kb_qa import (
-    CHAT_RAG_FALLBACK_TOP_N,
-    CHAT_RAG_SCORE_THRESHOLD,
     chat_rag_top_k,
     is_context_overflow_error,
     normalize_kb_qa_answer,
@@ -33,9 +31,7 @@ logger = logging.getLogger("tor_app.kb_chat")
 MAX_HISTORY = 20
 MAX_MESSAGE_LENGTH = 1000
 SESSION_TIMEOUT_MINUTES = 30
-RELEVANCE_THRESHOLD = CHAT_RAG_SCORE_THRESHOLD
 NO_RESULTS = "ไม่พบข้อมูลที่เกี่ยวข้อง"
-LOW_SCORE_KEEP = CHAT_RAG_FALLBACK_TOP_N
 
 
 def _chunks_for_answer(chunks: list) -> list:

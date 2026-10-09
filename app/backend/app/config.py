@@ -156,6 +156,9 @@ class Settings(BaseSettings):
     chat_rag_top_k: int = 24
     chat_max_context_chunks: int = 24
     chat_rag_score_threshold: float = 0.25
+    chat_rag_fallback_top_n: int = 3
+    chat_rag_pack_cap_tokens: int = 36_000
+    chat_prompt_overhead_tokens: int = 12_000
     draft_rag_top_k: int = 8
     review_rag_top_k: int = 64
     rag_sources: Literal["local", "custom", "both"] = "both"

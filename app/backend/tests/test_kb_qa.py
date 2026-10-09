@@ -12,6 +12,10 @@ from app.rag.kb_qa import (
     CHAT_RAG_TOP_K,
     KB_QA_SYSTEM,
     build_kb_qa_messages,
+    chat_context_token_budget,
+    chat_rag_fallback_top_n,
+    chat_rag_pack_cap_tokens,
+    chat_rag_score_threshold,
     chat_rag_top_k,
     diversify_chunks,
     normalize_kb_qa_answer,
@@ -104,9 +108,14 @@ def test_build_kb_qa_messages_is_adaptive_and_uses_rag():
     assert "ครอบคลุม" in user
     assert "แหล่งออนไลน์ที่ค้นได้: 0 แหล่ง" in user
     assert "หัวข้อบังคับ" not in user
+    # Catalog defaults only; live values come from Settings/env.
     assert CHAT_RAG_TOP_K == 24
     assert 3 <= chat_rag_top_k() <= 64
     assert CHAT_MAX_TOKENS == 32_768
+    assert chat_rag_score_threshold() == 0.25
+    assert chat_rag_fallback_top_n() == 3
+    assert chat_rag_pack_cap_tokens() == 36_000
+    assert chat_context_token_budget() <= chat_rag_pack_cap_tokens()
     assert "ตอบให้ครบถ้วนตามเอกสาร" in KB_QA_SYSTEM
     assert "ถักทอสาระ" in KB_QA_SYSTEM
     assert "6144" not in KB_QA_SYSTEM

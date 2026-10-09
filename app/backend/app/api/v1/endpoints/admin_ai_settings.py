@@ -168,6 +168,10 @@ class AiSettingsUpdate(BaseModel):
     custom_rag_timeout_seconds: float | None = None
     chat_rag_top_k: int | None = None
     chat_max_context_chunks: int | None = None
+    chat_rag_score_threshold: float | None = None
+    chat_rag_fallback_top_n: int | None = None
+    chat_rag_pack_cap_tokens: int | None = None
+    chat_prompt_overhead_tokens: int | None = None
     draft_rag_top_k: int | None = None
     review_rag_top_k: int | None = None
     rag_sources: str | None = None

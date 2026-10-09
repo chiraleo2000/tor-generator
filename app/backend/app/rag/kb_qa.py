@@ -18,28 +18,74 @@ QA_WEB_MIN = 5
 QA_WEB_MAX = 10
 QA_WEB_SNIPPET_CHARS = 220
 
-# Catalog aliases for tests / older imports; runtime uses live_* below.
+# Catalog fallbacks only — live values come from Settings / env (CHAT_* , TOR_*).
 CHAT_MAX_TOKENS = 32_768
 CHAT_CONTEXT_WINDOW = 32_768
-# Retrieve modestly; pack only strong hits (or top-3 fallback) up to RAG token cap.
 CHAT_RAG_TOP_K = 24
 CHAT_MAX_CONTEXT_CHUNKS = 24
 CHAT_RAG_SCORE_THRESHOLD = 0.25
 CHAT_RAG_FALLBACK_TOP_N = 3
+CHAT_RAG_PACK_CAP_TOKENS = 36_000
+CHAT_PROMPT_OVERHEAD_TOKENS = 12_000
 CHAT_HISTORY_MESSAGES = 6
 CHAT_HISTORY_CHAR_CAP = 12_000
 
 
-# Leave room for system + history + web + Bedrock input+maxTokens validation.
-# Thai underestimates easily; hard-cap RAG pack so Q&A stays inside the window.
-_CHAT_PROMPT_OVERHEAD_TOKENS = 12_000
-_CHAT_RAG_PACK_CAP_TOKENS = 36_000
+def _clamp_int(value: object, *, default: int, low: int, high: int) -> int:
+    try:
+        number = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, number))
+
+
+def chat_rag_pack_cap_tokens() -> int:
+    """Max tokens for packed RAG context (env: CHAT_RAG_PACK_CAP_TOKENS)."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    return _clamp_int(
+        getattr(settings, "chat_rag_pack_cap_tokens", CHAT_RAG_PACK_CAP_TOKENS),
+        default=CHAT_RAG_PACK_CAP_TOKENS,
+        low=1_024,
+        high=200_000,
+    )
+
+
+def chat_prompt_overhead_tokens() -> int:
+    """Reserved tokens for system/history/web (env: CHAT_PROMPT_OVERHEAD_TOKENS)."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    return _clamp_int(
+        getattr(settings, "chat_prompt_overhead_tokens", CHAT_PROMPT_OVERHEAD_TOKENS),
+        default=CHAT_PROMPT_OVERHEAD_TOKENS,
+        low=1_024,
+        high=64_000,
+    )
+
+
+def chat_rag_fallback_top_n() -> int:
+    """When no chunk meets the score threshold, keep this many (env)."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    return _clamp_int(
+        getattr(settings, "chat_rag_fallback_top_n", CHAT_RAG_FALLBACK_TOP_N),
+        default=CHAT_RAG_FALLBACK_TOP_N,
+        low=1,
+        high=16,
+    )
 
 
 def chat_context_token_budget() -> int:
     """Tokens available for packed RAG chunks (not the full model window)."""
-    room = live_context_window() - live_chat_max_tokens() - _CHAT_PROMPT_OVERHEAD_TOKENS
-    return max(1_024, min(room, _CHAT_RAG_PACK_CAP_TOKENS))
+    room = (
+        live_context_window()
+        - live_chat_max_tokens()
+        - chat_prompt_overhead_tokens()
+    )
+    return max(1_024, min(room, chat_rag_pack_cap_tokens()))
 
 
 def messages_token_estimate(messages: list[dict[str, Any]] | None) -> int:
@@ -134,14 +180,6 @@ DRAFT_INTAKE_SYSTEM = (
 )
 
 
-def _clamp_int(value: object, *, default: int, low: int, high: int) -> int:
-    try:
-        number = int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return default
-    return max(low, min(high, number))
-
-
 def chat_rag_top_k() -> int:
     """pgvector top-n for KB chat; reads env/runtime overlay."""
     from app.config import get_settings
@@ -181,7 +219,7 @@ def chat_rag_score_threshold() -> float:
 
 
 def select_rag_chunks_for_qa(chunks: list[Any] | None) -> list[Any]:
-    """Keep score>=threshold chunks; if none meet it, keep top-3 only."""
+    """Keep score>=threshold chunks; if none meet it, keep fallback top-N only."""
     scored = sorted(
         list(chunks or []),
         key=lambda chunk: float(getattr(chunk, "score", 0) or 0),
@@ -197,7 +235,7 @@ def select_rag_chunks_for_qa(chunks: list[Any] | None) -> list[Any]:
     ]
     if strong:
         return strong
-    return scored[:CHAT_RAG_FALLBACK_TOP_N]
+    return scored[: chat_rag_fallback_top_n()]
 
 
 def draft_rag_top_k() -> int:
