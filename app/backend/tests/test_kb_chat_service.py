@@ -32,7 +32,11 @@ def test_chunks_for_answer_keeps_strong_or_fallback() -> None:
     weak4 = RetrievedChunk(id="5", text="จ", score=0.005)
     assert _chunks_for_answer([strong, weak]) == [strong]
     assert _chunks_for_answer([weak]) == [weak]
-    assert _chunks_for_answer([weak4, weak2, weak3, weak]) == [weak2, weak3, weak]
+    # Fallback top-N (env default 5) keeps highest scores when none pass threshold.
+    weak5 = RetrievedChunk(id="6", text="ฉ", score=0.008)
+    picked = _chunks_for_answer([weak4, weak2, weak3, weak, weak5])
+    assert len(picked) == 5
+    assert picked[0].score >= picked[-1].score
     assert _chunks_for_answer([]) == []
 
 

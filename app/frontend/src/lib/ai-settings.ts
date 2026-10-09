@@ -145,8 +145,8 @@ export const EMPTY_AI_SETTINGS: AiSettings = {
   custom_rag_api_key: "",
   custom_rag_top_k: 24,
   custom_rag_timeout_seconds: 30,
-  chat_rag_top_k: 24,
-  chat_max_context_chunks: 24,
+  chat_rag_top_k: 48,
+  chat_max_context_chunks: 48,
   draft_rag_top_k: 32,
   rag_sources: "both",
 };

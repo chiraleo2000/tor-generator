@@ -41,13 +41,13 @@ def _web(*, title: str, url: str, snippet: str = "ข้อความสั้
     return SimpleNamespace(title=title, url=url, snippet=snippet, published=published)
 
 
-def test_select_rag_chunks_threshold_or_top3():
+def test_select_rag_chunks_threshold_or_fallback_top_n():
     strong = _chunk("แรง", "a.pdf", score=0.8)
-    weak = [_chunk(f"อ่อน{i}", f"w{i}.pdf", score=0.05 - i * 0.001) for i in range(5)]
+    weak = [_chunk(f"อ่อน{i}", f"w{i}.pdf", score=0.05 - i * 0.001) for i in range(8)]
     assert select_rag_chunks_for_qa([strong, weak[0]]) == [strong]
     picked = select_rag_chunks_for_qa(weak)
-    assert len(picked) == 3
-    assert picked[0].score >= picked[1].score >= picked[2].score
+    assert len(picked) == chat_rag_fallback_top_n()
+    assert picked[0].score >= picked[-1].score
 
 
 def test_diversify_chunks_round_robins_sources():
@@ -109,12 +109,12 @@ def test_build_kb_qa_messages_is_adaptive_and_uses_rag():
     assert "แหล่งออนไลน์ที่ค้นได้: 0 แหล่ง" in user
     assert "หัวข้อบังคับ" not in user
     # Catalog defaults only; live values come from Settings/env.
-    assert CHAT_RAG_TOP_K == 24
-    assert 3 <= chat_rag_top_k() <= 64
+    assert CHAT_RAG_TOP_K == 48
+    assert 3 <= chat_rag_top_k() <= 128
     assert CHAT_MAX_TOKENS == 32_768
     assert chat_rag_score_threshold() == 0.25
-    assert chat_rag_fallback_top_n() == 3
-    assert chat_rag_pack_cap_tokens() == 36_000
+    assert chat_rag_fallback_top_n() == 5
+    assert chat_rag_pack_cap_tokens() == 80_000
     assert chat_context_token_budget() <= chat_rag_pack_cap_tokens()
     assert "ตอบให้ครบถ้วนตามเอกสาร" in KB_QA_SYSTEM
     assert "ถักทอสาระ" in KB_QA_SYSTEM

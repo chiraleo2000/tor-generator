@@ -535,10 +535,10 @@ export default function AdminAiSettingsPage() {
             id="chat-rag-topk"
             type="number"
             min={3}
-            max={64}
+            max={128}
             value={form.chat_rag_top_k}
             onChange={(event) =>
-              patch("chat_rag_top_k", Number.parseInt(event.target.value, 10) || 24)
+              patch("chat_rag_top_k", Number.parseInt(event.target.value, 10) || 48)
             }
           />
         </div>
@@ -548,12 +548,12 @@ export default function AdminAiSettingsPage() {
             id="chat-max-chunks"
             type="number"
             min={3}
-            max={64}
+            max={128}
             value={form.chat_max_context_chunks}
             onChange={(event) =>
               patch(
                 "chat_max_context_chunks",
-                Number.parseInt(event.target.value, 10) || 24
+                Number.parseInt(event.target.value, 10) || 48
               )
             }
           />

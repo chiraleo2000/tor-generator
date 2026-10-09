@@ -21,11 +21,11 @@ QA_WEB_SNIPPET_CHARS = 220
 # Catalog fallbacks only — live values come from Settings / env (CHAT_* , TOR_*).
 CHAT_MAX_TOKENS = 32_768
 CHAT_CONTEXT_WINDOW = 32_768
-CHAT_RAG_TOP_K = 24
-CHAT_MAX_CONTEXT_CHUNKS = 24
+CHAT_RAG_TOP_K = 48
+CHAT_MAX_CONTEXT_CHUNKS = 48
 CHAT_RAG_SCORE_THRESHOLD = 0.25
-CHAT_RAG_FALLBACK_TOP_N = 3
-CHAT_RAG_PACK_CAP_TOKENS = 36_000
+CHAT_RAG_FALLBACK_TOP_N = 5
+CHAT_RAG_PACK_CAP_TOKENS = 80_000
 CHAT_PROMPT_OVERHEAD_TOKENS = 12_000
 CHAT_HISTORY_MESSAGES = 6
 CHAT_HISTORY_CHAR_CAP = 12_000
@@ -189,7 +189,7 @@ def chat_rag_top_k() -> int:
         getattr(settings, "chat_rag_top_k", CHAT_RAG_TOP_K),
         default=CHAT_RAG_TOP_K,
         low=3,
-        high=64,
+        high=128,
     )
 
 
@@ -202,7 +202,7 @@ def chat_max_context_chunks() -> int:
         getattr(settings, "chat_max_context_chunks", CHAT_MAX_CONTEXT_CHUNKS),
         default=CHAT_MAX_CONTEXT_CHUNKS,
         low=3,
-        high=64,
+        high=128,
     )
 
 
