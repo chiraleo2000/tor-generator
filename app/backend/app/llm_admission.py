@@ -13,9 +13,13 @@ from typing import Any, AsyncIterator, Literal
 from redis.asyncio import Redis
 
 from app.config import get_settings
-from app.providers.constants import LOCAL_LLM_PROVIDERS
+from app.providers.constants import LOCAL_EMBEDDING_PROVIDERS, LOCAL_LLM_PROVIDERS
 
 logger = logging.getLogger(__name__)
+
+# One process, one local HTTP call. Redis still queues across processes.
+_local_http_lock = asyncio.Lock()
+_task_holds: dict[int, int] = {}
 
 Kind = Literal["llm", "embedding"]
 WaitCallback = Callable[[int, int], Awaitable[None] | None]
@@ -27,10 +31,30 @@ _STATUS_TIMEOUT = "timeout"
 _STATUS_ERROR = "error"
 
 
-def _keys(kind: Kind, request_id: str) -> tuple[str, str, str]:
+def local_models_share_one_slot(settings: Any) -> bool:
+    """Chat and embeddings on one local server must share a single in-flight request."""
+    llm = str(getattr(settings, "llm_provider", "") or "")
+    if llm not in LOCAL_LLM_PROVIDERS:
+        return False
+    embed = str(getattr(settings, "embedding_provider", "") or "")
+    if embed not in LOCAL_EMBEDDING_PROVIDERS:
+        return False
+    server = str(getattr(settings, "local_embedding_server", "") or "lm_studio")
+    return server in LOCAL_LLM_PROVIDERS
+
+
+def _queue_name(kind: Kind, settings: Any) -> str:
+    if local_models_share_one_slot(settings):
+        return "shared"
+    return kind
+
+
+def _keys(kind: Kind, request_id: str, settings: Any | None = None) -> tuple[str, str, str]:
+    active = settings if settings is not None else get_settings()
+    name = _queue_name(kind, active)
     return (
-        f"llm:admit:{kind}:waiters",
-        f"llm:admit:{kind}:slots",
+        f"llm:admit:{name}:waiters",
+        f"llm:admit:{name}:slots",
         f"llm:admit:req:{request_id}",
     )
 
@@ -105,12 +129,21 @@ async def _notify_wait(
         await maybe
 
 
+def _needs_local_http_lock(kind: Kind, settings: Any) -> bool:
+    if local_models_share_one_slot(settings):
+        return True
+    provider = str(getattr(settings, "llm_provider", "") or "")
+    return kind == "llm" and provider in LOCAL_LLM_PROVIDERS
+
+
 def concurrency_cap(kind: Kind, settings: Any) -> int:
-    """Local Gemma crashes if several chat jobs share the GPU; keep one LLM slot."""
+    """One in-flight HTTP call when chat and embeddings share a local server."""
+    if local_models_share_one_slot(settings):
+        return 1
     if kind != "llm":
         return max(1, int(settings.embedding_max_concurrent))
     cap = max(1, int(settings.llm_max_concurrent))
-    provider = getattr(settings, "llm_provider", "") or ""
+    provider = str(getattr(settings, "llm_provider", "") or "")
     if provider in LOCAL_LLM_PROVIDERS:
         return 1
     return cap
@@ -121,7 +154,7 @@ def slot_ttl_seconds(kind: Kind, settings: Any) -> int:
         wait = int(float(settings.llm_queue_wait_timeout_seconds or 120))
     except (TypeError, ValueError):
         wait = 120
-    if kind == "embedding":
+    if kind == "embedding" and not local_models_share_one_slot(settings):
         return max(300, wait + 120)
     try:
         local_to = int(getattr(settings, "lm_studio_timeout", 10800) or 10800)
@@ -134,12 +167,11 @@ async def reset_admission_queues(redis: Redis | None) -> None:
     """Drop leaked slot counters after a model crash or backend restart."""
     if redis is None:
         return
-    for kind in ("llm", "embedding"):
-        waiters_key, slots_key, _ = _keys(kind, "startup")
+    for name in ("llm", "embedding", "shared"):
         try:
-            await redis.delete(waiters_key, slots_key)
+            await redis.delete(f"llm:admit:{name}:waiters", f"llm:admit:{name}:slots")
         except Exception:
-            logger.exception("Failed to reset %s admission queue", kind)
+            logger.exception("Failed to reset %s admission queue", name)
 
 
 async def _try_acquire_slot(
@@ -253,6 +285,11 @@ async def _wait_for_slot(
         ) from exc
 
 
+def _task_id() -> int:
+    task = asyncio.current_task()
+    return id(task) if task is not None else 0
+
+
 @asynccontextmanager
 async def admit(
     redis: Redis | None,
@@ -262,28 +299,47 @@ async def admit(
 ) -> AsyncIterator[str]:
     """Acquire a concurrency slot; update Redis wait status while queued.
 
-    Fail-closed when Redis is unavailable (cannot protect the backend).
+    Local chat and local embeddings share one in-flight HTTP call. The same
+    task may re-enter (endpoint admit, then the provider admit) without
+    starting a second request. A different task waits until the HTTP returns.
     Optional on_wait(position, waiting_ms) is awaited each poll while queued.
     """
     settings = get_settings()
     rid = (request_id or str(uuid.uuid4())).strip()
-    if redis is None:
-        # Degraded: no shared queue (unit tests / Redis down). Prefer fail-open so
-        # chat/draft still work; production compose always wires Redis.
-        logger.warning("LLM admission skipped: Redis unavailable")
-        yield rid
+    task_id = _task_id()
+    if _task_holds.get(task_id, 0) > 0:
+        _task_holds[task_id] += 1
+        try:
+            yield rid
+        finally:
+            _task_holds[task_id] = max(0, _task_holds.get(task_id, 1) - 1)
         return
 
-    waiters_key, slots_key, _ = _keys(kind, rid)
-    max_slots = concurrency_cap(kind, settings)
-    wait_seconds = float(settings.llm_queue_wait_timeout_seconds)
-    started = time.monotonic()
+    lock_local = _needs_local_http_lock(kind, settings)
+    locked_here = False
+    if lock_local:
+        await _local_http_lock.acquire()
+        locked_here = True
+    _task_holds[task_id] = 1
     acquired = False
-
-    await redis.rpush(waiters_key, rid)
-    await _set_request(redis, rid, kind=kind, status=_STATUS_WAITING, position=1)
-
+    waiters_key = ""
+    slots_key = ""
+    started = time.monotonic()
     try:
+        if redis is None:
+            if not lock_local:
+                # Degraded: no shared queue (unit tests / Redis down). Prefer
+                # fail-open so cloud chat still works. A local server still
+                # takes the process lock above.
+                logger.warning("LLM admission skipped: Redis unavailable")
+            yield rid
+            return
+
+        waiters_key, slots_key, _ = _keys(kind, rid, settings)
+        max_slots = concurrency_cap(kind, settings)
+        wait_seconds = float(settings.llm_queue_wait_timeout_seconds)
+        await redis.rpush(waiters_key, rid)
+        await _set_request(redis, rid, kind=kind, status=_STATUS_WAITING, position=1)
         await _wait_for_slot(
             redis,
             kind=kind,
@@ -299,15 +355,21 @@ async def admit(
         acquired = True
         yield rid
     finally:
-        if acquired:
-            await _release_slot(redis, slots_key)
-            await _set_request(
-                redis,
-                rid,
-                kind=kind,
-                status=_STATUS_DONE,
-                position=0,
-                waiting_ms=int((time.monotonic() - started) * 1000),
-            )
-        else:
-            await _remove_waiter(redis, waiters_key, rid)
+        try:
+            if redis is not None and waiters_key:
+                if acquired:
+                    await _release_slot(redis, slots_key)
+                    await _set_request(
+                        redis,
+                        rid,
+                        kind=kind,
+                        status=_STATUS_DONE,
+                        position=0,
+                        waiting_ms=int((time.monotonic() - started) * 1000),
+                    )
+                else:
+                    await _remove_waiter(redis, waiters_key, rid)
+        finally:
+            _task_holds.pop(task_id, None)
+            if locked_here:
+                _local_http_lock.release()

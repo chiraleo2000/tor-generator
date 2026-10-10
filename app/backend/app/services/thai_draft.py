@@ -331,10 +331,20 @@ LICENSE_ICT_TABLE_TEMPLATE = (
     "| รวม | | | | … | | |"
 )
 
+_COL_ORDER = "ลำดับ"
+_COL_ITEM = "รายการ"
+_COL_SEATS = "จำนวนสิทธิ์"
+_COL_NOT_USED = "ไม่ใช้"
+_COL_MID = "เกณฑ์กลาง"
+_COL_MID_ICT = "เกณฑ์กลาง ICT"
+_SCOPE_METHOD = "ขอบเขตและวิธีการดำเนินงาน"
+_SCOPE_GENERAL = "ข้อกำหนดทั่วไป"
+_SCOPE_DATA_ENTRY = "การบันทึกและนำเข้าข้อมูล"
+
 LICENSE_ICT_HEADERS = (
-    "ลำดับ",
-    "รายการ",
-    "จำนวนสิทธิ์",
+    _COL_ORDER,
+    _COL_ITEM,
+    _COL_SEATS,
     "ราคาต่อหน่วย (บาท)",
     "ราคารวม (บาท)",
     "ใช้เกณฑ์กลาง ICT",
@@ -344,8 +354,8 @@ LICENSE_ICT_HEADERS = (
 _CHECK_YES = frozenset(
     {"", "✔", "✓", "√", "x", "X", "ใช่", "ใช้", "1", "๑", "/"}
 )
-_CHECK_NO = frozenset({"ไม่ใช้", "ไม่", "–", "-", "—"})
-_ROW_SPLIT = re.compile(r"\t+|[ ]{2,}|[|｜]")
+_CHECK_NO = frozenset({_COL_NOT_USED, "ไม่", "–", "-", "—"})
+_ROW_SPLIT = re.compile(r"\t+| {2,}|[|｜]")
 _NUM_CELL = re.compile(r"^[0-9๐-๙]+([.,][0-9๐-๙]+)?$")
 _MONEY_CELL = re.compile(r"^[0-9๐-๙][0-9๐-๙,]*(\.[0-9๐-๙]+)?$")
 
@@ -362,14 +372,14 @@ def _split_table_cells(line: str) -> list[str]:
 
 def _is_license_header_row(cells: list[str]) -> bool:
     joined = "".join(cells)
-    return "ลำดับ" in joined and "รายการ" in joined
+    return _COL_ORDER in joined and _COL_ITEM in joined
 
 
 def _is_use_subheader_row(cells: list[str]) -> bool:
     nonempty = [c for c in cells if c.strip()]
     if not nonempty:
         return True
-    return all(c in {"ใช้", "ไม่ใช้", "เกณฑ์กลาง ICT", "เกณฑ์กลาง"} for c in nonempty)
+    return all(c in {"ใช้", _COL_NOT_USED, _COL_MID_ICT, _COL_MID} for c in nonempty)
 
 
 def _is_sep_row(cells: list[str]) -> bool:
@@ -386,15 +396,42 @@ def _ict_use_value(*candidates: str) -> str:
         if token in _CHECK_YES or any(mark in token for mark in ("", "✔", "✓", "√")):
             return "ใช้"
         if token in _CHECK_NO:
-            return "ไม่ใช้"
+            return _COL_NOT_USED
     return ""
 
 
 def _looks_like_license_table(text: str) -> bool:
     body = text or ""
-    return "ลำดับ" in body and "รายการ" in body and (
-        "เกณฑ์กลาง" in body or "ลิขสิทธิ์" in body or "ครุภัณฑ์" in body
+    return _COL_ORDER in body and _COL_ITEM in body and (
+        _COL_MID in body or "ลิขสิทธิ์" in body or "ครุภัณฑ์" in body
     )
+
+
+def _license_total_row(cells: list[str]) -> list[str]:
+    total = ""
+    for cell in reversed(cells[1:]):
+        if _MONEY_CELL.match(cell.replace(" ", "")):
+            total = cell
+            break
+    return ["รวม", "", "", "", total, "", ""]
+
+
+def _license_reason(cells: list[str], padded: list[str], use: str) -> str:
+    if len(cells) >= 8:
+        return padded[7]
+    mark = padded[6]
+    if use and mark not in _CHECK_YES and mark not in _CHECK_NO and "" not in mark:
+        return mark
+    return ""
+
+
+def _dual_ict_row(cells: list[str], padded: list[str]) -> list[str] | None:
+    use = _ict_use_value(padded[5], padded[6])
+    marks = padded[5] + padded[6]
+    if not use and not any(mark in marks for mark in ("", "✔", "✓", "√")):
+        return None
+    reason = _license_reason(cells, padded, use)
+    return [padded[0], padded[1], padded[2], padded[3], padded[4], use or "ใช้", reason]
 
 
 def _normalize_license_data_row(cells: list[str]) -> list[str] | None:
@@ -405,37 +442,112 @@ def _normalize_license_data_row(cells: list[str]) -> list[str] | None:
         return None
     first = cells[0].strip()
     if first in {"รวม", "รวมทั้งสิ้น", "ยอดรวม"}:
-        total = ""
-        for cell in reversed(cells[1:]):
-            if _MONEY_CELL.match(cell.replace(" ", "")):
-                total = cell
-                break
-        return ["รวม", "", "", "", total, "", ""]
-    # Skip title-only lines
+        return _license_total_row(cells)
     if len(cells) == 1 and not _NUM_CELL.match(first):
         return None
-    # Pad / trim toward at least item + qty-ish columns
     padded = list(cells) + [""] * 8
-    seq = padded[0]
-    name = padded[1]
-    qty = padded[2]
-    unit = padded[3]
-    total = padded[4]
-    # Broken dual ICT columns: ... | use-mark | no-mark | reason
     if len(cells) >= 7:
-        use = _ict_use_value(padded[5], padded[6])
-        reason = padded[7] if len(cells) >= 8 else (padded[6] if use and padded[6] not in _CHECK_YES and padded[6] not in _CHECK_NO and "" not in padded[6] else "")
-        if use or any(m in padded[5] + padded[6] for m in ("", "✔", "✓", "√")):
-            return [seq, name, qty, unit, total, use or "ใช้", reason]
-    use = _ict_use_value(padded[5])
-    reason = padded[6]
-    if not name and not qty:
+        dual = _dual_ict_row(cells, padded)
+        if dual is not None:
+            return dual
+    if not padded[1] and not padded[2]:
         return None
-    return [seq, name, qty, unit, total, use, reason]
+    return [padded[0], padded[1], padded[2], padded[3], padded[4], _ict_use_value(padded[5]), padded[6]]
 
 
 def _md_row(cells: list[str]) -> str:
     return "| " + " | ".join(c.strip() for c in cells) + " |"
+
+
+class _LicenseBuild:
+    def __init__(self) -> None:
+        self.preface: list[str] = []
+        self.data_rows: list[list[str]] = []
+        self.seen: set[tuple[str, ...]] = set()
+        self.found_header = False
+
+
+def _remember_license_row(build: _LicenseBuild, row: list[str]) -> None:
+    key = tuple(row)
+    if key in build.seen:
+        return
+    identity = (row[0], row[1], row[2], row[4])
+    if any((item[0], item[1], item[2], item[4]) == identity and item[0] != "รวม" for item in build.data_rows):
+        return
+    build.seen.add(key)
+    build.data_rows.append(row)
+
+
+def _leave_license_table(build: _LicenseBuild, line: str, stripped: str, cells: list[str]) -> None:
+    if stripped.startswith("|") or "\t" in line or len(cells) > 1:
+        return
+    build.found_header = False
+    if stripped and stripped not in {"ใช้", _COL_NOT_USED}:
+        build.preface.append(stripped)
+
+
+def _consume_license_body(build: _LicenseBuild, line: str, stripped: str, cells: list[str]) -> None:
+    row = _normalize_license_data_row(cells)
+    if not row:
+        _leave_license_table(build, line, stripped, cells)
+        return
+    _remember_license_row(build, row)
+
+
+def _consume_license_preface(build: _LicenseBuild, stripped: str) -> None:
+    if _looks_like_license_table(stripped) and _COL_ORDER in stripped:
+        build.found_header = True
+        return
+    if stripped in build.preface or stripped.startswith("licenses"):
+        return
+    if "ครุภัณฑ์" in stripped and "ลิขสิทธิ์" in stripped:
+        return
+    build.preface.append(stripped)
+
+
+def _consume_license_line(build: _LicenseBuild, line: str) -> None:
+    stripped = line.strip()
+    if not stripped or _is_table_placeholder_line(stripped):
+        return
+    cells = _split_table_cells(stripped)
+    if _is_license_header_row(cells):
+        build.found_header = True
+        return
+    if build.found_header and (_is_use_subheader_row(cells) or _is_sep_row(cells)):
+        return
+    if build.found_header:
+        _consume_license_body(build, line, stripped, cells)
+        return
+    _consume_license_preface(build, stripped)
+
+
+def _license_notes(preface: list[str]) -> list[str]:
+    return [
+        note
+        for note in preface
+        if _COL_ORDER not in note and not _NUM_CELL.match(note.split()[0] if note.split() else "")
+    ]
+
+
+def _with_license_total(data_rows: list[list[str]]) -> None:
+    if any(row[0] == "รวม" for row in data_rows):
+        return
+    totals = [row[4] for row in data_rows if row[4]]
+    if len(totals) == 1:
+        data_rows.append(["รวม", "", "", "", totals[0], "", ""])
+
+
+def _render_license_table(preface: list[str], data_rows: list[list[str]]) -> str:
+    _with_license_total(data_rows)
+    parts: list[str] = []
+    notes = _license_notes(preface)
+    if notes:
+        parts.append("\n".join(notes[:3]))
+    parts.append(_md_row(list(LICENSE_ICT_HEADERS)))
+    parts.append("| --- | --- | --- | --- | --- | --- | --- |")
+    for row in data_rows:
+        parts.append(_md_row(row))
+    return "\n".join(parts).strip()
 
 
 def normalize_license_ict_table(text: str) -> str:
@@ -446,82 +558,12 @@ def normalize_license_ict_table(text: str) -> str:
     """
     if not (text or "").strip():
         return ""
-    lines = text.replace("\r\n", "\n").split("\n")
-    preface: list[str] = []
-    data_rows: list[list[str]] = []
-    seen: set[tuple[str, ...]] = set()
-    found_header = False
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if re.fullmatch(r"(?i)\[?\s*Table\s*[0-9๐-๙]+\s*\]?", stripped):
-            continue
-        cells = _split_table_cells(stripped)
-        if _is_license_header_row(cells):
-            found_header = True
-            continue
-        if found_header and _is_use_subheader_row(cells):
-            continue
-        if found_header and _is_sep_row(cells):
-            continue
-        if found_header:
-            row = _normalize_license_data_row(cells)
-            if not row:
-                # Non-table prose after a table ends the block; allow later tables.
-                if not stripped.startswith("|") and "\t" not in line and len(cells) <= 1:
-                    found_header = False
-                    if stripped and stripped not in {"ใช้", "ไม่ใช้"}:
-                        preface.append(stripped)
-                continue
-            key = tuple(row)
-            if key in seen:
-                continue
-            # Also dedupe by item identity (seq+name+qty+total)
-            identity = (row[0], row[1], row[2], row[4])
-            if any(
-                (r[0], r[1], r[2], r[4]) == identity and r[0] != "รวม" for r in data_rows
-            ):
-                continue
-            seen.add(key)
-            data_rows.append(row)
-            continue
-        # No header yet — title / prose before the table
-        if _looks_like_license_table(stripped) and "ลำดับ" in stripped:
-            # Single-line header without clear cells
-            found_header = True
-            continue
-        if stripped not in preface and not stripped.startswith("licenses"):
-            # Drop section title echo; keep other notes
-            if "ครุภัณฑ์" in stripped and "ลิขสิทธิ์" in stripped:
-                continue
-            preface.append(stripped)
-
-    if not data_rows:
-        # Last resort: try whole text as one pipe/TSV block without requiring header pass
+    build = _LicenseBuild()
+    for line in text.replace("\r\n", "\n").split("\n"):
+        _consume_license_line(build, line)
+    if not build.data_rows:
         return sanitize_scope_draft_tables(text).strip()
-
-    # Ensure a รวม row when totals exist and none present
-    if not any(r[0] == "รวม" for r in data_rows):
-        totals = [r[4] for r in data_rows if r[4]]
-        if len(totals) == 1:
-            data_rows.append(["รวม", "", "", "", totals[0], "", ""])
-
-    parts: list[str] = []
-    if preface:
-        # Keep short notes only; drop duplicated plain tables left in preface
-        notes = [
-            p
-            for p in preface
-            if "ลำดับ" not in p and not _NUM_CELL.match(p.split()[0] if p.split() else "")
-        ]
-        if notes:
-            parts.append("\n".join(notes[:3]))
-    parts.append(_md_row(list(LICENSE_ICT_HEADERS)))
-    parts.append("| --- | --- | --- | --- | --- | --- | --- |")
-    for row in data_rows:
-        parts.append(_md_row(row))
-    return "\n".join(parts).strip()
+    return _render_license_table(build.preface, build.data_rows)
 
 
 PERSONNEL_TABLE_TEMPLATE = (
@@ -540,8 +582,52 @@ _MANUAL_HEADING_NUM = re.compile(
     r"|[๐-๙]{1,2}\.[0-9]{1,2}(?:\.[0-9]{1,2})?"
     r")[\s]*[\)\].:：\-–]?\s+"
 )
-_TABLE_PLACEHOLDER = re.compile(r"(?i)\[?\s*Table\s*[0-9๐-๙]+\s*\]?")
-_DUP_HEADER_MARKERS = ("ลำดับ", "รายการ", "เกณฑ์กลาง")
+def _is_table_digit(ch: str) -> bool:
+    return ("0" <= ch <= "9") or ("๐" <= ch <= "๙")
+
+
+def _table_placeholder_end(text: str, start: int) -> int | None:
+    """End index of a ``[Table 1]`` token starting at ``start``, if one matches."""
+    index = start
+    size = len(text)
+    if index < size and text[index] == "[":
+        index += 1
+    while index < size and text[index].isspace():
+        index += 1
+    if text[index : index + 5].lower() != "table":
+        return None
+    index += 5
+    while index < size and text[index].isspace():
+        index += 1
+    digit_at = index
+    while index < size and _is_table_digit(text[index]):
+        index += 1
+    if index == digit_at:
+        return None
+    while index < size and text[index].isspace():
+        index += 1
+    if index < size and text[index] == "]":
+        index += 1
+    return index
+
+
+def _is_table_placeholder_line(text: str) -> bool:
+    return _table_placeholder_end(text, 0) == len(text)
+
+
+def _strip_table_placeholders(text: str) -> str:
+    pieces: list[str] = []
+    index = 0
+    size = len(text)
+    while index < size:
+        end = _table_placeholder_end(text, index)
+        if end is None:
+            pieces.append(text[index])
+            index += 1
+            continue
+        index = end
+    return "".join(pieces)
+_DUP_HEADER_MARKERS = (_COL_ORDER, _COL_ITEM, _COL_MID)
 
 
 def strip_manual_section_numbers(text: str) -> str:
@@ -568,51 +654,57 @@ def strip_manual_section_numbers(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _duplicate_header(cells: list[str]) -> bool:
+    joined = "".join(cells)
+    if _COL_ITEM not in joined:
+        return False
+    if not any(marker in joined for marker in _DUP_HEADER_MARKERS):
+        return False
+    return _COL_ORDER in cells[0] or (len(cells) > 1 and cells[0] == _COL_ORDER)
+
+
+def _sanitize_table_line(
+    line: str, seen_header: bool, in_table: bool
+) -> tuple[str | None, bool, bool]:
+    raw = line.strip()
+    if raw.startswith("|") and "---" not in raw.replace(" ", ""):
+        cells = [cell.strip() for cell in raw.strip("|").split("|")]
+        if _duplicate_header(cells) and seen_header and in_table:
+            return None, seen_header, in_table
+        if _duplicate_header(cells):
+            return line.rstrip(), True, True
+        return line.rstrip(), seen_header, in_table
+    if raw.startswith("|") and "---" in raw:
+        return line.rstrip(), seen_header, True
+    if not raw.startswith("|"):
+        return line.rstrip(), False, False
+    return line.rstrip(), seen_header, in_table
+
+
 def sanitize_scope_draft_tables(text: str) -> str:
     """Drop Table-N placeholders and repeated header rows inside markdown tables."""
     if not text:
         return ""
-    out = _TABLE_PLACEHOLDER.sub("", text)
-    lines = out.replace("\r\n", "\n").split("\n")
     cleaned: list[str] = []
     seen_header = False
     in_table = False
-    for line in lines:
-        raw = line.strip()
-        if raw.startswith("|") and "---" not in raw.replace(" ", ""):
-            cells = [c.strip() for c in raw.strip("|").split("|")]
-            looks_header = any(marker in "".join(cells) for marker in _DUP_HEADER_MARKERS) and (
-                "ลำดับ" in cells[0] or (len(cells) > 1 and cells[0] == "ลำดับ")
-            )
-            if looks_header and "รายการ" in "".join(cells):
-                if seen_header and in_table:
-                    continue
-                seen_header = True
-                in_table = True
-            cleaned.append(line.rstrip())
-            continue
-        if raw.startswith("|") and "---" in raw:
-            in_table = True
-            cleaned.append(line.rstrip())
-            continue
-        if not raw.startswith("|"):
-            in_table = False
-            seen_header = False
-        cleaned.append(line.rstrip())
-    body = "\n".join(cleaned)
-    body = re.sub(r"\n{3,}", "\n\n", body)
+    for line in _strip_table_placeholders(text).replace("\r\n", "\n").split("\n"):
+        kept, seen_header, in_table = _sanitize_table_line(line, seen_header, in_table)
+        if kept is not None:
+            cleaned.append(kept)
+    body = re.sub(r"\n{3,}", "\n\n", "\n".join(cleaned))
     return body.strip()
 
 
 _SOURCE_CHAPTER_EIGHT = re.compile(
-    r"(?m)^[\s]*(?:8|๘)(?:[\.．][0-9๐-๙]{1,2}){1,3}[\s]*[\)\].:：\-–]?\s+"
+    r"(?m)^[\s]*[8๘](?:[\.．][0-9๐-๙]{1,2}){1,3}[\s]*[\)\].:：\-–]?\s+"
 )
 
 # Method/chapter-8 blob — wrong for every scope sub except functional.
 _METHOD_BLOB_MARKERS = (
-    "ขอบเขตและวิธีการดำเนินงาน",
-    "ข้อกำหนดทั่วไป",
-    "การบันทึกและนำเข้าข้อมูล",
+    _SCOPE_METHOD,
+    _SCOPE_GENERAL,
+    _SCOPE_DATA_ENTRY,
     "การประมวลผล",
     "การให้บริการ",
     "การบริหารจัดการ",
@@ -629,16 +721,16 @@ _METHOD_BLOB_MARKERS = (
 # Markers that strongly belong to another subsection (foreign leakage).
 # Keys are canonical semantic names (legacy s4.x is remapped in _norm_scope_key).
 _TEST_POLLUTION = (
-    "ขอบเขตและวิธีการดำเนินงาน",
-    "ข้อกำหนดทั่วไป",
-    "การบันทึกและนำเข้าข้อมูล",
+    _SCOPE_METHOD,
+    _SCOPE_GENERAL,
+    _SCOPE_DATA_ENTRY,
     "การบริหารจัดการ",
-    "เกณฑ์กลาง ICT",
-    "จำนวนสิทธิ์",
+    _COL_MID_ICT,
+    _COL_SEATS,
 )
 _LICENSE_POLLUTION = (
-    "ขอบเขตและวิธีการดำเนินงาน",
-    "ข้อกำหนดทั่วไป",
+    _SCOPE_METHOD,
+    _SCOPE_GENERAL,
     "แผนทดสอบ",
     "เกณฑ์ผ่าน",
     "การทดสอบหน่วย",
@@ -648,24 +740,24 @@ _SCOPE_FOREIGN_MARKERS: dict[str, tuple[str, ...]] = {
     "testing": _TEST_POLLUTION,
     "licenses": _LICENSE_POLLUTION,
     "system_overview": (
-        "เกณฑ์กลาง ICT",
+        _COL_MID_ICT,
         "แผนทดสอบ",
-        "ข้อกำหนดทั่วไป",
-        "การบันทึกและนำเข้าข้อมูล",
-        "จำนวนสิทธิ์",
+        _SCOPE_GENERAL,
+        _SCOPE_DATA_ENTRY,
+        _COL_SEATS,
     ),
     "functional": (
-        "เกณฑ์กลาง ICT",
+        _COL_MID_ICT,
         "แผนทดสอบหน่วย",
         "การทดสอบยอมรับโดยผู้ใช้",
         "ใช้เกณฑ์กลาง ICT",
-        "จำนวนสิทธิ์",
+        _COL_SEATS,
     ),
     "integration": _METHOD_BLOB_MARKERS,
     "standards_security": (
-        "ขอบเขตและวิธีการดำเนินงาน",
-        "เกณฑ์กลาง ICT",
-        "การบันทึกและนำเข้าข้อมูล",
+        _SCOPE_METHOD,
+        _COL_MID_ICT,
+        _SCOPE_DATA_ENTRY,
         "แผนทดสอบหน่วย",
     ),
     "deliverable_docs": _METHOD_BLOB_MARKERS,
@@ -738,28 +830,31 @@ def method_hits_safe(body: str) -> int:
     return sum(1 for marker in _METHOD_BLOB_MARKERS if marker in body)
 
 
+def _method_chapter_leak(key: str, body: str) -> bool:
+    if key == "functional":
+        return False
+    return _SCOPE_METHOD in body or method_hits_safe(body) >= 2
+
+
+def _license_owner_mismatch(body: str) -> bool:
+    if "ขอบเขตและวิธีการ" in body or _SCOPE_GENERAL in body:
+        return True
+    return body.count("|") < 2 and method_hits_safe(body) >= 1
+
+
 def is_scope_content_wrong_owner(sub_key: str | None, text: str) -> bool:
     """True when a scope subsection draft clearly belongs to another heading."""
     key = _norm_scope_key(sub_key)
     body = text or ""
     if not body.strip() or not key:
         return False
-    # Full method chapter is only legal under functional.
-    if key != "functional":
-        if "ขอบเขตและวิธีการดำเนินงาน" in body:
-            return True
-        if method_hits_safe(body) >= 2:
-            return True
-    foreign = _SCOPE_FOREIGN_MARKERS.get(key, _METHOD_BLOB_MARKERS)
-    hits = sum(1 for marker in foreign if marker in body)
-    if hits >= 2:
+    if _method_chapter_leak(key, body):
         return True
-    # Licenses must look like a table / ICT list, not prose method dump.
+    foreign = _SCOPE_FOREIGN_MARKERS.get(key, _METHOD_BLOB_MARKERS)
+    if sum(1 for marker in foreign if marker in body) >= 2:
+        return True
     if key == "licenses":
-        if "ขอบเขตและวิธีการ" in body or "ข้อกำหนดทั่วไป" in body:
-            return True
-        if body.count("|") < 2 and method_hits_safe(body) >= 1:
-            return True
+        return _license_owner_mismatch(body)
     return False
 
 
@@ -1107,6 +1202,73 @@ def merge_scope_from_subs(subs: dict[str, str], category: str | None = None) -> 
     return "\n\n".join(parts)
 
 
+def _append_scope_prompt_context(
+    parts: list[str],
+    *,
+    slot_map: dict[str, Any],
+    title: str,
+    key: str,
+    sub_key: str,
+    category: str | None,
+    facts: str,
+    parent: str,
+    prior: str,
+    feedback: str,
+    rag_context: str,
+) -> None:
+    from app.domain.tor_draft_hints import hint_for
+    from app.services.intake_service import slot_content
+
+    intake = slot_content(slot_map, "_project_intake").strip()
+    if prior:
+        parts.append(f"=== ร่างปัจจุบันของหัวข้อนี้ที่ต้องปรับปรุง ===\n{prior[:12000]}")
+    if feedback:
+        parts.append(
+            "=== ความคิดเห็นจากผู้ใช้ (ต้องปฏิบัติตามอย่างเคร่งครัด) ===\n"
+            f"{feedback[:4000]}\n"
+            "ร่างข้อความใหม่ทั้งก้อนของหัวข้อนี้ให้สอดคล้องความคิดเห็น "
+            "คงสาระที่ถูกต้องของร่างเดิมไว้ และห้ามขยายไปหัวข้ออื่น"
+        )
+    _append_scope_fact_source(parts, facts, prior, intake, parent, title)
+    if rag_context:
+        parts.append(f"บริบทกฎหมาย:\n{rag_context[:3000]}")
+    hint = hint_for(sub_key, category)
+    if hint:
+        parts.append(f"แนวทางความครบถ้วนจากตัวอย่าง TOR: {hint}")
+    if key == "licenses":
+        parts.append(
+            "ผลลัพธ์ต้องมีตารางมาร์กดาวน์ตามแม่แบบด้านบน "
+            "มีแถวข้อมูลจริงจากเอกสาร และแถวรวมถ้าเอกสารมี"
+        )
+    if key == "testing":
+        parts.append(
+            "ผลลัพธ์สั้น ชัด วัดผลได้ เป็นรายการประเภทการทดสอบและเกณฑ์ผ่าน "
+            "ความยาวไม่เกินประมาณหนึ่งหน้า ไม่ใช่คัดลอกข้อกำหนดระบบทั้งหมวด"
+        )
+
+
+def _append_scope_fact_source(
+    parts: list[str],
+    facts: str,
+    prior: str,
+    intake: str,
+    parent: str,
+    title: str,
+) -> None:
+    if facts and facts != prior:
+        parts.append(f"ข้อมูลจากขั้นวิเคราะห์สำหรับหัวข้อนี้:\n{facts[:10000]}")
+        return
+    if not prior and intake:
+        parts.append(
+            "เอกสารขั้นที่ ๐ (คัดเฉพาะที่ยืนยันว่าเป็นสาระของหัวข้อนี้เท่านั้น "
+            "ห้ามคัดลอกหัวข้ออื่น):\n"
+            + intake[:3500]
+        )
+        return
+    if not prior and parent:
+        parts.append(f"ข้อมูลขอบเขตงานรวม (คัดเฉพาะส่วนที่เกี่ยวกับ «{title}»):\n{parent[:4000]}")
+
+
 def scope_sub_prompt(
     sub_key: str,
     slot_map: dict[str, Any],
@@ -1139,43 +1301,19 @@ def scope_sub_prompt(
         official_tor_style_block(category, "s4"),
         scope_sub_ownership_block(sub_key, title),
     ]
-    intake = slot_content(slot_map, "_project_intake").strip()
-    if prior:
-        parts.append(f"=== ร่างปัจจุบันของหัวข้อนี้ที่ต้องปรับปรุง ===\n{prior[:12000]}")
-    if feedback:
-        parts.append(
-            "=== ความคิดเห็นจากผู้ใช้ (ต้องปฏิบัติตามอย่างเคร่งครัด) ===\n"
-            f"{feedback[:4000]}\n"
-            "ร่างข้อความใหม่ทั้งก้อนของหัวข้อนี้ให้สอดคล้องความคิดเห็น "
-            "คงสาระที่ถูกต้องของร่างเดิมไว้ และห้ามขยายไปหัวข้ออื่น"
-        )
-    if facts and facts != prior:
-        parts.append(f"ข้อมูลจากขั้นวิเคราะห์สำหรับหัวข้อนี้:\n{facts[:10000]}")
-    elif not prior and intake:
-        parts.append(
-            "เอกสารขั้นที่ ๐ (คัดเฉพาะที่ยืนยันว่าเป็นสาระของหัวข้อนี้เท่านั้น "
-            "ห้ามคัดลอกหัวข้ออื่น):\n"
-            + intake[:3500]
-        )
-    elif not prior and parent:
-        parts.append(f"ข้อมูลขอบเขตงานรวม (คัดเฉพาะส่วนที่เกี่ยวกับ «{title}»):\n{parent[:4000]}")
-    if rag_context:
-        parts.append(f"บริบทกฎหมาย:\n{rag_context[:3000]}")
-    from app.domain.tor_draft_hints import hint_for
-
-    hint = hint_for(sub_key, category)
-    if hint:
-        parts.append(f"แนวทางความครบถ้วนจากตัวอย่าง TOR: {hint}")
-    if key == "licenses":
-        parts.append(
-            "ผลลัพธ์ต้องมีตารางมาร์กดาวน์ตามแม่แบบด้านบน "
-            "มีแถวข้อมูลจริงจากเอกสาร และแถวรวมถ้าเอกสารมี"
-        )
-    if key == "testing":
-        parts.append(
-            "ผลลัพธ์สั้น ชัด วัดผลได้ เป็นรายการประเภทการทดสอบและเกณฑ์ผ่าน "
-            "ความยาวไม่เกินประมาณหนึ่งหน้า ไม่ใช่คัดลอกข้อกำหนดระบบทั้งหมวด"
-        )
+    _append_scope_prompt_context(
+        parts,
+        slot_map=slot_map,
+        title=title,
+        key=key,
+        sub_key=sub_key,
+        category=category,
+        facts=facts,
+        parent=parent,
+        prior=prior,
+        feedback=feedback,
+        rag_context=rag_context,
+    )
     parts.append(SCOPE_SUB_SUBSTANCE_RULES)
     parts.append(
         "เขียนเนื้อหาหัวข้อย่อยนี้เป็นภาษาไทยเท่านั้น "

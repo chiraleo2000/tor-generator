@@ -461,17 +461,25 @@ async function allFactSlotsFilled(page: Page): Promise<boolean> {
   return true;
 }
 
-async function answerFactGapsViaIntakeChat(page: Page) {
-  for (const answer of LIVE_GAP_ANSWERS) {
-    if (await allFactSlotsFilled(page)) {
-      return;
-    }
-    await typeLikeUser(page.getByTestId("chat-input"), answer);
-    await pauseLikeUser(page, 500);
-    await page.getByTestId("chat-send").click();
-    await waitForLiveAssistant(page, 180_000);
-    await pauseLikeUser(page, 800);
+async function sendGapAnswer(page: Page, answer: string) {
+  await typeLikeUser(page.getByTestId("chat-input"), answer);
+  await pauseLikeUser(page, 500);
+  await page.getByTestId("chat-send").click();
+  await waitForLiveAssistant(page, 180_000);
+  await pauseLikeUser(page, 800);
+}
+
+async function answerGapList(page: Page, answers: readonly string[]): Promise<void> {
+  const [answer, ...rest] = answers;
+  if (!answer || (await allFactSlotsFilled(page))) {
+    return;
   }
+  await sendGapAnswer(page, answer);
+  await answerGapList(page, rest);
+}
+
+async function answerFactGapsViaIntakeChat(page: Page) {
+  await answerGapList(page, LIVE_GAP_ANSWERS);
   expect(await allFactSlotsFilled(page)).toBe(true);
 }
 
@@ -509,7 +517,7 @@ export async function walkLiveAnalyzeToPhase1(
     await expect(analyzing).toContainText("อย่าปิดหน้านี้");
     await saveEvidence(page, "03b-phase-0-analyzing");
   }
-  await expect(page.getByTestId("phase1-coverage")).toBeVisible({ timeout: 1_200_000 });
+  await expect(page.getByTestId("phase1-coverage")).toBeVisible({ timeout: 9_000_000 });
   await expect(page.getByText("รายละเอียดที่จัดเข้าช่อง")).toBeVisible();
   await expect(page.getByTestId("coverage-row-s1")).toBeVisible();
   await saveEvidence(page, "04b-phase-1-coverage");

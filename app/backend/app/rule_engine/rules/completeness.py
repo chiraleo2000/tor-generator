@@ -36,6 +36,50 @@ def _sections(tor_document: dict) -> dict:
     return tor_document.get("sections", tor_document)
 
 
+def _profile_missing_halt(exc: MissingSectionProfile) -> MissingSectionsHalt:
+    return MissingSectionsHalt(
+        missing_sections={"profile": str(exc)},
+        findings=[
+            Finding(
+                severity=Severity.ERROR,
+                rule_violated="COMPLETENESS_PROFILE_MISSING",
+                affected_section="profile",
+                message=str(exc),
+                recommended_correction="เลือกหมวดใหญ่ประเภทการจัดซื้อจัดจ้างที่มี Section_Profile",
+            )
+        ],
+    )
+
+
+def _s4_has_body(sections: dict, profile: object) -> bool:
+    nested = sections.get("s4")
+    if isinstance(nested, dict) and any(str(value or "").strip() for value in nested.values()):
+        return True
+    for sub in getattr(profile, "scope_subsections", ()):
+        if str(sections.get(sub.storage_key) or "").strip():
+            return True
+    return False
+
+
+def _section_content_empty(sections: dict, profile: object, item: object) -> bool:
+    storage_key = item.storage_key
+    content = sections.get(storage_key)
+    empty = content is None or (isinstance(content, str) and content.strip() == "")
+    if storage_key == "s4" and empty:
+        return not _s4_has_body(sections, profile)
+    return empty
+
+
+def _missing_section_finding(item: object) -> Finding:
+    return Finding(
+        severity=Severity.ERROR,
+        rule_violated="COMPLETENESS_SECTION_MISSING",
+        affected_section=item.storage_key,
+        message=f"ไม่พบหัวข้อที่จำเป็น: {item.title}",
+        recommended_correction=f"กรุณาเพิ่มเนื้อหาในหัวข้อ {item.title}",
+    )
+
+
 class SectionPresenceRule(BaseRule):
     def validate(self, tor_document: dict) -> list[Finding]:
         findings: list[Finding] = []
@@ -43,48 +87,17 @@ class SectionPresenceRule(BaseRule):
         try:
             profile = require_profile(_category(tor_document) or "buy_goods")
         except MissingSectionProfile as exc:
-            raise MissingSectionsHalt(
-                missing_sections={"profile": str(exc)},
-                findings=[
-                    Finding(
-                        severity=Severity.ERROR,
-                        rule_violated="COMPLETENESS_PROFILE_MISSING",
-                        affected_section="profile",
-                        message=str(exc),
-                        recommended_correction="เลือกหมวดใหญ่ประเภทการจัดซื้อจัดจ้างที่มี Section_Profile",
-                    )
-                ],
-            ) from exc
+            raise _profile_missing_halt(exc) from exc
 
         sections = _sections(tor_document)
         focus = focus_section(tor_document)
         for item in profile.main_sections:
-            if not item.required:
+            if not item.required or (focus and item.storage_key != focus):
                 continue
-            if focus and item.storage_key != focus:
+            if not _section_content_empty(sections, profile, item):
                 continue
-            content = sections.get(item.storage_key)
-            empty = content is None or (isinstance(content, str) and content.strip() == "")
-            if item.storage_key == "s4" and empty:
-                nested = sections.get("s4")
-                if isinstance(nested, dict) and any(str(v or "").strip() for v in nested.values()):
-                    empty = False
-                else:
-                    for sub in profile.scope_subsections:
-                        if str(sections.get(sub.storage_key) or "").strip():
-                            empty = False
-                            break
-            if empty:
-                missing[item.storage_key] = item.title
-                findings.append(
-                    Finding(
-                        severity=Severity.ERROR,
-                        rule_violated="COMPLETENESS_SECTION_MISSING",
-                        affected_section=item.storage_key,
-                        message=f"ไม่พบหัวข้อที่จำเป็น: {item.title}",
-                        recommended_correction=f"กรุณาเพิ่มเนื้อหาในหัวข้อ {item.title}",
-                    )
-                )
+            missing[item.storage_key] = item.title
+            findings.append(_missing_section_finding(item))
         if missing:
             raise MissingSectionsHalt(missing_sections=missing, findings=findings)
         return findings
@@ -99,7 +112,6 @@ class RequiredSubsectionsRule(BaseRule):
         sections = _sections(tor_document)
         s4_content = sections.get("s4")
         required = [item for item in profile.scope_subsections if item.required]
-        filled = 0
         for item in required:
             has_subsection = bool(str(sections.get(item.storage_key) or "").strip())
             if not has_subsection and isinstance(s4_content, dict):
@@ -110,9 +122,7 @@ class RequiredSubsectionsRule(BaseRule):
                         or ""
                     ).strip()
                 )
-            if has_subsection:
-                filled += 1
-            else:
+            if not has_subsection:
                 findings.append(
                     Finding(
                         severity=Severity.WARNING,
@@ -164,6 +174,105 @@ class MinimumContentRule(BaseRule):
         return findings
 
 
+def _append_payment_finding(findings: list[Finding], sections: dict, focus: str | None) -> None:
+    payment = str(sections.get("s8") or "")
+    if focus not in {None, "s8"} or not payment.strip():
+        return
+    if "งวดที่" in payment and "ร้อยละ" in payment:
+        return
+    findings.append(
+        Finding(
+            severity=Severity.WARNING,
+            rule_violated="COMPLETENESS_PAYMENT_TABLE",
+            affected_section="s8",
+            message="หมวดงวดจ่ายต้องมีตารางงวดที่และร้อยละรวมหนึ่งร้อย",
+            recommended_correction="ใส่ตารางงวดที่ / ผลงานส่งมอบ / ร้อยละ ของวงเงิน",
+        )
+    )
+
+
+def _needs_weight_table(evaluation: str) -> bool:
+    if not evaluation.strip():
+        return False
+    if "คุณภาพ" not in evaluation and "ประกอบ" not in evaluation:
+        return False
+    return "ร้อยละ" not in evaluation and "น้ำหนัก" not in evaluation
+
+
+def _append_evaluation_finding(findings: list[Finding], sections: dict, focus: str | None) -> None:
+    evaluation = str(sections.get("s11") or "")
+    if focus not in {None, "s11"} or not _needs_weight_table(evaluation):
+        return
+    findings.append(
+        Finding(
+            severity=Severity.WARNING,
+            rule_violated="COMPLETENESS_EVAL_WEIGHT_TABLE",
+            affected_section="s11",
+            message="เกณฑ์คุณภาพต้องระบุสัดส่วนน้ำหนักหรือร้อยละ",
+            recommended_correction="ใส่ตารางน้ำหนักคะแนนคุณภาพและราคา",
+        )
+    )
+
+
+def _personnel_table_missing(qualifications: str) -> bool:
+    if not qualifications.strip():
+        return False
+    lowered = qualifications.lower()
+    return (
+        "บุคลากร" not in qualifications
+        and "man" not in lowered
+        and "อัตรากำลัง" not in qualifications
+    )
+
+
+def _append_personnel_finding(
+    findings: list[Finding],
+    sections: dict,
+    focus: str | None,
+    category: str,
+) -> None:
+    qualifications = str(sections.get("s3") or "")
+    if focus not in {None, "s3"} or category != "hire_develop":
+        return
+    if not _personnel_table_missing(qualifications):
+        return
+    findings.append(
+        Finding(
+            severity=Severity.WARNING,
+            rule_violated="COMPLETENESS_PERSONNEL_TABLE",
+            affected_section="s3",
+            message="งานจ้างพัฒนาควรระบุตารางบุคลากรหรือปริมาณงาน",
+            recommended_correction="เพิ่มตำแหน่ง วุฒิ และปริมาณงานของทีมงาน",
+        )
+    )
+
+
+def _soc_table_missing(soc: str) -> bool:
+    if not soc.strip():
+        return True
+    return "เปรียบเทียบ" not in soc and "ข้อกำหนด" not in soc
+
+
+def _append_soc_finding(
+    findings: list[Finding],
+    sections: dict,
+    focus: str | None,
+    category: str,
+) -> None:
+    soc = str(sections.get("s12") or "")
+    if focus not in {None, "s12"} or category != "hire_maintain" or not _soc_table_missing(soc):
+        return
+    findings.append(
+        Finding(
+            severity=Severity.WARNING,
+            rule_violated="COMPLETENESS_SOC_TABLE",
+            affected_section="s12",
+            message="งานบำรุงรักษาต้องมีเงื่อนไขการยื่นข้อเสนอหรือตารางเปรียบเทียบข้อกำหนด",
+            recommended_correction="เพิ่มตารางเปรียบเทียบข้อกำหนดเป็นข้อหลัก",
+        )
+    )
+
+
 class RequiredTablesRule(BaseRule):
     """Gold tables: payment %, evaluation weights, personnel, and SoC when the type needs them."""
 
@@ -172,63 +281,8 @@ class RequiredTablesRule(BaseRule):
         category = _category(tor_document) or "buy_goods"
         sections = _sections(tor_document)
         focus = focus_section(tor_document)
-        payment = str(sections.get("s8") or "")
-        if focus in {None, "s8"} and payment.strip():
-            if "งวดที่" not in payment or "ร้อยละ" not in payment:
-                findings.append(
-                    Finding(
-                        severity=Severity.WARNING,
-                        rule_violated="COMPLETENESS_PAYMENT_TABLE",
-                        affected_section="s8",
-                        message="หมวดงวดจ่ายต้องมีตารางงวดที่และร้อยละรวมหนึ่งร้อย",
-                        recommended_correction="ใส่ตารางงวดที่ / ผลงานส่งมอบ / ร้อยละ ของวงเงิน",
-                    )
-                )
-        evaluation = str(sections.get("s11") or "")
-        if focus in {None, "s11"} and evaluation.strip() and (
-            "คุณภาพ" in evaluation or "ประกอบ" in evaluation
-        ):
-            if "ร้อยละ" not in evaluation and "น้ำหนัก" not in evaluation:
-                findings.append(
-                    Finding(
-                        severity=Severity.WARNING,
-                        rule_violated="COMPLETENESS_EVAL_WEIGHT_TABLE",
-                        affected_section="s11",
-                        message="เกณฑ์คุณภาพต้องระบุสัดส่วนน้ำหนักหรือร้อยละ",
-                        recommended_correction="ใส่ตารางน้ำหนักคะแนนคุณภาพและราคา",
-                    )
-                )
-        qualifications = str(sections.get("s3") or "")
-        if (
-            focus in {None, "s3"}
-            and category == "hire_develop"
-            and qualifications.strip()
-            and "บุคลากร" not in qualifications
-            and "man" not in qualifications.lower()
-            and "อัตรากำลัง" not in qualifications
-        ):
-            findings.append(
-                Finding(
-                    severity=Severity.WARNING,
-                    rule_violated="COMPLETENESS_PERSONNEL_TABLE",
-                    affected_section="s3",
-                    message="งานจ้างพัฒนาควรระบุตารางบุคลากรหรือปริมาณงาน",
-                    recommended_correction="เพิ่มตำแหน่ง วุฒิ และปริมาณงานของทีมงาน",
-                )
-            )
-        soc = str(sections.get("s12") or "")
-        if (
-            focus in {None, "s12"}
-            and category == "hire_maintain"
-            and (not soc.strip() or ("เปรียบเทียบ" not in soc and "ข้อกำหนด" not in soc))
-        ):
-            findings.append(
-                Finding(
-                    severity=Severity.WARNING,
-                    rule_violated="COMPLETENESS_SOC_TABLE",
-                    affected_section="s12",
-                    message="งานบำรุงรักษาต้องมีเงื่อนไขการยื่นข้อเสนอหรือตารางเปรียบเทียบข้อกำหนด",
-                    recommended_correction="เพิ่มตารางเปรียบเทียบข้อกำหนดเป็นข้อหลัก",
-                )
-            )
+        _append_payment_finding(findings, sections, focus)
+        _append_evaluation_finding(findings, sections, focus)
+        _append_personnel_finding(findings, sections, focus, category)
+        _append_soc_finding(findings, sections, focus, category)
         return findings

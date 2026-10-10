@@ -38,33 +38,50 @@ def compute_ready(slot_map: dict[str, Any], category: str | None = None) -> bool
     return all(_is_filled(slot_map, key) for key in required)
 
 
+def _slot_with_content(slot_map: dict[str, Any], key: str) -> dict[str, Any]:
+    slot = _slot(slot_map, key)
+    if str(slot.get("content") or "").strip():
+        return slot
+    for alias in slot_key_aliases(key):
+        alt = _slot(slot_map, alias)
+        if str(alt.get("content") or "").strip():
+            return alt
+    return slot
+
+
+def _coverage_status(slot: dict[str, Any]) -> str:
+    status = slot.get("status") or "gap"
+    if status not in {"filled", "gap", "reference_only", "error"}:
+        return "gap"
+    return status
+
+
+def _coverage_row(
+    slot_map: dict[str, Any],
+    key: str,
+    labels: dict[str, str],
+    required: set[str] | list[str],
+) -> dict[str, Any]:
+    slot = _slot_with_content(slot_map, key)
+    status = _coverage_status(slot)
+    fact_required = key in required
+    critical = fact_required and status in {"gap", "reference_only", "error"}
+    return {
+        "key": key,
+        "label": labels.get(key, key),
+        "status": status,
+        "filled": status == "filled",
+        "fact_required": fact_required,
+        "criticality": "critical" if critical else "non-critical",
+        "content": str(slot.get("content") or ""),
+        "sources": slot.get("sources") if isinstance(slot.get("sources"), list) else [],
+    }
+
+
 def build_coverage_map(slot_map: dict[str, Any], category: str | None = None) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
     labels = intake_slot_labels(category)
     required = fact_required_slots(category)
-    for key in intake_slot_order(category):
-        slot = _slot(slot_map, key)
-        if not str(slot.get("content") or "").strip():
-            for alias in slot_key_aliases(key):
-                alt = _slot(slot_map, alias)
-                if str(alt.get("content") or "").strip():
-                    slot = alt
-                    break
-        status = slot.get("status") or "gap"
-        if status not in {"filled", "gap", "reference_only", "error"}:
-            status = "gap"
-        fact_required = key in required
-        critical = fact_required and status in {"gap", "reference_only", "error"}
-        rows.append(
-            {
-                "key": key,
-                "label": labels.get(key, key),
-                "status": status,
-                "filled": status == "filled",
-                "fact_required": fact_required,
-                "criticality": "critical" if critical else "non-critical",
-                "content": str(slot.get("content") or ""),
-                "sources": slot.get("sources") if isinstance(slot.get("sources"), list) else [],
-            }
-        )
-    return rows
+    return [
+        _coverage_row(slot_map, key, labels, required)
+        for key in intake_slot_order(category)
+    ]

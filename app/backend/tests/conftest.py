@@ -8,6 +8,7 @@ import os
 import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 from hypothesis import settings as hypothesis_settings
@@ -85,6 +86,27 @@ def sample_section_structure() -> dict:
             {"key": "s3", "title": "คุณสมบัติผู้เสนอราคา", "required": True},
         ]
     }
+
+
+def align_coverage_xml_for_sonar(path: Path | None = None) -> None:
+    """Point Cobertura ``<source>`` at ``app/backend/app`` for a repo-root scan.
+
+    pytest runs from ``app/backend``, so coverage.py records the package root as
+    ``app``. Sonar resolves that tag from the repository root.
+    """
+    report = path or Path("coverage.xml")
+    if not report.is_file():
+        return
+    text = report.read_text(encoding="utf-8")
+    old = "<source>app</source>"
+    new = "<source>app/backend/app</source>"
+    if old not in text:
+        return
+    report.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    align_coverage_xml_for_sonar(Path(config.rootpath) / "coverage.xml")
 
 
 @pytest.fixture

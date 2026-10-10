@@ -1,7 +1,13 @@
 /** Which sidebar item should use the orange active color. */
 
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === "/") end -= 1;
+  return path.slice(0, end);
+}
+
 export function navItemIsActive(pathname: string, href: string): boolean {
-  const path = (pathname.split("?")[0] || "/").replace(/\/+$/, "") || "/";
+  const path = withoutTrailingSlashes(pathname.split("?")[0] || "/") || "/";
   if (href === "/projects") {
     return path === "/projects";
   }
@@ -9,7 +15,7 @@ export function navItemIsActive(pathname: string, href: string): boolean {
     if (path === "/draft" || path.startsWith("/draft/") || path.startsWith("/wizard")) {
       return true;
     }
-    const project = path.match(/^\/projects\/[^/]+(?:\/(.*))?$/);
+    const project = /^\/projects\/[^/]+(?:\/(.*))?$/.exec(path);
     if (!project) {
       return false;
     }

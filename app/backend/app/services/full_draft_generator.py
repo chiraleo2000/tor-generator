@@ -62,6 +62,23 @@ def mean_quality(scores: dict[str, float]) -> float:
     return sum(values) / len(values)
 
 
+def _scope_subsections(slot_map: dict[str, Any]) -> dict[str, str]:
+    from app.domain.section_profile import profile_for_project
+
+    raw = slot_map.get("_project_type") or slot_map.get("project_type")
+    ptype = raw if isinstance(raw, str) else None
+    keys = profile_for_project(ptype).scope_storage_keys()
+    subs = {
+        key: str((slot_map.get(key) or {}).get("content") or "")
+        for key in keys
+        if isinstance(slot_map.get(key), dict)
+    }
+    for key, value in slot_map.items():
+        if str(key).startswith("s4.") and isinstance(value, dict):
+            subs[str(key)] = str(value.get("content") or "")
+    return subs
+
+
 def slot_user_input(slot_map: dict[str, Any], section_key: str) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     slot = slot_map.get(section_key) if isinstance(slot_map, dict) else None
@@ -69,22 +86,7 @@ def slot_user_input(slot_map: dict[str, Any], section_key: str) -> dict[str, Any
         payload["content"] = str(slot.get("content") or "")
         payload["sources"] = slot.get("sources") or []
     if section_key == "s4":
-        from app.domain.section_profile import profile_for_project
-
-        ptype = None
-        if isinstance(slot_map, dict):
-            raw = slot_map.get("_project_type") or slot_map.get("project_type")
-            ptype = raw if isinstance(raw, str) else None
-        keys = profile_for_project(ptype).scope_storage_keys()
-        subs = {
-            key: str((slot_map.get(key) or {}).get("content") or "")
-            for key in keys
-            if isinstance(slot_map.get(key), dict)
-        }
-        for key, value in slot_map.items():
-            if str(key).startswith("s4.") and isinstance(value, dict):
-                subs[str(key)] = str(value.get("content") or "")
-        payload["scope_subsections"] = subs
+        payload["scope_subsections"] = _scope_subsections(slot_map)
     return payload
 
 

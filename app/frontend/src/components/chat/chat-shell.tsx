@@ -68,6 +68,145 @@ function sseFieldText(value: unknown, fallback = ""): string {
   return fallback;
 }
 
+type ChatStreamActions = {
+  setQueueStatus: (value: string | null) => void;
+  setMessages: (
+    value: ChatMessageItem[] | ((prev: ChatMessageItem[]) => ChatMessageItem[])
+  ) => void;
+  setBusy: (value: boolean) => void;
+  setError: (value: string | null) => void;
+  onReady?: () => void;
+};
+
+function appendStreamToken(prev: ChatMessageItem[], piece: string): ChatMessageItem[] {
+  const last = prev.at(-1);
+  if (last?.role !== "assistant") return prev;
+  return withPatchedLastAssistant(prev, { content: last.content + piece });
+}
+
+function finishStreamMessage(
+  prev: ChatMessageItem[],
+  data: Record<string, unknown>
+): ChatMessageItem[] {
+  const citations = (data.citations as ChatCitation[]) || [];
+  return withPatchedLastAssistant(prev, {
+    content: sseFieldText(data.content) || prev.at(-1)?.content || "",
+    citations,
+    mcp_degraded: Boolean(data.mcp_degraded),
+  });
+}
+
+function applyChatStreamEvent(
+  event: string,
+  data: Record<string, unknown>,
+  actions: ChatStreamActions
+) {
+  if (event === "queued") {
+    const position = Number(data.position || 0);
+    actions.setQueueStatus(position > 0 ? `รอคิว (#${position})...` : "รอคิว AI...");
+    return;
+  }
+  if (event === "started" || event === "token" || event === "done" || event === "error") {
+    actions.setQueueStatus(null);
+  }
+  if (event === "token") {
+    actions.setMessages((prev) => appendStreamToken(prev, sseFieldText(data.text)));
+    return;
+  }
+  if (event === "done") {
+    actions.setMessages((prev) => finishStreamMessage(prev, data));
+    actions.setBusy(false);
+    actions.onReady?.();
+    return;
+  }
+  if (event === "error") {
+    actions.setBusy(false);
+    actions.setError(sseFieldText(data.message) || "แชทล้มเหลว");
+  }
+}
+
+function readStoredRoomId(kind: ChatKind, projectId?: string): string | null {
+  try {
+    return sessionStorage.getItem(`chat-active:${kind}:${projectId || ""}`);
+  } catch {
+    return null;
+  }
+}
+
+function pickExistingRoom(
+  list: ChatRoomCard[],
+  stored: string | null,
+  projectId?: string
+): ChatRoomCard | undefined {
+  if (stored) {
+    const storedRoom = list.find((room) => room.id === stored);
+    if (storedRoom) return storedRoom;
+  }
+  if (projectId) {
+    const projectRoom = list.find((room) => room.project_id === projectId);
+    if (projectRoom) return projectRoom;
+  }
+  return list[0];
+}
+
+async function startChatSession(input: {
+  cancelled: () => boolean;
+  compact: boolean;
+  kind: ChatKind;
+  projectId?: string;
+  alreadyPicked: () => boolean;
+  loadRooms: () => Promise<ChatRoomCard[]>;
+  loadMine: () => Promise<void>;
+  selectRoom: (id: string, fromUser?: boolean) => Promise<void>;
+}): Promise<void> {
+  const list = await input.loadRooms();
+  if (input.cancelled()) return;
+  try {
+    if (!input.compact) await input.loadMine();
+  } catch {
+    /* private catalog is optional in chat */
+  }
+  if (input.cancelled() || input.alreadyPicked()) return;
+  const existing = pickExistingRoom(
+    list,
+    readStoredRoomId(input.kind, input.projectId),
+    input.projectId
+  );
+  if (existing) {
+    await input.selectRoom(existing.id, false);
+    return;
+  }
+  if (input.kind !== "draft_intake" || !input.projectId) return;
+  const created = await apiClient.post("/chat/rooms", {
+    kind: input.kind,
+    project_id: input.projectId,
+    title: TITLE_DRAFT,
+  });
+  const room = unwrapData<ChatRoomCard>(created);
+  if (input.cancelled() || input.alreadyPicked()) return;
+  await input.loadRooms();
+  await input.selectRoom(room.id, false);
+}
+
+async function uploadRoomAttachments(roomId: string, files: File[]): Promise<string[]> {
+  const notes: string[] = [];
+  await files.reduce(async (previous, file) => {
+    await previous;
+    const body = new FormData();
+    body.append("file", file);
+    const response = await apiClient.post(`/chat/rooms/${roomId}/attachments`, body);
+    const payload = unwrapData<{
+      document_id?: string;
+      name?: string;
+      status?: string;
+      processing_status?: string;
+      chunk_count?: number;
+    }>(response);
+    notes.push(attachIngestFeedback(payload, file.name));
+  }, Promise.resolve());
+  return notes;
+}
+
 function withPatchedLastAssistant(
   prev: ChatMessageItem[],
   patch: Partial<Pick<ChatMessageItem, "content" | "citations" | "mcp_degraded">>
@@ -208,41 +347,16 @@ export function ChatShell({
       });
 
     async function bootstrap() {
-      const list = await loadRooms();
-      if (cancelled) return;
-      try {
-        if (!compact) await loadMine();
-      } catch {
-        /* private catalog is optional in chat */
-      }
-      if (cancelled) return;
-      if (userPicked.current || pickedId.current) return;
-      const stored = (() => {
-        try {
-          return sessionStorage.getItem(`chat-active:${kind}:${projectId || ""}`);
-        } catch {
-          return null;
-        }
-      })();
-      const existing =
-        (stored ? list.find((room) => room.id === stored) : undefined) ||
-        (projectId ? list.find((room) => room.project_id === projectId) : undefined) ||
-        list[0];
-      if (existing) {
-        await selectRoom(existing.id, false);
-        return;
-      }
-      if (kind === "draft_intake" && projectId) {
-        const created = await apiClient.post("/chat/rooms", {
-          kind,
-          project_id: projectId,
-          title: TITLE_DRAFT,
-        });
-        const room = unwrapData<ChatRoomCard>(created);
-        if (cancelled || userPicked.current || pickedId.current) return;
-        await loadRooms();
-        await selectRoom(room.id, false);
-      }
+      await startChatSession({
+        cancelled: () => cancelled,
+        compact,
+        kind,
+        projectId,
+        alreadyPicked: () => Boolean(userPicked.current || pickedId.current),
+        loadRooms,
+        loadMine,
+        selectRoom,
+      });
     }
 
     bootstrap().catch(() => {
@@ -373,47 +487,13 @@ export function ChatShell({
         { content, search_scope: scope },
         token,
         (event, data) => {
-          if (event === "queued") {
-            const position = Number(data.position || 0);
-            setQueueStatus(
-              position > 0 ? `รอคิว (#${position})...` : "รอคิว AI..."
-            );
-          }
-          if (event === "started") {
-            setQueueStatus(null);
-          }
-          if (event === "token") {
-            setQueueStatus(null);
-            const piece = sseFieldText(data.text);
-            setMessages((prev) => {
-              const last = prev.at(-1);
-              if (last?.role !== "assistant") {
-                return prev;
-              }
-              return withPatchedLastAssistant(prev, {
-                content: last.content + piece,
-              });
-            });
-          }
-          if (event === "done") {
-            setQueueStatus(null);
-            const citations = (data.citations as ChatCitation[]) || [];
-            const mcpDegraded = Boolean(data.mcp_degraded);
-            setMessages((prev) =>
-              withPatchedLastAssistant(prev, {
-                content: sseFieldText(data.content) || prev.at(-1)?.content || "",
-                citations,
-                mcp_degraded: mcpDegraded,
-              })
-            );
-            setBusy(false);
-            onReady?.();
-          }
-          if (event === "error") {
-            setQueueStatus(null);
-            setBusy(false);
-            setError(sseFieldText(data.message) || "แชทล้มเหลว");
-          }
+          applyChatStreamEvent(event, data, {
+            setQueueStatus,
+            setMessages,
+            setBusy,
+            setError,
+            onReady,
+          });
         },
         controller.signal,
         { "X-AI-Request-Id": requestId }
@@ -446,20 +526,7 @@ export function ChatShell({
         setError("ยังไม่มีห้องแชทสำหรับแนบไฟล์");
         return;
       }
-      const notes: string[] = [];
-      for (const file of Array.from(files)) {
-        const body = new FormData();
-        body.append("file", file);
-        const response = await apiClient.post(`/chat/rooms/${roomId}/attachments`, body);
-        const payload = unwrapData<{
-          document_id?: string;
-          name?: string;
-          status?: string;
-          processing_status?: string;
-          chunk_count?: number;
-        }>(response);
-        notes.push(attachIngestFeedback(payload, file.name));
-      }
+      const notes = await uploadRoomAttachments(roomId, Array.from(files));
       try {
         await loadMine();
       } catch {
@@ -552,7 +619,7 @@ export function ChatShell({
                     AI ผู้ช่วยถาม-ตอบคลังความรู้
                   </h2>
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
                     ออนไลน์
                   </span>
                 </div>
@@ -594,7 +661,7 @@ export function ChatShell({
             title="คัดลอก"
             className="rounded-md p-1.5 hover:bg-muted"
             onClick={() => {
-              if (lastAssistant) navigator.clipboard.writeText(lastAssistant.content);
+              if (lastAssistant) void navigator.clipboard.writeText(lastAssistant.content);
             }}
           >
             <Copy className="h-4 w-4" />
@@ -613,7 +680,7 @@ export function ChatShell({
             className="rounded-md p-1.5 hover:bg-muted"
             onClick={() => {
               const lastUser = messages.findLast((item) => item.role === "user");
-              if (lastUser) send(lastUser.content);
+              if (lastUser) void send(lastUser.content);
             }}
           >
             <RotateCcw className="h-4 w-4" />
@@ -666,95 +733,185 @@ export function ChatShell({
             {attachNote}
           </output>
         ) : null}
-        <div className="min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-5" data-testid="chat-messages">
-          {messages.length === 0 ? (
-            <div className="space-y-4 py-6" data-testid="chat-empty">
-              <p className="text-center text-sm text-muted-foreground">
-                {kind === "kb"
-                  ? "เลือกประวัติทางซ้าย หรือพิมพ์คำถามเพื่อเริ่มแชทใหม่ — ระบบดึงหลายชิ้นจากคลังแล้วตอบพร้อมอ้างอิง"
-                  : "บอทจะสรุปผลวิเคราะห์ขั้นที่ ๑ ให้ก่อน แล้วคุยถามส่วนที่ยังขาดเป็นภาษาพูด"}
-              </p>
-              {briefing && prompts.length ? (
-                <div className="flex flex-col items-end gap-2">
-                  {prompts.map((prompt) => (
-                    <button
-                      key={prompt.id}
-                      type="button"
-                      data-testid="chat-suggested-prompt"
-                      className="max-w-[90%] rounded-2xl bg-emerald-500 px-4 py-2 text-left text-sm text-white shadow-sm hover:bg-emerald-600"
-                      onClick={() => {
-                        void send(prompt.body);
-                      }}
-                    >
-                      {prompt.title}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {messages.map((item) => (
-            <ChatBubble
-              key={item.id}
-              item={item}
-              briefing={briefing}
-              busy={busy}
-              queueStatus={queueStatus}
-            />
-          ))}
-          <div ref={endRef} />
-        </div>
-        <div className="border-t bg-white p-3">
-          <div className="mb-2 flex flex-wrap gap-1">
-            {compact
-              ? null
-              : prompts.map((prompt) => (
-                  <button
-                    key={prompt.id}
-                    type="button"
-                    data-testid="chat-prompt-chip"
-                    className="rounded-full border px-2 py-0.5 text-[11px] hover:bg-muted"
-                    onClick={() => setDraft(prompt.body)}
-                  >
-                    {prompt.title}
-                  </button>
-                ))}
-          </div>
-          <div className="flex items-end gap-2">
-            <textarea
-              data-testid="chat-input"
-              className={cn(
-                "min-h-[48px] flex-1 border p-2 text-sm",
-                briefing ? "rounded-2xl px-4 py-3 shadow-sm" : "rounded-md"
-              )}
-              value={draft}
-              placeholder={
-                kind === "kb"
-                  ? "พิมพ์คำถามเกี่ยวกับกฎหมาย ระเบียบ และแนวปฏิบัติจัดซื้อจัดจ้าง..."
-                  : "ตอบเป็นภาษาพูดได้ เช่น วงเงินสองล้านห้าแสนบาท จากงบดำเนินงาน"
-              }
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  send(draft);
-                }
-              }}
-            />
-            <Button
-              type="button"
-              data-testid="chat-send"
-              disabled={busy || !draft.trim()}
-              className={briefing ? "h-11 w-11 rounded-full bg-emerald-500 hover:bg-emerald-600" : undefined}
-              onClick={() => send(draft)}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <ChatTranscript
+          kind={kind}
+          briefing={briefing}
+          prompts={prompts}
+          messages={messages}
+          busy={busy}
+          queueStatus={queueStatus}
+          endRef={endRef}
+          onPrompt={(body) => {
+            void send(body);
+          }}
+        />
+        <ChatComposer
+          kind={kind}
+          compact={compact}
+          briefing={briefing}
+          prompts={prompts}
+          draft={draft}
+          busy={busy}
+          onDraft={setDraft}
+          onSend={() => {
+            void send(draft);
+          }}
+        />
       </section>
     </div>
   );
+}
+
+function ChatTranscript({
+  kind,
+  briefing,
+  prompts,
+  messages,
+  busy,
+  queueStatus,
+  endRef,
+  onPrompt,
+}: Readonly<{
+  kind: ChatKind;
+  briefing: boolean;
+  prompts: ChatPrompt[];
+  messages: ChatMessageItem[];
+  busy: boolean;
+  queueStatus: string | null;
+  endRef: { current: HTMLDivElement | null };
+  onPrompt: (body: string) => void;
+}>) {
+  return (
+    <div className="min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-5" data-testid="chat-messages">
+      {messages.length === 0 ? (
+        <div className="space-y-4 py-6" data-testid="chat-empty">
+          <p className="text-center text-sm text-muted-foreground">
+            {kind === "kb"
+              ? "เลือกประวัติทางซ้าย หรือพิมพ์คำถามเพื่อเริ่มแชทใหม่ — ระบบดึงหลายชิ้นจากคลังแล้วตอบพร้อมอ้างอิง"
+              : "บอทจะสรุปผลวิเคราะห์ขั้นที่ ๑ ให้ก่อน แล้วคุยถามส่วนที่ยังขาดเป็นภาษาพูด"}
+          </p>
+          {briefing && prompts.length ? (
+            <div className="flex flex-col items-end gap-2">
+              {prompts.map((prompt) => (
+                <button
+                  key={prompt.id}
+                  type="button"
+                  data-testid="chat-suggested-prompt"
+                  className="max-w-[90%] rounded-2xl bg-emerald-500 px-4 py-2 text-left text-sm text-white shadow-sm hover:bg-emerald-600"
+                  onClick={() => onPrompt(prompt.body)}
+                >
+                  {prompt.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {messages.map((item) => (
+        <ChatBubble key={item.id} item={item} briefing={briefing} busy={busy} queueStatus={queueStatus} />
+      ))}
+      <div ref={endRef} />
+    </div>
+  );
+}
+
+function ChatComposer({
+  kind,
+  compact,
+  briefing,
+  prompts,
+  draft,
+  busy,
+  onDraft,
+  onSend,
+}: Readonly<{
+  kind: ChatKind;
+  compact: boolean;
+  briefing: boolean;
+  prompts: ChatPrompt[];
+  draft: string;
+  busy: boolean;
+  onDraft: (value: string) => void;
+  onSend: () => void;
+}>) {
+  return (
+    <div className="border-t bg-white p-3">
+      <div className="mb-2 flex flex-wrap gap-1">
+        {compact
+          ? null
+          : prompts.map((prompt) => (
+              <button
+                key={prompt.id}
+                type="button"
+                data-testid="chat-prompt-chip"
+                className="rounded-full border px-2 py-0.5 text-[11px] hover:bg-muted"
+                onClick={() => onDraft(prompt.body)}
+              >
+                {prompt.title}
+              </button>
+            ))}
+      </div>
+      <div className="flex items-end gap-2">
+        <textarea
+          data-testid="chat-input"
+          className={cn(
+            "min-h-[48px] flex-1 border p-2 text-sm",
+            briefing ? "rounded-2xl px-4 py-3 shadow-sm" : "rounded-md"
+          )}
+          value={draft}
+          placeholder={
+            kind === "kb"
+              ? "พิมพ์คำถามเกี่ยวกับกฎหมาย ระเบียบ และแนวปฏิบัติจัดซื้อจัดจ้าง..."
+              : "ตอบเป็นภาษาพูดได้ เช่น วงเงินสองล้านห้าแสนบาท จากงบดำเนินงาน"
+          }
+          onChange={(event) => onDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              onSend();
+            }
+          }}
+        />
+        <Button
+          type="button"
+          data-testid="chat-send"
+          disabled={busy || !draft.trim()}
+          className={briefing ? "h-11 w-11 rounded-full bg-emerald-500 hover:bg-emerald-600" : undefined}
+          onClick={onSend}
+        >
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function userBubbleClass(briefing: boolean): string {
+  return cn(
+    "ml-auto max-w-[85%] rounded-2xl px-4 py-2.5 text-sm text-white",
+    briefing ? "bg-emerald-500" : "bg-navy"
+  );
+}
+
+function assistantBubbleClass(briefing: boolean): string {
+  if (briefing) {
+    return "w-full min-w-0 max-w-none rounded-2xl bg-white px-6 py-5 text-sm shadow-[0_2px_12px_rgba(15,23,42,0.06)]";
+  }
+  return "max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground";
+}
+
+function bubbleCitations(
+  item: ChatMessageItem,
+  briefing: boolean,
+  isUser: boolean
+) {
+  if (briefing && !isUser) {
+    return <ChatCitationBar citations={item.citations || []} />;
+  }
+  if (item.citations?.length) {
+    return <ChatCitationBar citations={item.citations} />;
+  }
+  return null;
 }
 
 function ChatBubble({
@@ -774,16 +931,7 @@ function ChatBubble({
   return (
     <article
       data-testid={isUser ? "chat-msg-user" : "chat-msg-assistant"}
-      className={cn(
-        isUser
-          ? cn(
-              "ml-auto max-w-[85%] rounded-2xl px-4 py-2.5 text-sm text-white",
-              briefing ? "bg-emerald-500" : "bg-navy"
-            )
-          : briefing
-            ? "w-full min-w-0 max-w-none rounded-2xl bg-white px-6 py-5 text-sm shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
-            : "max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground"
-      )}
+      className={isUser ? userBubbleClass(briefing) : assistantBubbleClass(briefing)}
     >
       {isUser || !briefing ? (
         <p className="whitespace-pre-wrap">{item.content}</p>
@@ -821,11 +969,7 @@ function ChatBubble({
           ไม่ดึงคลัง
         </p>
       ) : null}
-      {briefing && !isUser ? (
-        <ChatCitationBar citations={item.citations || []} />
-      ) : item.citations?.length ? (
-        <ChatCitationBar citations={item.citations} />
-      ) : null}
+      {bubbleCitations(item, briefing, isUser)}
     </article>
   );
 }

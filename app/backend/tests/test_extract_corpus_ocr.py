@@ -12,7 +12,8 @@ MODULE_PATH = BACKEND / "scripts" / "extract_corpus_standard.py"
 
 def _load():
     spec = importlib.util.spec_from_file_location("extract_corpus_standard", MODULE_PATH)
-    assert spec and spec.loader
+    assert spec
+    assert spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

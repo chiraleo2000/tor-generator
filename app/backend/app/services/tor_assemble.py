@@ -8,22 +8,34 @@ from app.domain.section_text import section_plain_text
 from app.domain.tor_sections import TOR_SECTION_LABELS
 
 
+def _dotted_sub_key(sub: str) -> str | None:
+    if sub.startswith("s") and "." in sub:
+        return sub
+    if sub[0:1].isdigit() and "." in sub:
+        return f"s{sub}"
+    return None
+
+
+def _key_under_parent(parent: str, sub: str) -> str | None:
+    if not parent or not (sub.startswith(f"{parent}.") or sub.startswith(parent)):
+        return None
+    if sub.startswith("s") or not sub[0:1].isdigit():
+        return sub
+    return f"s{sub}"
+
+
 def document_section_key(section_key: str, sub_key: str | None) -> str:
     """Canonical document key: s4 parent, s4.1 for subsections (never s4.s4.1)."""
     parent = str(section_key or "").strip()
     sub = str(sub_key or "").strip()
     if not sub:
         return parent
-    if sub.startswith("s") and "." in sub:
-        return sub
-    if sub[0:1].isdigit() and "." in sub:
-        return f"s{sub}"
-    if parent and (sub.startswith(f"{parent}.") or sub.startswith(parent)):
-        if sub.startswith("s"):
-            return sub
-        if sub[0:1].isdigit():
-            return f"s{sub}"
-        return sub
+    dotted = _dotted_sub_key(sub)
+    if dotted is not None:
+        return dotted
+    under_parent = _key_under_parent(parent, sub)
+    if under_parent is not None:
+        return under_parent
     if sub[0:1].isdigit():
         return f"{parent}.{sub}" if parent else f"s{sub}"
     return f"{parent}.{sub}" if parent else sub
@@ -52,6 +64,24 @@ def assemble_review_document(sections: list[Any]) -> tuple[dict[str, str], dict[
     return tor_document, sections_map
 
 
+def _scope_subsection_body(item: dict[str, Any]) -> str:
+    chunks: list[str] = []
+    for sub in item.get("subs") or []:
+        sub_key = str(sub.get("key") or "")
+        text = section_plain_text(sub.get("content") or "", sub_key)
+        if not text:
+            continue
+        sub_title = str(sub.get("title") or "")
+        chunks.append(f"{sub_key} {sub_title}\n{text}".strip())
+    return "\n\n".join(chunks)
+
+
+def _section_item_body(item: dict[str, Any], key: str) -> str:
+    if key == "s4":
+        return _scope_subsection_body(item)
+    return section_plain_text(item.get("content") or item.get("content_preview") or "", key)
+
+
 def plain_tor_from_section_items(items: list[dict[str, Any]]) -> str:
     """Join GET /sections payloads into heading + prose, including s4.1–s4.14.
 
@@ -61,21 +91,7 @@ def plain_tor_from_section_items(items: list[dict[str, Any]]) -> str:
     for item in items:
         key = str(item.get("key") or "")
         title = str(item.get("title") or TOR_SECTION_LABELS.get(key) or key)
-        if key == "s4":
-            chunks: list[str] = []
-            for sub in item.get("subs") or []:
-                sub_key = str(sub.get("key") or "")
-                text = section_plain_text(sub.get("content") or "", sub_key)
-                if not text:
-                    continue
-                sub_title = str(sub.get("title") or "")
-                chunks.append(f"{sub_key} {sub_title}\n{text}".strip())
-            body = "\n\n".join(chunks)
-        else:
-            body = section_plain_text(
-                item.get("content") or item.get("content_preview") or "",
-                key,
-            )
+        body = _section_item_body(item, key)
         if body:
             parts.append(f"{key}. {title}\n{body}")
     return "\n\n".join(parts)

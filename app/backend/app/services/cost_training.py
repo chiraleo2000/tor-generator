@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.domain.consultant_budget import (
+    COST_LINE_KEYS,
+    TRAINING_PART_KEYS,
+    suggest_budget,
+)
 from app.domain.section_profile import profile_for_project
 
 COST_WORKSHEET_KEY = "cost_worksheet"
@@ -11,12 +16,23 @@ TRAINING_SCOPE_KEY = "training_scope"
 TRAINING_CATEGORIES = frozenset({"hire_develop", "buy_goods"})
 TRAINING_SUB_KEY = "training"
 
-COST_LINE_KEYS = ("license", "labor", "maintenance", "training")
 COST_LINE_LABELS = {
-    "license": "ค่าลิขสิทธิ์",
-    "labor": "ค่าแรง",
-    "maintenance": "ค่าบำรุงรักษา",
+    "personnel": "ทรัพยากรบุคคล",
+    "equipment": "อุปกรณ์",
+    "procurement": "การจัดซื้อจัดจ้าง",
+    "consultant": "การจ้างที่ปรึกษา",
     "training": "ค่าอบรม",
+}
+TRAINING_PART_LABELS = {
+    "food": "อาหาร",
+    "snack": "อาหารว่าง",
+    "documents": "เอกสาร",
+    "venue": "สถานที่",
+}
+_LEGACY_LINE_KEYS = {
+    "personnel": "labor",
+    "equipment": "license",
+    "procurement": "maintenance",
 }
 
 # Official median price fields — never copy worksheet totals into these.
@@ -55,23 +71,80 @@ def _as_text(value: Any) -> str:
 
 
 def empty_cost_worksheet() -> dict[str, Any]:
-    return {
-        "license": 0.0,
-        "labor": 0.0,
-        "maintenance": 0.0,
-        "training": 0.0,
-        "total": 0.0,
-        "is_announced_price": False,
-        "label": "ใบประมาณการ — ไม่ใช่ราคากลาง",
-    }
+    sheet: dict[str, Any] = dict.fromkeys((*COST_LINE_KEYS, *TRAINING_PART_KEYS), 0.0)
+    sheet.update(
+        {
+            "total": 0.0,
+            "is_announced_price": False,
+            "label": "ใบประมาณการ — ไม่ใช่ราคากลาง",
+        }
+    )
+    return sheet
+
+
+def _line_amount(src: dict[str, Any], key: str) -> float:
+    legacy = _LEGACY_LINE_KEYS.get(key)
+    current = _as_amount(src.get(key))
+    if current > 0 or legacy is None:
+        return current
+    return _as_amount(src.get(legacy))
+
+
+def _part_amount(src: dict[str, Any], key: str) -> float:
+    if _as_amount(src.get(key)) > 0 or key in src:
+        direct = src.get(key)
+        if direct not in (None, ""):
+            return _as_amount(direct)
+    parts = src.get("training_parts")
+    if isinstance(parts, dict):
+        return _as_amount(parts.get(key))
+    return 0.0
+
+
+def _apply_calculated_lines(src: dict[str, Any]) -> dict[str, Any]:
+    years = src.get("years")
+    if years == "":
+        years = None
+    sessions = src.get("sessions")
+    suggested = suggest_budget(
+        team_size=int(_as_amount(src.get("team_size"))),
+        months=_as_amount(src.get("months") or 1) or 1,
+        years=years,
+        training_days=_as_amount(src.get("training_days")),
+        day_part=str(src.get("day_part") or "full"),
+        attendees=int(_as_amount(src.get("attendees"))),
+        venue=str(src.get("venue_kind") or src.get("venue_type") or "private"),
+        audience=str(src.get("audience") or "external"),
+        sessions=None if sessions in (None, "") else int(_as_amount(sessions)),
+        personnel_amount=_line_amount(src, "personnel"),
+        equipment_amount=_line_amount(src, "equipment"),
+        equipment_quantity=_as_amount(src.get("equipment_quantity")),
+        equipment_unit_price=src.get("equipment_unit_price"),
+        procurement_amount=_line_amount(src, "procurement"),
+        procurement_quantity=_as_amount(src.get("procurement_quantity")),
+        procurement_unit_price=src.get("procurement_unit_price"),
+        profession=src.get("profession") if isinstance(src.get("profession"), str) else None,
+    )
+    merged = dict(src)
+    for key in (*COST_LINE_KEYS, *TRAINING_PART_KEYS):
+        merged[key] = suggested[key]
+    return merged
 
 
 def normalize_cost_worksheet(raw: Any) -> dict[str, Any]:
     """Officer-editable estimate. Never treat as official median price (ราคากลาง)."""
-    src = raw if isinstance(raw, dict) else {}
+    src = dict(raw) if isinstance(raw, dict) else {}
+    if src.get("apply_calculated"):
+        src = _apply_calculated_lines(src)
     out = empty_cost_worksheet()
     for key in COST_LINE_KEYS:
-        out[key] = _as_amount(src.get(key))
+        if key == "training":
+            continue
+        out[key] = _line_amount(src, key)
+    for key in TRAINING_PART_KEYS:
+        out[key] = _part_amount(src, key)
+    part_sum = sum(out[key] for key in TRAINING_PART_KEYS)
+    out["training"] = part_sum if part_sum > 0 else _line_amount(src, "training")
     out["total"] = sum(out[key] for key in COST_LINE_KEYS)
     out["is_announced_price"] = False
     out["label"] = "ใบประมาณการ — ไม่ใช่ราคากลาง"

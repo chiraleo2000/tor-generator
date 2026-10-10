@@ -144,6 +144,55 @@ class PartScoreResponse(BaseModel):
     findings: list[AnalyzerFindingResponse] = Field(default_factory=list)
 
 
+class BidderRiskRowResponse(BaseModel):
+    """One row in the pre-bid risk report. Not part of the three-part score."""
+
+    issue: str = ""
+    requirement: str = ""
+    quote: str = ""
+    page_ref: str = ""
+    impact: str = ""
+    level: str = ""
+    mitigation: str = ""
+    signal: str = ""
+
+
+class BidderRiskCategoryResponse(BaseModel):
+    """One of the six pre-bid risk tables."""
+
+    key: str = ""
+    label: str = ""
+    rows: list[BidderRiskRowResponse] = Field(default_factory=list)
+
+
+class BidderPenaltyResponse(BaseModel):
+    """Penalty examples calculated only when the document has a budget and a rate."""
+
+    budget: int | None = None
+    percent_per_day: float | None = None
+    baht_per_day: int | None = None
+    amount_30_days: int | None = None
+    amount_60_days: int | None = None
+    base: str = ""
+    base_label: str = ""
+    hourly_note: str = ""
+    phase_penalty_note: str = ""
+    overlap_note: str = ""
+    amount_note: str = ""
+
+
+class BidderRiskResponse(BaseModel):
+    """Optional pre-bid risk report attached to a three-part analysis."""
+
+    recommendation: str = ""
+    recommendation_kind: str = ""
+    disclaimer: str = ""
+    gates: list[str] = Field(default_factory=list)
+    penalty: BidderPenaltyResponse | None = None
+    categories: list[BidderRiskCategoryResponse] = Field(default_factory=list)
+    markdown: str = ""
+
+
 class TorAnalysisResponse(BaseModel):
     """Weighted three-part TOR analysis shown on draft review and /review."""
 
@@ -154,6 +203,7 @@ class TorAnalysisResponse(BaseModel):
     summary: str = ""
     missing_sections: dict[str, str] = Field(default_factory=dict)
     halted: bool = False
+    bidder_risk: BidderRiskResponse | None = None
 
 
 class ReviewResponse(BaseModel):

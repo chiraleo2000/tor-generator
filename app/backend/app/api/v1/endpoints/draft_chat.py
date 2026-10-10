@@ -244,10 +244,31 @@ class DraftChatMessageBody(BaseModel):
 
 
 class CostWorksheetBody(BaseModel):
+    personnel: float = 0
+    equipment: float = 0
+    procurement: float = 0
+    consultant: float = 0
+    training: float = 0
+    food: float = 0
+    snack: float = 0
+    documents: float = 0
+    venue: float = 0
     license: float = 0
     labor: float = 0
     maintenance: float = 0
-    training: float = 0
+    apply_calculated: bool = False
+    team_size: int = 0
+    months: float = 1
+    years: float | None = None
+    training_days: float = 0
+    day_part: str = "full"
+    attendees: int = 0
+    equipment_quantity: float = 0
+    equipment_unit_price: float | None = None
+    procurement_quantity: float = 0
+    procurement_unit_price: float | None = None
+    venue_kind: str = "private"
+    audience: str = "external"
 
 
 class TrainingScopeBody(BaseModel):
@@ -554,19 +575,21 @@ async def _draft_new_s4_sub(work: _S4Work, sub_key: str, title: str) -> AsyncIte
     )
     parts: list[str] = []
     try:
-        async with admit(work.redis, "llm", f"{work.request_id}-{sub_key}"):
-            async with asyncio.timeout(SECTION_TIMEOUT_SECONDS):
-                async for token in draft_scope_subsection(
-                    sub_key,
-                    work.slot_map,
-                    user_id=work.user_id,
-                    category=work.project_type,
-                ):
-                    parts.append(token)
-                    yield _sse(
-                        "token",
-                        {"section_key": "s4", "sub_key": sub_key, "text": token},
-                    )
+        async with (
+            admit(work.redis, "llm", f"{work.request_id}-{sub_key}"),
+            asyncio.timeout(SECTION_TIMEOUT_SECONDS),
+        ):
+            async for token in draft_scope_subsection(
+                sub_key,
+                work.slot_map,
+                user_id=work.user_id,
+                category=work.project_type,
+            ):
+                parts.append(token)
+                yield _sse(
+                    "token",
+                    {"section_key": "s4", "sub_key": sub_key, "text": token},
+                )
     except AdmissionTimeoutError:
         work.errors.append(f"หมดเวลารอคิวโมเดลภาษา ({sub_key})")
         yield _sse(
@@ -802,27 +825,8 @@ async def _draft_wave_serially(job: _SeqDraft, wave: list[str], drafted_count: i
 
 
 async def _draft_wave_in_parallel(job: _SeqDraft, wave: list[str], drafted_count: int) -> int:
-    sem = asyncio.Semaphore(3)
-
-    async def _one(key: str) -> tuple[str, bool]:
-        async with sem:
-            return key, await _try_draft_one_section(job, key)
-
-    results = await asyncio.gather(
-        *(_one(key) for key in wave),
-        return_exceptions=True,
-    )
-    for item in results:
-        if isinstance(item, Exception):
-            logger.exception("Parallel draft wave failed: %s", item)
-            continue
-        section_key, saved = item
-        if not saved:
-            continue
-        drafted_count += 1
-        await bump_progress(job.redis, job.project_id, drafted_count)
-        await _publish_section_done(job, section_key, drafted_count)
-    return drafted_count
+    # One LM Studio HTTP call at a time. A parallel wave used to open several Gens.
+    return await _draft_wave_serially(job, wave, drafted_count)
 
 
 async def _run_sequential_draft(

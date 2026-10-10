@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +35,7 @@ from app.rule_engine.engine import (
     first_law_citation,
 )
 from app.schemas.responses import MetaInfo, SuccessResponse
+from app.services.bidder_risk import strip_page_markers, text_with_page_markers
 from app.services.review_job_store import (
     fetch_review_job,
     save_review_job,
@@ -40,6 +43,8 @@ from app.services.review_job_store import (
     store_review_original,
 )
 from app.services.tor_analysis import analysis_as_dict, analyze_tor
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -172,16 +177,19 @@ async def _collect_compare_documents(
 
 def _validate_document(text: str) -> tuple[Any, dict[str, Any]]:
     engine = _create_rule_engine()
-    mapped = map_extracted_text(text)
+    clean = strip_page_markers(text)
+    mapped = map_extracted_text(clean)
     if not mapped:
-        mapped = {"s1": text}
+        mapped = {"s1": clean or text}
     metadata: dict[str, object] = {}
     document: dict[str, Any] = {**mapped, "sections": mapped, "metadata": metadata}
-    budget = infer_review_budget(text, mapped)
+    budget = infer_review_budget(clean or text, mapped)
     if budget is not None:
         document["budget"] = budget
         metadata["budget"] = budget
-    return engine.validate(document), document
+    result = engine.validate(document)
+    document["_source_text"] = text
+    return result, document
 
 
 def _part_scores_payload(document: dict[str, Any], rag_text: str = "") -> dict[str, Any]:
@@ -227,7 +235,7 @@ async def _law_context(project_type: str | None = None) -> str:
     try:
         from app.rag.law_review import law_review_context
 
-        return await law_review_context(project_type)
+        return await asyncio.wait_for(law_review_context(project_type), timeout=30)
     except Exception:
         return ""
 
@@ -302,7 +310,7 @@ async def extract_review_document(
     tmp_path = await write_temp_bytes(raw, suffix)
     try:
         result = extract_text(tmp_path, mime)
-        text = result.text
+        text = text_with_page_markers(result.text, getattr(result, "pages", None))
     finally:
         await unlink_path(tmp_path)
     grid_id = store_review_original(
@@ -349,7 +357,9 @@ async def run_standalone_review(
             job_id = str(job.id)
     if not text:
         raise ValidationError(message="ไม่มีข้อความให้ตรวจสอบ")
-    payload = await _run_full_review(text, str(job_id or uuid.uuid4()))
+    # Rule scores, budget findings, and bidder risk do not need a chat-model pass.
+    # Waiting on that pass held the request open and queued another LM Studio prompt.
+    payload = _run_engine(text, str(job_id or uuid.uuid4()))
     if job is not None:
         await save_review_result(db, job, payload)
     return _envelope(request, payload)

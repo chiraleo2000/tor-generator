@@ -30,6 +30,25 @@ import {
   type CostWorksheet,
 } from "@/lib/cost-worksheet";
 
+function focusRevisionInstruction(note: string, text: string): string {
+  if (note) return "แก้ไขเฉพาะหัวข้อย่อยนี้ตามความคิดเห็นผู้ใช้ — ห้ามแก้หัวข้ออื่น";
+  if (text) return "ร่างใหม่เฉพาะหัวข้อย่อยนี้เท่านั้น ตามกฎเจ้าของสาระ — ห้ามแก้หัวข้อย่อยอื่น";
+  return "ร่างเฉพาะหัวข้อย่อยนี้จากเอกสารขั้นที่ ๐ ตามกฎเจ้าของสาระ ห้ามดึงหัวข้ออื่นมาปน";
+}
+
+function phaseDraftButtonLabel(promptOpen: boolean, hasEditableContent: boolean, focused: boolean): string {
+  if (promptOpen) return "ปิดช่องความคิดเห็น";
+  if (!hasEditableContent) return "ร่างด้วยระบบอัจฉริยะ";
+  if (focused) return "ขอร่างใหม่หัวข้อย่อยนี้";
+  return "ขอร่างใหม่จากข้อมูลที่กรอก";
+}
+
+function subDraftButtonLabel(promptOpen: boolean, hasText: boolean): string {
+  if (promptOpen) return "ปิดช่องความคิดเห็น";
+  if (hasText) return "ขอร่างใหม่หัวข้อนี้";
+  return "ร่างหัวข้อนี้";
+}
+
 function parseFields(sectionKey: string, content: string): Record<string, string> {
   return parseSectionDraft(sectionKey, content);
 }
@@ -39,6 +58,119 @@ function displayExtracted(value: unknown): string {
     return String(value);
   }
   return "";
+}
+
+function seedEmptyFields(
+  sectionKey: string,
+  content: string,
+  extracted: Record<string, unknown>
+): Record<string, string> {
+  const next = { ...parseFields(sectionKey, content) };
+  const fieldList = SECTION_FIELDS[sectionKey] || [];
+  for (const field of fieldList) {
+    if (next[field.key]?.trim()) continue;
+    if (!field.mapField) continue;
+    const hint = displayExtracted(extracted[field.mapField]);
+    if (hint) next[field.key] = hint;
+  }
+  return next;
+}
+
+function scopeHasText(values: Record<string, string>): boolean {
+  return Object.values(values).some((value) => String(value || "").trim());
+}
+
+function focusedScopeContext(
+  focus: string,
+  scopeDrafts: Record<string, string>,
+  note: string
+): Record<string, unknown> {
+  const text = String(scopeDrafts[focus] || "").trim();
+  return {
+    focus_sub_key: focus,
+    current_draft_fields: { [focus]: text },
+    current_draft: text,
+    redraft: Boolean(text) || Boolean(note),
+    user_feedback: note || undefined,
+    revision_instruction: focusRevisionInstruction(note, text),
+  };
+}
+
+function broadScopeContext(
+  scopeDrafts: Record<string, string>,
+  note: string
+): Record<string, unknown> | undefined {
+  if (!scopeHasText(scopeDrafts) && !note) return undefined;
+  const instruction = note
+    ? "แก้ไขเฉพาะหมวดขอบเขตตามความคิดเห็นผู้ใช้"
+    : "คงสาระที่ผู้ใช้แก้ในแต่ละข้อย่อยไว้ แล้วเติมส่วนที่ยังว่างจากเอกสารขั้นที่ ๐ ให้ครบ";
+  return {
+    current_draft_fields: scopeDrafts,
+    redraft: true,
+    user_feedback: note || undefined,
+    revision_instruction: instruction,
+  };
+}
+
+function fieldDraftContext(
+  draft: Record<string, string>,
+  note: string
+): Record<string, unknown> | undefined {
+  if (!scopeHasText(draft) && !note) return undefined;
+  const instruction = note
+    ? "แก้ไขเฉพาะหมวดนี้ตามความคิดเห็นผู้ใช้ ส่งร่างใหม่ทั้งก้อนของหมวดนี้เท่านั้น"
+    : "ต้องเขียนร่างใหม่ให้ต่างจากร่างเดิมอย่างมีสาระ ห้ามคืนข้อความเดิมทั้งก้อน คงสาระที่ผู้ใช้แก้แล้วไว้";
+  return {
+    current_draft_fields: draft,
+    redraft: true,
+    user_feedback: note || undefined,
+    revision_instruction: instruction,
+  };
+}
+
+function sectionIsEditable(
+  big: boolean | undefined,
+  focusedSub: string,
+  scopeDrafts: Record<string, string>,
+  draft: Record<string, string>
+): boolean {
+  if (!big) return scopeHasText(draft);
+  if (focusedSub) return Boolean(String(scopeDrafts[focusedSub] || "").trim());
+  return scopeHasText(scopeDrafts);
+}
+
+function storeDraftResult(
+  big: boolean | undefined,
+  sectionKey: string,
+  result: { sectionKey: string; draftContent: string },
+  setScopeDrafts: (value: (prev: Record<string, string>) => Record<string, string>) => void,
+  setDraft: (value: (prev: Record<string, string>) => Record<string, string>) => void
+) {
+  if (big && result.sectionKey) {
+    setScopeDrafts((prev) => ({ ...prev, [result.sectionKey]: result.draftContent }));
+    return;
+  }
+  const parsed = parseFields(sectionKey, result.draftContent);
+  if (Object.keys(parsed).length) {
+    setDraft((prev) => ({ ...prev, ...parsed }));
+    return;
+  }
+  setDraft((prev) => ({ ...prev, body: result.draftContent }));
+}
+
+function sectionDraftContext(input: {
+  big: boolean;
+  openSub: string;
+  focusSub?: string;
+  userFeedback?: string;
+  scopeDrafts: Record<string, string>;
+  draft: Record<string, string>;
+}): Record<string, unknown> | undefined {
+  const note = (input.userFeedback || "").trim();
+  if (!input.big) return fieldDraftContext(input.draft, note);
+  const focus = (input.focusSub || input.openSub || "").trim();
+  if (focus) return focusedScopeContext(focus, input.scopeDrafts, note);
+  return broadScopeContext(input.scopeDrafts, note);
 }
 
 function goldStatus(section: SectionPayload): "ครบ" | "บาง" | "ขาด" {
@@ -356,6 +488,49 @@ export function Phase3Draft({
   );
 }
 
+function SectionCardHeader({
+  section,
+  expanded,
+  filled,
+  onToggle,
+}: Readonly<{
+  section: SectionPayload;
+  expanded: boolean;
+  filled: boolean;
+  onToggle: () => void;
+}>) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-start justify-between gap-3 px-1 py-3 text-left"
+      onClick={onToggle}
+      aria-expanded={expanded}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <h3 className="text-sm font-semibold text-navy">{section.title}</h3>
+          <span
+            className={cn("text-[10px] tracking-wide", goldBadgeClass(goldStatus(section)))}
+            data-testid={`gold-status-${section.key}`}
+          >
+            {goldStatus(section)}
+          </span>
+          <span className={cn("text-[10px] tracking-wide text-muted-foreground", filled ? "text-brand-green" : "")}>
+            {filled ? "ร่างแล้ว" : "รอร่าง"}
+          </span>
+        </div>
+        <p
+          data-testid={`section-preview-${section.key}`}
+          className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground"
+        >
+          {previewText(section) || "รอระบบร่างจากข้อมูลที่คุยมา..."}
+        </p>
+      </div>
+      <span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground">{expanded ? "−" : "+"}</span>
+    </button>
+  );
+}
+
 function SectionCard({
   section,
   last,
@@ -396,16 +571,7 @@ function SectionCard({
   const [promptOpen, setPromptOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
   useEffect(() => {
-    const parsed = parseFields(section.key, section.content);
-    const fieldList = SECTION_FIELDS[section.key] || [];
-    const next = { ...parsed };
-    for (const field of fieldList) {
-      if (next[field.key]?.trim()) continue;
-      if (!field.mapField) continue;
-      const hint = displayExtracted(extracted[field.mapField]);
-      if (hint) next[field.key] = hint;
-    }
-    setDraft(next);
+    setDraft(seedEmptyFields(section.key, section.content, extracted));
   }, [section.content, section.key, extracted]);
 
   useEffect(() => {
@@ -422,47 +588,14 @@ function SectionCard({
     focusSub?: string,
     userFeedback?: string
   ): Record<string, unknown> | undefined {
-    const note = (userFeedback || "").trim();
-    if (section.big) {
-      const focus = (focusSub || openSub || "").trim();
-      if (focus) {
-        const text = String(scopeDrafts[focus] || "").trim();
-        return {
-          focus_sub_key: focus,
-          current_draft_fields: { [focus]: text },
-          current_draft: text,
-          redraft: Boolean(text) || Boolean(note),
-          user_feedback: note || undefined,
-          revision_instruction: note
-            ? "แก้ไขเฉพาะหัวข้อย่อยนี้ตามความคิดเห็นผู้ใช้ — ห้ามแก้หัวข้ออื่น"
-            : text
-              ? "ร่างใหม่เฉพาะหัวข้อย่อยนี้เท่านั้น ตามกฎเจ้าของสาระ — ห้ามแก้หัวข้อย่อยอื่น"
-              : "ร่างเฉพาะหัวข้อย่อยนี้จากเอกสารขั้นที่ ๐ ตามกฎเจ้าของสาระ ห้ามดึงหัวข้ออื่นมาปน",
-        };
-      }
-      const hasContent = Object.values(scopeDrafts).some((value) =>
-        String(value || "").trim()
-      );
-      if (!hasContent && !note) return undefined;
-      return {
-        current_draft_fields: scopeDrafts,
-        redraft: true,
-        user_feedback: note || undefined,
-        revision_instruction: note
-          ? "แก้ไขเฉพาะหมวดขอบเขตตามความคิดเห็นผู้ใช้"
-          : "คงสาระที่ผู้ใช้แก้ในแต่ละข้อย่อยไว้ แล้วเติมส่วนที่ยังว่างจากเอกสารขั้นที่ ๐ ให้ครบ",
-      };
-    }
-    const hasContent = Object.values(draft).some((value) => String(value || "").trim());
-    if (!hasContent && !note) return undefined;
-    return {
-      current_draft_fields: draft,
-      redraft: true,
-      user_feedback: note || undefined,
-      revision_instruction: note
-        ? "แก้ไขเฉพาะหมวดนี้ตามความคิดเห็นผู้ใช้ ส่งร่างใหม่ทั้งก้อนของหมวดนี้เท่านั้น"
-        : "ต้องเขียนร่างใหม่ให้ต่างจากร่างเดิมอย่างมีสาระ ห้ามคืนข้อความเดิมทั้งก้อน คงสาระที่ผู้ใช้แก้แล้วไว้",
-    };
+    return sectionDraftContext({
+      big: Boolean(section.big),
+      openSub,
+      focusSub,
+      userFeedback,
+      scopeDrafts,
+      draft,
+    });
   }
 
   async function runDraft(focus?: string, userFeedback?: string) {
@@ -472,35 +605,14 @@ function SectionCard({
     if (!result?.draftContent) return;
     setPromptOpen(false);
     setFeedback("");
-    if (section.big && result.sectionKey) {
-      setScopeDrafts((prev) => ({ ...prev, [result.sectionKey]: result.draftContent }));
-      return;
-    }
-    const parsed = parseFields(section.key, result.draftContent);
-    if (Object.keys(parsed).length) {
-      setDraft((prev) => ({ ...prev, ...parsed }));
-    } else {
-      setDraft((prev) => ({ ...prev, body: result.draftContent }));
-    }
+    storeDraftResult(section.big, section.key, result, setScopeDrafts, setDraft);
   }
 
   const filled = isSectionFilled(section);
   const indexPad = sectionIndexPad(section.key);
   const focusedSub = section.big ? (openSub || "").trim() : "";
-  const hasEditableContent = section.big
-    ? Boolean(
-        (focusedSub && String(scopeDrafts[focusedSub] || "").trim()) ||
-          (!focusedSub &&
-            Object.values(scopeDrafts).some((value) => String(value || "").trim()))
-      )
-    : Object.values(draft).some((value) => String(value || "").trim());
-  const draftButtonLabel = promptOpen
-    ? "ปิดช่องความคิดเห็น"
-    : hasEditableContent
-      ? focusedSub
-        ? "ขอร่างใหม่หัวข้อย่อยนี้"
-        : "ขอร่างใหม่จากข้อมูลที่กรอก"
-      : "ร่างด้วยระบบอัจฉริยะ";
+  const hasEditableContent = sectionIsEditable(section.big, focusedSub, scopeDrafts, draft);
+  const draftButtonLabel = phaseDraftButtonLabel(promptOpen, hasEditableContent, Boolean(focusedSub));
 
   return (
     <div className="flex gap-3">
@@ -530,41 +642,7 @@ function SectionCard({
           expanded ? "border-navy/25 bg-slate-50/80" : "border-gray-100"
         )}
       >
-        <button
-          type="button"
-          className="flex w-full items-start justify-between gap-3 px-1 py-3 text-left"
-          onClick={onToggle}
-          aria-expanded={expanded}
-        >
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <h3 className="text-sm font-semibold text-navy">{section.title}</h3>
-              <span
-                className={cn("text-[10px] tracking-wide", goldBadgeClass(goldStatus(section)))}
-                data-testid={`gold-status-${section.key}`}
-              >
-                {goldStatus(section)}
-              </span>
-              <span
-                className={cn(
-                  "text-[10px] tracking-wide text-muted-foreground",
-                  filled ? "text-brand-green" : ""
-                )}
-              >
-                {filled ? "ร่างแล้ว" : "รอร่าง"}
-              </span>
-            </div>
-            <p
-              data-testid={`section-preview-${section.key}`}
-              className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground"
-            >
-              {previewText(section) || "รอระบบร่างจากข้อมูลที่คุยมา..."}
-            </p>
-          </div>
-          <span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground">
-            {expanded ? "−" : "+"}
-          </span>
-        </button>
+        <SectionCardHeader section={section} expanded={expanded} filled={filled} onToggle={onToggle} />
         {expanded ? (
           <div className="space-y-3 border-t border-gray-100 px-1 pb-4 pt-3">
             {section.big ? (
@@ -843,11 +921,7 @@ function ScopeSubsectionEditor({
                     setFeedback("");
                   }}
                 >
-                  {promptKey === sub.key
-                    ? "ปิดช่องความคิดเห็น"
-                    : hasText
-                      ? "ขอร่างใหม่หัวข้อนี้"
-                      : "ร่างหัวข้อนี้"}
+                  {subDraftButtonLabel(promptKey === sub.key, hasText)}
                 </Button>
               </div>
               <RedraftPromptPanel

@@ -24,6 +24,7 @@ import {
 test.use({ video: "on" });
 
 test.describe.serial("Demo walkthrough video (draft, review, analyze, chat, admin AI)", () => {
+  // NOSONAR: Playwright live-stack spec. Skipped unless E2E=1 (see skipReason in helpers).
   test.skip(skipUnlessLive, skipReason);
 
   test("1 ร่าง TOR ขั้นที่ 0–4 รวมคะแนนสามด้าน ใบประมาณ และขอบเขตอบรม", async ({
@@ -195,9 +196,10 @@ async function showCostAndTrainingIfPresent(page: Page) {
     if (await sheet.count()) {
       await expect(sheet).toBeVisible();
       await expect(page.getByTestId("cost-worksheet-disclaimer")).toBeVisible();
-      await expect(page.getByTestId("cost-worksheet-license")).toBeVisible();
-      await expect(page.getByTestId("cost-worksheet-labor")).toBeVisible();
-      await expect(page.getByTestId("cost-worksheet-maintenance")).toBeVisible();
+      await expect(page.getByTestId("cost-worksheet-personnel")).toBeVisible();
+      await expect(page.getByTestId("cost-worksheet-equipment")).toBeVisible();
+      await expect(page.getByTestId("cost-worksheet-procurement")).toBeVisible();
+      await expect(page.getByTestId("cost-worksheet-consultant")).toBeVisible();
       await expect(page.getByTestId("cost-worksheet-training")).toBeVisible();
       await expect(page.getByTestId("cost-worksheet-save")).toBeVisible();
       await saveEvidence(page, "demo-01-cost-worksheet");

@@ -194,6 +194,93 @@ class VendorPaidUpCapitalRule(BaseRule):
         return findings
 
 
+def _missing_penalty_findings(tor_document: dict) -> list[Finding]:
+    if not applies_to_section(tor_document, "s10"):
+        return []
+    return [
+        Finding(
+            severity=Severity.ERROR,
+            rule_violated="LEGAL_PENALTY_MISSING",
+            affected_section="s10",
+            message="ไม่พบการกำหนดอัตราค่าปรับในเอกสาร TOR",
+            recommended_correction=(
+                "เพิ่มข้อกำหนดค่าปรับ: อัตราร้อยละ 0.01–0.20 ต่อวัน "
+                "ขั้นต่ำ 100 บาทต่อวัน"
+            ),
+        )
+    ]
+
+
+def _penalty_rate_finding(penalty_rate: float) -> Finding | None:
+    if penalty_rate < PENALTY_RATE_MIN_PERCENT:
+        return Finding(
+            severity=Severity.ERROR,
+            rule_violated="LEGAL_PENALTY_RATE_TOO_LOW",
+            affected_section="s10",
+            message=(
+                f"อัตราค่าปรับ ({penalty_rate:.4f}% ต่อวัน) "
+                f"ต่ำกว่าอัตราขั้นต่ำ ({PENALTY_RATE_MIN_PERCENT}% ต่อวัน)"
+            ),
+            recommended_correction=(
+                f"ปรับอัตราค่าปรับให้ไม่น้อยกว่า {PENALTY_RATE_MIN_PERCENT}% ต่อวัน"
+            ),
+        )
+    if penalty_rate > PENALTY_RATE_MAX_PERCENT:
+        return Finding(
+            severity=Severity.ERROR,
+            rule_violated="LEGAL_PENALTY_RATE_TOO_HIGH",
+            affected_section="s10",
+            message=(
+                f"อัตราค่าปรับ ({penalty_rate:.4f}% ต่อวัน) "
+                f"สูงกว่าอัตราสูงสุด ({PENALTY_RATE_MAX_PERCENT}% ต่อวัน)"
+            ),
+            recommended_correction=(
+                f"ปรับอัตราค่าปรับให้ไม่เกิน {PENALTY_RATE_MAX_PERCENT}% ต่อวัน"
+            ),
+        )
+    return None
+
+
+def _append_penalty_rate_findings(findings: list[Finding], penalty_rate: object) -> None:
+    if penalty_rate is None:
+        return
+    if not isinstance(penalty_rate, (int, float)):
+        findings.append(
+            Finding(
+                severity=Severity.ERROR,
+                rule_violated="LEGAL_PENALTY_INVALID_TYPE",
+                affected_section="s10",
+                message="อัตราค่าปรับต้องเป็นตัวเลข",
+                recommended_correction="ระบุอัตราค่าปรับเป็นตัวเลข (ร้อยละต่อวัน)",
+            )
+        )
+        return
+    finding = _penalty_rate_finding(float(penalty_rate))
+    if finding is not None:
+        findings.append(finding)
+
+
+def _append_penalty_minimum_finding(findings: list[Finding], penalty_min_baht: object) -> None:
+    if not isinstance(penalty_min_baht, (int, float)):
+        return
+    if penalty_min_baht >= PENALTY_MIN_BAHT_PER_DAY:
+        return
+    findings.append(
+        Finding(
+            severity=Severity.WARNING,
+            rule_violated="LEGAL_PENALTY_MIN_TOO_LOW",
+            affected_section="s10",
+            message=(
+                f"ค่าปรับขั้นต่ำ ({penalty_min_baht:.0f} บาท/วัน) "
+                f"ต่ำกว่าเกณฑ์ขั้นต่ำ ({PENALTY_MIN_BAHT_PER_DAY:.0f} บาท/วัน)"
+            ),
+            recommended_correction=(
+                f"กำหนดค่าปรับขั้นต่ำไม่น้อยกว่า {PENALTY_MIN_BAHT_PER_DAY:.0f} บาท/วัน"
+            ),
+        )
+    )
+
+
 class PenaltyRateRule(BaseRule):
     """Validate penalty rates are within legal bounds.
 
@@ -215,92 +302,14 @@ class PenaltyRateRule(BaseRule):
             List of findings if penalty rates are out of bounds.
         """
         findings: list[Finding] = []
-
         penalty_rate = tor_document.get("penalty_rate_percent")
         penalty_min_baht = tor_document.get("penalty_min_baht_per_day")
-
-        # Check if penalty section exists
         s10_content = tor_document.get("s10", "")
         has_penalty_section = bool(s10_content and str(s10_content).strip())
-
         if penalty_rate is None and not has_penalty_section:
-            if not applies_to_section(tor_document, "s10"):
-                return findings
-            findings.append(
-                Finding(
-                    severity=Severity.ERROR,
-                    rule_violated="LEGAL_PENALTY_MISSING",
-                    affected_section="s10",
-                    message="ไม่พบการกำหนดอัตราค่าปรับในเอกสาร TOR",
-                    recommended_correction=(
-                        "เพิ่มข้อกำหนดค่าปรับ: อัตราร้อยละ 0.01–0.20 ต่อวัน "
-                        "ขั้นต่ำ 100 บาทต่อวัน"
-                    ),
-                )
-            )
-            return findings
-
-        if penalty_rate is not None:
-            if not isinstance(penalty_rate, (int, float)):
-                findings.append(
-                    Finding(
-                        severity=Severity.ERROR,
-                        rule_violated="LEGAL_PENALTY_INVALID_TYPE",
-                        affected_section="s10",
-                        message="อัตราค่าปรับต้องเป็นตัวเลข",
-                        recommended_correction="ระบุอัตราค่าปรับเป็นตัวเลข (ร้อยละต่อวัน)",
-                    )
-                )
-            else:
-                if penalty_rate < PENALTY_RATE_MIN_PERCENT:
-                    findings.append(
-                        Finding(
-                            severity=Severity.ERROR,
-                            rule_violated="LEGAL_PENALTY_RATE_TOO_LOW",
-                            affected_section="s10",
-                            message=(
-                                f"อัตราค่าปรับ ({penalty_rate:.4f}% ต่อวัน) "
-                                f"ต่ำกว่าอัตราขั้นต่ำ ({PENALTY_RATE_MIN_PERCENT}% ต่อวัน)"
-                            ),
-                            recommended_correction=(
-                                f"ปรับอัตราค่าปรับให้ไม่น้อยกว่า {PENALTY_RATE_MIN_PERCENT}% ต่อวัน"
-                            ),
-                        )
-                    )
-                elif penalty_rate > PENALTY_RATE_MAX_PERCENT:
-                    findings.append(
-                        Finding(
-                            severity=Severity.ERROR,
-                            rule_violated="LEGAL_PENALTY_RATE_TOO_HIGH",
-                            affected_section="s10",
-                            message=(
-                                f"อัตราค่าปรับ ({penalty_rate:.4f}% ต่อวัน) "
-                                f"สูงกว่าอัตราสูงสุด ({PENALTY_RATE_MAX_PERCENT}% ต่อวัน)"
-                            ),
-                            recommended_correction=(
-                                f"ปรับอัตราค่าปรับให้ไม่เกิน {PENALTY_RATE_MAX_PERCENT}% ต่อวัน"
-                            ),
-                        )
-                    )
-
-        if penalty_min_baht is not None:
-            if isinstance(penalty_min_baht, (int, float)):
-                if penalty_min_baht < PENALTY_MIN_BAHT_PER_DAY:
-                    findings.append(
-                        Finding(
-                            severity=Severity.WARNING,
-                            rule_violated="LEGAL_PENALTY_MIN_TOO_LOW",
-                            affected_section="s10",
-                            message=(
-                                f"ค่าปรับขั้นต่ำ ({penalty_min_baht:.0f} บาท/วัน) "
-                                f"ต่ำกว่าเกณฑ์ขั้นต่ำ ({PENALTY_MIN_BAHT_PER_DAY:.0f} บาท/วัน)"
-                            ),
-                            recommended_correction=(
-                                f"กำหนดค่าปรับขั้นต่ำไม่น้อยกว่า {PENALTY_MIN_BAHT_PER_DAY:.0f} บาท/วัน"
-                            ),
-                        )
-                    )
-
+            return _missing_penalty_findings(tor_document)
+        _append_penalty_rate_findings(findings, penalty_rate)
+        _append_penalty_minimum_finding(findings, penalty_min_baht)
         return findings
 
 

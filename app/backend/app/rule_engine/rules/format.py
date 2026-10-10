@@ -157,6 +157,35 @@ class ThaiDateFormatRule(BaseRule):
         return findings
 
 
+def _numbering_flags(content: str) -> tuple[bool, bool]:
+    has_thai = False
+    has_arabic = False
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if THAI_NUMBERING_PATTERN.match(stripped):
+            has_thai = True
+        if ARABIC_NUMBERING_PATTERN.match(stripped):
+            has_arabic = True
+    return has_thai, has_arabic
+
+
+def _mixed_numbering_finding(section_key: str) -> Finding:
+    return Finding(
+        severity=Severity.WARNING,
+        rule_violated="FORMAT_NUMBERING_MIXED_SECTION",
+        affected_section=section_key,
+        message=(
+            f"พบการใช้เลขไทยและเลขอารบิกปนกัน "
+            f"ในหัวข้อ {section_key} — "
+            f"ควรใช้รูปแบบเดียวตลอดทั้งหัวข้อ"
+        ),
+        recommended_correction=(
+            "เลือกใช้เลขไทย (๑, ๒, ๓) หรือเลขอารบิก (1, 2, 3) "
+            "อย่างสม่ำเสมอตลอดทั้งหัวข้อ"
+        ),
+    )
+
+
 class SectionNumberingRule(BaseRule):
     """Validates proper and consistent section numbering format.
 
@@ -183,41 +212,13 @@ class SectionNumberingRule(BaseRule):
             content = tor_document.get(section_key)
             if not content or not isinstance(content, str):
                 continue
-
-            lines = content.split("\n")
-            has_thai = False
-            has_arabic = False
-
-            for line in lines:
-                stripped = line.strip()
-                if THAI_NUMBERING_PATTERN.match(stripped):
-                    has_thai = True
-                if ARABIC_NUMBERING_PATTERN.match(stripped):
-                    has_arabic = True
-
+            has_thai, has_arabic = _numbering_flags(content)
             if has_thai:
                 thai_numbered_sections.append(section_key)
             if has_arabic:
                 arabic_numbered_sections.append(section_key)
-
-            # Check for mixed numbering within a single section
             if has_thai and has_arabic:
-                findings.append(
-                    Finding(
-                        severity=Severity.WARNING,
-                        rule_violated="FORMAT_NUMBERING_MIXED_SECTION",
-                        affected_section=section_key,
-                        message=(
-                            f"พบการใช้เลขไทยและเลขอารบิกปนกัน "
-                            f"ในหัวข้อ {section_key} — "
-                            f"ควรใช้รูปแบบเดียวตลอดทั้งหัวข้อ"
-                        ),
-                        recommended_correction=(
-                            "เลือกใช้เลขไทย (๑, ๒, ๓) หรือเลขอารบิก (1, 2, 3) "
-                            "อย่างสม่ำเสมอตลอดทั้งหัวข้อ"
-                        ),
-                    )
-                )
+                findings.append(_mixed_numbering_finding(section_key))
 
         # Check for inconsistent numbering across the document
         if thai_numbered_sections and arabic_numbered_sections:

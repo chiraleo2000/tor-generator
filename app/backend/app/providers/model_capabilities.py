@@ -129,28 +129,41 @@ def _embedding_provider(settings: Any | None = None) -> str:
     return "local"
 
 
+_CHAT_MODEL_ATTRS: dict[str, tuple[str, str]] = {
+    "openai": ("openai_chat_model", "gpt-4o-mini"),
+    "claude": ("claude_model", "claude-sonnet-4-20250514"),
+    "gemini": ("gemini_model", ""),
+    "bedrock": ("bedrock_model_id", ""),
+    "azure_foundry": ("azure_foundry_deployment", ""),
+    "openai_compatible": ("openai_compatible_model", ""),
+}
+_EMBEDDING_MODEL_ATTRS: dict[str, tuple[str, str]] = {
+    "openai": ("openai_embedding_model", "text-embedding-3-small"),
+    "gemini": ("gemini_embedding_model", "text-embedding-004"),
+    "bedrock": ("bedrock_embedding_model_id", ""),
+    "azure_foundry": ("azure_foundry_embedding_deployment", ""),
+    "openai_compatible": ("openai_compatible_embedding_model", ""),
+}
+
+
+def _setting_or_default(settings: Any, attr: str, default: str) -> str:
+    return str(getattr(settings, attr, "") or default)
+
+
 def _chat_model(provider: str, settings: Any | None = None) -> str:
     if settings is None:
         return os.environ.get("LM_STUDIO_MODEL") or DEFAULT_CHAT_MODEL
-    if provider == "openai":
-        return str(getattr(settings, "openai_chat_model", "") or "gpt-4o-mini")
-    if provider == "claude":
-        return str(getattr(settings, "claude_model", "") or "claude-sonnet-4-20250514")
-    if provider == "gemini":
-        return str(getattr(settings, "gemini_model", "") or "")
-    if provider == "bedrock":
-        return str(getattr(settings, "bedrock_model_id", "") or "")
-    if provider == "azure_foundry":
-        return str(getattr(settings, "azure_foundry_deployment", "") or "")
-    if provider == "openai_compatible":
-        return str(getattr(settings, "openai_compatible_model", "") or "")
     if provider == "sglang":
-        return str(
-            getattr(settings, "sglang_model", "")
-            or getattr(settings, "lm_studio_model", "")
+        return (
+            _setting_or_default(settings, "sglang_model", "")
+            or _setting_or_default(settings, "lm_studio_model", "")
             or DEFAULT_CHAT_MODEL
         )
-    return str(getattr(settings, "lm_studio_model", "") or DEFAULT_CHAT_MODEL)
+    spec = _CHAT_MODEL_ATTRS.get(provider)
+    if spec is None:
+        return _setting_or_default(settings, "lm_studio_model", DEFAULT_CHAT_MODEL)
+    attr, default = spec
+    return _setting_or_default(settings, attr, default)
 
 
 def _embedding_model(provider: str, settings: Any | None = None) -> str:
@@ -159,17 +172,11 @@ def _embedding_model(provider: str, settings: Any | None = None) -> str:
         return env
     if settings is None:
         return os.environ.get("LM_STUDIO_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
-    if provider == "openai":
-        return str(getattr(settings, "openai_embedding_model", "") or "text-embedding-3-small")
-    if provider == "gemini":
-        return str(getattr(settings, "gemini_embedding_model", "") or "text-embedding-004")
-    if provider == "bedrock":
-        return str(getattr(settings, "bedrock_embedding_model_id", "") or "")
-    if provider == "azure_foundry":
-        return str(getattr(settings, "azure_foundry_embedding_deployment", "") or "")
-    if provider == "openai_compatible":
-        return str(getattr(settings, "openai_compatible_embedding_model", "") or "")
-    return str(getattr(settings, "lm_studio_embedding_model", "") or DEFAULT_EMBEDDING_MODEL)
+    spec = _EMBEDDING_MODEL_ATTRS.get(provider)
+    if spec is None:
+        return _setting_or_default(settings, "lm_studio_embedding_model", DEFAULT_EMBEDDING_MODEL)
+    attr, default = spec
+    return _setting_or_default(settings, attr, default)
 
 
 def _context_window(provider: str, model: str) -> int:

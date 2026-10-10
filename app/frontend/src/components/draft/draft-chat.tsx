@@ -43,12 +43,311 @@ function sectionTitle(key: string): string {
   return TOR_SECTION_LABELS[key as keyof typeof TOR_SECTION_LABELS] || key;
 }
 
+function applyReplyStreamEvent(
+  event: string,
+  data: Record<string, unknown>,
+  responseMsgId: string,
+  tokens: string,
+  sectionKey: string,
+  actions: {
+    setMessages: MessageSetter;
+    onSectionDone?: (key?: string, content?: string) => void;
+    setBusy: (value: boolean) => void;
+  }
+): string {
+  if (event === "section_start") {
+    const key = data.section_key as string;
+    const title = data.title as string;
+    actions.setMessages((prev) =>
+      prev.map((message) =>
+        message.id === responseMsgId
+          ? { ...message, sectionKey: key, sectionTitle: title, isDraft: true }
+          : message
+      )
+    );
+    return tokens;
+  }
+  if (event === "token") {
+    const piece = typeof data.text === "string" ? data.text : "";
+    const captured = tokens + piece;
+    actions.setMessages((prev) =>
+      prev.map((message) =>
+        message.id === responseMsgId ? { ...message, content: captured } : message
+      )
+    );
+    return captured;
+  }
+  const content = data.content as string;
+  actions.setMessages((prev) =>
+    prev.map((message) =>
+      message.id === responseMsgId
+        ? { ...message, content, status: "done", isDraft: true }
+        : message
+    )
+  );
+  actions.onSectionDone?.(
+    typeof data.section_key === "string" ? data.section_key : sectionKey || undefined,
+    content
+  );
+  actions.setBusy(false);
+  return tokens;
+}
+
+function productSearchMessage(
+  message: DraftMessage,
+  responseMsgId: string,
+  hits: SearchHit[],
+  disclaimer: string | undefined
+): DraftMessage {
+  if (message.id !== responseMsgId) return message;
+  return {
+    ...message,
+    content: hits.length
+      ? "พบแหล่งอ้างอิงผลิตภัณฑ์/ผู้ขาย — ยืนยันก่อนแทรกลง TOR"
+      : "ค้นแล้วไม่พบแหล่งอ้างอิง",
+    status: "done",
+    searchHits: hits,
+    searchDisclaimer: disclaimer,
+    awaitingConfirm: hits.length > 0,
+  };
+}
+
+function insertedSearchMessage(
+  message: DraftMessage,
+  responseMsgId: string,
+  content: string,
+  sectionKey: string | undefined
+): DraftMessage {
+  if (message.id !== responseMsgId) return message;
+  return {
+    ...message,
+    content: content || "แทรกแหล่งอ้างอิงแล้ว — ไม่ใช่สเปกที่ผูกยี่ห้อ",
+    status: "done",
+    awaitingConfirm: false,
+    sectionKey: sectionKey || message.sectionKey,
+  };
+}
+
 function patchDraftMessage(
   messages: DraftMessage[],
   messageId: string,
   patch: Partial<DraftMessage>
 ): DraftMessage[] {
   return messages.map((msg) => (msg.id === messageId ? { ...msg, ...patch } : msg));
+}
+
+function eventSectionKey(data: Record<string, unknown>): string {
+  return typeof data.section_key === "string" ? data.section_key : "";
+}
+
+function progressTotal(data: Record<string, unknown>, fallback: number): number {
+  const eventTotal = Number(data.total);
+  return Number.isFinite(eventTotal) && eventTotal > 0 ? eventTotal : fallback;
+}
+
+type MessageSetter = (update: (prev: DraftMessage[]) => DraftMessage[]) => void;
+
+function ensureBatchMessage(
+  ids: Record<string, string>,
+  key: string,
+  title: string,
+  messageId: string,
+  content: string,
+  setMessages: MessageSetter
+) {
+  setMessages((prev) => {
+    const existing = prev.find((row) => row.sectionKey === key && row.status === "drafting");
+    if (existing) {
+      ids[key] = existing.id;
+      return prev;
+    }
+    return [
+      ...prev,
+      {
+        id: messageId,
+        role: "bot" as const,
+        content,
+        sectionKey: key,
+        sectionTitle: title,
+        isDraft: true,
+        status: "drafting" as const,
+      },
+    ];
+  });
+}
+
+function appendBatchToken(
+  ids: Record<string, string>,
+  key: string,
+  piece: string,
+  setDraftingLabel: (value: string) => void,
+  setMessages: MessageSetter
+) {
+  if (!piece) return;
+  let messageId = ids[key];
+  if (!messageId) {
+    messageId = `draft-${key}-${Date.now()}`;
+    ids[key] = messageId;
+    const title = sectionTitle(key);
+    setDraftingLabel(formatTorSectionHeading(key, title));
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: messageId,
+        role: "bot",
+        content: piece,
+        sectionKey: key,
+        sectionTitle: title,
+        isDraft: true,
+        status: "drafting",
+      },
+    ]);
+    return;
+  }
+  setMessages((prev) => {
+    const current = prev.find((row) => row.id === messageId);
+    return patchDraftMessage(prev, messageId, {
+      content: `${current?.content || ""}${piece}`,
+    });
+  });
+}
+
+function labelBatchSubheading(
+  data: Record<string, unknown>,
+  setDraftingLabel: (value: string) => void
+) {
+  const subKey = typeof data.sub_key === "string" ? data.sub_key : "";
+  const title = typeof data.title === "string" ? data.title : subKey;
+  if (subKey) setDraftingLabel(formatScopeSubHeading(subKey, title));
+}
+
+function finishBatchSubsection(
+  data: Record<string, unknown>,
+  onSectionDone: ((key: string, content: string) => void) | undefined,
+  refreshStatus: () => void | Promise<unknown>
+) {
+  const subKey = typeof data.sub_key === "string" ? data.sub_key : "";
+  const subContent = typeof data.content === "string" ? data.content : "";
+  onSectionDone?.(subKey || "s4", subContent);
+  void refreshStatus();
+}
+
+function finishBatchAll(
+  data: Record<string, unknown>,
+  fallbackTotal: number,
+  actions: {
+    applyProgress: (count: number, total: number) => void;
+    setDraftingLabel: (value: string | null) => void;
+    setPhase: (value: DraftPhase) => void;
+    setBusy: (value: boolean) => void;
+    onAllDrafted: () => void;
+    refreshStatus: () => void | Promise<unknown>;
+  }
+) {
+  rememberDraftProgress(data, fallbackTotal, actions.applyProgress);
+  actions.setDraftingLabel(null);
+  actions.setPhase("complete");
+  actions.setBusy(false);
+  actions.onAllDrafted();
+  void actions.refreshStatus();
+}
+
+function handleBatchRowEvent(
+  event: string,
+  data: Record<string, unknown>,
+  key: string,
+  ids: Record<string, string>,
+  actions: {
+    setDraftingLabel: (value: string) => void;
+    setMessages: MessageSetter;
+    applyProgress: (count: number, total: number) => void;
+    total: number;
+    onSectionDone?: (key: string, content: string) => void;
+    noteDrafted: (key: string) => void;
+    refreshStatus: () => void | Promise<unknown>;
+  }
+): boolean {
+  if (event === "section_start" && key) {
+    const messageId = `draft-${key}-${Date.now()}`;
+    ids[key] = messageId;
+    const title = typeof data.title === "string" ? data.title : sectionTitle(key);
+    actions.setDraftingLabel(formatTorSectionHeading(key, title));
+    ensureBatchMessage(ids, key, title, messageId, "", actions.setMessages);
+    return true;
+  }
+  if (event === "token" && key) {
+    appendBatchToken(
+      ids,
+      key,
+      typeof data.text === "string" ? data.text : "",
+      actions.setDraftingLabel,
+      actions.setMessages
+    );
+    return true;
+  }
+  if (event !== "section_done" || !key) return false;
+  const content = typeof data.content === "string" ? data.content : "";
+  rememberDraftProgress(data, actions.total, actions.applyProgress);
+  finishBatchSection(ids, key, content, actions.setMessages);
+  actions.onSectionDone?.(key, content);
+  actions.noteDrafted(key);
+  void actions.refreshStatus();
+  return true;
+}
+
+function failBatchSection(
+  ids: Record<string, string>,
+  key: string,
+  data: Record<string, unknown>,
+  setError: (value: string) => void,
+  setMessages: MessageSetter
+) {
+  const msg = typeof data.message === "string" ? data.message : "ร่างไม่สำเร็จ";
+  setError(msg);
+  if (!key || !ids[key]) return;
+  setMessages((prev) =>
+    patchDraftMessage(prev, ids[key], {
+      content: `ร่างไม่สำเร็จ: ${msg}`,
+      status: "error",
+    })
+  );
+}
+
+function finishBatchSection(
+  ids: Record<string, string>,
+  key: string,
+  content: string,
+  setMessages: MessageSetter
+) {
+  const existingId = ids[key];
+  if (!existingId) {
+    const messageId = `draft-${key}-done`;
+    ids[key] = messageId;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: messageId,
+        role: "bot",
+        content,
+        sectionKey: key,
+        sectionTitle: sectionTitle(key),
+        isDraft: true,
+        status: "done",
+      },
+    ]);
+    return;
+  }
+  setMessages((prev) => patchDraftMessage(prev, existingId, { content, status: "done" }));
+}
+
+function rememberDraftProgress(
+  data: Record<string, unknown>,
+  fallbackTotal: number,
+  applyProgress: (count: number, total: number) => void
+) {
+  const count = Number(data.drafted_count);
+  if (!Number.isFinite(count) || count <= 0) return;
+  applyProgress(count, progressTotal(data, fallbackTotal));
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
@@ -354,10 +653,10 @@ export function DraftChat({
     refreshStatus()
       .then((done) => {
         if (done) return;
-        startDrafting();
+        void startDrafting();
       })
       .catch(() => {
-        startDrafting();
+        void startDrafting();
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -443,158 +742,50 @@ export function DraftChat({
       {},
       token,
       (event: string, data: Record<string, unknown>) => {
-        const key = typeof data.section_key === "string" ? data.section_key : "";
-        if (event === "section_start" && key) {
-          const messageId = `draft-${key}-${Date.now()}`;
-          ids[key] = messageId;
-          const title = typeof data.title === "string" ? data.title : sectionTitle(key);
-          setDraftingLabel(formatTorSectionHeading(key, title));
-          setMessages((prev) => {
-            const existing = prev.find(
-              (row) => row.sectionKey === key && row.status === "drafting"
-            );
-            if (existing) {
-              ids[key] = existing.id;
-              return prev;
-            }
-            return [
-              ...prev,
-              {
-                id: messageId,
-                role: "bot",
-                content: "",
-                sectionKey: key,
-                sectionTitle: title,
-                isDraft: true,
-                status: "drafting",
-              },
-            ];
-          });
-          return;
-        }
-        if (event === "token" && key) {
-          const piece = typeof data.text === "string" ? data.text : "";
-          if (!piece) return;
-          let messageId = ids[key];
-          if (!messageId) {
-            messageId = `draft-${key}-${Date.now()}`;
-            ids[key] = messageId;
-            const title = sectionTitle(key);
-            setDraftingLabel(formatTorSectionHeading(key, title));
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: messageId!,
-                role: "bot",
-                content: piece,
-                sectionKey: key,
-                sectionTitle: title,
-                isDraft: true,
-                status: "drafting",
-              },
-            ]);
-            return;
-          }
-          setMessages((prev) => {
-            const current = prev.find((row) => row.id === messageId);
-            return patchDraftMessage(prev, messageId, {
-              content: `${current?.content || ""}${piece}`,
-            });
-          });
-          return;
-        }
-        if (event === "section_done" && key) {
-          const content = typeof data.content === "string" ? data.content : "";
-          const count = Number(data.drafted_count);
-          if (Number.isFinite(count) && count > 0) {
-            const eventTotal = Number(data.total);
-            applyProgress(
-              count,
-              Number.isFinite(eventTotal) && eventTotal > 0
-                ? eventTotal
-                : totalSectionsRef.current
-            );
-          }
-          // Redraft/revision events omit drafted_count — do not bump the counter.
-          const existingId = ids[key];
-          if (!existingId) {
-            const messageId = `draft-${key}-done`;
-            ids[key] = messageId;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: messageId,
-                role: "bot",
-                content,
-                sectionKey: key,
-                sectionTitle: sectionTitle(key),
-                isDraft: true,
-                status: "done",
-              },
-            ]);
-          } else {
-            setMessages((prev) =>
-              patchDraftMessage(prev, existingId, { content, status: "done" })
-            );
-          }
-          onSectionDone?.(key, content);
-          seenDraftedKeysRef.current ??= new Set();
-          seenDraftedKeysRef.current.add(key);
-          void refreshStatus();
+        const key = eventSectionKey(data);
+        if (
+          handleBatchRowEvent(event, data, key, ids, {
+            setDraftingLabel,
+            setMessages,
+            applyProgress,
+            total: totalSectionsRef.current,
+            onSectionDone,
+            noteDrafted: (draftedKey) => {
+              seenDraftedKeysRef.current ??= new Set();
+              seenDraftedKeysRef.current.add(draftedKey);
+            },
+            refreshStatus,
+          })
+        ) {
           return;
         }
         if (event === "subsection_start") {
-          const subKey = typeof data.sub_key === "string" ? data.sub_key : "";
-          const title = typeof data.title === "string" ? data.title : subKey;
-          if (subKey) {
-            setDraftingLabel(formatScopeSubHeading(subKey, title));
-          }
+          labelBatchSubheading(data, setDraftingLabel);
           return;
         }
         if (event === "subsection_done") {
-          const subKey = typeof data.sub_key === "string" ? data.sub_key : "";
-          const subContent = typeof data.content === "string" ? data.content : "";
-          onSectionDone?.(subKey || "s4", subContent);
-          void refreshStatus();
+          finishBatchSubsection(data, onSectionDone, refreshStatus);
           return;
         }
         if (event === "progress") {
           const message = typeof data.message === "string" ? data.message : "";
-          if (message) {
-            setDraftingLabel(message);
-          }
+          if (message) setDraftingLabel(message);
           return;
         }
         if (event === "all_done") {
-          const count = Number(data.drafted_count);
-          if (Number.isFinite(count) && count > 0) {
-            const eventTotal = Number(data.total);
-            applyProgress(
-              count,
-              Number.isFinite(eventTotal) && eventTotal > 0
-                ? eventTotal
-                : totalSectionsRef.current
-            );
-          }
-          setDraftingLabel(null);
-          setPhase("complete");
-          setBusy(false);
-          onAllDrafted();
-          void refreshStatus();
+          finishBatchAll(data, totalSectionsRef.current, {
+            applyProgress,
+            setDraftingLabel,
+            setPhase,
+            setBusy,
+            onAllDrafted,
+            refreshStatus,
+          });
           return;
         }
         if (event === "section_error") {
           failed = true;
-          const msg = typeof data.message === "string" ? data.message : "ร่างไม่สำเร็จ";
-          setError(msg);
-          if (key && ids[key]) {
-            setMessages((prev) =>
-              patchDraftMessage(prev, ids[key], {
-                content: `ร่างไม่สำเร็จ: ${msg}`,
-                status: "error",
-              })
-            );
-          }
+          failBatchSection(ids, key, data, setError, setMessages);
         }
       }
     );
@@ -682,81 +873,27 @@ export function DraftChat({
         },
         token,
         (event: string, data: Record<string, unknown>) => {
-          if (event === "section_start") {
-            const key = data.section_key as string;
-            const title = data.title as string;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === responseMsgId
-                  ? { ...m, sectionKey: key, sectionTitle: title, isDraft: true }
-                  : m
-              )
+          if (event === "section_start" || event === "token" || event === "section_done") {
+            responseTokens = applyReplyStreamEvent(
+              event,
+              data,
+              responseMsgId,
+              responseTokens,
+              sectionKey,
+              { setMessages, onSectionDone, setBusy }
             );
-          }
-          if (event === "token") {
-            const t = typeof data.text === "string" ? data.text : "";
-            responseTokens += t;
-            const captured = responseTokens;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === responseMsgId ? { ...m, content: captured } : m
-              )
-            );
-          }
-          if (event === "section_done") {
-            const content2 = data.content as string;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === responseMsgId
-                  ? { ...m, content: content2, status: "done", isDraft: true }
-                  : m
-              )
-            );
-            onSectionDone?.(
-              typeof data.section_key === "string" ? data.section_key : sectionKey || undefined,
-              content2
-            );
-            setBusy(false);
+            return;
           }
           if (event === "product_search") {
             const hits = asSearchHits(data.results);
-            const disclaimer =
-              typeof data.disclaimer === "string" ? data.disclaimer : undefined;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === responseMsgId
-                  ? {
-                      ...m,
-                      content:
-                        hits.length
-                          ? "พบแหล่งอ้างอิงผลิตภัณฑ์/ผู้ขาย — ยืนยันก่อนแทรกลง TOR"
-                          : "ค้นแล้วไม่พบแหล่งอ้างอิง",
-                      status: "done",
-                      searchHits: hits,
-                      searchDisclaimer: disclaimer,
-                      awaitingConfirm: hits.length > 0,
-                    }
-                  : m
-              )
-            );
+            const disclaimer = typeof data.disclaimer === "string" ? data.disclaimer : undefined;
+            setMessages((prev) => prev.map((m) => productSearchMessage(m, responseMsgId, hits, disclaimer)));
             setBusy(false);
           }
           if (event === "search_inserted") {
             const content2 = typeof data.content === "string" ? data.content : "";
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === responseMsgId
-                  ? {
-                      ...m,
-                      content: content2 || "แทรกแหล่งอ้างอิงแล้ว — ไม่ใช่สเปกที่ผูกยี่ห้อ",
-                      status: "done",
-                      awaitingConfirm: false,
-                      sectionKey:
-                        typeof data.section_key === "string" ? data.section_key : m.sectionKey,
-                    }
-                  : m
-              )
-            );
+            const insertedKey = typeof data.section_key === "string" ? data.section_key : undefined;
+            setMessages((prev) => prev.map((m) => insertedSearchMessage(m, responseMsgId, content2, insertedKey)));
             onSectionDone?.(
               typeof data.section_key === "string" ? data.section_key : sectionKey || undefined,
               content2
@@ -803,12 +940,12 @@ export function DraftChat({
 
   function handleAccept(sectionKey: string) {
     setCurrentEditSection(sectionKey);
-    sendMessage("ยอมรับ", sectionKey);
+    void sendMessage("ยอมรับ", sectionKey);
   }
 
   function handleRedraft(sectionKey: string) {
     setCurrentEditSection(sectionKey);
-    sendMessage(`ร่างใหม่ ${sectionKey}`, sectionKey);
+    void sendMessage(`ร่างใหม่ ${sectionKey}`, sectionKey);
   }
 
   function handleEdit(sectionKey: string) {
@@ -817,7 +954,7 @@ export function DraftChat({
   }
 
   function handleConfirmSearch(hits: SearchHit[]) {
-    sendMessage("ยืนยันแทรกแหล่งค้นหา", currentEditSection || "s4", {
+    void sendMessage("ยืนยันแทรกแหล่งค้นหา", currentEditSection || "s4", {
       confirmInsert: true,
       searchHits: hits,
     });
@@ -887,7 +1024,7 @@ export function DraftChat({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage();
+                void sendMessage();
               }
             }}
           />
@@ -895,7 +1032,9 @@ export function DraftChat({
             size="sm"
             disabled={busy || !draft.trim() || phase === "drafting"}
             data-testid="draft-chat-send"
-            onClick={() => sendMessage()}
+            onClick={() => {
+              void sendMessage();
+            }}
           >
             <Send className="h-4 w-4" />
           </Button>

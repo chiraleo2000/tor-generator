@@ -13,7 +13,6 @@ from app.domain.section_profile import profile_export  # noqa: E402
 
 HEADER = """\
 /** Generated from app/backend/app/domain/section_profile.py — do not edit by hand. */
-/* eslint-disable */
 
 export type ProfileStatus = "ok" | "none" | "missing";
 

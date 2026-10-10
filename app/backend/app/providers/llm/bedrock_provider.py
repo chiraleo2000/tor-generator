@@ -60,6 +60,63 @@ def openai_tools_to_bedrock_tool_config(
     return {"tools": specs}
 
 
+def _message_text(block: object) -> str:
+    if not isinstance(block, dict):
+        return ""
+    return str(block.get("text") or "")
+
+
+def _converse_parts(messages: list[dict]) -> tuple[list[dict[str, str]], list[dict]]:
+    system_parts: list[dict[str, str]] = []
+    converse_messages: list[dict] = []
+    for item in messages:
+        role = item.get("role", "user")
+        content = str(item.get("content") or "")
+        if role == "system":
+            system_parts.append({"text": content})
+            continue
+        mapped = "assistant" if role == "assistant" else "user"
+        converse_messages.append({"role": mapped, "content": [{"text": content}]})
+    return system_parts, converse_messages
+
+
+def _input_blob(system_parts: list[dict[str, str]], converse_messages: list[dict]) -> str:
+    system_blob = "\n".join(str(part.get("text") or "") for part in system_parts)
+    message_blob = "\n".join(
+        _message_text(block)
+        for msg in converse_messages
+        for block in (msg.get("content") or [])
+    )
+    return system_blob + message_blob
+
+
+def _fit_max_tokens(requested: int, blob: str) -> int:
+    from app.llm_tokens import estimate_tokens, live_context_window
+
+    used = estimate_tokens(blob)
+    room = live_context_window() - used - 512
+    if room < 1:
+        room = 1
+    return max(1, min(requested, room))
+
+
+def _put_max_tokens(
+    inference: dict[str, Any],
+    kwargs: dict[str, Any],
+    system_parts: list[dict[str, str]],
+    converse_messages: list[dict],
+) -> None:
+    if "max_tokens" not in kwargs:
+        return
+    try:
+        inference["maxTokens"] = _fit_max_tokens(
+            int(kwargs["max_tokens"]),
+            _input_blob(system_parts, converse_messages),
+        )
+    except Exception:  # noqa: BLE001 — never block the request on clamp helpers
+        inference["maxTokens"] = int(kwargs["max_tokens"])
+
+
 class BedrockLLMProvider(LLMProvider):
     """Calls Amazon Bedrock Runtime Converse / ConverseStream APIs.
 
@@ -97,16 +154,7 @@ class BedrockLLMProvider(LLMProvider):
             tools = kwargs.pop("tools", None)
         else:
             kwargs.pop("tools", None)
-        system_parts: list[dict[str, str]] = []
-        converse_messages: list[dict] = []
-        for item in messages:
-            role = item.get("role", "user")
-            content = str(item.get("content") or "")
-            if role == "system":
-                system_parts.append({"text": content})
-                continue
-            mapped = "assistant" if role == "assistant" else "user"
-            converse_messages.append({"role": mapped, "content": [{"text": content}]})
+        system_parts, converse_messages = _converse_parts(messages)
         request: dict[str, Any] = {
             "modelId": self._model_id,
             "messages": converse_messages or [{"role": "user", "content": [{"text": ""}]}],
@@ -114,29 +162,8 @@ class BedrockLLMProvider(LLMProvider):
         if system_parts:
             request["system"] = system_parts
         inference: dict[str, Any] = {}
-        if "max_tokens" in kwargs:
-            # Keep input + maxTokens inside the model window (Bedrock ValidationException).
-            try:
-                from app.llm_tokens import clamp_max_tokens, estimate_tokens
-
-                blob = "\n".join(
-                    str(part.get("text") or "") for part in system_parts
-                ) + "\n".join(
-                    str((block.get("text") if isinstance(block, dict) else "") or "")
-                    for msg in converse_messages
-                    for block in (msg.get("content") or [])
-                )
-                inference["maxTokens"] = clamp_max_tokens(
-                    blob, int(kwargs["max_tokens"])
-                )
-                # Extra guard when Thai estimate undercounts.
-                used = estimate_tokens(blob)
-                from app.llm_tokens import live_context_window
-
-                room = max(256, live_context_window() - used - 512)
-                inference["maxTokens"] = max(256, min(inference["maxTokens"], room))
-            except Exception:  # noqa: BLE001 — never block the request on clamp helpers
-                inference["maxTokens"] = int(kwargs["max_tokens"])
+        # Keep input + maxTokens inside the model window (Bedrock ValidationException).
+        _put_max_tokens(inference, kwargs, system_parts, converse_messages)
         if "temperature" in kwargs:
             inference["temperature"] = float(kwargs["temperature"])
         if inference:

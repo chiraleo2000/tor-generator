@@ -36,6 +36,133 @@ from app.services.thai_draft import (
 
 logger = logging.getLogger(__name__)
 
+_PROMPT_CONTROL_KEYS = {
+    "current_draft_fields",
+    "revision_instruction",
+    "redraft",
+    "focus_sub_key",
+    "current_draft",
+    "user_feedback",
+    "human_feedback",
+}
+_REDRAFT_BANNER = (
+    "\n=== โหมดร่างใหม่ ===\n"
+    "เขียนข้อความใหม่ทั้งหมดของหมวดนี้ให้ต่างจากร่างปัจจุบันอย่างชัดเจน "
+    "ห้ามคัดลอกร่างเดิมมาวางซ้ำทั้งก้อน หรือแก้เพียงคำสองคำ "
+    "ห้ามแก้หมวดอื่น"
+)
+
+
+def _append_current_draft(parts: list[str], draft_fields: object) -> None:
+    if not isinstance(draft_fields, dict):
+        return
+    if not any(str(value or "").strip() for value in draft_fields.values()):
+        return
+    parts.append(
+        "\n=== ร่างปัจจุบันในหมวดนี้ "
+        "(ต้องคงสาระที่ผู้ใช้แก้แล้ว และเติมส่วนที่ยังว่างให้ครบจากเอกสารขั้นที่ ๐) ==="
+    )
+    for key, value in draft_fields.items():
+        text = str(value or "").strip()
+        parts.append(f"[{key}]\n{text or '(ว่าง — ต้องเติม)'}")
+
+
+def _append_rag_context(parts: list[str], rag_chunks: list[RAGChunk]) -> None:
+    if not rag_chunks:
+        return
+    parts.append("\n=== บริบทจากฐานความรู้กฎหมาย ===")
+    for index, chunk in enumerate(rag_chunks[:8], 1):
+        source = chunk.get("source_document", "ไม่ระบุแหล่งที่มา")
+        text = (chunk.get("text", "") or "")[:1500]
+        parts.append(f"\n[อ้างอิง {index}] แหล่งที่มา: {source}")
+        parts.append(text)
+
+
+def _append_template_guidance(
+    parts: list[str], template: dict[str, Any] | None, section_key: str
+) -> None:
+    if not template:
+        return
+    guidance = template.get("placeholder_guidance", {}).get(section_key)
+    if guidance:
+        parts.append("\n=== แนวทางจากแม่แบบ ===")
+        parts.append(str(guidance))
+
+
+def _nested_intake(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return str(value.get("content") or "")
+    return ""
+
+
+def _project_intake_text(user_input: object) -> str:
+    if not isinstance(user_input, dict):
+        return ""
+    intake = _nested_intake(user_input.get("_project_intake"))
+    if intake:
+        return intake
+    slots = user_input.get("slot_map")
+    if not isinstance(slots, dict):
+        return ""
+    return _nested_intake(slots.get("_project_intake"))
+
+
+def _finish_section_draft(raw: str, user_input: object) -> str:
+    from app.services.thai_draft import polish_export_text, reject_intake_echo
+
+    polished = polish_export_text(raw)
+    intake = _project_intake_text(user_input)
+    if intake:
+        return reject_intake_echo(polished, intake)
+    return polished
+
+
+async def _invoke_draft(agent: Any, llm: LLMProvider, messages: list[dict], llm_kwargs: dict) -> tuple[LLMResponse, str]:
+    response = await llm.invoke(messages, **llm_kwargs)
+    content = str(response.content or "")
+    if content.strip():
+        return response, content
+    logger.warning("Agent [%s] empty draft; retrying once", agent.section_name_en)
+    response = await llm.invoke(messages, **llm_kwargs)
+    return response, str(response.content or "")
+
+
+async def _retry_unauthorized_english(
+    agent: Any,
+    llm: LLMProvider,
+    messages: list[dict],
+    llm_kwargs: dict,
+    content: str,
+    response: LLMResponse,
+) -> tuple[str, LLMResponse]:
+    hits = detect_unauthorized_english(content)
+    if not hits:
+        return content, response
+    logger.warning(
+        "Agent [%s] draft had unauthorized English %s; retrying once",
+        agent.section_name_en,
+        hits[:12],
+    )
+    response = await llm.invoke(messages, **llm_kwargs)
+    return str(response.content or ""), response
+
+
+def _append_validation_findings(
+    parts: list[str], validation_findings: list[ValidationFinding] | None
+) -> None:
+    if not validation_findings:
+        return
+    parts.append("\n=== ข้อเสนอแนะจากการตรวจสอบครั้งก่อน (กรุณาแก้ไข) ===")
+    for finding in validation_findings:
+        severity = finding.get("severity", "warning")
+        message = finding.get("message", "")
+        correction = finding.get("recommended_correction", "")
+        parts.append(f"- [{severity}] {message}")
+        if correction:
+            parts.append(f"  แนวทางแก้ไข: {correction}")
+
 THAI_FORMAL_REGISTER_PREAMBLE = core_system_prompt()
 
 
@@ -126,87 +253,33 @@ class BaseDraftingAgent(ABC):
             Formatted user message string.
         """
         parts: list[str] = []
-
         draft_fields = user_input.get("current_draft_fields")
         revision = user_input.get("revision_instruction")
         is_redraft = bool(user_input.get("redraft"))
-        base_input = {
-            key: value
-            for key, value in user_input.items()
-            if key
-            not in {
-                "current_draft_fields",
-                "revision_instruction",
-                "redraft",
-                "focus_sub_key",
-                "current_draft",
-                "user_feedback",
-                "human_feedback",
-            }
-        }
-
-        # Section: User input
-        parts.append("=== ข้อมูลจากผู้ใช้ ===")
-        parts.append(self._format_user_input(base_input))
-
-        if isinstance(draft_fields, dict) and any(
-            str(value or "").strip() for value in draft_fields.values()
-        ):
-            parts.append(
-                "\n=== ร่างปัจจุบันในหมวดนี้ "
-                "(ต้องคงสาระที่ผู้ใช้แก้แล้ว และเติมส่วนที่ยังว่างให้ครบจากเอกสารขั้นที่ ๐) ==="
-            )
-            for key, value in draft_fields.items():
-                text = str(value or "").strip()
-                parts.append(f"[{key}]\n{text or '(ว่าง — ต้องเติม)'}")
         feedback_text = str(
             user_input.get("user_feedback") or user_input.get("human_feedback") or ""
         ).strip()
+        base_input = {
+            key: value
+            for key, value in user_input.items()
+            if key not in _PROMPT_CONTROL_KEYS
+        }
+        parts.append("=== ข้อมูลจากผู้ใช้ ===")
+        parts.append(self._format_user_input(base_input))
+        _append_current_draft(parts, draft_fields)
         if feedback_text:
             parts.append(
                 "\n=== ความคิดเห็นจากผู้ใช้ (ต้องปฏิบัติตามอย่างเคร่งครัด — แก้เฉพาะหมวดนี้) ==="
             )
             parts.append(feedback_text)
         if is_redraft:
-            parts.append(
-                "\n=== โหมดร่างใหม่ ===\n"
-                "เขียนข้อความใหม่ทั้งหมดของหมวดนี้ให้ต่างจากร่างปัจจุบันอย่างชัดเจน "
-                "ห้ามคัดลอกร่างเดิมมาวางซ้ำทั้งก้อน หรือแก้เพียงคำสองคำ "
-                "ห้ามแก้หมวดอื่น"
-            )
+            parts.append(_REDRAFT_BANNER)
         if revision and str(revision).strip():
             parts.append("\n=== คำสั่งปรับปรุงร่าง ===")
             parts.append(str(revision).strip())
-
-        # Section: RAG context (if available)
-        if rag_chunks:
-            parts.append("\n=== บริบทจากฐานความรู้กฎหมาย ===")
-            # Limit to top-8 chunks and 1500 chars each to keep prompt under context window
-            for i, chunk in enumerate(rag_chunks[:8], 1):
-                source = chunk.get("source_document", "ไม่ระบุแหล่งที่มา")
-                text = (chunk.get("text", "") or "")[:1500]
-                parts.append(f"\n[อ้างอิง {i}] แหล่งที่มา: {source}")
-                parts.append(text)
-
-        # Section: Template guidance (if available)
-        if template:
-            guidance = template.get("placeholder_guidance", {}).get(self.section_key)
-            if guidance:
-                parts.append("\n=== แนวทางจากแม่แบบ ===")
-                parts.append(str(guidance))
-
-        # Section: Validation feedback (on retry)
-        if validation_findings:
-            parts.append("\n=== ข้อเสนอแนะจากการตรวจสอบครั้งก่อน (กรุณาแก้ไข) ===")
-            for finding in validation_findings:
-                severity = finding.get("severity", "warning")
-                message = finding.get("message", "")
-                correction = finding.get("recommended_correction", "")
-                parts.append(f"- [{severity}] {message}")
-                if correction:
-                    parts.append(f"  แนวทางแก้ไข: {correction}")
-
-        # Section: Human feedback (on re-draft request) — skip if already shown above
+        _append_rag_context(parts, rag_chunks)
+        _append_template_guidance(parts, template, self.section_key)
+        _append_validation_findings(parts, validation_findings)
         if human_feedback and str(human_feedback).strip() != feedback_text:
             parts.append("\n=== ความคิดเห็นจากผู้ตรวจสอบ ===")
             parts.append(human_feedback)
@@ -310,29 +383,6 @@ class BaseDraftingAgent(ABC):
             current_capabilities,
             filter_llm_kwargs,
         )
-        from app.services.thai_draft import polish_export_text, reject_intake_echo
-
-        def _finish(raw: str) -> str:
-            polished = polish_export_text(raw)
-            intake = ""
-            if isinstance(user_input, dict):
-                blob = user_input.get("_project_intake")
-                if isinstance(blob, str):
-                    intake = blob
-                elif isinstance(blob, dict):
-                    intake = str(blob.get("content") or "")
-                if not intake:
-                    slots = user_input.get("slot_map")
-                    if isinstance(slots, dict):
-                        pack = slots.get("_project_intake")
-                        if isinstance(pack, dict):
-                            intake = str(pack.get("content") or "")
-                        elif isinstance(pack, str):
-                            intake = pack
-            if intake:
-                polished = reject_intake_echo(polished, intake)
-            return polished
-
         caps = current_capabilities()
         redraft = bool(isinstance(user_input, dict) and user_input.get("redraft"))
         llm_kwargs = {
@@ -350,25 +400,12 @@ class BaseDraftingAgent(ABC):
         )
         llm_kwargs = filter_llm_kwargs(caps.provider, llm_kwargs)
 
-        response: LLMResponse = await llm.invoke(messages, **llm_kwargs)
-        content = str(response.content or "")
-        if not content.strip():
-            logger.warning(
-                "Agent [%s] empty draft; retrying once",
-                self.section_name_en,
-            )
-            response = await llm.invoke(messages, **llm_kwargs)
-            content = str(response.content or "")
+        response, content = await _invoke_draft(self, llm, messages, llm_kwargs)
+        retried = await _retry_unauthorized_english(
+            self, llm, messages, llm_kwargs, content, response
+        )
+        content, response = retried[0], retried[1]
         hits = detect_unauthorized_english(content)
-        if hits:
-            logger.warning(
-                "Agent [%s] draft had unauthorized English %s; retrying once",
-                self.section_name_en,
-                hits[:12],
-            )
-            response = await llm.invoke(messages, **llm_kwargs)
-            content = str(response.content or "")
-            hits = detect_unauthorized_english(content)
         if hits:
             cleaned = sanitize_unauthorized_english(content)
             if thai_char_count(cleaned) >= MIN_SANITIZED_THAI_CHARS:
@@ -377,18 +414,16 @@ class BaseDraftingAgent(ABC):
                     self.section_name_en,
                     hits[:12],
                 )
-                return _finish(cleaned)
+                return _finish_section_draft(cleaned, user_input)
             logger.warning(
                 "Agent [%s] retry still had unauthorized English; keeping sanitized text",
                 self.section_name_en,
             )
-            return _finish(cleaned or content)
-
+            return _finish_section_draft(cleaned or content, user_input)
         logger.info(
             "Agent [%s] completed draft: %d chars, usage=%s",
             self.section_name_en,
             len(content),
             response.usage,
         )
-
-        return _finish(content)
+        return _finish_section_draft(content, user_input)

@@ -14,7 +14,7 @@ import { unwrapData } from "@/lib/api-unwrap";
 import { analysisMappingReady, factTopicsComplete } from "@/lib/intake-complete";
 
 function isIntakeErrorMessage(text: string): boolean {
-  return /ไม่สำเร็จ|ยังไม่ครบ|อย่างน้อย|ต้อง/.test(text);
+  return /ไม่สำเร็จ|ยังไม่ครบ|อย่างน้อย|ต้อง|หมดเวลา/.test(text);
 }
 
 type CoveragePayload = {
@@ -27,7 +27,8 @@ type CoveragePayload = {
 
 const ANALYZE_HTTP_TIMEOUT_MS = 5_400_000;
 const ANALYZE_POLL_MS = 2_500;
-const ANALYZE_RECOVERY_MS = 180_000;
+const ANALYZE_STATUS_TICK_MS = 1_000;
+const ANALYZING_STATUS_PREFIX = "กำลังอ่านเอกสารด้วยโมเดล";
 
 
 export function IntakeChatPanel({
@@ -57,6 +58,8 @@ export function IntakeChatPanel({
     "idle"
   );
   const advancedRef = useRef(false);
+  const analyzeTickerRef = useRef<number | null>(null);
+  const analyzeEpochRef = useRef(0);
   const { ask, dialog } = useConfirmPhase();
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
@@ -74,12 +77,33 @@ export function IntakeChatPanel({
     return payload;
   }, [projectId, onFactsReady]);
 
+  const stopAnalyzeTicker = useCallback(() => {
+    analyzeEpochRef.current += 1;
+    if (analyzeTickerRef.current != null) {
+      window.clearInterval(analyzeTickerRef.current);
+      analyzeTickerRef.current = null;
+    }
+  }, []);
+
+  const startAnalyzeTicker = useCallback(() => {
+    stopAnalyzeTicker();
+    const epoch = analyzeEpochRef.current;
+    const started = Date.now();
+    setMessage(`${ANALYZING_STATUS_PREFIX}...`);
+    analyzeTickerRef.current = window.setInterval(() => {
+      if (analyzeEpochRef.current !== epoch) return;
+      const elapsed = Math.max(1, Math.round((Date.now() - started) / 1000));
+      setMessage(`${ANALYZING_STATUS_PREFIX}... ผ่านมา ${elapsed} วินาที`);
+    }, ANALYZE_STATUS_TICK_MS);
+  }, [stopAnalyzeTicker]);
+
   const advanceAfterAnalyze = useCallback(async () => {
     if (advancedRef.current) return;
     advancedRef.current = true;
+    stopAnalyzeTicker();
     setUploadStatus("done");
     await Promise.resolve(onAnalyzed());
-  }, [onAnalyzed]);
+  }, [onAnalyzed, stopAnalyzeTicker]);
 
   const pollUntilMapped = useCallback(
     (maxMs: number) => {
@@ -112,6 +136,8 @@ export function IntakeChatPanel({
     },
     [advanceAfterAnalyze, refreshCoverage]
   );
+
+  useEffect(() => stopAnalyzeTicker, [stopAnalyzeTicker]);
 
   useEffect(() => {
     let live = true;
@@ -164,16 +190,26 @@ export function IntakeChatPanel({
     return true;
   }
 
+  async function recoverMappedOnce(): Promise<boolean> {
+    if (advancedRef.current) return true;
+    try {
+      const payload = await refreshCoverage();
+      if (!analysisMappingReady(payload)) return false;
+      await advanceAfterAnalyze();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function startAnalyze() {
     const confirmed = await ask(PHASE_FORWARD_CONFIRM[1]);
     if (!confirmed) return;
     advancedRef.current = false;
     setBusy(true);
     setUploadStatus("analyzing");
-    setMessage(null);
-
-    // Parallel poll: if HTTP dies but backend finishes, still leave Phase 0.
-    const pollPromise = pollUntilMapped(ANALYZE_HTTP_TIMEOUT_MS + ANALYZE_RECOVERY_MS);
+    startAnalyzeTicker();
+    let failureMessage: string | null = null;
 
     try {
       if (draftText.trim().length >= 20) {
@@ -192,18 +228,25 @@ export function IntakeChatPanel({
       // Backend said OK but coverage not visible yet — brief poll then fail clearly.
       const recovered = await pollUntilMapped(30_000);
       if (recovered) return;
-      setUploadStatus("idle");
-      setMessage(
-        "วิเคราะห์ยังไม่ครบ — ยังไม่มีตารางช่องจากเอกสาร กรุณาลองอีกครั้งหรือเพิ่มข้อความโครงการ"
-      );
+      failureMessage =
+        "วิเคราะห์ยังไม่ครบ — ยังไม่มีตารางช่องจากเอกสาร กรุณาลองอีกครั้งหรือเพิ่มข้อความโครงการ";
     } catch (err: unknown) {
-      const recovered = await pollUntilMapped(ANALYZE_RECOVERY_MS);
+      const recovered = await recoverMappedOnce();
       if (recovered) return;
-      setUploadStatus("idle");
-      setMessage(apiErrorMessage(err, "วิเคราะห์ไม่สำเร็จ — อัปโหลดหรือวางข้อความก่อน"));
+      failureMessage = apiErrorMessage(err, "วิเคราะห์ไม่สำเร็จ — อัปโหลดหรือวางข้อความก่อน");
     } finally {
-      await pollPromise.catch(() => undefined);
+      stopAnalyzeTicker();
       setBusy(false);
+      if (advancedRef.current) {
+        setMessage((current) =>
+          current?.startsWith(ANALYZING_STATUS_PREFIX) ? null : current
+        );
+      } else {
+        setUploadStatus("idle");
+        setMessage(failureMessage);
+        advancedRef.current = true;
+        onAnalyzed();
+      }
     }
   }
 

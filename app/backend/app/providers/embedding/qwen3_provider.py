@@ -87,10 +87,14 @@ class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
             openai.APIConnectionError: If the local server is unreachable.
             openai.APIError: If the server returns an error response.
         """
-        response = await self._client.embeddings.create(
-            model=self.model,
-            input=truncate_for_embedding(text),
-        )
+        from app.infra import redis_client
+        from app.llm_admission import admit
+
+        async with admit(redis_client, "embedding"):
+            response = await self._client.embeddings.create(
+                model=self.model,
+                input=truncate_for_embedding(text),
+            )
         return _fit_dimensions(list(response.data[0].embedding))
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -123,10 +127,14 @@ class Qwen3LocalEmbeddingProvider(EmbeddingProvider):
                 i + len(batch),
                 len(texts),
             )
-            response = await self._client.embeddings.create(
-                model=self.model,
-                input=batch,
-            )
+            from app.infra import redis_client
+            from app.llm_admission import admit
+
+            async with admit(redis_client, "embedding"):
+                response = await self._client.embeddings.create(
+                    model=self.model,
+                    input=batch,
+                )
             # Ensure ordering matches input
             batch_embeddings = sorted(response.data, key=lambda x: x.index)
             all_embeddings.extend(

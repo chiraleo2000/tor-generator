@@ -23,6 +23,7 @@ interface KBDoc {
 const GROUP_LABELS: Record<string, string> = {
   mandatory_handbook: "คู่มือแนวปฏิบัติ (บังคับ)",
   mandatory_raw: "ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)",
+  procurement_judgments: "คำพิพากษาการพัสดุ",
   user: "เอกสารของฉัน",
 };
 
@@ -47,13 +48,14 @@ export default function AdminKnowledgeBasePage() {
 
   async function uploadFiles(files: FileList | File[]) {
     setMessage(null);
-    for (const file of Array.from(files)) {
+    await Array.from(files).reduce(async (previous, file) => {
+      await previous;
       const body = new FormData();
       body.append("file", file);
       body.append("category", category);
       body.append("name", file.name);
       await apiClient.post("/knowledge-base/upload", body);
-    }
+    }, Promise.resolve());
     setMessage("อัปโหลดแล้ว — กำลังประมวลผล");
     await load();
   }

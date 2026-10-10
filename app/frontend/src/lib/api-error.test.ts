@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { apiErrorMessage } from "./api-error";
+import { apiErrorMessage, networkFailureMessage } from "./api-error";
 
 describe("apiErrorMessage", () => {
   it("reads FastAPI error.message", () => {
@@ -9,6 +9,10 @@ describe("apiErrorMessage", () => {
         "fallback"
       )
     ).toBe("ต้องใส่ OPENAI_API_KEY");
+  });
+
+  it("returns null for network checks that are not objects", () => {
+    expect(networkFailureMessage(null)).toBeNull();
   });
 
   it("uses fallback when the payload is missing or not a string", () => {

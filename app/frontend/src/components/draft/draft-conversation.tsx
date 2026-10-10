@@ -14,6 +14,141 @@ import type { CoverageRow } from "@/components/draft/phase1-coverage";
 const DEFAULT_MOF_OPTION =
   "ตาม พ.ร.บ. กฎระเบียบ และแนวทางปฏิบัติของกระทรวงการคลังและส่วนกลาง";
 
+function progressFromPayload(
+  progress: { filled?: number; total?: number; percent?: number } | undefined,
+  coverage: CoverageRow[]
+) {
+  if (
+    progress &&
+    typeof progress.filled === "number" &&
+    typeof progress.total === "number"
+  ) {
+    return {
+      filled: progress.filled,
+      total: progress.total,
+      percent: typeof progress.percent === "number" ? progress.percent : 0,
+    };
+  }
+  return factProgressFromCoverage(coverage);
+}
+
+function conversationOptions(
+  replyOptions: string[],
+  mode: string,
+  allFactFilled: boolean
+): string[] {
+  if (replyOptions.length > 0) return replyOptions;
+  if (mode === "intake" && allFactFilled) return [DEFAULT_MOF_OPTION];
+  return [];
+}
+
+type IntakeStreamActions = {
+  setMessages: (
+    value: ChatMessageItem[] | ((prev: ChatMessageItem[]) => ChatMessageItem[])
+  ) => void;
+  setReplyOptions: (options: string[]) => void;
+  setAllFactFilled: (value: boolean) => void;
+  setProgress: (value: { filled: number; total: number; percent: number }) => void;
+  setBusy: (value: boolean) => void;
+  setError: (value: string | null) => void;
+  onCoverage?: (rows: CoverageRow[]) => void;
+};
+
+function replaceLastAssistant(
+  prev: ChatMessageItem[],
+  content: string
+): ChatMessageItem[] {
+  const last = prev.at(-1);
+  if (last?.role !== "assistant") return prev;
+  return [...prev.slice(0, -1), { ...last, content }];
+}
+
+function applyIntakeStatus(
+  setMessages: IntakeStreamActions["setMessages"],
+  event: string
+) {
+  const label = event === "queued" ? "รอคิวตอบ…" : "กำลังประมวลผล…";
+  setMessages((prev) => {
+    const last = prev.at(-1);
+    if (last?.role !== "assistant" || last.content) return prev;
+    return replaceLastAssistant(prev, label);
+  });
+}
+
+function applyIntakeToken(
+  setMessages: IntakeStreamActions["setMessages"],
+  data: Record<string, unknown>
+) {
+  const piece = typeof data.text === "string" ? data.text : "";
+  setMessages((prev) => {
+    const last = prev.at(-1);
+    if (last?.role !== "assistant") return prev;
+    const waiting = last.content === "รอคิวตอบ…" || last.content === "กำลังประมวลผล…";
+    const base = waiting ? "" : last.content;
+    return replaceLastAssistant(prev, base + piece);
+  });
+}
+
+function applyIntakeProgress(data: Record<string, unknown>, actions: IntakeStreamActions) {
+  const prog = data.progress as
+    | { filled?: number; total?: number; percent?: number }
+    | undefined;
+  if (prog && typeof prog.filled === "number" && typeof prog.total === "number") {
+    actions.setProgress({
+      filled: prog.filled,
+      total: prog.total,
+      percent: typeof prog.percent === "number" ? prog.percent : 0,
+    });
+    return;
+  }
+  if (Array.isArray(data.coverage)) {
+    actions.setProgress(factProgressFromCoverage(data.coverage as CoverageRow[]));
+  }
+}
+
+function applyIntakeDone(data: Record<string, unknown>, actions: IntakeStreamActions) {
+  const text = typeof data.content === "string" ? data.content : "";
+  actions.setMessages((prev) => {
+    const last = prev.at(-1);
+    if (last?.role !== "assistant") return prev;
+    return replaceLastAssistant(prev, text || last.content);
+  });
+  if (Array.isArray(data.reply_options)) {
+    actions.setReplyOptions(data.reply_options as string[]);
+  }
+  if (typeof data.all_fact_filled === "boolean") {
+    actions.setAllFactFilled(data.all_fact_filled);
+  }
+  if (Array.isArray(data.coverage)) {
+    actions.onCoverage?.(data.coverage as CoverageRow[]);
+  }
+  applyIntakeProgress(data, actions);
+  actions.setBusy(false);
+}
+
+function applyIntakeStreamEvent(
+  event: string,
+  data: Record<string, unknown>,
+  actions: IntakeStreamActions
+) {
+  if (event === "queued" || event === "started") {
+    applyIntakeStatus(actions.setMessages, event);
+    return;
+  }
+  if (event === "token") {
+    applyIntakeToken(actions.setMessages, data);
+    return;
+  }
+  if (event === "done") {
+    applyIntakeDone(data, actions);
+    return;
+  }
+  if (event === "error") {
+    actions.setError(typeof data.message === "string" ? data.message : "แชทล้มเหลว");
+    actions.setBusy(false);
+  }
+}
+
 function briefAsMessage(brief: string): ChatMessageItem {
   return {
     id: "phase2-brief",
@@ -90,22 +225,7 @@ export function DraftConversation({
         }
         if (payload.coverage?.length) {
           onCoverageRef.current?.(payload.coverage);
-          if (
-            payload.progress &&
-            typeof payload.progress.filled === "number" &&
-            typeof payload.progress.total === "number"
-          ) {
-            setProgress({
-              filled: payload.progress.filled,
-              total: payload.progress.total,
-              percent:
-                typeof payload.progress.percent === "number"
-                  ? payload.progress.percent
-                  : 0,
-            });
-          } else {
-            setProgress(factProgressFromCoverage(payload.coverage));
-          }
+          setProgress(progressFromPayload(payload.progress, payload.coverage));
         }
         let loaded: ChatMessageItem[] = [];
         if (id) {
@@ -160,64 +280,15 @@ export function DraftConversation({
       { content, search_scope: "both", attach_legal_reference: withLegal },
       token,
       (event, data) => {
-        if (event === "queued" || event === "started") {
-          const label =
-            event === "queued"
-              ? "รอคิวตอบ…"
-              : "กำลังประมวลผล…";
-          setMessages((prev) => {
-            const last = prev.at(-1);
-            if (last?.role !== "assistant" || last.content) return prev;
-            return [...prev.slice(0, -1), { ...last, content: label }];
-          });
-          return;
-        }
-        if (event === "token") {
-          const piece = typeof data.text === "string" ? data.text : "";
-          setMessages((prev) => {
-            const last = prev.at(-1);
-            if (last?.role !== "assistant") return prev;
-            const base =
-              last.content === "รอคิวตอบ…" || last.content === "กำลังประมวลผล…"
-                ? ""
-                : last.content;
-            return [...prev.slice(0, -1), { ...last, content: base + piece }];
-          });
-        }
-        if (event === "done") {
-          const text = typeof data.content === "string" ? data.content : "";
-          setMessages((prev) => {
-            const last = prev.at(-1);
-            if (last?.role !== "assistant") return prev;
-            return [...prev.slice(0, -1), { ...last, content: text || last.content }];
-          });
-          if (Array.isArray(data.reply_options)) {
-            setReplyOptions(data.reply_options as string[]);
-          }
-          if (typeof data.all_fact_filled === "boolean") {
-            setAllFactFilled(data.all_fact_filled);
-          }
-          if (Array.isArray(data.coverage)) {
-            onCoverageRef.current?.(data.coverage as CoverageRow[]);
-          }
-          const prog = data.progress as
-            | { filled?: number; total?: number; percent?: number }
-            | undefined;
-          if (prog && typeof prog.filled === "number" && typeof prog.total === "number") {
-            setProgress({
-              filled: prog.filled,
-              total: prog.total,
-              percent: typeof prog.percent === "number" ? prog.percent : 0,
-            });
-          } else if (Array.isArray(data.coverage)) {
-            setProgress(factProgressFromCoverage(data.coverage as CoverageRow[]));
-          }
-          setBusy(false);
-        }
-        if (event === "error") {
-          setError(typeof data.message === "string" ? data.message : "แชทล้มเหลว");
-          setBusy(false);
-        }
+        applyIntakeStreamEvent(event, data, {
+          setMessages,
+          setReplyOptions,
+          setAllFactFilled,
+          setProgress,
+          setBusy,
+          setError,
+          onCoverage: onCoverageRef.current,
+        });
       },
       controller.signal
     );
@@ -291,12 +362,7 @@ export function DraftConversation({
     setDraft(text);
   }
 
-  const options =
-    replyOptions.length > 0
-      ? replyOptions
-      : mode === "intake" && allFactFilled
-        ? [DEFAULT_MOF_OPTION]
-        : [];
+  const options = conversationOptions(replyOptions, mode, allFactFilled);
 
   return (
     <div className="flex min-h-[48vh] flex-col overflow-hidden rounded-xl border bg-white" data-testid="draft-conversation">

@@ -28,6 +28,7 @@ import {
   isTorPartScores,
   type TorPartScoresView,
 } from "@/components/review/three-part-scores";
+import { BidderRiskPanel } from "@/components/review/bidder-risk-panel";
 import { cn } from "@/lib/utils";
 
 interface ReviewResult {
@@ -56,8 +57,18 @@ const LAW_REFS = [
 const STEP_LABELS = ["เลือกไฟล์", "สกัดข้อความ", "ผลการตรวจสอบ"] as const;
 const PREVIEW_MAX = 20000;
 
+function stripPageMarkers(text: string): string {
+  return text
+    .replaceAll("\f", "\n")
+    .replaceAll(/\[\[page\b[^\]]*\]\]/gi, "")
+    .replaceAll(/\[\[หน้า:[^\]]+\]\]/g, "")
+    .replaceAll(/<!--\s*page\b[^>]*-->/gi, "")
+    .replaceAll(/^---\s*(?:page|หน้า)\s+\d+\s*---\s*$/gim, "")
+    .replaceAll(/^\[PAGE\s+\d+\]\s*$/gim, "");
+}
+
 function previewSnippet(text: string): string {
-  const trimmed = text.trim();
+  const trimmed = stripPageMarkers(text).trim();
   if (trimmed.length <= PREVIEW_MAX) return trimmed;
   return `${trimmed.slice(0, PREVIEW_MAX)}\n…`;
 }
@@ -160,6 +171,9 @@ function ReviewResults({
         </p>
       ) : null}
       {result.part_scores ? <ThreePartScores analysis={result.part_scores} /> : null}
+      {result.part_scores?.bidder_risk ? (
+        <BidderRiskPanel report={result.part_scores.bidder_risk} />
+      ) : null}
       <ReviewFindingBuckets findings={findings} />
       {comparisons.map((row) => (
         <CheckItem
@@ -257,8 +271,9 @@ export default function StandaloneReviewPage() {
       setStep(2);
       setStatus("สกัดข้อความสำเร็จ — ตรวจตัวอย่างแล้วกดยืนยันเริ่มตรวจสอบ");
     } catch (err: unknown) {
-      setStatus("");
-      setError(apiErrorMessage(err, "สกัดข้อความไม่สำเร็จ"));
+      const message = apiErrorMessage(err, "สกัดข้อความไม่สำเร็จ");
+      setStatus(message);
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -281,7 +296,6 @@ export default function StandaloneReviewPage() {
           settled = true;
           gotResult = true;
           applyRestoredJob(data);
-          setBusy(false);
         })
         .catch(() => undefined);
     }, 2000);
@@ -310,8 +324,9 @@ export default function StandaloneReviewPage() {
       );
     } catch (err: unknown) {
       if (!gotResult) {
-        setStatus("");
-        setError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
+        const message = apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ");
+        setStatus(message);
+        setError(message);
       }
     } finally {
       settled = true;
@@ -343,7 +358,7 @@ export default function StandaloneReviewPage() {
         ) : null}
         {busy ? (
           <output className="mt-2 block text-sm text-navy" data-testid="review-busy">
-            {status || "กำลังทำงาน..."}
+            กำลังทำงาน
           </output>
         ) : null}
         {error ? (
@@ -351,7 +366,7 @@ export default function StandaloneReviewPage() {
             {error}
           </p>
         ) : null}
-        {!busy && status ? (
+        {status ? (
           <p
             className={`mt-2 text-sm ${
               (result?.quality_score ?? 0) >= 70 ? "text-brand-green" : "text-navy"

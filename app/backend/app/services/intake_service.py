@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -1433,8 +1433,17 @@ async def _llm_analyze_slot_map(
     return merged, extra
 
 
+class _AnalyzeProject(Protocol):
+    """Project row or the detached stand-in used while the LLM call is in flight."""
+
+    id: Any
+    project_type: str | None
+    current_step: int | None
+    current_phase: int | None
+
+
 async def analyze_pack(
-    project: Project,
+    project: _AnalyzeProject,
     pack_text: str,
     filenames: list[str],
     persist_heuristic: Callable[[dict[str, Any]], Awaitable[None]] | None = None,

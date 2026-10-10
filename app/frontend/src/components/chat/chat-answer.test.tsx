@@ -8,6 +8,7 @@ import {
   isNumericCell,
   looksLikeNoRetrieve,
   parseChatBlocks,
+  parseOnlineSourceItem,
   uniqueCitations,
 } from "@/components/chat/chat-answer";
 
@@ -54,6 +55,56 @@ describe("parseChatBlocks", () => {
       kind: "online",
       items: [{ title: "กรมบัญชีกลาง", url: "https://www.gprocurement.go.th", date: "2568" }],
     });
+  });
+});
+
+describe("parseChatBlocks edge cases", () => {
+  it("reads hash headings, bold text, and decorated online sources", () => {
+    const blocks = parseChatBlocks(
+      [
+        "# สรุปคำตอบ",
+        "วางหลักประกัน **ก่อนจ่ายงวด**",
+        "## หลักที่เกี่ยวข้อง",
+        "### ข้อควรระวัง",
+        "#### ไม่ใช่หัวข้อ",
+        "#ติดกัน",
+        "แหล่งออนไลน์: กรมบัญชีกลาง — https://www.gprocurement.go.th/rule",
+        "ดู [ไม่ครบ และ [กรม](https://www.cgd.go.th/reg)",
+        "ชื่อ — http://example.go.th/a https://www.cgd.go.th/b",
+        "— https://www.cgd.go.th/bare —",
+        "ftp://example.go.th/not-web",
+      ].join("\n")
+    );
+    expect(blocks.some((block) => block.kind === "heading" && block.text === "สรุปคำตอบ")).toBe(
+      true
+    );
+    expect(blocks.some((block) => block.kind === "heading" && block.text === "หลักที่เกี่ยวข้อง")).toBe(
+      true
+    );
+    expect(parseOnlineSourceItem("ftp://example.go.th/not-web")).toBeNull();
+    expect(parseOnlineSourceItem("[กรม](https://www.cgd.go.th/reg) — 2568")).toMatchObject({
+      title: "กรม",
+      url: "https://www.cgd.go.th/reg",
+      date: "2568",
+    });
+    expect(parseOnlineSourceItem("https://www.cgd.go.th/bare")).toMatchObject({
+      url: "https://www.cgd.go.th/bare",
+    });
+    render(
+      <ChatAnswerBody
+        text={[
+          "**สรุปคำตอบ**",
+          "วางหลักประกัน **ก่อนจ่ายงวด**",
+          "",
+          "แหล่งข้อมูล: ระเบียบพัสดุ (หน้า 12)",
+          "**แหล่งออนไลน์**",
+          "ไม่มีลิงก์ในย่อหน้านี้",
+        ].join("\n")}
+      />
+    );
+    expect(screen.getByText("ก่อนจ่ายงวด")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "สรุปคำตอบ" })).toBeInTheDocument();
+    expect(screen.getByText(/ระเบียบพัสดุ/)).toBeInTheDocument();
   });
 });
 
@@ -148,6 +199,13 @@ describe("citation chips", () => {
         { type: "mcp", label: "พรบ.pdf" },
       ])
     ).toEqual([{ type: "document", label: "พรบ.pdf" }]);
+    expect(
+      uniqueCitations([
+        { type: "mcp", label: "บทความ" },
+        { type: "article", label: "บทความ" },
+        { type: "custom", label: "" },
+      ])
+    ).toEqual([{ type: "article", label: "บทความ" }]);
     const many = Array.from({ length: 12 }, (_, index) => ({
       type: "document",
       label: `ไฟล์-${index}.pdf`,

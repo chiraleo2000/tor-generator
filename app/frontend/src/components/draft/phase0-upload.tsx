@@ -35,10 +35,12 @@ function Phase0ProgressPanel({
   status,
   uploadedNames,
   hasPaste,
+  statusText,
 }: Readonly<{
   status: "analyzing" | "done";
   uploadedNames: string[];
   hasPaste: boolean;
+  statusText: string | null;
 }>) {
   if (status === "done") {
     return (
@@ -65,7 +67,9 @@ function Phase0ProgressPanel({
       >
         <Loader2 className="mt-0.5 h-6 w-6 shrink-0 animate-spin text-navy" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-navy">กำลังอ่านเอกสารด้วยโมเดล...</p>
+          <p className="text-sm font-bold text-navy" data-testid="phase0-analyze-status">
+            {statusText?.trim() ? statusText : "กำลังอ่านเอกสารด้วยโมเดล..."}
+          </p>
           <p className="text-xs text-muted-foreground">
             ระบบดึงเนื้อหาทุกไฟล์แล้วจัดเข้าช่องทีละหมวด — อย่าปิดหน้านี้จนกว่าจะเข้าขั้นที่ ๑
           </p>
@@ -99,6 +103,7 @@ export function Phase0Upload({
         status={status}
         uploadedNames={uploadedNames}
         hasPaste={draftText.trim().length >= 20}
+        statusText={message}
       />
     );
   }

@@ -364,6 +364,70 @@ class TimelineDeliverablesConsistencyRule(BaseRule):
         return len(phases)
 
 
+_EXPERIENCE_KEYWORDS = ("ประสบการณ์", "ผลงาน", "เคยดำเนินการ", "ผ่านงาน")
+_STRONG_QUAL_KEYWORDS = ("ประสบการณ์", "ผลงาน", "ทุนจดทะเบียน", "ไม่น้อยกว่า", "ขึ้นทะเบียน")
+_DOMAIN_LABELS = {
+    "it": "เทคโนโลยีสารสนเทศ",
+    "construction": "งานก่อสร้าง",
+    "consulting": "งานที่ปรึกษา",
+}
+
+
+def _domain_qualification_finding(domain: str, qual_text: str) -> Finding | None:
+    domain_keywords = PROFESSIONAL_SCOPE_KEYWORDS.get(domain, [])
+    has_relevant = any(keyword.lower() in qual_text.lower() for keyword in domain_keywords)
+    has_experience = any(keyword in qual_text for keyword in _EXPERIENCE_KEYWORDS)
+    if has_relevant or has_experience:
+        return None
+    domain_label = _DOMAIN_LABELS.get(domain, domain)
+    return Finding(
+        severity=Severity.WARNING,
+        rule_violated="CONSISTENCY_QUALIFICATIONS_MISMATCH",
+        affected_section="s3",
+        message=(
+            f"ขอบเขตงานเกี่ยวข้องกับ{domain_label} "
+            f"แต่ไม่พบการกำหนดคุณสมบัติ"
+            f"ด้าน{domain_label}ของผู้เสนอราคา"
+        ),
+        recommended_correction=(
+            f"กรุณาเพิ่มคุณสมบัติด้าน{domain_label} "
+            f"ในหัวข้อคุณสมบัติของผู้เสนอราคา "
+            f"เช่น ประสบการณ์ ผลงานที่ผ่านมา"
+        ),
+    )
+
+
+def _budget_amount(budget: object) -> int:
+    try:
+        return int(budget)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _budget_qualification_finding(budget: object, qual_text: str) -> Finding | None:
+    if budget is None or _budget_amount(budget) < HIGH_BUDGET_THRESHOLD:
+        return None
+    if any(keyword in qual_text for keyword in _STRONG_QUAL_KEYWORDS):
+        return None
+    budget_val = _budget_amount(budget)
+    return Finding(
+        severity=Severity.WARNING,
+        rule_violated="CONSISTENCY_QUALIFICATIONS_WEAK_FOR_BUDGET",
+        affected_section="s3",
+        message=(
+            f"โครงการมีงบประมาณสูง ({budget_val:,.0f} บาท) "
+            f"แต่ไม่พบการกำหนดคุณสมบัติที่เข้มงวด "
+            f"เช่น ประสบการณ์ ผลงานที่ผ่านมา ทุนจดทะเบียน"
+        ),
+        recommended_correction=(
+            "กรุณาเพิ่มเงื่อนไขคุณสมบัติที่เข้มงวดขึ้น "
+            "สำหรับโครงการที่มีงบประมาณสูง เช่น "
+            "ผลงานในวงเงินไม่น้อยกว่า... "
+            "ประสบการณ์ไม่น้อยกว่า... ปี"
+        ),
+    )
+
+
 class QualificationsComplexityConsistencyRule(BaseRule):
     """Validate that vendor qualifications match scope complexity.
 
@@ -403,88 +467,13 @@ class QualificationsComplexityConsistencyRule(BaseRule):
         scope_domains = self._detect_domains(scope_text)
 
         # Check if qualifications mention relevant domain expertise
-        if scope_domains and qual_text:
-            for domain in scope_domains:
-                domain_keywords = PROFESSIONAL_SCOPE_KEYWORDS.get(domain, [])
-                has_relevant_qualification = any(
-                    kw.lower() in qual_text.lower() for kw in domain_keywords
-                )
-
-                # Also check for generic experience keywords
-                experience_keywords = [
-                    "ประสบการณ์",
-                    "ผลงาน",
-                    "เคยดำเนินการ",
-                    "ผ่านงาน",
-                ]
-                has_experience_mention = any(
-                    kw in qual_text for kw in experience_keywords
-                )
-
-                if not has_relevant_qualification and not has_experience_mention:
-                    domain_label = {
-                        "it": "เทคโนโลยีสารสนเทศ",
-                        "construction": "งานก่อสร้าง",
-                        "consulting": "งานที่ปรึกษา",
-                    }.get(domain, domain)
-
-                    findings.append(
-                        Finding(
-                            severity=Severity.WARNING,
-                            rule_violated="CONSISTENCY_QUALIFICATIONS_MISMATCH",
-                            affected_section="s3",
-                            message=(
-                                f"ขอบเขตงานเกี่ยวข้องกับ{domain_label} "
-                                f"แต่ไม่พบการกำหนดคุณสมบัติ"
-                                f"ด้าน{domain_label}ของผู้เสนอราคา"
-                            ),
-                            recommended_correction=(
-                                f"กรุณาเพิ่มคุณสมบัติด้าน{domain_label} "
-                                f"ในหัวข้อคุณสมบัติของผู้เสนอราคา "
-                                f"เช่น ประสบการณ์ ผลงานที่ผ่านมา"
-                            ),
-                        )
-                    )
-
-        # Check if high budget requires stronger qualifications
-        if budget is not None:
-            try:
-                budget_val = int(budget)
-            except (TypeError, ValueError):
-                budget_val = 0
-
-            if budget_val >= HIGH_BUDGET_THRESHOLD:
-                # High-budget projects should mention experience/track record
-                strong_qual_keywords = [
-                    "ประสบการณ์",
-                    "ผลงาน",
-                    "ทุนจดทะเบียน",
-                    "ไม่น้อยกว่า",
-                    "ขึ้นทะเบียน",
-                ]
-                has_strong_qualifications = any(
-                    kw in qual_text for kw in strong_qual_keywords
-                )
-                if not has_strong_qualifications:
-                    findings.append(
-                        Finding(
-                            severity=Severity.WARNING,
-                            rule_violated="CONSISTENCY_QUALIFICATIONS_WEAK_FOR_BUDGET",
-                            affected_section="s3",
-                            message=(
-                                f"โครงการมีงบประมาณสูง ({budget_val:,.0f} บาท) "
-                                f"แต่ไม่พบการกำหนดคุณสมบัติที่เข้มงวด "
-                                f"เช่น ประสบการณ์ ผลงานที่ผ่านมา ทุนจดทะเบียน"
-                            ),
-                            recommended_correction=(
-                                "กรุณาเพิ่มเงื่อนไขคุณสมบัติที่เข้มงวดขึ้น "
-                                "สำหรับโครงการที่มีงบประมาณสูง เช่น "
-                                "ผลงานในวงเงินไม่น้อยกว่า... "
-                                "ประสบการณ์ไม่น้อยกว่า... ปี"
-                            ),
-                        )
-                    )
-
+        for domain in scope_domains:
+            mismatch = _domain_qualification_finding(domain, qual_text)
+            if mismatch is not None:
+                findings.append(mismatch)
+        budget_finding = _budget_qualification_finding(budget, qual_text)
+        if budget_finding is not None:
+            findings.append(budget_finding)
         return findings
 
     def _get_text(self, content: str | dict | None) -> str:

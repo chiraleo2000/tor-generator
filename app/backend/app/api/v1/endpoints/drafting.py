@@ -60,6 +60,60 @@ def _as_slot_map(analysis: object) -> dict:
     return raw if isinstance(raw, dict) else {}
 
 
+def _apply_revision_instruction(user_input: dict) -> None:
+    feedback = str(
+        user_input.get("user_feedback") or user_input.get("human_feedback") or ""
+    ).strip()
+    if feedback:
+        user_input["user_feedback"] = feedback
+        user_input["human_feedback"] = feedback
+        user_input["redraft"] = True
+        prior_rev = str(user_input.get("revision_instruction") or "").strip()
+        guided = (
+            "แก้ไขเฉพาะหมวด/หัวข้อนี้เท่านั้นตามความคิดเห็นผู้ใช้ "
+            "ส่งร่างใหม่ทั้งก้อนของหมวดนี้ ห้ามแก้หมวดอื่น "
+            f"ความคิดเห็น: {feedback}"
+        )
+        user_input["revision_instruction"] = (
+            f"{guided}\n{prior_rev}".strip() if prior_rev else guided
+        )
+        return
+    if not user_input.get("redraft"):
+        return
+    force = (
+        "ต้องเขียนร่างใหม่ให้ต่างจากร่างเดิมอย่างมีสาระ "
+        "ห้ามคืนข้อความเดิมทั้งก้อนหรือแก้เพียงเล็กน้อย "
+        "คงสาระที่ผู้ใช้แก้แล้วไว้ และเติมส่วนที่ยังว่างจากเอกสารขั้นที่ ๐"
+    )
+    prior = str(user_input.get("revision_instruction") or "").strip()
+    user_input["revision_instruction"] = f"{force}\n{prior}".strip() if prior else force
+
+
+def _copy_intake_fields(user_input: dict, slot_map: dict, section_key: str) -> None:
+    intake_pack = slot_map.get("_project_intake")
+    if isinstance(intake_pack, dict) and intake_pack.get("content"):
+        user_input["_project_intake"] = str(intake_pack.get("content") or "")
+    elif isinstance(intake_pack, str) and intake_pack.strip():
+        user_input["_project_intake"] = intake_pack
+    target_slot = slot_map.get(section_key) or {}
+    if isinstance(target_slot, dict) and target_slot.get("content"):
+        user_input["intake_slot_content"] = target_slot.get("content")
+        user_input["intake_slot_status"] = target_slot.get("status")
+        user_input["intake_slot_sources"] = target_slot.get("sources")
+
+
+def _copy_scope_subslots(user_input: dict, slot_map: dict, project: Project) -> None:
+    from app.domain.section_profile import profile_for_project
+
+    keys = profile_for_project(project.project_type).scope_storage_keys()
+    user_input["scope_subslots"] = {
+        key: slot_map.get(key) for key in keys if slot_map.get(key)
+    }
+    user_input["scope_subslots"].update(
+        {key: slot_map.get(key) for key in slot_map if str(key).startswith("s4.")}
+    )
+
+
 def _user_input_for_draft(
     project: Project,
     all_sections: list[TORSection],
@@ -80,56 +134,12 @@ def _user_input_for_draft(
     }
     if body.additional_context:
         user_input.update(body.additional_context)
-    feedback = str(
-        user_input.get("user_feedback") or user_input.get("human_feedback") or ""
-    ).strip()
-    if feedback:
-        user_input["user_feedback"] = feedback
-        user_input["human_feedback"] = feedback
-        user_input["redraft"] = True
-        prior_rev = str(user_input.get("revision_instruction") or "").strip()
-        guided = (
-            "แก้ไขเฉพาะหมวด/หัวข้อนี้เท่านั้นตามความคิดเห็นผู้ใช้ "
-            "ส่งร่างใหม่ทั้งก้อนของหมวดนี้ ห้ามแก้หมวดอื่น "
-            f"ความคิดเห็น: {feedback}"
-        )
-        user_input["revision_instruction"] = (
-            f"{guided}\n{prior_rev}".strip() if prior_rev else guided
-        )
-    elif user_input.get("redraft"):
-        force = (
-            "ต้องเขียนร่างใหม่ให้ต่างจากร่างเดิมอย่างมีสาระ "
-            "ห้ามคืนข้อความเดิมทั้งก้อนหรือแก้เพียงเล็กน้อย "
-            "คงสาระที่ผู้ใช้แก้แล้วไว้ และเติมส่วนที่ยังว่างจากเอกสารขั้นที่ ๐"
-        )
-        prior = str(user_input.get("revision_instruction") or "").strip()
-        user_input["revision_instruction"] = f"{force}\n{prior}".strip() if prior else force
+    _apply_revision_instruction(user_input)
     user_input["analysis_json"] = analysis
     user_input["slot_map"] = slot_map
-    intake_pack = slot_map.get("_project_intake")
-    if isinstance(intake_pack, dict) and intake_pack.get("content"):
-        user_input["_project_intake"] = str(intake_pack.get("content") or "")
-    elif isinstance(intake_pack, str) and intake_pack.strip():
-        user_input["_project_intake"] = intake_pack
-    target_slot = slot_map.get(body.section_key) or {}
-    if isinstance(target_slot, dict) and target_slot.get("content"):
-        user_input["intake_slot_content"] = target_slot.get("content")
-        user_input["intake_slot_status"] = target_slot.get("status")
-        user_input["intake_slot_sources"] = target_slot.get("sources")
+    _copy_intake_fields(user_input, slot_map, body.section_key)
     if body.section_key == "s4":
-        from app.domain.section_profile import profile_for_project
-
-        keys = profile_for_project(project.project_type).scope_storage_keys()
-        user_input["scope_subslots"] = {
-            key: slot_map.get(key) for key in keys if slot_map.get(key)
-        }
-        user_input["scope_subslots"].update(
-            {
-                key: slot_map.get(key)
-                for key in slot_map
-                if str(key).startswith("s4.")
-            }
-        )
+        _copy_scope_subslots(user_input, slot_map, project)
     return user_input
 
 
@@ -450,83 +460,94 @@ def _inject_focus_draft_into_slots(
     return out
 
 
-async def _draft_focused_scope_subsection(
+def _discard_wrong_owner_draft(
+    focus_key: str,
+    focus_sub: str,
+    label: str,
+    prior: str,
+    focused_slots: dict,
+    user_feedback: str,
+) -> tuple[str, str]:
+    from app.services.thai_draft import is_scope_content_wrong_owner
+
+    if not prior or not is_scope_content_wrong_owner(focus_key, prior):
+        return prior, user_feedback
+    logger.warning(
+        "Discarding wrong-owner draft for %s (%s chars) before focused redraft",
+        focus_key,
+        len(prior),
+    )
+    focused_slots.pop(focus_sub, None)
+    ownership_fix = (
+        f"ร่างเดิมผิดหัวข้อสำหรับ «{label}» — ห้ามคัดลอก "
+        "ต้องเขียนใหม่เฉพาะสาระของหัวข้อนี้ "
+        "จัดลำดับเป็น 1. / 1.1 / 1.2 เท่านั้น"
+    )
+    combined = f"{user_feedback}\n{ownership_fix}".strip() if user_feedback else ownership_fix
+    return "", combined
+
+
+def _license_table_source(focus_key: str, focus_sub: str, prior: str, prior_for_llm: str, focused_slots: dict) -> str:
+    from app.services.thai_draft import is_scope_content_wrong_owner
+
+    source = prior_for_llm or prior
+    if source and not is_scope_content_wrong_owner(focus_key, source):
+        return source
+    from app.services.intake_service import slot_content
+
+    return (
+        slot_content(focused_slots, focus_sub).strip()
+        or slot_content(focused_slots, "licenses").strip()
+        or slot_content(focused_slots, "_project_intake").strip()[:8000]
+    )
+
+
+def _usable_license_table(normalized: str) -> bool:
+    return normalized.startswith("|") and "รายการ" in normalized and "\n| " in normalized
+
+
+async def _store_focused_subsection(
     db: AsyncSession,
-    request: Request,
     project_id: uuid.UUID,
+    project: Project,
+    focus_sub: str,
+    text: str,
+) -> None:
+    from app.services.thai_draft import scope_overview_from_subs
+
+    await _save_draft_section(db, project_id, "s4", focus_sub, text, 80.0, [])
+    existing = await _existing_s4_subs(db, project_id)
+    existing[focus_sub] = text
+    overview = scope_overview_from_subs(existing, project.project_type)
+    if overview.strip():
+        await _save_draft_section(db, project_id, "s4", None, overview, 80.0, [])
+
+
+def _focused_prior(body: DraftSectionRequest, focused_slots: dict, focus_sub: str) -> str:
+    prior = str((focused_slots.get(focus_sub) or {}).get("content") or "").strip()
+    if prior:
+        return prior
+    ctx = body.additional_context if isinstance(body.additional_context, dict) else {}
+    return str(ctx.get("current_draft") or "").strip()
+
+
+async def _focused_llm_text(
+    request: Request,
     user_id: uuid.UUID,
     project: Project,
-    body: DraftSectionRequest,
     focus_sub: str,
-    slot_map: dict,
-) -> tuple[str, float | None, list, bool]:
-    """Draft and persist exactly one scope subsection."""
-    from app.domain.section_profile import subsection_title
+    focus_key: str,
+    label: str,
+    focused_slots: dict,
+    prior_for_llm: str,
+    user_feedback: str,
+) -> str:
     from app.services.draft_chat_service import draft_scope_subsection
     from app.services.thai_draft import (
         is_scope_content_wrong_owner,
-        normalize_license_ict_table,
         polish_scope_subsection_draft,
-        scope_overview_from_subs,
         scope_subsection_fallback_draft,
     )
-
-    focus_key = focus_sub.removeprefix("scope.").strip()
-    label = subsection_title(focus_sub, project.project_type, focus_sub)
-    focused_slots = _inject_focus_draft_into_slots(slot_map, focus_sub, body)
-    user_feedback = _user_feedback_from_body(body)
-    prior = str((focused_slots.get(focus_sub) or {}).get("content") or "").strip()
-    if not prior:
-        ctx = body.additional_context if isinstance(body.additional_context, dict) else {}
-        prior = str(ctx.get("current_draft") or "").strip()
-
-    # Never feed a wrong-owner draft back to the model for ANY subsection.
-    prior_for_llm = prior
-    if prior and is_scope_content_wrong_owner(focus_key, prior):
-        logger.warning(
-            "Discarding wrong-owner draft for %s (%s chars) before focused redraft",
-            focus_key,
-            len(prior),
-        )
-        prior_for_llm = ""
-        focused_slots.pop(focus_sub, None)
-        ownership_fix = (
-            f"ร่างเดิมผิดหัวข้อสำหรับ «{label}» — ห้ามคัดลอก "
-            "ต้องเขียนใหม่เฉพาะสาระของหัวข้อนี้ "
-            "จัดลำดับเป็น 1. / 1.1 / 1.2 เท่านั้น"
-        )
-        user_feedback = (
-            f"{user_feedback}\n{ownership_fix}".strip()
-            if user_feedback
-            else ownership_fix
-        )
-
-    # Licenses without user feedback: deterministic table rebuild is enough.
-    if focus_key in {"licenses", "s4.5"} and not user_feedback:
-        source = prior_for_llm or prior
-        if not source or is_scope_content_wrong_owner(focus_key, source):
-            from app.services.intake_service import slot_content
-
-            source = (
-                slot_content(focused_slots, focus_sub).strip()
-                or slot_content(focused_slots, "licenses").strip()
-                or slot_content(focused_slots, "_project_intake").strip()[:8000]
-            )
-        normalized = normalize_license_ict_table(source)
-        if normalized.startswith("|") and "รายการ" in normalized and "\n| " in normalized:
-            text = polish_scope_subsection_draft(normalized, focus_sub)
-            if text:
-                await _save_draft_section(
-                    db, project_id, "s4", focus_sub, text, 80.0, []
-                )
-                existing = await _existing_s4_subs(db, project_id)
-                existing[focus_sub] = text
-                overview = scope_overview_from_subs(existing, project.project_type)
-                if overview.strip():
-                    await _save_draft_section(
-                        db, project_id, "s4", None, overview, 80.0, []
-                    )
-                return text, 80.0, [], False
 
     request_id = (request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())).strip()
     redis = getattr(request.app.state, "redis", None)
@@ -542,27 +563,63 @@ async def _draft_focused_scope_subsection(
         ):
             parts.append(token)
     text = polish_scope_subsection_draft("".join(parts).strip(), focus_sub)
-    if not text or is_scope_content_wrong_owner(focus_key, text):
-        logger.warning(
-            "Scope sub %s empty or wrong-owner after LLM; using fallback outline",
-            focus_key,
-        )
-        text = scope_subsection_fallback_draft(focus_key, label, user_feedback)
+    if text and not is_scope_content_wrong_owner(focus_key, text):
+        return text
+    logger.warning(
+        "Scope sub %s empty or wrong-owner after LLM; using fallback outline",
+        focus_key,
+    )
+    text = scope_subsection_fallback_draft(focus_key, label, user_feedback)
     if not text:
         raise ValidationError(
             message=f"การสร้างร่างหัวข้อย่อย «{label}» ได้ข้อความว่าง",
             field="draft",
         )
-    await _save_draft_section(
-        db, project_id, "s4", focus_sub, text, 80.0, []
+    return text
+
+
+async def _draft_focused_scope_subsection(
+    db: AsyncSession,
+    request: Request,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project: Project,
+    body: DraftSectionRequest,
+    focus_sub: str,
+    slot_map: dict,
+) -> tuple[str, float | None, list, bool]:
+    """Draft and persist exactly one scope subsection."""
+    from app.domain.section_profile import subsection_title
+    from app.services.thai_draft import normalize_license_ict_table, polish_scope_subsection_draft
+
+    focus_key = focus_sub.removeprefix("scope.").strip()
+    label = subsection_title(focus_sub, project.project_type, focus_sub)
+    focused_slots = _inject_focus_draft_into_slots(slot_map, focus_sub, body)
+    user_feedback = _user_feedback_from_body(body)
+    prior = _focused_prior(body, focused_slots, focus_sub)
+    prior_for_llm, user_feedback = _discard_wrong_owner_draft(
+        focus_key, focus_sub, label, prior, focused_slots, user_feedback
     )
-    existing = await _existing_s4_subs(db, project_id)
-    existing[focus_sub] = text
-    overview = scope_overview_from_subs(existing, project.project_type)
-    if overview.strip():
-        await _save_draft_section(
-            db, project_id, "s4", None, overview, 80.0, []
-        )
+    if focus_key in {"licenses", "s4.5"} and not user_feedback:
+        source = _license_table_source(focus_key, focus_sub, prior, prior_for_llm, focused_slots)
+        normalized = normalize_license_ict_table(source)
+        if _usable_license_table(normalized):
+            text = polish_scope_subsection_draft(normalized, focus_sub)
+            if text:
+                await _store_focused_subsection(db, project_id, project, focus_sub, text)
+                return text, 80.0, [], False
+    text = await _focused_llm_text(
+        request,
+        user_id,
+        project,
+        focus_sub,
+        focus_key,
+        label,
+        focused_slots,
+        prior_for_llm,
+        user_feedback,
+    )
+    await _store_focused_subsection(db, project_id, project, focus_sub, text)
     return text, 80.0, [], False
 
 

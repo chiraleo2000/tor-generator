@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pythainlp.tokenize import word_tokenize
 
@@ -180,6 +180,219 @@ def find_page_breaks(text: str) -> list[int]:
     return breaks
 
 
+_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
+_TABLE_SEPARATOR_CELL = re.compile(r":?-{3,}:?")
+
+
+def _is_table_row(line: str) -> bool:
+    return _TABLE_ROW.match(line) is not None and line.count("|") >= 2
+
+
+def _is_table_separator(line: str) -> bool:
+    if "|" not in line:
+        return False
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return bool(cells) and all(_TABLE_SEPARATOR_CELL.fullmatch(cell) for cell in cells)
+
+
+def _has_markdown_table(text: str) -> bool:
+    lines = text.splitlines()
+    for index, line in enumerate(lines[:-1]):
+        if _is_table_row(line) and _is_table_separator(lines[index + 1]):
+            return True
+    return False
+
+
+def _line_spans(text: str) -> list[tuple[int, int, str]]:
+    spans: list[tuple[int, int, str]] = []
+    start = 0
+    for line in text.splitlines(keepends=True):
+        end = start + len(line)
+        spans.append((start, end, line.rstrip("\r\n")))
+        start = end
+    return spans
+
+
+def _table_token_count(header: str, separator: str, rows: list[str]) -> int:
+    body = "\n".join([header, separator, *rows])
+    return len(tokenize_thai(body))
+
+
+def _split_oversized_row(header: str, separator: str, row: str, max_tokens: int) -> list[str]:
+    """Keep the header on every piece and stay within the token cap."""
+    prefix = f"{header}\n{separator}\n"
+    if len(tokenize_thai(prefix)) >= max_tokens:
+        tokens = tokenize_thai(header)
+        return [
+            "".join(tokens[index : index + max_tokens])
+            for index in range(0, len(tokens), max_tokens)
+        ]
+    pieces: list[str] = []
+    remaining = row
+    while remaining:
+        lo, hi = 1, len(remaining)
+        best = 1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if len(tokenize_thai(prefix + remaining[:mid])) <= max_tokens:
+                best = mid
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        pieces.append(prefix + remaining[:best])
+        remaining = remaining[best:]
+    return pieces
+
+
+def _pack_table_chunks(
+    header: str,
+    separator: str,
+    data_rows: list[str],
+    max_tokens: int,
+) -> list[str]:
+    chunks: list[str] = []
+    bucket: list[str] = []
+
+    def emit(rows: list[str]) -> None:
+        chunks.append("\n".join([header, separator, *rows]))
+
+    for row in data_rows:
+        if _table_token_count(header, separator, [row]) > max_tokens:
+            if bucket:
+                emit(bucket)
+                bucket = []
+            chunks.extend(_split_oversized_row(header, separator, row, max_tokens))
+            continue
+        if not bucket or _table_token_count(header, separator, bucket + [row]) <= max_tokens:
+            bucket.append(row)
+            continue
+        emit(bucket)
+        bucket = [row]
+    if bucket:
+        emit(bucket)
+    elif not data_rows:
+        chunks.append("\n".join([header, separator]))
+    return chunks
+
+
+def _markdown_table_blocks(text: str) -> list[tuple[int, int, list[str]]]:
+    """Return (start, end, lines) for each markdown table in document order."""
+    spans = _line_spans(text)
+    blocks: list[tuple[int, int, list[str]]] = []
+    index = 0
+    while index < len(spans) - 1:
+        start, _, line = spans[index]
+        _, _, nxt = spans[index + 1]
+        if not (_is_table_row(line) and _is_table_separator(nxt)):
+            index += 1
+            continue
+        cursor = index + 2
+        while cursor < len(spans) and _is_table_row(spans[cursor][2]):
+            cursor += 1
+        end = spans[cursor - 1][1]
+        blocks.append((start, end, [spans[row][2] for row in range(index, cursor)]))
+        index = cursor
+    return blocks
+
+
+def _section_label_at(text_offset: int, sections: list[tuple[int, str]]) -> str | None:
+    label = None
+    for offset, name in sections:
+        if offset <= text_offset:
+            label = name
+        else:
+            break
+    return label
+
+
+def _chunks_from_table_lines(
+    lines: list[str],
+    *,
+    document_id: str,
+    max_chunk_size: int,
+    text_offset: int,
+    sections: list[tuple[int, str]],
+    page_breaks: list[int],
+) -> list[TextChunk]:
+    header, separator = lines[0], lines[1]
+    packed = _pack_table_chunks(header, separator, lines[2:], max_chunk_size)
+    label = _section_label_at(text_offset, sections)
+    page_number = _estimate_page_at_offset(text_offset, page_breaks)
+    chunks: list[TextChunk] = []
+    for body in packed:
+        tokens = tokenize_thai(body)
+        chunks.append(
+            TextChunk(
+                text=body,
+                tokens=tokens,
+                metadata=ChunkMetadata(
+                    document_id=document_id,
+                    chunk_index=0,
+                    section_label=label,
+                    page_number=page_number,
+                ),
+            )
+        )
+    return chunks
+
+
+def _chunk_text_with_tables(
+    text: str,
+    document_id: str,
+    min_chunk_size: int,
+    max_chunk_size: int,
+    overlap_size: int,
+    page_breaks: list[int],
+) -> ChunkingResult:
+    sections = detect_sections(text)
+    blocks = _markdown_table_blocks(text)
+    chunks: list[TextChunk] = []
+    cursor = 0
+    for start, end, lines in blocks:
+        prose = text[cursor:start]
+        if prose.strip():
+            prose_breaks = [offset - cursor for offset in page_breaks if offset >= cursor]
+            prose_result = _chunk_prose_text(
+                prose,
+                document_id,
+                min_chunk_size=min_chunk_size,
+                max_chunk_size=max_chunk_size,
+                overlap_size=overlap_size,
+                page_breaks=prose_breaks,
+            )
+            chunks.extend(prose_result.chunks)
+        chunks.extend(
+            _chunks_from_table_lines(
+                lines,
+                document_id=document_id,
+                max_chunk_size=max_chunk_size,
+                text_offset=start,
+                sections=sections,
+                page_breaks=page_breaks,
+            )
+        )
+        cursor = end
+    tail = text[cursor:]
+    if tail.strip():
+        tail_breaks = [offset - cursor for offset in page_breaks if offset >= cursor]
+        tail_result = _chunk_prose_text(
+            tail,
+            document_id,
+            min_chunk_size=min_chunk_size,
+            max_chunk_size=max_chunk_size,
+            overlap_size=overlap_size,
+            page_breaks=tail_breaks,
+        )
+        chunks.extend(tail_result.chunks)
+    for index, chunk in enumerate(chunks):
+        chunk.metadata.chunk_index = index
+    return ChunkingResult(
+        chunks=chunks,
+        total_tokens=len(tokenize_thai(text)),
+        document_id=document_id,
+    )
+
+
 def chunk_text(
     text: str,
     document_id: str,
@@ -189,6 +402,39 @@ def chunk_text(
     page_breaks: list[int] | None = None,
 ) -> ChunkingResult:
     """Chunk text into segments preserving Thai word boundaries and section structure.
+
+    Markdown tables are split on row boundaries. Each table chunk repeats the
+    header row and stays within ``max_chunk_size`` tokens.
+    """
+    if text and _has_markdown_table(text):
+        breaks = find_page_breaks(text) if page_breaks is None else page_breaks
+        return _chunk_text_with_tables(
+            text,
+            document_id,
+            min_chunk_size=min_chunk_size,
+            max_chunk_size=max_chunk_size,
+            overlap_size=overlap_size,
+            page_breaks=breaks,
+        )
+    return _chunk_prose_text(
+        text,
+        document_id,
+        min_chunk_size=min_chunk_size,
+        max_chunk_size=max_chunk_size,
+        overlap_size=overlap_size,
+        page_breaks=page_breaks,
+    )
+
+
+def _chunk_prose_text(
+    text: str,
+    document_id: str,
+    min_chunk_size: int = DEFAULT_MIN_CHUNK_SIZE,
+    max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
+    overlap_size: int = DEFAULT_OVERLAP_SIZE,
+    page_breaks: list[int] | None = None,
+) -> ChunkingResult:
+    """Chunk prose, preserving Thai word boundaries and section structure.
 
     The algorithm:
     1. Tokenize the full text using PyThaiNLP's newmm engine.

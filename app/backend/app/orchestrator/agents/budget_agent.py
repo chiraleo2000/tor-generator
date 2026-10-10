@@ -13,7 +13,24 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.orchestrator.agents.base import formal_register, BaseDraftingAgent
+from app.domain.consultant_budget import suggest_budget
+from app.orchestrator.agents.base import BaseDraftingAgent, formal_register
+
+_LOCK_RULE = (
+    "\n=== ตารางที่คำนวณแล้ว ห้ามเปลี่ยนตัวเลข ===\n"
+    "ถ้ามีตารางงบที่คำนวณจากอัตราแล้ว ให้คัดลอกตัวเลขทุกช่องตามตาราง "
+    "ห้ามเปลี่ยนตัวเลข ห้ามปัดใหม่ และห้ามแทนที่ด้วยอัตราข้าราชการ "
+    "บุคลากรในหน่วยงานของรัฐ สถาบันของรัฐ หรือราคาที่ไม่มีในตาราง\n"
+    "ใบประมาณการมีห้าหมวดคือ ทรัพยากรบุคคล อุปกรณ์ การจัดซื้อจัดจ้าง "
+    "การจ้างที่ปรึกษา และค่าอบรม "
+    "ค่าอบรมแยกอาหาร อาหารว่าง เอกสาร และสถานที่\n"
+    "ทีมที่ปรึกษาสลับวุฒิปริญญาโทแล้วปริญญาเอก ใช้อัตราภาคเอกชน "
+    "หากไม่ได้กำหนดอายุงานให้ใช้ 2 ปี และเลือกแถวราคาต่ำสุดที่เข้าเงื่อนไข "
+    "สถานที่อบรมค่าเริ่มต้นเป็นโรงแรมหรือสถานที่เอกชน "
+    "ครึ่งวันคิดอาหาร 1 มื้อและอาหารว่าง 1 มื้อ "
+    "เต็มวันคิดอาหาร 2 มื้อและอาหารว่าง 2 มื้อ "
+    "เอกสารคิดทุกครั้งตามจำนวนผู้เข้าอบรม\n"
+)
 
 
 class BudgetDraftingAgent(BaseDraftingAgent):
@@ -57,6 +74,7 @@ class BudgetDraftingAgent(BaseDraftingAgent):
             "| ลำดับ | รายการ | จำนวน | หน่วยละ (บาท) | รวม (บาท) |\n"
             "| ๑ | ... | ... | ... | ... |\n"
             "| รวมทั้งสิ้น | | | | [X] |\n"
+            + _LOCK_RULE
         )
 
     def build_user_message(
@@ -77,6 +95,13 @@ class BudgetDraftingAgent(BaseDraftingAgent):
                 **user_input,
                 "_budget_formatted": f"{int(budget):,} บาท",
             }
+        locked = _locked_budget_table(user_input)
+        if locked:
+            user_input = {
+                **user_input,
+                "_locked_budget_table": locked,
+                "_locked_budget_rule": "ห้ามเปลี่ยนตัวเลขในตารางนี้",
+            }
 
         return super().build_user_message(
             user_input=user_input,
@@ -85,3 +110,76 @@ class BudgetDraftingAgent(BaseDraftingAgent):
             validation_findings=validation_findings,
             human_feedback=human_feedback,
         )
+
+
+def _has_calculation_input(user_input: dict[str, Any]) -> bool:
+    if user_input.get("apply_calculated"):
+        return True
+    for key in ("team_size", "training_days", "attendees", "consultants"):
+        value = user_input.get(key)
+        if value:
+            return True
+    return False
+
+
+def _calculation_from_input(user_input: dict[str, Any]) -> dict[str, Any]:
+    supplied = user_input.get("calculated_budget")
+    if isinstance(supplied, dict) and supplied:
+        return supplied
+    if not _has_calculation_input(user_input):
+        return {}
+    consultants = user_input.get("consultants")
+    return suggest_budget(
+        team_size=int(user_input.get("team_size") or 0),
+        months=float(user_input.get("months") or 1),
+        years=user_input.get("years"),
+        training_days=float(user_input.get("training_days") or 0),
+        day_part=str(user_input.get("day_part") or "full"),
+        attendees=int(user_input.get("attendees") or 0),
+        consultants=consultants if isinstance(consultants, list) else None,
+    )
+
+
+_LOCKED_BUDGET_ROWS = (
+    ("ทรัพยากรบุคคล", "personnel"),
+    ("อุปกรณ์", "equipment"),
+    ("การจัดซื้อจัดจ้าง", "procurement"),
+    ("การจ้างที่ปรึกษา", "consultant"),
+    ("ค่าอาหาร", "food"),
+    ("ค่าอาหารว่าง", "snack"),
+    ("ค่าเอกสาร", "documents"),
+    ("ค่าสถานที่", "venue"),
+    ("ค่าอบรม", "training"),
+    ("รวม", "total"),
+)
+
+
+def _table_amount(value: Any) -> int:
+    return int(value or 0)
+
+
+def _consultant_budget_line(person: dict[str, Any]) -> str:
+    degree = person.get("degree_label") or person.get("degree")
+    rate = _table_amount(person.get("monthly_rate"))
+    amount = _table_amount(person.get("amount"))
+    return (
+        f"ที่ปรึกษาคนที่ {person.get('index')} {degree} อายุงาน {person.get('years')} ปี "
+        f"อัตราเดือนละ {rate:,} บาท รวม {amount:,} บาท"
+    )
+
+
+def _locked_budget_table(user_input: dict[str, Any]) -> str:
+    calculated = _calculation_from_input(user_input)
+    if not calculated:
+        return ""
+    lines = [
+        "ห้ามเปลี่ยนตัวเลขในตารางนี้",
+        "| หมวด | จำนวนเงิน (บาท) |",
+        "| --- | --- |",
+    ]
+    for label, key in _LOCKED_BUDGET_ROWS:
+        lines.append(f"| {label} | {_table_amount(calculated.get(key)):,} |")
+    consultants = calculated.get("consultants")
+    if isinstance(consultants, list):
+        lines.extend(_consultant_budget_line(person) for person in consultants)
+    return "\n".join(lines)

@@ -147,6 +147,136 @@ async def _build_snapshot_data(
 # =============================================================================
 
 
+def _apply_step1_project(project: Project, payload: dict) -> None:
+    if payload.get("project_name"):
+        project.name = str(payload["project_name"])
+    if payload.get("ministry"):
+        project.ministry = str(payload["ministry"])
+    if payload.get("budget"):
+        try:
+            project.budget = int(payload["budget"])
+        except (TypeError, ValueError):
+            pass
+    if payload.get("project_type"):
+        project.project_type = str(payload["project_type"])
+    if payload.get("template_id"):
+        try:
+            project.template_id = uuid.UUID(str(payload["template_id"]))
+        except (TypeError, ValueError):
+            pass
+
+
+def _wizard_persist_keys(step: int, payload: dict) -> list[str]:
+    section_keys = STEP_SECTION_MAP.get(step, [])
+    return [
+        key
+        for key in payload
+        if key in section_keys
+        or (key.startswith("s") and (key in TOR_SECTION_ORDER or key.startswith("s4.")))
+    ]
+
+
+def _coerce_section_text(value: object) -> str:
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, str):
+        return value
+    return str(value) if value else ""
+
+
+async def _upsert_parent_section(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    section_key: str,
+    content: str,
+) -> None:
+    stmt = select(TORSection).where(
+        TORSection.project_id == project_id,
+        TORSection.section_key == section_key,
+        TORSection.sub_key.is_(None),
+    )
+    existing_section = (await db.execute(stmt)).scalar_one_or_none()
+    if existing_section:
+        existing_section.content = content
+        existing_section.version += 1
+        return
+    db.add(
+        TORSection(
+            project_id=project_id,
+            section_key=section_key,
+            content=content,
+            version=1,
+        )
+    )
+
+
+async def _persist_parent_sections(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    payload: dict,
+    persist_keys: list[str],
+) -> int:
+    updated = 0
+    for section_key in persist_keys:
+        if "." in section_key:
+            continue
+        content = _coerce_section_text(payload.get(section_key, ""))
+        if not content:
+            continue
+        await _upsert_parent_section(db, project_id, section_key, content)
+        updated += 1
+    return updated
+
+
+async def _upsert_subsection(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    parent_key: str,
+    sub_key: str,
+    content: str,
+) -> None:
+    stmt = select(TORSection).where(
+        TORSection.project_id == project_id,
+        TORSection.section_key == parent_key,
+        TORSection.sub_key == sub_key,
+    )
+    existing_sub = (await db.execute(stmt)).scalar_one_or_none()
+    if existing_sub:
+        existing_sub.content = content
+        existing_sub.version += 1
+        return
+    db.add(
+        TORSection(
+            project_id=project_id,
+            section_key=parent_key,
+            sub_key=sub_key,
+            content=content,
+            version=1,
+        )
+    )
+
+
+async def _persist_subsections(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    payload: dict,
+) -> int:
+    updated = 0
+    for key, value in payload.items():
+        if "." not in key:
+            continue
+        parts = key.split(".", 1)
+        parent_key = f"s{parts[0]}" if not parts[0].startswith("s") else parts[0]
+        sub_key = parts[1] if len(parts) > 1 else None
+        if not sub_key:
+            continue
+        await _upsert_subsection(
+            db, project_id, parent_key, sub_key, _coerce_section_text(value)
+        )
+        updated += 1
+    return updated
+
+
 @router.put(
     "/{project_id}/steps/{step}",
     response_model=SuccessResponse,
@@ -175,106 +305,11 @@ async def save_step_data(
     project = await _get_owned_project(project_id, current_user, db)
 
     payload = normalize_step_payload(step, body.data)
-
     if step == 1:
-        if payload.get("project_name"):
-            project.name = str(payload["project_name"])
-        if payload.get("ministry"):
-            project.ministry = str(payload["ministry"])
-        if payload.get("budget"):
-            try:
-                project.budget = int(payload["budget"])
-            except (TypeError, ValueError):
-                pass
-        if payload.get("project_type"):
-            project.project_type = str(payload["project_type"])
-        if payload.get("template_id"):
-            try:
-                project.template_id = uuid.UUID(str(payload["template_id"]))
-            except (TypeError, ValueError):
-                pass
-
-    section_keys = STEP_SECTION_MAP.get(step, [])
-    persist_keys = [
-        key for key in payload
-        if key in section_keys or key.startswith("s") and (
-            key in TOR_SECTION_ORDER or key.startswith("s4.")
-        )
-    ]
-
-    sections_updated = 0
-
-    for section_key in persist_keys:
-        if "." in section_key:
-            continue
-        stmt = select(TORSection).where(
-            TORSection.project_id == project_id,
-            TORSection.section_key == section_key,
-            TORSection.sub_key.is_(None),
-        )
-        result = await db.execute(stmt)
-        existing_section = result.scalar_one_or_none()
-
-        section_content = payload.get(section_key, "")
-        if isinstance(section_content, dict):
-            section_content = json.dumps(section_content, ensure_ascii=False)
-        elif not isinstance(section_content, str):
-            section_content = str(section_content) if section_content else ""
-
-        if not section_content:
-            continue
-
-        if existing_section:
-            existing_section.content = section_content
-            existing_section.version += 1
-            sections_updated += 1
-        else:
-            new_section = TORSection(
-                project_id=project_id,
-                section_key=section_key,
-                content=section_content,
-                version=1,
-            )
-            db.add(new_section)
-            sections_updated += 1
-
-    for key, value in payload.items():
-        if "." not in key:
-            continue
-        parts = key.split(".", 1)
-        parent_key = f"s{parts[0]}" if not parts[0].startswith("s") else parts[0]
-        sub_key = parts[1] if len(parts) > 1 else None
-
-        if not sub_key:
-            continue
-
-        stmt = select(TORSection).where(
-            TORSection.project_id == project_id,
-            TORSection.section_key == parent_key,
-            TORSection.sub_key == sub_key,
-        )
-        result = await db.execute(stmt)
-        existing_sub = result.scalar_one_or_none()
-
-        sub_content = value
-        if isinstance(sub_content, dict):
-            sub_content = json.dumps(sub_content, ensure_ascii=False)
-        elif not isinstance(sub_content, str):
-            sub_content = str(sub_content) if sub_content else ""
-
-        if existing_sub:
-            existing_sub.content = sub_content
-            existing_sub.version += 1
-        else:
-            new_sub = TORSection(
-                project_id=project_id,
-                section_key=parent_key,
-                sub_key=sub_key,
-                content=sub_content,
-                version=1,
-            )
-            db.add(new_sub)
-        sections_updated += 1
+        _apply_step1_project(project, payload)
+    persist_keys = _wizard_persist_keys(step, payload)
+    sections_updated = await _persist_parent_sections(db, project_id, payload, persist_keys)
+    sections_updated += await _persist_subsections(db, project_id, payload)
 
     # Update project's current_step (advance to the next step or stay at current)
     if step >= project.current_step:
@@ -418,6 +453,102 @@ async def get_step_data(
 # =============================================================================
 
 
+def _draft_target_section(step: int, body: DraftSectionRequest | None) -> str:
+    section_keys = STEP_SECTION_MAP.get(step, [])
+    if not section_keys:
+        raise ValidationError(
+            message="ขั้นตอนนี้ไม่มีส่วน TOR ที่สามารถร่างได้",
+            field="step",
+        )
+    target_section = body.target_section if body and body.target_section else section_keys[0]
+    if target_section not in section_keys:
+        raise ValidationError(
+            message=f"ส่วน '{target_section}' ไม่อยู่ในขั้นตอนที่ {step}",
+            field="target_section",
+        )
+    return target_section
+
+
+async def _wizard_draft_input(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    project: Project,
+    body: DraftSectionRequest | None,
+) -> tuple[dict, dict]:
+    result = await db.execute(select(TORSection).where(TORSection.project_id == project_id))
+    existing_sections = {section.section_key: section.content for section in result.scalars().all()}
+    user_input = {
+        "project_name": project.name,
+        "ministry": project.ministry,
+        "budget": project.budget,
+        "project_type": project.project_type,
+        "existing_sections": existing_sections,
+    }
+    if body and body.additional_context:
+        user_input.update(body.additional_context)
+    template_data: dict = {}
+    if project.template:
+        template_data = {
+            "section_structure": project.template.section_structure or {},
+            "placeholder_guidance": project.template.placeholder_guidance or {},
+        }
+    return user_input, template_data
+
+
+def _chosen_draft(final_state: dict) -> tuple[str, object, list, bool]:
+    draft_content = final_state.get("draft_content", "")
+    quality_score = final_state.get("quality_score")
+    validation_findings = final_state.get("validation_findings", [])
+    if final_state.get("best_draft_content") and not draft_content:
+        draft_content = final_state["best_draft_content"]
+        quality_score = final_state.get("best_draft_score")
+        validation_findings = final_state.get("best_draft_findings", [])
+    if not str(draft_content or "").strip():
+        raise ValidationError(
+            message=f"การสร้างร่างล้มเหลว: {final_state.get('error') or 'โมเดลส่งร่างว่าง'}",
+            field="draft",
+        )
+    return (
+        draft_content,
+        quality_score,
+        validation_findings,
+        final_state.get("rag_retrieval_failed", False),
+    )
+
+
+async def _persist_ai_draft(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    target_section: str,
+    draft_content: str,
+    quality_score: object,
+    validation_findings: list,
+) -> None:
+    stmt = select(TORSection).where(
+        TORSection.project_id == project_id,
+        TORSection.section_key == target_section,
+        TORSection.sub_key.is_(None),
+    )
+    section = (await db.execute(stmt)).scalar_one_or_none()
+    findings = {"findings": validation_findings} if validation_findings else None
+    if section:
+        section.ai_draft = draft_content
+        section.quality_score = quality_score
+        section.validation_findings = findings
+        return
+    db.add(
+        TORSection(
+            project_id=project_id,
+            section_key=target_section,
+            content="",
+            ai_draft=draft_content,
+            quality_score=quality_score,
+            validation_findings=findings,
+            version=1,
+        )
+    )
+
+
 @router.post(
     "/{project_id}/steps/{step}/draft",
     response_model=SuccessResponse,
@@ -450,126 +581,26 @@ async def trigger_draft(
 
     project = await _get_owned_project(project_id, current_user, db)
 
-    # Determine the target section
-    section_keys = STEP_SECTION_MAP.get(step, [])
-    if not section_keys:
-        raise ValidationError(
-            message="ขั้นตอนนี้ไม่มีส่วน TOR ที่สามารถร่างได้",
-            field="step",
-        )
+    target_section = _draft_target_section(step, body)
+    user_input, template_data = await _wizard_draft_input(db, project_id, project, body)
 
-    # Use the specified target_section or default to the first section for this step
-    target_section = (
-        body.target_section if body and body.target_section else section_keys[0]
-    )
-
-    # Validate target_section belongs to this step
-    if target_section not in section_keys:
-        raise ValidationError(
-            message=f"ส่วน '{target_section}' ไม่อยู่ในขั้นตอนที่ {step}",
-            field="target_section",
-        )
-
-    # Gather existing user input for this step (from TOR sections)
-    user_input: dict = {}
-
-    # Fetch existing section content as context
-    stmt = select(TORSection).where(TORSection.project_id == project_id)
-    result = await db.execute(stmt)
-    all_sections = result.scalars().all()
-
-    existing_sections: dict = {}
-    for s in all_sections:
-        existing_sections[s.section_key] = s.content
-
-    # Build user_input from project metadata and existing sections
-    user_input = {
-        "project_name": project.name,
-        "ministry": project.ministry,
-        "budget": project.budget,
-        "project_type": project.project_type,
-        "existing_sections": existing_sections,
-    }
-
-    # Merge additional context from the request body
-    if body and body.additional_context:
-        user_input.update(body.additional_context)
-
-    # Get template data if project has a template
-    template_data: dict = {}
-    if project.template:
-        template_data = {
-            "section_structure": project.template.section_structure or {},
-            "placeholder_guidance": project.template.placeholder_guidance or {},
-        }
-
-    # Invoke the orchestrator
     try:
         from app.orchestrator import compile_tor_drafting_graph
 
-        graph = compile_tor_drafting_graph()
-
-        initial_state = {
-            "project_id": str(project_id),
-            "user_input": user_input,
-            "template": template_data,
-            "target_section": target_section,
-            "max_retries": 3,
-            "agent_timeout_seconds": get_settings().drafting_agent_timeout_seconds(),
-        }
-
-        # Run the graph
-        final_state = await graph.ainvoke(initial_state)
-
-        # Extract results
-        draft_content = final_state.get("draft_content", "")
-        quality_score = final_state.get("quality_score")
-        validation_findings = final_state.get("validation_findings", [])
-        rag_failed = final_state.get("rag_retrieval_failed", False)
-        error = final_state.get("error")
-
-        # Use best draft if available and current draft failed
-        if final_state.get("best_draft_content") and not draft_content:
-            draft_content = final_state["best_draft_content"]
-            quality_score = final_state.get("best_draft_score")
-            validation_findings = final_state.get("best_draft_findings", [])
-
-        if not str(draft_content or "").strip():
-            raise ValidationError(
-                message=f"การสร้างร่างล้มเหลว: {error or 'โมเดลส่งร่างว่าง'}",
-                field="draft",
-            )
-
-        # Persist the AI draft to the TOR section
-        stmt = select(TORSection).where(
-            TORSection.project_id == project_id,
-            TORSection.section_key == target_section,
-            TORSection.sub_key.is_(None),
+        final_state = await compile_tor_drafting_graph().ainvoke(
+            {
+                "project_id": str(project_id),
+                "user_input": user_input,
+                "template": template_data,
+                "target_section": target_section,
+                "max_retries": 3,
+                "agent_timeout_seconds": get_settings().drafting_agent_timeout_seconds(),
+            }
         )
-        result = await db.execute(stmt)
-        section = result.scalar_one_or_none()
-
-        if section:
-            section.ai_draft = draft_content
-            section.quality_score = quality_score
-            section.validation_findings = (
-                {"findings": validation_findings} if validation_findings else None
-            )
-        else:
-            # Create section with the AI draft
-            new_section = TORSection(
-                project_id=project_id,
-                section_key=target_section,
-                content="",
-                ai_draft=draft_content,
-                quality_score=quality_score,
-                validation_findings=(
-                    {"findings": validation_findings} if validation_findings else None
-                ),
-                version=1,
-            )
-            db.add(new_section)
-
+        draft_content, quality_score, validation_findings, rag_failed = _chosen_draft(final_state)
+        await _persist_ai_draft(
+            db, project_id, target_section, draft_content, quality_score, validation_findings
+        )
         await db.flush()
 
         logger.info(

@@ -21,6 +21,10 @@ def test_group_for_filename_tags_handbook_and_user():
     assert group_for_filename(HANDBOOK_FILENAME) == GROUP_MANDATORY_HANDBOOK
     assert group_for_filename("พรบ. การจัดซื้อจัดจ้าง.pdf") == GROUP_MANDATORY_RAW
     assert group_for_filename("anything.pdf", owner_id="user-1") == GROUP_USER
+    assert (
+        group_for_filename("01012-610054-4f-670516-0000776143.pdf")
+        == "procurement_judgments"
+    )
 
 
 def test_list_mandatory_sources_groups_tmp_tree(tmp_path: Path, monkeypatch):
@@ -106,6 +110,26 @@ def test_raw_docs_dir_single_pdf_file(tmp_path: Path, monkeypatch):
     empty_root.mkdir()
     files = list_mandatory_sources(empty_root)
     assert any(item.path.name == "alone.pdf" for item in files)
+
+
+def test_judgment_folder_is_not_mixed_into_raw(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("RAW_DOCS_DIR", raising=False)
+    monkeypatch.delenv("KB_SOURCES_ROOT", raising=False)
+    judgments = tmp_path.joinpath("การจัดซื้อจัดจ้าง", "คำพิพากษา")
+    judgments.mkdir(parents=True)
+    (judgments / "01012-610054-4f-example.pdf").write_bytes(b"%PDF-1.4 judgment")
+    raw = tmp_path.joinpath("การจัดซื้อจัดจ้าง", "ข้อมูลดิบ")
+    raw.mkdir(parents=True)
+    (raw / "พรบ.pdf").write_bytes(b"%PDF-1.4 law")
+    misspelled = tmp_path / "คำพิพากาาการพัสดุ"
+    misspelled.mkdir()
+    (misspelled / "ignore-me.pdf").write_bytes(b"%PDF-1.4 misspelled")
+
+    files = list_mandatory_sources(tmp_path)
+    by_name = {item.path.name: item.group for item in files}
+    assert by_name["01012-610054-4f-example.pdf"] == "procurement_judgments"
+    assert by_name["พรบ.pdf"] == GROUP_MANDATORY_RAW
+    assert "ignore-me.pdf" not in by_name
 
 
 def test_group_counts_includes_unknown_group():

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { IntakeChatPanel } from "@/components/draft/intake-chat-panel";
@@ -387,6 +388,10 @@ describe("IntakeChatPanel", () => {
     await vi.advanceTimersByTimeAsync(35_000);
     vi.useRealTimers();
     expect(await screen.findByRole("alert")).toHaveTextContent("วิเคราะห์ยังไม่ครบ");
+    expect(screen.queryByTestId("phase0-analyzing")).not.toBeInTheDocument();
+    expect(screen.queryByText(/กำลังอ่านเอกสารด้วยโมเดล/)).not.toBeInTheDocument();
+    expect(onAnalyzed).toHaveBeenCalled();
+    expect(screen.getByTestId("intake-start-analyze")).toBeEnabled();
   });
 
   it("recovers from a failed analyze when coverage later maps", async () => {
@@ -432,5 +437,126 @@ describe("IntakeChatPanel", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     vi.useRealTimers();
     await waitFor(() => expect(onAnalyzed).toHaveBeenCalled());
+  });
+
+  function WizardStepHarness() {
+    const [phase, setPhase] = useState(0);
+    return (
+      <IntakeChatPanel
+        projectId="p1"
+        phase={phase}
+        onAnalyzed={() => setPhase(1)}
+        onEnterQa={vi.fn()}
+        onReady={vi.fn()}
+      />
+    );
+  }
+
+  const filledRow = {
+    key: "s1",
+    label: "ชื่อโครงการ",
+    status: "filled",
+    filled: true,
+    fact_required: true,
+  };
+
+  async function confirmAnalyze() {
+    const paste = await screen.findByTestId("intake-paste");
+    fireEvent.change(paste, {
+      target: { value: "โครงการทดสอบวงเงินหนึ่งแสนบาท ระยะเวลาหนึ่งปี" },
+    });
+    await waitFor(() => expect(screen.getByTestId("intake-start-analyze")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("intake-start-analyze"));
+    fireEvent.click(await screen.findByTestId("confirm-phase-ok"));
+  }
+
+  function analyzePostCount() {
+    return vi.mocked(apiClient.post).mock.calls.filter((call) =>
+      String(call[0]).includes("/intake/analyze")
+    ).length;
+  }
+
+  it("leaves analyzing and opens step 1 when analyze finishes", async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce(coveragePayload({ has_material: true }) as never)
+      .mockResolvedValue(
+        coveragePayload({
+          analyzed: true,
+          has_material: true,
+          coverage: [filledRow],
+        }) as never
+      );
+    render(<WizardStepHarness />);
+    await confirmAnalyze();
+    expect(await screen.findByTestId("phase1-coverage")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "ขั้นที่ ๑: ผลวิเคราะห์ความต้องการ" })).toBeInTheDocument();
+    expect(screen.queryByTestId("phase0-analyzing")).not.toBeInTheDocument();
+    expect(screen.queryByText("กำลังวิเคราะห์เอกสาร")).not.toBeInTheDocument();
+    expect(screen.queryByText(/กำลังอ่านเอกสารด้วยโมเดล/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("phase1-skip")).toBeEnabled();
+    expect(analyzePostCount()).toBe(1);
+  });
+
+  it("leaves analyzing and opens step 1 when analyze errors", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      coveragePayload({
+        has_material: true,
+        analyzed: false,
+        coverage: [filledRow],
+      }) as never
+    );
+    vi.mocked(apiClient.post).mockImplementation(async (url: string) => {
+      if (String(url).includes("/analyze")) {
+        throw { response: { data: { error: { message: "วิเคราะห์ไม่สำเร็จ" } } } };
+      }
+      return { data: { ok: true, data: {} } } as never;
+    });
+    render(<WizardStepHarness />);
+    await confirmAnalyze();
+    expect(await screen.findByTestId("phase1-coverage")).toBeInTheDocument();
+    expect(screen.queryByTestId("phase0-analyzing")).not.toBeInTheDocument();
+    expect(screen.queryByText(/กำลังอ่านเอกสารด้วยโมเดล/)).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("วิเคราะห์ไม่สำเร็จ");
+    expect(screen.getByTestId("phase1-skip")).toBeEnabled();
+    expect(analyzePostCount()).toBe(1);
+  });
+
+  it("updates status while the model is slow, then leaves analyzing when it fails", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      coveragePayload({
+        has_material: true,
+        analyzed: false,
+        coverage: [filledRow],
+      }) as never
+    );
+    let rejectAnalyze: (err: unknown) => void = () => undefined;
+    vi.mocked(apiClient.post).mockImplementation((url: string) => {
+      if (String(url).includes("/analyze")) {
+        return new Promise((_resolve, reject) => {
+          rejectAnalyze = reject;
+        });
+      }
+      return Promise.resolve({ data: { ok: true, data: {} } } as never);
+    });
+    render(<WizardStepHarness />);
+    await confirmAnalyze();
+    expect(await screen.findByTestId("phase0-analyze-status")).toHaveTextContent(
+      "กำลังอ่านเอกสารด้วยโมเดล"
+    );
+    expect(screen.getByRole("heading", { name: "กำลังวิเคราะห์เอกสาร" })).toBeInTheDocument();
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("phase0-analyze-status").textContent).toMatch(
+          /ผ่านมา \d+ วินาที/
+        ),
+      { timeout: 3_000 }
+    );
+    rejectAnalyze({ code: "ECONNABORTED", message: "timeout of 5400000ms exceeded" });
+    expect(await screen.findByTestId("phase1-coverage")).toBeInTheDocument();
+    expect(screen.queryByTestId("phase0-analyzing")).not.toBeInTheDocument();
+    expect(screen.queryByText(/กำลังอ่านเอกสารด้วยโมเดล/)).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("หมดเวลารอโมเดล");
+    expect(screen.getByTestId("phase1-skip")).toBeEnabled();
+    expect(analyzePostCount()).toBe(1);
   });
 });

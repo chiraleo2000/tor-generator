@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckItem } from "@/components/brand/check-item";
+import type { BidderRiskView } from "@/components/review/bidder-risk-panel";
 
 export type AnalyzerFindingView = {
   source_quote?: string;
@@ -26,6 +27,7 @@ export type TorPartScoresView = {
   summary: string;
   missing_sections?: Record<string, string>;
   halted?: boolean;
+  bidder_risk?: BidderRiskView | null;
 };
 
 const PART_ORDER: Array<keyof Pick<TorPartScoresView, "legal" | "lock_in" | "project">> = [

@@ -58,17 +58,26 @@ function ictUse(...candidates: string[]): string {
   return "";
 }
 
-/** Best-effort conversion of pasted Word/TSV ICT tables into pipe markdown. */
-export function coerceLicenseMarkdown(text: string): string {
-  if (!text?.trim()) return text;
-  if (text.includes("| ลำดับ |") && text.includes("| ---")) return text;
-  if (!(text.includes("ลำดับ") && text.includes("รายการ"))) return text;
+function licenseDataRow(cells: string[]): string[] | null {
+  const first = cells[0] || "";
+  if (!/^[0-9๐-๙]+$/.test(first) && first !== "รวม" && first !== "รวมทั้งสิ้น") return null;
+  const padded = [...cells, "", "", "", "", "", "", ""];
+  const use = cells.length >= 7 ? ictUse(padded[5], padded[6]) : ictUse(padded[5]);
+  return [
+    padded[0],
+    padded[1],
+    padded[2],
+    padded[3],
+    padded[4],
+    use,
+    cells.length >= 8 ? padded[7] : "",
+  ];
+}
 
-  const lines = text.replaceAll("\r\n", "\n").split("\n");
+function collectLicenseRows(lines: string[]): string[][] {
   const rows: string[][] = [];
   const seen = new Set<string>();
   let inTable = false;
-
   for (const line of lines) {
     const cells = splitLooseCells(line);
     if (!cells.length) continue;
@@ -78,29 +87,26 @@ export function coerceLicenseMarkdown(text: string): string {
     }
     if (inTable && isUseSubheader(cells)) continue;
     if (!inTable) continue;
-    const first = cells[0] || "";
-    if (!/^[0-9๐-๙]+$/.test(first) && first !== "รวม" && first !== "รวมทั้งสิ้น") {
+    const row = licenseDataRow(cells);
+    if (!row) {
       inTable = false;
       continue;
     }
-    const padded = [...cells, "", "", "", "", "", "", ""];
-    const use =
-      cells.length >= 7 ? ictUse(padded[5], padded[6]) : ictUse(padded[5]);
-    const row = [
-      padded[0],
-      padded[1],
-      padded[2],
-      padded[3],
-      padded[4],
-      use,
-      cells.length >= 8 ? padded[7] : "",
-    ];
     const key = row.join("|");
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push(row);
   }
+  return rows;
+}
 
+/** Best-effort conversion of pasted Word/TSV ICT tables into pipe markdown. */
+export function coerceLicenseMarkdown(text: string): string {
+  if (!text?.trim()) return text;
+  if (text.includes("| ลำดับ |") && text.includes("| ---")) return text;
+  if (!(text.includes("ลำดับ") && text.includes("รายการ"))) return text;
+
+  const rows = collectLicenseRows(text.replaceAll("\r\n", "\n").split("\n"));
   if (!rows.length) return text;
   const header = [
     "ลำดับ",

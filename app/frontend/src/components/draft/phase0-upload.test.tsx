@@ -63,7 +63,7 @@ describe("Phase0Upload", () => {
         busy
         canStart
         uploadedNames={["pB0.pdf"]}
-        message={null}
+        message="กำลังอ่านเอกสารด้วยโมเดล... ผ่านมา 2 วินาที"
         isError={false}
         status="analyzing"
         onDraftText={vi.fn()}
@@ -73,6 +73,9 @@ describe("Phase0Upload", () => {
       />
     );
     expect(screen.getByTestId("phase0-analyzing")).toHaveTextContent("อย่าปิดหน้านี้");
+    expect(screen.getByTestId("phase0-analyze-status")).toHaveTextContent(
+      "กำลังอ่านเอกสารด้วยโมเดล... ผ่านมา 2 วินาที"
+    );
     expect(screen.getByTestId("phase0-file-list")).toHaveTextContent("pB0.pdf");
     expect(screen.queryByTestId("intake-paste")).not.toBeInTheDocument();
     expect(screen.queryByTestId("intake-start-analyze")).not.toBeInTheDocument();

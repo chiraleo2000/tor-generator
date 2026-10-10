@@ -22,7 +22,10 @@ SCAFFOLD_LEAKS = (
 )
 
 MARKDOWN_HEADING_RE = re.compile(r"(?m)^(?:#{1,6}\s+|\*\*[^*\n]+\*\*)")
-BOLD_IN_HEADING_RE = re.compile(r"(?m)^\s*[\d๐-๙.]+\s+[^\n]*\*\*")
+# Possessive quantifiers keep the numbered-heading scan linear (no backtracking into **).
+BOLD_IN_HEADING_RE = re.compile(
+    r"(?m)^\s*+[\d๐-๙.]++\s++(?:[^\n*]++|\*(?!\*))*+\*\*"
+)
 
 TYPE_FORBIDDEN: dict[str, tuple[str, ...]] = {
     "hire_develop": (

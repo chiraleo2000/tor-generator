@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 GROUP_MANDATORY_RAW = "mandatory_raw"
 GROUP_MANDATORY_HANDBOOK = "mandatory_handbook"
+GROUP_PROCUREMENT_JUDGMENTS = "procurement_judgments"
 GROUP_USER = "user"
 
 HANDBOOK_FILENAME = "คู่มือแนวปฏิบัติ_การจัดซื้อจัดจ้างภาครัฐ.pdf"
 RAW_FOLDER = ("การจัดซื้อจัดจ้าง", "ข้อมูลดิบ")
+JUDGMENT_FOLDER = ("การจัดซื้อจัดจ้าง", "คำพิพากษา")
+_JUDGMENT_NAME = re.compile(r"^\d{5}-\d{6}", re.ASCII)
 # Extra local folders (not MCP). PDFs here join the pgvector baseline corpus.
 LOCAL_EXTRA_FOLDERS = (
     ("การจัดจ้างทำของ",),
@@ -21,19 +25,27 @@ LOCAL_EXTRA_FOLDERS = (
 GROUP_LABELS = {
     GROUP_MANDATORY_HANDBOOK: "คู่มือแนวปฏิบัติ (บังคับ)",
     GROUP_MANDATORY_RAW: "ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)",
+    GROUP_PROCUREMENT_JUDGMENTS: "คำพิพากษาการพัสดุ",
     GROUP_USER: "เอกสารของฉัน",
 }
 
-GROUP_ORDER = (GROUP_MANDATORY_HANDBOOK, GROUP_MANDATORY_RAW, GROUP_USER)
+GROUP_ORDER = (
+    GROUP_MANDATORY_HANDBOOK,
+    GROUP_MANDATORY_RAW,
+    GROUP_PROCUREMENT_JUDGMENTS,
+    GROUP_USER,
+)
 
 
 def group_for_filename(filename: str, owner_id: object | None = None) -> str:
-    """Tag a file as user-owned, handbook, or mandatory raw corpus."""
+    """Tag a file as user-owned, handbook, judgment, or mandatory raw corpus."""
     if owner_id is not None:
         return GROUP_USER
-    name = filename or ""
+    name = Path(filename or "").name
     if HANDBOOK_FILENAME in name or "คู่มือแนวปฏิบัติ" in name:
         return GROUP_MANDATORY_HANDBOOK
+    if _JUDGMENT_NAME.match(name):
+        return GROUP_PROCUREMENT_JUDGMENTS
     return GROUP_MANDATORY_RAW
 
 
@@ -120,6 +132,12 @@ def list_mandatory_sources(root: Path | None = None) -> list[CorpusFile]:
     if base is not None:
         _add_corpus_file(files, seen, base / HANDBOOK_FILENAME, GROUP_MANDATORY_HANDBOOK)
         _collect_pdfs(files, seen, base.joinpath(*RAW_FOLDER), GROUP_MANDATORY_RAW)
+        _collect_pdfs(
+            files,
+            seen,
+            base.joinpath(*JUDGMENT_FOLDER),
+            GROUP_PROCUREMENT_JUDGMENTS,
+        )
         for parts in LOCAL_EXTRA_FOLDERS:
             _collect_pdfs(files, seen, base.joinpath(*parts), GROUP_MANDATORY_RAW)
     _add_raw_docs_env(files, seen)
@@ -131,7 +149,11 @@ def list_mandatory_paths(root: Path | None = None) -> list[Path]:
 
 
 def group_counts(files: list[CorpusFile]) -> dict[str, int]:
-    counts = {GROUP_MANDATORY_HANDBOOK: 0, GROUP_MANDATORY_RAW: 0}
+    counts = {
+        GROUP_MANDATORY_HANDBOOK: 0,
+        GROUP_MANDATORY_RAW: 0,
+        GROUP_PROCUREMENT_JUDGMENTS: 0,
+    }
     for item in files:
         counts[item.group] = counts.get(item.group, 0) + 1
     return counts

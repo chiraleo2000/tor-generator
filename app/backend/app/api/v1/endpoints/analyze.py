@@ -27,6 +27,7 @@ from app.exceptions import ValidationError
 from app.models.tor_section import TORSection
 from app.models.user import User
 from app.schemas.responses import MetaInfo, SuccessResponse
+from app.services.bidder_risk import strip_page_markers
 from app.services.tor_analysis import (
     PART_LABELS,
     PART_LEGAL,
@@ -54,6 +55,7 @@ NO_WARM_CONTRACT_NOTE = (
 )
 
 _PART_ORDER = (PART_LEGAL, PART_LOCK_IN, PART_PROJECT)
+_WEB_SEARCH_TIMEOUT_SECONDS = 8
 _RATE_RE = re.compile(r"ร้อยละ\s*(\d+(?:\.\d+)?)")
 _YEAR_RE = re.compile(r"พ\.ศ\.\s*(\d{4})")
 _PRB_MARK = "พ.ร.บ."
@@ -90,20 +92,22 @@ async def _law_context(project_type: str | None = None) -> str:
     try:
         from app.rag.law_review import law_review_context
 
-        return await law_review_context(project_type)
+        return await asyncio.wait_for(law_review_context(project_type), timeout=30)
     except Exception:
         return ""
 
 
 def _document_from_text(text: str) -> dict[str, Any]:
-    mapped = map_extracted_text(text)
+    clean = strip_page_markers(text)
+    mapped = map_extracted_text(clean)
     if not mapped:
-        mapped = {"s1": text}
+        mapped = {"s1": clean or text}
     document: dict[str, Any] = {**mapped, "sections": mapped, "metadata": {}}
-    budget = infer_review_budget(text, mapped)
+    budget = infer_review_budget(clean or text, mapped)
     if budget is not None:
         document["budget"] = budget
         document["metadata"]["budget"] = budget
+    document["_source_text"] = text
     return document
 
 
@@ -292,5 +296,15 @@ async def analyze_tor_document(
 
     rag_text = await _law_context(project_type)
     result = analyze_tor(document, user_documents=user_documents, rag_text=rag_text)
-    recommendations = await collect_section_recommendations(result, rag_text=rag_text)
+    try:
+        recommendations = await asyncio.wait_for(
+            collect_section_recommendations(result, rag_text=rag_text),
+            timeout=_WEB_SEARCH_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning("analyze web search timed out; returning scores without sources")
+        recommendations = []
+    except Exception:
+        logger.warning("analyze web search failed; returning scores without sources")
+        recommendations = []
     return _envelope(request, analysis_payload(result, recommendations))

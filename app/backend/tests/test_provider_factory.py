@@ -504,21 +504,26 @@ class TestExpandedProviders:
         assert llm._base_url == "http://127.0.0.1:11434/v1"
 
     def test_local_embedding_host_is_independent_of_chat(self):
+        """Local chat and embeddings share one admission slot and one host."""
+        from app.llm_admission import concurrency_cap, local_models_share_one_slot
         from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
 
         settings = make_settings(
             deployment_mode="on_prem",
-            llm_provider="ollama",
+            llm_provider="lm_studio",
             embedding_provider="local",
             local_embedding_server="lm_studio",
-            ollama_base_url="http://host.docker.internal:11434/v1",
             lm_studio_base_url="http://host.docker.internal:1234/v1",
         )
+        assert local_models_share_one_slot(settings) is True
+        assert concurrency_cap("llm", settings) == 1
+        assert concurrency_cap("embedding", settings) == 1
         factory = ProviderFactory(settings=settings)
         embedding = factory.get_embedding()
+        llm = factory.get_llm()
         assert isinstance(embedding, Qwen3LocalEmbeddingProvider)
+        assert embedding._base_url == llm._base_url
         assert "1234" in embedding._base_url
-        assert "11434" in factory.get_llm()._base_url
 
     def test_local_embedding_base_url_override(self):
         settings = make_settings(

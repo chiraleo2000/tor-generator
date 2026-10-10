@@ -26,6 +26,24 @@ class GapInfo:
     status: str
 
 
+def _gap_from_slot(key: str, slot: dict[str, Any]) -> GapInfo | None:
+    status = str(slot.get("status") or "gap")
+    content = str(slot.get("content") or "").strip()
+    if status == "filled" and bool(content):
+        return None
+    fact_required = key in FACT_REQUIRED_SLOTS
+    is_gap = status in {"gap", "reference_only", "error"} or not content
+    if not is_gap or (not fact_required and status not in {"gap", "error"}):
+        return None
+    visible = status if status in {"gap", "reference_only", "error"} else "gap"
+    return GapInfo(
+        slot_key=key,
+        label=INTAKE_SLOT_LABELS.get(key, key),
+        critical=fact_required,
+        status=visible,
+    )
+
+
 QUESTION_PROMPT = """สร้างคำถามภาษาไทยราชการสั้น ๆ เพื่อขอข้อมูลที่ยังขาดใน TOR
 ตอบเป็น JSON: {"questions": ["..."]}
 แต่ละคำถามอ้างชื่อหมวดและบอกว่าขาดอะไร จำกัดไม่เกิน 5 ข้อ
@@ -45,24 +63,10 @@ class GapDetector:
         mapping = slot_map if isinstance(slot_map, dict) else {}
         for key in INTAKE_SLOT_ORDER:
             slot = mapping.get(key) if isinstance(mapping.get(key), dict) else {}
-            status = str(slot.get("status") or "gap")
-            content = str(slot.get("content") or "").strip()
-            filled = status == "filled" and bool(content)
-            if filled:
+            info = _gap_from_slot(key, slot)
+            if info is None:
                 continue
-            fact_required = key in FACT_REQUIRED_SLOTS
-            is_gap = status in {"gap", "reference_only", "error"} or not content
-            if not is_gap:
-                continue
-            if not fact_required and status not in {"gap", "error"}:
-                continue
-            info = GapInfo(
-                slot_key=key,
-                label=INTAKE_SLOT_LABELS.get(key, key),
-                critical=fact_required,
-                status=status if status in {"gap", "reference_only", "error"} else "gap",
-            )
-            if fact_required:
+            if info.critical:
                 critical.append(info)
             else:
                 other.append(info)

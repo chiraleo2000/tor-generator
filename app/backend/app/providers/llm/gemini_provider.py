@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import httpx
 
@@ -18,33 +18,49 @@ _FALLBACK_SLICE = 120
 GEMINI_OUTPUT_TOKEN_RETRY = 8192
 
 
-def gemini_sse_text_pieces(line: str) -> list[str]:
-    """Parse one Gemini ``streamGenerateContent?alt=sse`` line into text chunks."""
-    raw = (line or "").strip()
-    if not raw or raw == "[DONE]":
+def _gemini_part_texts(candidate: object) -> list[str]:
+    if not isinstance(candidate, dict):
         return []
-    if raw.startswith("data:"):
-        raw = raw[5:].strip()
-    if not raw or raw == "[DONE]":
-        return []
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
+    parts = (candidate.get("content") or {}).get("parts") or []
+    texts: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        text = part.get("text") or ""
+        if text:
+            texts.append(str(text))
+    return texts
+
+
+def _gemini_payload_texts(payload: object) -> list[str]:
     if not isinstance(payload, dict):
         return []
     pieces: list[str] = []
     for candidate in payload.get("candidates") or []:
-        if not isinstance(candidate, dict):
-            continue
-        parts = (candidate.get("content") or {}).get("parts") or []
-        for part in parts:
-            if not isinstance(part, dict):
-                continue
-            text = part.get("text") or ""
-            if text:
-                pieces.append(str(text))
+        pieces.extend(_gemini_part_texts(candidate))
     return pieces
+
+
+def _gemini_sse_payload(line: str) -> object | None:
+    raw = (line or "").strip()
+    if not raw or raw == "[DONE]":
+        return None
+    if raw.startswith("data:"):
+        raw = raw[5:].strip()
+    if not raw or raw == "[DONE]":
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def gemini_sse_text_pieces(line: str) -> list[str]:
+    """Parse one Gemini ``streamGenerateContent?alt=sse`` line into text chunks."""
+    payload = _gemini_sse_payload(line)
+    if payload is None:
+        return []
+    return _gemini_payload_texts(payload)
 
 
 def gemini_output_token_rejected(detail: str) -> bool:
@@ -69,6 +85,83 @@ def _capped_output_kwargs(kwargs: dict) -> dict:
     updated = dict(kwargs)
     updated["max_tokens"] = GEMINI_OUTPUT_TOKEN_RETRY
     return updated
+
+
+def _status_code(response: object) -> int:
+    raw_status = getattr(response, "status_code", 200)
+    try:
+        return int(raw_status)
+    except (TypeError, ValueError):
+        return 200
+
+
+def _reject_http_status(response: object) -> None:
+    status = _status_code(response)
+    if status < 400:
+        return
+    detail = str(getattr(response, "text", "") or "")[:500]
+    raise ConnectionError(f"Gemini HTTP {status}: {detail}")
+
+
+async def _raise_for_gemini_status(response: Any) -> None:
+    status = _status_code(response)
+    if status < 400:
+        return
+    detail = ""
+    try:
+        body = await response.aread()
+        detail = body.decode("utf-8", errors="replace")[:500]
+    except Exception:
+        detail = str(getattr(response, "text", "") or "")[:500]
+    raise ConnectionError(f"Gemini HTTP {status}: {detail}")
+
+
+def _usage_counts(payload: dict) -> dict:
+    usage_meta = payload.get("usageMetadata") or {}
+    return {
+        "prompt_tokens": usage_meta.get("promptTokenCount") or 0,
+        "completion_tokens": usage_meta.get("candidatesTokenCount") or 0,
+        "total_tokens": usage_meta.get("totalTokenCount") or 0,
+    }
+
+
+def _candidate_text(payload: dict) -> tuple[str, str]:
+    candidates = payload.get("candidates") or []
+    text = ""
+    if candidates:
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        text = "".join(part.get("text") or "" for part in parts)
+    finish = (candidates[0].get("finishReason") if candidates else "stop") or "stop"
+    return text, finish
+
+
+def _llm_response(model: str, payload: dict) -> LLMResponse:
+    text, finish = _candidate_text(payload)
+    return LLMResponse(
+        content=text,
+        model=model,
+        usage=_usage_counts(payload),
+        finish_reason=finish,
+    )
+
+
+def _stream_retry_kwargs(attempt: int, exc: ConnectionError, call_kwargs: dict) -> dict | None:
+    if attempt == 1 and _should_retry_output_tokens(str(exc), call_kwargs):
+        logger.info(
+            "Gemini rejected maxOutputTokens; retrying stream with %s",
+            GEMINI_OUTPUT_TOKEN_RETRY,
+        )
+        return _capped_output_kwargs(call_kwargs)
+    logger.info("Gemini SSE stream unavailable (%s); using generateContent", exc)
+    return None
+
+
+async def _fallback_slices(result: LLMResponse) -> AsyncIterator[str]:
+    text = result.content or ""
+    if not text:
+        return
+    for index in range(0, len(text), _FALLBACK_SLICE):
+        yield text[index : index + _FALLBACK_SLICE]
 
 
 def _to_gemini_contents(messages: list[dict]) -> tuple[str | None, list[dict]]:
@@ -120,48 +213,23 @@ class GeminiLLMProvider(LLMProvider):
             )
             return await self._invoke_once(messages, **_capped_output_kwargs(kwargs))
 
-    async def _invoke_once(self, messages: list[dict], **kwargs) -> LLMResponse:
-        body = self._generation_body(messages, **kwargs)
+    async def _post_generate(self, body: dict) -> dict:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(self._url("generateContent"), json=body)
-                raw_status = getattr(response, "status_code", 200)
-                try:
-                    status = int(raw_status)
-                except (TypeError, ValueError):
-                    status = 200
-                if status >= 400:
-                    detail = str(getattr(response, "text", "") or "")[:500]
-                    raise ConnectionError(
-                        f"Gemini HTTP {status}: {detail}"
-                    )
-                payload = response.json()
+                _reject_http_status(response)
+                return response.json()
         except httpx.TimeoutException as exc:
-            raise TimeoutError(
-                f"Gemini did not respond within {self._timeout}s"
-            ) from exc
+            raise TimeoutError(f"Gemini did not respond within {self._timeout}s") from exc
         except ConnectionError:
             raise
         except httpx.HTTPError as exc:
             raise ConnectionError(f"Gemini endpoint unreachable: {exc}") from exc
 
-        candidates = payload.get("candidates") or []
-        text = ""
-        if candidates:
-            parts = (candidates[0].get("content") or {}).get("parts") or []
-            text = "".join(part.get("text") or "" for part in parts)
-        usage_meta = payload.get("usageMetadata") or {}
-        return LLMResponse(
-            content=text,
-            model=self._model_name,
-            usage={
-                "prompt_tokens": usage_meta.get("promptTokenCount") or 0,
-                "completion_tokens": usage_meta.get("candidatesTokenCount") or 0,
-                "total_tokens": usage_meta.get("totalTokenCount") or 0,
-            },
-            finish_reason=(candidates[0].get("finishReason") if candidates else "stop")
-            or "stop",
-        )
+    async def _invoke_once(self, messages: list[dict], **kwargs) -> LLMResponse:
+        body = self._generation_body(messages, **kwargs)
+        payload = await self._post_generate(body)
+        return _llm_response(self._model_name, payload)
 
     def _generation_body(self, messages: list[dict], **kwargs) -> dict:
         system, contents = _to_gemini_contents(messages)
@@ -186,18 +254,7 @@ class GeminiLLMProvider(LLMProvider):
                 stream_ctx.close()
                 raise TypeError("Gemini HTTP stream is unavailable")
             async with stream_ctx as response:
-                raw_status = getattr(response, "status_code", 200)
-                try:
-                    status = int(raw_status)
-                except (TypeError, ValueError):
-                    status = 200
-                if status >= 400:
-                    detail = ""
-                    try:
-                        detail = (await response.aread()).decode("utf-8", errors="replace")[:500]
-                    except Exception:
-                        detail = str(getattr(response, "text", "") or "")[:500]
-                    raise ConnectionError(f"Gemini HTTP {status}: {detail}")
+                await _raise_for_gemini_status(response)
                 async for line in response.aiter_lines():
                     for piece in gemini_sse_text_pieces(line):
                         yield piece
@@ -214,25 +271,14 @@ class GeminiLLMProvider(LLMProvider):
                     return
                 break
             except ConnectionError as exc:
-                if attempt == 1 and _should_retry_output_tokens(str(exc), call_kwargs):
-                    logger.info(
-                        "Gemini rejected maxOutputTokens; retrying stream with %s",
-                        GEMINI_OUTPUT_TOKEN_RETRY,
-                    )
-                    call_kwargs = _capped_output_kwargs(call_kwargs)
-                    continue
-                logger.info(
-                    "Gemini SSE stream unavailable (%s); using generateContent", exc
-                )
-                break
+                retried = _stream_retry_kwargs(attempt, exc, call_kwargs)
+                if retried is None:
+                    break
+                call_kwargs = retried
             except Exception as exc:  # noqa: BLE001 — fall back to a single generateContent call
                 logger.info(
                     "Gemini SSE stream unavailable (%s); using generateContent", exc
                 )
                 break
-        result = await self.invoke(messages, **call_kwargs)
-        text = result.content or ""
-        if not text:
-            return
-        for index in range(0, len(text), _FALLBACK_SLICE):
-            yield text[index : index + _FALLBACK_SLICE]
+        async for piece in _fallback_slices(await self.invoke(messages, **call_kwargs)):
+            yield piece

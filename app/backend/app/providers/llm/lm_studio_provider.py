@@ -248,6 +248,18 @@ class LMStudioLocalProvider(LLMProvider):
             TimeoutError: If LM Studio does not respond within the configured timeout.
             ConnectionError: If the LM Studio endpoint is unreachable.
         """
+        from app.infra import redis_client
+        from app.llm_admission import admit
+
+        async with admit(redis_client, "llm"):
+            return await self._invoke_unlocked(messages, tools, **kwargs)
+
+    async def _invoke_unlocked(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ) -> LLMResponse:
         try:
             request_kwargs: dict = {
                 "model": self._model_name,
@@ -309,6 +321,18 @@ class LMStudioLocalProvider(LLMProvider):
             TimeoutError: If LM Studio does not respond within the configured timeout.
             ConnectionError: If the LM Studio endpoint is unreachable.
         """
+        from app.infra import redis_client
+        from app.llm_admission import admit
+
+        async with admit(redis_client, "llm"):
+            async for visible in self._stream_unlocked(messages, **kwargs):
+                yield visible
+
+    async def _stream_unlocked(
+        self,
+        messages: list[dict],
+        **kwargs,
+    ) -> AsyncIterator[str]:
         last_error: BaseException | None = None
         stream_kwargs = self._default_stream_kwargs(kwargs)
         for attempt in range(3):

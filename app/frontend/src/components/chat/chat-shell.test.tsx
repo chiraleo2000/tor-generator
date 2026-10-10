@@ -120,9 +120,7 @@ describe("ChatShell MCP degraded banner", () => {
     const input = await screen.findByTestId("chat-input");
     fireEvent.change(input, { target: { value: "หลักประกัน" } });
     fireEvent.click(screen.getByTestId("chat-send"));
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "สรุปคำตอบ" })).toBeInTheDocument()
-    );
+    expect(await screen.findByRole("heading", { name: "สรุปคำตอบ" })).toBeInTheDocument();
     expect(screen.getByTestId("chat-source-bar")).toHaveTextContent("ระเบียบพัสดุ.pdf");
   });
 
@@ -137,7 +135,7 @@ describe("ChatShell MCP degraded banner", () => {
     const input = await screen.findByTestId("chat-input");
     fireEvent.change(input, { target: { value: "เกษตรกรร้อยเอ็ด" } });
     fireEvent.click(screen.getByTestId("chat-send"));
-    await waitFor(() => expect(screen.getByTestId("chat-no-retrieve")).toBeInTheDocument());
+    expect(await screen.findByTestId("chat-no-retrieve")).toBeInTheDocument();
   });
 
   it("sends on Enter without shift", async () => {
@@ -181,7 +179,7 @@ describe("ChatShell MCP degraded banner", () => {
     const input = await screen.findByTestId("chat-input");
     fireEvent.change(input, { target: { value: "ถาม" } });
     fireEvent.click(screen.getByTestId("chat-send"));
-    await waitFor(() => expect(screen.getByTestId("mcp-unavailable")).toBeInTheDocument());
+    expect(await screen.findByTestId("mcp-unavailable")).toBeInTheDocument();
     fireEvent.click(screen.getByTitle("คัดลอก"));
     expect(navigator.clipboard.writeText).toHaveBeenCalled();
   });
@@ -191,7 +189,7 @@ describe("ChatShell MCP degraded banner", () => {
     const input = await screen.findByTestId("chat-input");
     fireEvent.change(input, { target: { value: "ถามซ้ำ" } });
     fireEvent.click(screen.getByTestId("chat-send"));
-    await waitFor(() => expect(screen.getByTestId("chat-citation")).toBeInTheDocument());
+    expect(await screen.findByTestId("chat-citation")).toBeInTheDocument();
     fireEvent.click(screen.getByTitle("ส่งใหม่"));
     await waitFor(() => expect(vi.mocked(streamSsePost).mock.calls.length).toBeGreaterThan(1));
   });
@@ -275,7 +273,7 @@ describe("ChatShell MCP degraded banner", () => {
     const attach = await screen.findByTestId("chat-attach");
     const file = new File(["x"], "bad.pdf", { type: "application/pdf" });
     fireEvent.change(attach, { target: { files: [file] } });
-    await waitFor(() => expect(screen.getByTestId("chat-error")).toBeInTheDocument());
+    expect(await screen.findByTestId("chat-error")).toBeInTheDocument();
   });
 
   it("lists mine files and deletes after confirm", async () => {

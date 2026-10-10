@@ -67,7 +67,7 @@ export function sectionIndexLabel(key: string): string {
 /** Zero-padded index for technical rails (`01` … `13`; subsections stay `4.1`). */
 export function sectionIndexPad(key: string): string {
   const raw = sectionIndexLabel(key);
-  if (/^[0-9]+$/.test(raw) && raw.length < 2) {
+  if (/^\d+$/.test(raw) && raw.length < 2) {
     return raw.padStart(2, "0");
   }
   return raw;
@@ -76,10 +76,7 @@ export function sectionIndexPad(key: string): string {
 /** Document-style heading: `1. ความเป็นมา` (no "หมวด" prefix). */
 export function formatTorSectionHeading(key: string, title?: string): string {
   const n = sectionIndexLabel(key);
-  const label =
-    (title && title.trim()) ||
-    TOR_SECTION_LABELS[key as TorSectionKey] ||
-    key;
+  const label = title?.trim() || TOR_SECTION_LABELS[key as TorSectionKey] || key;
   return `${n}. ${label}`;
 }
 
@@ -201,57 +198,72 @@ export const SECTION_FIELDS: Record<string, SectionField[]> = {
   ],
 };
 
+function draftFromJson(
+  raw: string,
+  fields: SectionField[] | undefined,
+  firstKey: string
+): Record<string, string> | null {
+  if (!raw.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const rec = parsed as Record<string, string>;
+    const out: Record<string, string> = {};
+    for (const field of fields || []) {
+      const value = String(rec[field.key] || "").trim();
+      if (value) out[field.key] = value;
+    }
+    const blob = String(rec.body || "").trim();
+    if (blob) mergeBodyBlob(out, blob, fields, firstKey);
+    return Object.keys(out).length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeBodyBlob(
+  out: Record<string, string>,
+  blob: string,
+  fields: SectionField[] | undefined,
+  firstKey: string
+) {
+  const labeledBlob = splitByHeadings(blob, fields || [], "label");
+  if (Object.keys(labeledBlob).length) {
+    for (const [key, value] of Object.entries(labeledBlob)) {
+      if (!out[key]) out[key] = value;
+    }
+    return;
+  }
+  if (!out[firstKey]) out[firstKey] = blob;
+}
+
+function draftFromParagraphs(
+  raw: string,
+  fields: SectionField[] | undefined,
+  firstKey: string
+): Record<string, string> {
+  const paras = raw.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean);
+  if (!fields || paras.length < 2) return { [firstKey]: raw };
+  const out: Record<string, string> = {};
+  fields.forEach((field, index) => {
+    if (index >= paras.length) return;
+    out[field.key] = index === fields.length - 1 ? paras.slice(index).join("\n\n") : paras[index];
+  });
+  return out;
+}
+
 export function parseSectionDraft(sectionKey: string, content: string): Record<string, string> {
   const fields = SECTION_FIELDS[sectionKey];
   const firstKey = fields?.[0]?.key || "body";
   const raw = (content || "").trim();
   if (!raw) return {};
-
-  if (raw.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const rec = parsed as Record<string, string>;
-        const out: Record<string, string> = {};
-        for (const field of fields || []) {
-          const value = String(rec[field.key] || "").trim();
-          if (value) out[field.key] = value;
-        }
-        const blob = String(rec.body || "").trim();
-        if (blob) {
-          const labeledBlob = splitByHeadings(blob, fields || [], "label");
-          if (Object.keys(labeledBlob).length) {
-            for (const [key, value] of Object.entries(labeledBlob)) {
-              if (!out[key]) out[key] = value;
-            }
-          } else if (!out[firstKey]) {
-            out[firstKey] = blob;
-          }
-        }
-        if (Object.keys(out).length) return out;
-      }
-    } catch {
-      // prose
-    }
-  }
-
+  const fromJson = draftFromJson(raw, fields, firstKey);
+  if (fromJson) return fromJson;
   const headed = splitByHeadings(raw, fields || [], "hash");
   if (Object.keys(headed).length) return headed;
-
   const labeled = splitByHeadings(raw, fields || [], "label");
   if (Object.keys(labeled).length) return labeled;
-
-  const paras = raw.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean);
-  if (fields && paras.length >= 2) {
-    const out: Record<string, string> = {};
-    fields.forEach((field, index) => {
-      if (index < paras.length) {
-        out[field.key] = index === fields.length - 1 ? paras.slice(index).join("\n\n") : paras[index];
-      }
-    });
-    return out;
-  }
-  return { [firstKey]: raw };
+  return draftFromParagraphs(raw, fields, firstKey);
 }
 
 const DRAFT_HEADING_RE = /^#{1,3}[ \t]+([^\r\n]+)/;

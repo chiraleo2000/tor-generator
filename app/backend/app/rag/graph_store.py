@@ -11,6 +11,66 @@ ALLOWED_LABELS = frozenset({"Document", "Law", "Article", "TorSlot", "Concept"})
 ALLOWED_RELS = frozenset({"CONTAINED_IN", "CITES", "APPLIES_TO", "DEFINES", "SUPERSEDES"})
 
 
+async def _merge_document(
+    session: Any,
+    document_id: str,
+    document_name: str,
+    owner_id: str | None,
+    scope: str,
+) -> None:
+    await session.run(
+        """
+        MERGE (d:Document {id: $id})
+        SET d.name = $name, d.owner_id = $owner_id, d.scope = $scope
+        """,
+        id=document_id,
+        name=document_name,
+        owner_id=owner_id,
+        scope=scope,
+    )
+
+
+async def _merge_nodes(session: Any, document_id: str, nodes: list[dict[str, Any]]) -> None:
+    for node in nodes:
+        label = str(node.get("label") or "Concept")
+        if label not in ALLOWED_LABELS:
+            label = "Concept"
+        name = str(node.get("name") or "").strip()
+        if not name:
+            continue
+        node_id = str(node.get("id") or f"{label}:{name}")
+        await session.run(
+            f"MERGE (n:{label} {{id: $id}}) SET n.name = $name, n.document_id = $document_id",
+            id=node_id,
+            name=name,
+            document_id=document_id,
+        )
+        await session.run(
+            """
+            MATCH (d:Document {id: $doc_id}), (n {id: $node_id})
+            MERGE (n)-[:CONTAINED_IN]->(d)
+            """,
+            doc_id=document_id,
+            node_id=node_id,
+        )
+
+
+async def _merge_rels(session: Any, rels: list[dict[str, Any]]) -> None:
+    for rel in rels:
+        rel_type = str(rel.get("type") or "CITES")
+        if rel_type not in ALLOWED_RELS:
+            rel_type = "CITES"
+        src = str(rel.get("from") or "")
+        dst = str(rel.get("to") or "")
+        if not src or not dst:
+            continue
+        await session.run(
+            f"MATCH (a {{id: $src}}), (b {{id: $dst}}) MERGE (a)-[:{rel_type}]->(b)",
+            src=src,
+            dst=dst,
+        )
+
+
 class GraphRAGStore:
     """Writes and expands a small legal graph used alongside pgvector."""
 
@@ -36,55 +96,9 @@ class GraphRAGStore:
         scope: str = "baseline",
     ) -> None:
         async with self._driver.session() as session:
-            await session.run(
-                """
-                MERGE (d:Document {id: $id})
-                SET d.name = $name, d.owner_id = $owner_id, d.scope = $scope
-                """,
-                id=document_id,
-                name=document_name,
-                owner_id=owner_id,
-                scope=scope,
-            )
-            for node in nodes:
-                label = str(node.get("label") or "Concept")
-                if label not in ALLOWED_LABELS:
-                    label = "Concept"
-                name = str(node.get("name") or "").strip()
-                if not name:
-                    continue
-                node_id = str(node.get("id") or f"{label}:{name}")
-                query = (
-                    f"MERGE (n:{label} {{id: $id}}) "
-                    "SET n.name = $name, n.document_id = $document_id"
-                )
-                await session.run(
-                    query,
-                    id=node_id,
-                    name=name,
-                    document_id=document_id,
-                )
-                await session.run(
-                    """
-                    MATCH (d:Document {id: $doc_id}), (n {id: $node_id})
-                    MERGE (n)-[:CONTAINED_IN]->(d)
-                    """,
-                    doc_id=document_id,
-                    node_id=node_id,
-                )
-            for rel in rels:
-                rel_type = str(rel.get("type") or "CITES")
-                if rel_type not in ALLOWED_RELS:
-                    rel_type = "CITES"
-                src = str(rel.get("from") or "")
-                dst = str(rel.get("to") or "")
-                if not src or not dst:
-                    continue
-                query = (
-                    "MATCH (a {id: $src}), (b {id: $dst}) "
-                    f"MERGE (a)-[:{rel_type}]->(b)"
-                )
-                await session.run(query, src=src, dst=dst)
+            await _merge_document(session, document_id, document_name, owner_id, scope)
+            await _merge_nodes(session, document_id, nodes)
+            await _merge_rels(session, rels)
 
     async def delete_document(self, document_id: str) -> None:
         async with self._driver.session() as session:

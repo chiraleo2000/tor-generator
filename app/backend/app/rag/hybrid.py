@@ -224,6 +224,68 @@ async def _retrieve_custom_chunks(
         return []
 
 
+_RATE_CATALOG_NEEDLES = ("30,090", "47,820", "26,380", "22,420", "ค่าอาหาร", "สถานที่เอกชน")
+
+
+def _rate_chunk_rank(text: str) -> tuple[int, int, int]:
+    hits = sum(1 for needle in _RATE_CATALOG_NEEDLES if needle in text)
+    graduate = 1 if "30,090" in text or "47,820" in text else 0
+    training = 1 if "ค่าอาหาร" in text or "สถานที่เอกชน" in text else 0
+    return (hits, graduate, training)
+
+
+async def load_rate_catalog_chunks(limit: int = 8) -> list[RetrievedChunk]:
+    """Load rate-table rows from the budget-bureau PDF without another embedding call."""
+    factory = runtime.session_factory
+    if factory is None:
+        return []
+    from sqlalchemy import text
+
+    sql = text(
+        """
+        SELECT c.id::text, c.chunk_text, c.page_number, c.section_label, d.name
+        FROM kb_chunks c
+        JOIN knowledge_base_documents d ON d.id = c.document_id
+        WHERE d.name LIKE :name
+          AND (
+            c.chunk_text LIKE :grad OR c.chunk_text LIKE :doctor
+            OR c.chunk_text LIKE :pr OR c.chunk_text LIKE :bachelor
+            OR c.chunk_text LIKE :food OR c.chunk_text LIKE :venue
+          )
+        LIMIT 40
+        """
+    )
+    params = {
+        "name": "%อัตราค่าจ้างที่ปรึกษา%",
+        "grad": "%30,090%",
+        "doctor": "%47,820%",
+        "pr": "%26,380%",
+        "bachelor": "%22,420%",
+        "food": "%ค่าอาหาร%",
+        "venue": "%สถานที่เอกชน%",
+    }
+    try:
+        async with factory() as session:
+            rows = (await session.execute(sql, params)).all()
+    except Exception:  # NOSONAR python:S110 — chat still answers from vector hits
+        logger.exception("Rate catalog lookup failed")
+        return []
+    ranked = sorted(rows, key=lambda row: _rate_chunk_rank(str(row[1] or "")), reverse=True)
+    picked: list[RetrievedChunk] = []
+    for row in ranked[:limit]:
+        picked.append(
+            RetrievedChunk(
+                id=str(row[0]),
+                text=str(row[1] or ""),
+                score=0.99,
+                source_document=str(row[4] or ""),
+                section_label=row[3],
+                page_number=coerce_page_number(row[2]),
+            )
+        )
+    return picked
+
+
 def _citations_for_chunk(chunk: RetrievedChunk) -> list[dict[str, str]]:
     citations: list[dict[str, str]] = []
     source_kind = (chunk.metadata or {}).get("rag_source")

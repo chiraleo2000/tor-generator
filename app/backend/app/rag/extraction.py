@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -73,6 +74,8 @@ class ExtractionResult:
     page_count: int
     method: Literal["direct", "ocr", "mixed"]
     warnings: list[str] = field(default_factory=list)
+    # Per-page text. `text` stays the joined document used for embeddings.
+    pages: list[dict[str, str | int | None]] = field(default_factory=list)
 
 
 def extract_text(file_path: str, mime_type: str) -> ExtractionResult:
@@ -147,18 +150,105 @@ def _pdf_method(used_ocr: bool, used_direct: bool) -> Literal["direct", "ocr", "
     return "direct"
 
 
-def _append_pdf_page(
+_PLAIN_PAGE_NUMBER = re.compile(r"^(\d{1,4})$")
+_DASHED_PAGE_NUMBER = re.compile(r"^-\s*(\d{1,4})\s*-$")
+_PRINTED_PAGE_DISTANCE = 15
+
+
+def printed_page_number(page_text: str, file_index: int) -> str | None:
+    """Read a printed page number from the bottom of a page.
+
+    Accepts a bare number such as ``16`` or a dashed footer such as ``- 16 -``
+    when that number is close to the 1-based file page index. Other forms,
+    including ranges like ``1-14``, stay unset.
+    """
+    lines = [line.strip() for line in (page_text or "").splitlines() if line.strip()]
+    best: int | None = None
+    best_distance = _PRINTED_PAGE_DISTANCE + 1
+    for line in lines[-8:]:
+        match = _PLAIN_PAGE_NUMBER.fullmatch(line) or _DASHED_PAGE_NUMBER.fullmatch(line)
+        if match is None:
+            continue
+        number = int(match.group(1))
+        if number < 1:
+            continue
+        distance = abs(number - file_index)
+        if distance < best_distance:
+            best = number
+            best_distance = distance
+    if best is None:
+        return None
+    return str(best)
+
+
+def _clean_table_cell(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value).replace("\n", " ").replace("|", "/")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _grid_markdown(data: list[list[object]] | None) -> str:
+    if not data:
+        return ""
+    rows: list[list[str]] = []
+    width = 0
+    for raw in data:
+        cells = [_clean_table_cell(cell) for cell in raw]
+        width = max(width, len(cells))
+        if any(cells):
+            rows.append(cells)
+    if width < 2 or len(rows) < 2:
+        return ""
+    padded = [row + [""] * (width - len(row)) for row in rows]
+    header = padded[0]
+    lines = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join("---" for _ in header) + " |",
+    ]
+    lines.extend("| " + " | ".join(row) + " |" for row in padded[1:])
+    return "\n".join(lines)
+
+
+def markdown_tables_from_page(page: fitz.Page) -> str:
+    """Turn vector tables on a PDF page into markdown, header row included."""
+    try:
+        found = page.find_tables()
+    except Exception as exc:
+        logger.warning("Table detection failed: %s", exc)
+        return ""
+    tables = getattr(found, "tables", None) or []
+    blocks: list[str] = []
+    for table in tables:
+        try:
+            grid = table.extract()
+        except Exception as exc:
+            logger.warning("Table extract failed: %s", exc)
+            continue
+        markdown = _grid_markdown(grid)
+        if markdown:
+            blocks.append(markdown)
+    return "\n\n".join(blocks)
+
+
+def _compose_page_text(plain: str, tables_md: str) -> str:
+    plain = (plain or "").strip()
+    tables_md = (tables_md or "").strip()
+    if tables_md and plain:
+        return f"{tables_md}\n\n{plain}"
+    return tables_md or plain
+
+
+def _page_plain_text(
     page: fitz.Page,
     page_num: int,
     ocr_timeout: int,
-    page_texts: list[str],
     warnings: list[str],
-) -> tuple[bool, bool]:
-    """Return (used_direct, used_ocr) flags for one page."""
+) -> tuple[str, bool, bool]:
+    """Return (plain text, used_direct, used_ocr) for one PDF page."""
     text = page.get_text().strip()
     if _page_text_usable(text):
-        page_texts.append(text)
-        return True, False
+        return text, True, False
     logger.info(
         "Page %d has insufficient text (%d chars), falling back to OCR",
         page_num + 1,
@@ -166,12 +256,27 @@ def _append_pdf_page(
     )
     ocr_text = _ocr_pdf_page(page, page_num, ocr_timeout, warnings)
     if ocr_text:
-        page_texts.append(ocr_text)
-        return False, True
-    page_texts.append(text)
+        return ocr_text, False, True
     if not text:
         warnings.append(f"Page {page_num + 1}: Could not extract text (direct or OCR)")
-    return False, False
+    return text, False, False
+
+
+def _pdf_page_record(
+    page: fitz.Page,
+    page_num: int,
+    ocr_timeout: int,
+    warnings: list[str],
+) -> tuple[dict[str, str | int | None], bool, bool]:
+    plain, used_direct, used_ocr = _page_plain_text(page, page_num, ocr_timeout, warnings)
+    tables_md = markdown_tables_from_page(page)
+    file_index = page_num + 1
+    record = {
+        "index": file_index,
+        "printed": printed_page_number(plain, file_index),
+        "text": _compose_page_text(plain, tables_md),
+    }
+    return record, used_direct, used_ocr
 
 
 def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> ExtractionResult:
@@ -188,7 +293,7 @@ def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> Extra
         ExtractionResult with extracted text and metadata.
     """
     warnings: list[str] = []
-    page_texts: list[str] = []
+    pages: list[dict[str, str | int | None]] = []
     used_ocr = False
     used_direct = False
 
@@ -196,18 +301,20 @@ def extract_pdf(file_path: str, ocr_timeout: int = DEFAULT_OCR_TIMEOUT) -> Extra
     page_count = len(doc)
 
     for page_num in range(page_count):
-        direct, ocr = _append_pdf_page(
-            doc[page_num], page_num, ocr_timeout, page_texts, warnings
+        record, direct, ocr = _pdf_page_record(
+            doc[page_num], page_num, ocr_timeout, warnings
         )
+        pages.append(record)
         used_direct = used_direct or direct
         used_ocr = used_ocr or ocr
 
     doc.close()
     return ExtractionResult(
-        text="\n\n".join(page_texts),
+        text="\n\n".join(str(page["text"]) for page in pages),
         page_count=page_count,
         method=_pdf_method(used_ocr, used_direct),
         warnings=warnings,
+        pages=pages,
     )
 
 

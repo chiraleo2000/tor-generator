@@ -370,7 +370,7 @@ describe("DraftChat", () => {
     });
     render(<DraftChat projectId="p-hang-message" onAllDrafted={vi.fn()} />);
     fireEvent.click(await screen.findByTestId("draft-redraft-s1"));
-    await waitFor(() => expect(screen.getByText("ร่างใหม่แล้ว")).toBeInTheDocument());
+    expect(await screen.findByText("ร่างใหม่แล้ว")).toBeInTheDocument();
     fireEvent.change(screen.getByTestId("draft-chat-input"), {
       target: { value: "แก้ไขต่อ" },
     });

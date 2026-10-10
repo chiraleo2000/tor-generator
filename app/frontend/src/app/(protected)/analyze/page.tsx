@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Scale, ShieldAlert, Briefcase, Lightbulb } from "lucide-react";
+import { Scale, ShieldAlert, Briefcase, Lightbulb, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,8 +12,9 @@ import { unwrapData } from "@/lib/api-unwrap";
 import { useProjectStore } from "@/stores/project-store";
 import { cn } from "@/lib/utils";
 import type { AnalyzerFindingView, PartScoreView, TorPartScoresView } from "@/components/review/three-part-scores";
+import { BidderRiskPanel } from "@/components/review/bidder-risk-panel";
 
-type AnalyzePanel = "legal" | "lock_in" | "project" | "recommendations";
+type AnalyzePanel = "legal" | "lock_in" | "project" | "bidder_risk" | "recommendations";
 
 type AnalyzeSource = {
   title?: string;
@@ -55,6 +56,7 @@ const PANELS: Array<{
   { id: "legal", label: "ส่วนที่คาดว่าผิดกฎหมาย", icon: Scale },
   { id: "lock_in", label: "ความเสี่ยง lock specs รวม Oracle/IVM", icon: ShieldAlert },
   { id: "project", label: "ความเสี่ยงบริหารโครงการ (เข้างาน, ต้นทุนต่ำสุด, price-performance)", icon: Briefcase },
+  { id: "bidder_risk", label: "ความเสี่ยงก่อนตัดสินใจยื่น", icon: AlertTriangle },
   { id: "recommendations", label: "ข้อเสนอแนะตามหมวดที่ควรแก้", icon: Lightbulb },
 ];
 
@@ -209,12 +211,193 @@ function RecommendationsPanel({
   );
 }
 
+type AnalyzeSetters = {
+  setBusy: (value: boolean) => void;
+  setStatus: (value: string) => void;
+  setError: (value: string | null) => void;
+  setCopiedKey: (value: string | null) => void;
+  setResult: (value: AnalyzeResult | null) => void;
+  setPanel: (value: AnalyzePanel) => void;
+};
+
+const EMPTY_ANALYSIS_MESSAGE = "วางข้อความ TOR หรือเลือกร่างจากโครงการก่อนวิเคราะห์";
+
+async function postTorAnalysis(text: string, projectId: string): Promise<AnalyzeResult> {
+  const response = await apiClient.post(
+    "/analyze",
+    {
+      text: text || undefined,
+      project_id: projectId || undefined,
+    },
+    { timeout: 60_000 }
+  );
+  const payload = unwrapData<unknown>(response);
+  if (!isAnalyzeResult(payload)) {
+    throw new Error("รูปแบบผลวิเคราะห์ไม่ถูกต้อง");
+  }
+  return payload;
+}
+
+async function runAnalysis(text: string, projectId: string, actions: AnalyzeSetters): Promise<void> {
+  const trimmed = text.trim();
+  if (!trimmed && !projectId) {
+    actions.setError(EMPTY_ANALYSIS_MESSAGE);
+    actions.setStatus(EMPTY_ANALYSIS_MESSAGE);
+    return;
+  }
+  actions.setBusy(true);
+  actions.setStatus("กำลังวิเคราะห์");
+  actions.setError(null);
+  actions.setCopiedKey(null);
+  try {
+    const payload = await postTorAnalysis(trimmed, projectId);
+    actions.setResult(payload);
+    actions.setPanel("legal");
+    actions.setStatus(`วิเคราะห์เสร็จ — คะแนนรวม ${payload.total}/100`);
+  } catch (err: unknown) {
+    const message = apiErrorMessage(err, "วิเคราะห์ TOR ไม่สำเร็จ");
+    actions.setResult(null);
+    actions.setError(message);
+    actions.setStatus(message);
+  } finally {
+    actions.setBusy(false);
+  }
+}
+
+async function rememberCopy(
+  key: string,
+  value: string,
+  setCopiedKey: (next: string | null) => void
+): Promise<void> {
+  const ok = await copySuggestedText(value);
+  if (ok) setCopiedKey(key);
+}
+
+function runLabel(busy: boolean): string {
+  if (busy) return "กำลังวิเคราะห์...";
+  return "วิเคราะห์ TOR";
+}
+
+function AnalyzeStatus({ status }: Readonly<{ status: string }>) {
+  if (!status) return null;
+  return (
+    <output className="block text-sm text-navy" data-testid="analyze-status">
+      {status}
+    </output>
+  );
+}
+
+function AnalyzeError({ error }: Readonly<{ error: string | null }>) {
+  if (!error) return null;
+  return (
+    <p className="text-sm text-destructive" role="alert">
+      {error}
+    </p>
+  );
+}
+
+function PanelNav({
+  panel,
+  onSelect,
+}: Readonly<{ panel: AnalyzePanel; onSelect: (panel: AnalyzePanel) => void }>) {
+  return (
+    <nav
+      className="w-full shrink-0 rounded-xl bg-gradient-to-b from-navy to-navy-dark p-3 text-white lg:w-[240px]"
+      aria-label="แผงวิเคราะห์"
+      data-testid="analyze-panels"
+    >
+      <p className="mb-2 text-[11px] uppercase tracking-wider text-white/55">ในเครื่องมือนี้</p>
+      {PANELS.map((item) => {
+        const Icon = item.icon;
+        const active = panel === item.id;
+        const tone = active
+          ? "border-crimson bg-brand-orange font-bold text-navy"
+          : "border-transparent text-white hover:bg-white/10";
+        return (
+          <button
+            key={item.id}
+            type="button"
+            data-testid={`analyze-tab-${item.id}`}
+            onClick={() => onSelect(item.id)}
+            className={cn(
+              "mb-1 flex w-full items-start gap-2.5 rounded-lg border-l-[3px] px-3 py-2.5 text-left text-sm transition-colors",
+              tone
+            )}
+          >
+            <Icon className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function BidderRiskSlot({ report }: Readonly<{ report: AnalyzeResult["bidder_risk"] }>) {
+  if (report) return <BidderRiskPanel report={report} />;
+  return (
+    <p className="text-sm text-muted-foreground" data-testid="bidder-risk-panel">
+      ยังไม่มีรายงานความเสี่ยงก่อนยื่นจากผลนี้
+    </p>
+  );
+}
+
+function AnalyzePanelBody({
+  result,
+  panel,
+  copiedKey,
+  onCopy,
+}: Readonly<{
+  result: AnalyzeResult;
+  panel: AnalyzePanel;
+  copiedKey: string | null;
+  onCopy: (key: string, value: string) => void;
+}>) {
+  if (panel === "legal") return <PartPanel part={result.legal} />;
+  if (panel === "lock_in") return <PartPanel part={result.lock_in} />;
+  if (panel === "project") return <PartPanel part={result.project} />;
+  if (panel === "bidder_risk") return <BidderRiskSlot report={result.bidder_risk} />;
+  if (panel === "recommendations") {
+    return <RecommendationsPanel result={result} copiedKey={copiedKey} onCopy={onCopy} />;
+  }
+  return null;
+}
+
+function AnalyzeBody({
+  result,
+  panel,
+  copiedKey,
+  onCopy,
+}: Readonly<{
+  result: AnalyzeResult | null;
+  panel: AnalyzePanel;
+  copiedKey: string | null;
+  onCopy: (key: string, value: string) => void;
+}>) {
+  if (!result) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        วางข้อความหรือเลือกโครงการ แล้วกดวิเคราะห์เพื่อดูผล
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="mb-3 text-sm text-navy" data-testid="analyze-summary">
+        คะแนนรวม {result.total}/100 — {result.summary}
+      </p>
+      <AnalyzePanelBody result={result} panel={panel} copiedKey={copiedKey} onCopy={onCopy} />
+    </>
+  );
+}
+
 export default function AnalyzePage() {
   const { projects, fetchProjects } = useProjectStore();
   const [text, setText] = useState("");
   const [projectId, setProjectId] = useState("");
   const [panel, setPanel] = useState<AnalyzePanel>("legal");
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -222,39 +405,6 @@ export default function AnalyzePage() {
   useEffect(() => {
     fetchProjects(1).catch(() => undefined);
   }, [fetchProjects]);
-
-  async function runAnalysis() {
-    const trimmed = text.trim();
-    if (!trimmed && !projectId) {
-      setError("วางข้อความ TOR หรือเลือกร่างจากโครงการก่อนวิเคราะห์");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setCopiedKey(null);
-    try {
-      const response = await apiClient.post("/analyze", {
-        text: trimmed || undefined,
-        project_id: projectId || undefined,
-      });
-      const payload = unwrapData<unknown>(response);
-      if (!isAnalyzeResult(payload)) {
-        throw new Error("รูปแบบผลวิเคราะห์ไม่ถูกต้อง");
-      }
-      setResult(payload);
-      setPanel("legal");
-    } catch (err: unknown) {
-      setResult(null);
-      setError(apiErrorMessage(err, "วิเคราะห์ TOR ไม่สำเร็จ"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleCopy(key: string, value: string) {
-    const ok = await copySuggestedText(value);
-    if (ok) setCopiedKey(key);
-  }
 
   return (
     <div className="min-w-0" data-testid="analyze-page">
@@ -287,64 +437,37 @@ export default function AnalyzePage() {
           onChange={(event) => setProjectId(event.target.value)}
           options={projects.map((item) => ({ value: item.id, label: item.name }))}
         />
-        <Button data-testid="analyze-run" onClick={runAnalysis} disabled={busy}>
-          {busy ? "กำลังวิเคราะห์..." : "วิเคราะห์ TOR"}
+        <Button
+          data-testid="analyze-run"
+          onClick={() => {
+            void runAnalysis(text, projectId, {
+              setBusy,
+              setStatus,
+              setError,
+              setCopiedKey,
+              setResult,
+              setPanel,
+            });
+          }}
+          disabled={busy}
+        >
+          {runLabel(busy)}
         </Button>
-        {error ? (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
+        <AnalyzeStatus status={status} />
+        <AnalyzeError error={error} />
       </div>
 
       <div className="mt-5 flex min-w-0 flex-col gap-4 lg:flex-row">
-        <nav
-          className="w-full shrink-0 rounded-xl bg-gradient-to-b from-navy to-navy-dark p-3 text-white lg:w-[240px]"
-          aria-label="แผงวิเคราะห์"
-          data-testid="analyze-panels"
-        >
-          <p className="mb-2 text-[11px] uppercase tracking-wider text-white/55">ในเครื่องมือนี้</p>
-          {PANELS.map((item) => {
-            const Icon = item.icon;
-            const active = panel === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                data-testid={`analyze-tab-${item.id}`}
-                onClick={() => setPanel(item.id)}
-                className={cn(
-                  "mb-1 flex w-full items-start gap-2.5 rounded-lg border-l-[3px] px-3 py-2.5 text-left text-sm transition-colors",
-                  active
-                    ? "border-crimson bg-brand-orange font-bold text-navy"
-                    : "border-transparent text-white hover:bg-white/10"
-                )}
-              >
-                <Icon className="mt-0.5 h-[18px] w-[18px] shrink-0" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
+        <PanelNav panel={panel} onSelect={setPanel} />
         <div className="min-w-0 flex-1 rounded-xl bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
-          {!result ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              วางข้อความหรือเลือกโครงการ แล้วกดวิเคราะห์เพื่อดูผลทั้งสี่แผง
-            </p>
-          ) : (
-            <>
-              <p className="mb-3 text-sm text-navy" data-testid="analyze-summary">
-                คะแนนรวม {result.total}/100 — {result.summary}
-              </p>
-              {panel === "legal" ? <PartPanel part={result.legal} /> : null}
-              {panel === "lock_in" ? <PartPanel part={result.lock_in} /> : null}
-              {panel === "project" ? <PartPanel part={result.project} /> : null}
-              {panel === "recommendations" ? (
-                <RecommendationsPanel result={result} copiedKey={copiedKey} onCopy={handleCopy} />
-              ) : null}
-            </>
-          )}
+          <AnalyzeBody
+            result={result}
+            panel={panel}
+            copiedKey={copiedKey}
+            onCopy={(key, value) => {
+              void rememberCopy(key, value, setCopiedKey);
+            }}
+          />
         </div>
       </div>
     </div>

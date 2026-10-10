@@ -824,12 +824,25 @@ SECTION_HINTS: dict[str, str] = {
         "ระบุเกณฑ์ที่ใช้ให้ชัด หากใช้เกณฑ์ราคาให้เขียนสั้นว่าพิจารณาจากราคารวม "
         "หากใช้เกณฑ์ราคาประกอบเกณฑ์อื่น ต้องมีตารางน้ำหนักคะแนนที่รวมได้ ๑๐๐ "
         "พร้อมคะแนนผ่านขั้นต่ำ และหมายเหตุว่าไม่ส่งเอกสารจะไม่ได้คะแนนในข้อนั้น "
-        "รวมแต้มต่อผู้ประกอบการ SMEs และพัสดุที่ผลิตในประเทศไทยเมื่อเข้าเงื่อนไข"
+        "รวมแต้มต่อผู้ประกอบการ SMEs และพัสดุที่ผลิตในประเทศไทยเมื่อเข้าเงื่อนไข "
+        "หัวข้อประเมินงบประมาณต้องตรวจว่าวงเงินครอบห้าหมวดคือทรัพยากรบุคคล อุปกรณ์ "
+        "การจัดซื้อจัดจ้าง การจ้างที่ปรึกษา และค่าอบรม และเป็นไปตามกฎวุฒิที่สลับปริญญาโทกับปริญญาเอก "
+        "อัตราภาคเอกชน อายุงานที่กำหนดหรือ 2 ปีหากไม่ได้กำหนด สถานที่โรงแรมหรือเอกชน "
+        "และจำนวนมื้ออาหารให้ตรงครึ่งวันหรือเต็มวัน"
     ),
     "budget": (
         "ระบุแหล่งเงินและปีงบประมาณ จำนวนเงินเป็นตัวเลขตามด้วยตัวอักษรในวงเล็บ "
         "และระบุว่ารวมภาษีมูลค่าเพิ่มและค่าใช้จ่ายทั้งปวงไว้ด้วยแล้วหรือไม่ "
-        "แยกวงเงินงบประมาณที่ได้รับจัดสรรออกจากราคากลางเมื่อมีทั้งสองค่า"
+        "แยกวงเงินงบประมาณที่ได้รับจัดสรรออกจากราคากลางเมื่อมีทั้งสองค่า "
+        "ใบประมาณการต้องครอบห้าหมวดคือทรัพยากรบุคคล อุปกรณ์ การจัดซื้อจัดจ้าง "
+        "การจ้างที่ปรึกษา และค่าอบรม โดยห้ามเปลี่ยนตัวเลขที่คำนวณจากอัตรา "
+        "การจ้างที่ปรึกษาจัดทีมสลับวุฒิปริญญาโทแล้วปริญญาเอก ใช้อัตราภาคเอกชน "
+        "ไม่ใช้ข้าราชการ บุคลากรในหน่วยงานของรัฐ หรือสถาบันของรัฐ "
+        "ถ้าไม่ได้กำหนดอายุงานให้ใช้ 2 ปี และเลือกแถวที่เข้าเงื่อนไขราคาต่ำสุด "
+        "ค่าอบรมแยกอาหาร อาหารว่าง เอกสาร และสถานที่ สถานที่ค่าเริ่มต้นเป็นโรงแรมหรือสถานที่เอกชน "
+        "ครึ่งวันเช้าหรือครึ่งวันบ่ายคิดอาหาร 1 มื้อและอาหารว่าง 1 มื้อ "
+        "เต็มวันทั้งเช้าและบ่ายคิดอาหาร 2 มื้อและอาหารว่าง 2 มื้อ "
+        "เอกสารคิดทุกครั้งตามจำนวนผู้เข้าอบรม"
     ),
     "payment": (
         "แจกแจงเป็นตารางงวดจ่ายเงิน ร้อยละรวมต้องเท่ากับ ๑๐๐ พอดี "
@@ -895,7 +908,13 @@ SCOPE_HINTS: dict[str, str] = {
     Scope.SPECIFICATION: "อ้างคุณลักษณะเฉพาะรายรายการในเอกสารแนบ และกำหนดให้ยื่นตารางเปรียบเทียบคุณลักษณะพร้อมแคตตาล็อกที่ทำแถบสีอ้างอิงหน้า",
     Scope.INSTALLATION: "สถานที่ติดตั้ง จำนวนจุด งานตั้งค่าที่ต้องทำ การเดินสายสัญญาณ การติดสติกเกอร์ทรัพย์สิน และสิทธิของหน่วยงานในการเปลี่ยนแปลงสถานที่ติดตั้ง",
     Scope.DELIVERY_ACCEPTANCE: "เงื่อนไขการแจ้งส่งมอบล่วงหน้าเป็นลายลักษณ์อักษร วิธีตรวจรับ และเอกสารที่ต้องแนบตอนส่งมอบ",
-    Scope.TRAINING: "หลักสูตร จำนวนผู้เข้าอบรม จำนวนรุ่น สถานที่ และการที่คู่สัญญารับผิดชอบค่าใช้จ่ายทั้งหมด พร้อมแจ้งกำหนดล่วงหน้า",
+    Scope.TRAINING: (
+        "หลักสูตร จำนวนผู้เข้าอบรม จำนวนรุ่น และสถานที่ พร้อมแจ้งกำหนดล่วงหน้า "
+        "ค่าเริ่มต้นใช้สถานที่โรงแรมหรือสถานที่เอกชน ไม่ใช้สถานที่ของหน่วยงานเป็นค่าเริ่มต้น "
+        "ครึ่งวันเช้าหรือครึ่งวันบ่ายคิดอาหาร 1 มื้อและอาหารว่าง 1 มื้อ "
+        "เต็มวันทั้งเช้าและบ่ายคิดอาหาร 2 มื้อและอาหารว่าง 2 มื้อ "
+        "มีเอกสารทุกครั้งตามจำนวนผู้เข้าอบรม และคู่สัญญารับผิดชอบค่าใช้จ่ายทั้งหมด"
+    ),
     Scope.DOCUMENTS: "คู่มือติดตั้ง คู่มือใช้งาน คู่มือผู้ดูแลระบบ จำนวนชุด รูปแบบเอกสารและสื่อบันทึกข้อมูล",
     Scope.AFTER_SALES: "บริการสนับสนุนระหว่างรับประกัน รอบการบำรุงรักษาเชิงป้องกัน เวลาเข้าแก้ไข และค่าปรับกรณีไม่ปฏิบัติตาม",
     Scope.SYSTEM_OVERVIEW: "สถาปัตยกรรมระบบเป้าหมาย จำนวนผู้ใช้ ปริมาณข้อมูล และสภาพแวดล้อมที่ต้องรองรับ",
@@ -918,7 +937,12 @@ SCOPE_HINTS: dict[str, str] = {
         "ห้ามใส่เลข ๘.๑/8.1"
     ),
     Scope.DELIVERABLE_DOCS: "เอกสารระบบที่ต้องส่งมอบ (เอกสารระบบ กรณีใช้งาน แผนภาพความสัมพันธ์ข้อมูล พจนานุกรมข้อมูล) และซอร์สโค้ดฉบับสมบูรณ์ล่าสุดก่อนสิ้นสุดการรับประกัน",
-    Scope.PROJECT_TEAM: "ตำแหน่ง จำนวนคน คุณวุฒิ และประสบการณ์ขั้นต่ำ พร้อมแบบฟอร์มประวัติบุคลากร",
+    Scope.PROJECT_TEAM: (
+        "ตำแหน่ง จำนวนคน คุณวุฒิ และประสบการณ์ขั้นต่ำ พร้อมแบบฟอร์มประวัติบุคลากร "
+        "จัดทีมสลับวุฒิปริญญาโทแล้วปริญญาเอก ใช้อัตราภาคเอกชน "
+        "ไม่ใช้ข้าราชการ บุคลากรในหน่วยงานของรัฐ หรือสถาบันของรัฐเป็นค่าเริ่มต้น "
+        "ถ้ากำหนดอายุงานให้เลือกแถวที่เข้าเงื่อนไขและราคาต่ำสุด ถ้าไม่ได้กำหนดให้ใช้อายุงาน 2 ปี"
+    ),
     Scope.SLA_WARRANTY: "เวลาเข้าดำเนินการ เวลาแก้ไขให้แล้วเสร็จ เวลาที่ยอมให้ระบบขัดข้องต่อเดือน และเจ้าหน้าที่ประจำ ณ หน่วยงาน",
     Scope.ASSET_LIST: "ตารางอุปกรณ์หรือระบบงานที่รับผิดชอบ ระบุยี่ห้อ รุ่น จำนวน และรายการที่ไม่รวมอยู่ในการบำรุงรักษา",
     Scope.CM: "นิยามการบำรุงรักษาแบบไม่มีกำหนดเวลาแน่นอน ขั้นตอนเมื่อได้รับแจ้ง และการจัดหาอุปกรณ์ทดแทนระหว่างซ่อม",
@@ -1071,6 +1095,35 @@ class TaxonomyEditError(ValueError):
     """Raised when a taxonomy change would skip CORE sections or numbering."""
 
 
+def _resolved_section_order(
+    ptype: str,
+    core_list: list[str],
+    extras: dict[str, list[str]],
+    close: str,
+) -> list[str]:
+    stored = SECTION_ORDER_BY_TYPE.get(ptype)
+    if stored:
+        return list(stored)
+    return [*core_list, *extras.get(ptype, []), close]
+
+
+def _assert_type_order(ptype: str, order: list[str], close: str) -> None:
+    missing_in_type = [key for key in CORE_SECTION_ORDER if key not in order]
+    if missing_in_type:
+        raise TaxonomyEditError(f"{ptype} missing CORE sections {missing_in_type}")
+    if close not in order:
+        raise TaxonomyEditError(f"{ptype} missing closing section {close}")
+    if len(order) != len(set(order)):
+        raise TaxonomyEditError(f"{ptype} has duplicate section keys")
+    _assert_contiguous_numbers(ptype, order)
+
+
+def _assert_contiguous_numbers(ptype: str, order: list[str]) -> None:
+    for index, key in enumerate(order, start=1):
+        if order.index(key) + 1 != index:
+            raise TaxonomyEditError(f"{ptype} {key} numbering is not contiguous")
+
+
 def validate_taxonomy_edit(
     procurement_types: dict[str, str] | None = None,
     core: list[str] | None = None,
@@ -1086,17 +1139,8 @@ def validate_taxonomy_edit(
     if missing_core:
         raise TaxonomyEditError(f"CORE_SECTION_ORDER missing {missing_core}")
     for ptype in types:
-        order = list(SECTION_ORDER_BY_TYPE.get(ptype) or [*core_list, *extras.get(ptype, []), close])
-        missing_in_type = [key for key in CORE_SECTION_ORDER if key not in order]
-        if missing_in_type:
-            raise TaxonomyEditError(f"{ptype} missing CORE sections {missing_in_type}")
-        if close not in order:
-            raise TaxonomyEditError(f"{ptype} missing closing section {close}")
-        if len(order) != len(set(order)):
-            raise TaxonomyEditError(f"{ptype} has duplicate section keys")
-        for index, key in enumerate(order, start=1):
-            if order.index(key) + 1 != index:
-                raise TaxonomyEditError(f"{ptype} {key} numbering is not contiguous")
+        order = _resolved_section_order(ptype, core_list, extras, close)
+        _assert_type_order(ptype, order, close)
 
 
 def heading_number(

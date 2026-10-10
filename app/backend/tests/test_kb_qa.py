@@ -12,6 +12,9 @@ from app.rag.kb_qa import (
     CHAT_RAG_TOP_K,
     KB_QA_SYSTEM,
     build_kb_qa_messages,
+    pin_rate_catalog_chunks,
+    question_asks_rate_catalog,
+    rate_catalog_instruction,
     chat_context_token_budget,
     chat_rag_fallback_top_n,
     chat_rag_pack_cap_tokens,
@@ -195,3 +198,56 @@ async def test_prepare_kb_qa_messages_states_actual_web_count_when_below_five():
     assert "น้อยกว่า 5 แหล่ง" in user
     assert "https://www.cgd.go.th/one" in user
     assert "**สรุปคำตอบ**" not in messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_load_rate_catalog_chunks_prefers_graduate_rows(monkeypatch):
+    from app.rag.hybrid import load_rate_catalog_chunks
+    from app.rag import hybrid as hybrid_mod
+
+    row = (
+        "id-1",
+        "30,090 ค่าอาหาร สถานที่เอกชน",
+        18,
+        "ตาราง",
+        "อัตราค่าจ้างที่ปรึกษา ประชาสัมพันธ์ อบรม .pdf",
+    )
+
+    class _Result:
+        def all(self):
+            return [row]
+
+    class _Session:
+        async def execute(self, *_args, **_kwargs):
+            return _Result()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(hybrid_mod.runtime, "session_factory", lambda: _Session())
+    chunks = await load_rate_catalog_chunks(limit=1)
+    assert chunks[0].source_document.startswith("อัตราค่าจ้างที่ปรึกษา")
+    assert chunks[0].page_number == 18
+    assert chunks[0].score == 0.99
+    monkeypatch.setattr(hybrid_mod.runtime, "session_factory", None)
+    assert await load_rate_catalog_chunks() == []
+
+
+def test_rate_question_pins_the_rate_pdf_ahead_of_other_guidelines():
+    question = "อัตราค่าจ้างที่ปรึกษาภาคเอกชน ปริญญาโท อายุงาน 2 ปี ใช้แถวใด"
+    assert question_asks_rate_catalog(question) is True
+    assert question_asks_rate_catalog("หนังสือ ว126 เหตุบอกเลิกสัญญา") is False
+    catalog = _chunk("30,090 บาท", "อัตราค่าจ้างที่ปรึกษา ประชาสัมพันธ์ อบรม .pdf", score=0.99)
+    catalog.id = "rate-1"
+    other = _chunk("เริ่มที่ 5 ปี", "กวจ_ว1203_แนวทางการจ้างที่ปรึกษา.pdf", score=0.8)
+    other.id = "other-1"
+    pinned = pin_rate_catalog_chunks([other], [catalog])
+    assert pinned[0].source_document.startswith("อัตราค่าจ้างที่ปรึกษา")
+    assert rate_catalog_instruction(pinned)
+    messages = build_kb_qa_messages(question=question, chunks=pinned, web_sources=[])
+    body = messages[-1]["content"]
+    assert "อัตราค่าจ้างที่ปรึกษา" in body
+    assert "30,090" in body

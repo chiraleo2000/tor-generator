@@ -263,25 +263,48 @@ def _make_suggestion(
     )
 
 
-def _check_budget_scope_alignment(sections: dict[str, str]) -> list[ReviewSuggestion]:
-    if "s4" not in sections or "s6" not in sections:
+def _budget_rule_review_suggestions(sections: dict[str, str]) -> list[ReviewSuggestion]:
+    from app.domain.consultant_budget import budget_rule_findings
+
+    blob = "\n".join(sections.get(key, "") for key in ("s4", "s6", "s11"))
+    if not blob.strip():
         return []
-    scope_text = sections["s4"]
-    budget_text = sections["s6"]
-    if len(scope_text) <= 500 or len(budget_text) >= 200:
-        return []
-    return [
-        _make_suggestion(
-            category="completeness",
-            section_key="s6",
-            current_text=budget_text[:150] if budget_text else "(งบประมาณว่างเปล่า)",
-            suggested_text=(
-                "ควรเพิ่มรายละเอียดการจัดสรรงบประมาณให้สอดคล้อง"
-                "กับขอบเขตงานที่ระบุไว้อย่างละเอียด"
-            ),
-            predicted_score_improvement=3.0,
+    suggestions: list[ReviewSuggestion] = []
+    for finding in budget_rule_findings(blob):
+        section_key = "s11" if str(finding.get("rule_id", "")).startswith("evaluation") else "s6"
+        suggestions.append(
+            _make_suggestion(
+                category="consistency",
+                section_key=section_key,
+                current_text=str(finding.get("evidence") or "")[:150] or "(ไม่พบข้อความที่รองรับ)",
+                suggested_text=str(finding.get("suggestion") or ""),
+                predicted_score_improvement=2.5,
+                risk_type="cost",
+            )
         )
-    ]
+    return suggestions
+
+
+def _check_budget_scope_alignment(sections: dict[str, str]) -> list[ReviewSuggestion]:
+    suggestions: list[ReviewSuggestion] = []
+    if "s4" in sections and "s6" in sections:
+        scope_text = sections["s4"]
+        budget_text = sections["s6"]
+        if len(scope_text) > 500 and len(budget_text) < 200:
+            suggestions.append(
+                _make_suggestion(
+                    category="completeness",
+                    section_key="s6",
+                    current_text=budget_text[:150] if budget_text else "(งบประมาณว่างเปล่า)",
+                    suggested_text=(
+                        "ควรเพิ่มรายละเอียดการจัดสรรงบประมาณให้สอดคล้อง"
+                        "กับขอบเขตงานที่ระบุไว้อย่างละเอียด"
+                    ),
+                    predicted_score_improvement=3.0,
+                )
+            )
+    suggestions.extend(_budget_rule_review_suggestions(sections))
+    return suggestions
 
 
 def _check_payment_deliverables(sections: dict[str, str]) -> list[ReviewSuggestion]:
@@ -834,14 +857,22 @@ class ReviewAgent:
             parts.append(f"ระยะเวลา: {project_metadata['timeline_days']} วัน")
         req = str(project_metadata.get("requirements") or "").strip()
         if req:
-            parts.append("=== ความต้องการและเอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น ===")
-            parts.append(req[:REVIEW_REQUIREMENTS_CHARS])
-            parts.append("")
+            parts.extend(
+                [
+                    "=== ความต้องการและเอกสารขั้นที่ ๐ ของโครงการนี้เท่านั้น ===",
+                    req[:REVIEW_REQUIREMENTS_CHARS],
+                    "",
+                ]
+            )
         legal = str(project_metadata.get("legal_context") or "").strip()
         if legal:
-            parts.append("=== กฎหมาย ระเบียบ และมาตรฐานจากคลังกลาง ===")
-            parts.append(legal[:REVIEW_LEGAL_CONTEXT_CHARS])
-            parts.append("")
+            parts.extend(
+                [
+                    "=== กฎหมาย ระเบียบ และมาตรฐานจากคลังกลาง ===",
+                    legal[:REVIEW_LEGAL_CONTEXT_CHARS],
+                    "",
+                ]
+            )
 
         # Full TOR sections — keep long official drafts; cap only runaway blobs
         parts.append("=== เอกสาร TOR ฉบับเต็ม ===")

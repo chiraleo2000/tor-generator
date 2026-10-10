@@ -9,6 +9,16 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import { factTopicsComplete } from "@/lib/intake-complete";
 
+function factReadyStatus(factReady: boolean, gapCount: number, missingCount: number): string {
+  if (!factReady) {
+    return `ยังขาดข้อเท็จจริง ${missingCount} ช่อง — ตอบในแชทหรือวางข้อความยาวได้`;
+  }
+  if (gapCount > 0) {
+    return `ข้อเท็จจริงหลักครบแล้ว — ยังเติมได้อีก ${gapCount} ช่อง หรือยืนยันไปร่างได้`;
+  }
+  return "ข้อเท็จจริงหลักครบแล้ว — ยืนยันเมื่อพร้อมไปร่างเนื้อหา";
+}
+
 export function Phase2Qa({
   projectId,
   coverage,
@@ -80,11 +90,7 @@ export function Phase2Qa({
           ช่องกฎหมาย/มาตรฐานกดปุ่มด้านล่างเพื่อใช้ตาม พ.ร.บ. และระเบียบกลางจากคลัง
         </p>
         <p className="mt-2 text-sm text-navy">
-          {factReady
-            ? gapNonFacts.length > 0
-              ? `ข้อเท็จจริงหลักครบแล้ว — ยังเติมได้อีก ${gapNonFacts.length} ช่อง หรือยืนยันไปร่างได้`
-              : "ข้อเท็จจริงหลักครบแล้ว — ยืนยันเมื่อพร้อมไปร่างเนื้อหา"
-            : `ยังขาดข้อเท็จจริง ${missingFacts.length} ช่อง — ตอบในแชทหรือวางข้อความยาวได้`}
+          {factReadyStatus(factReady, gapNonFacts.length, missingFacts.length)}
         </p>
         {gapNonFacts.length > 0 ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">

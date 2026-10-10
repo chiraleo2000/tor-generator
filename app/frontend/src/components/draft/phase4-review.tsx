@@ -95,6 +95,11 @@ export function Phase4Review({
         <CheckItem tone="warn" title="ยังไม่ได้รันตรวจสอบ" detail="กดตรวจกฎเพื่อตรวจกฎหมาย ความครบถ้วน และความสอดคล้อง" />
       )}
       {partScores ? <ThreePartScores analysis={partScores} /> : null}
+      {partScores?.bidder_risk?.recommendation ? (
+        <p className="my-3 text-sm text-navy" data-testid="phase4-bid-recommendation">
+          {partScores.bidder_risk.recommendation}
+        </p>
+      ) : null}
       <ReviewFindingBuckets findings={findings} />
       {suggestions.length ? (
         <h4 className="mb-1 mt-3 text-sm font-bold text-navy">
@@ -278,7 +283,7 @@ function RequirementsUpload({ projectId }: Readonly<{ projectId: string }>) {
             disabled={uploading}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) upload(file);
+              if (file) void upload(file);
             }}
           />
         </label>

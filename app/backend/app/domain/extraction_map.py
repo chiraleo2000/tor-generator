@@ -72,6 +72,11 @@ def map_extracted_text(text: str) -> dict[str, str]:
     """Split extracted TOR text into canonical section keys using headings."""
     if not text or not text.strip():
         return {}
+    from app.services.bidder_risk import strip_page_markers
+
+    text = strip_page_markers(text)
+    if not text.strip():
+        return {}
     mapped = _map_by_headings(text)
     parent = _slots_for_review(text)
     collapsed = not mapped or (set(mapped) == {"s1"})

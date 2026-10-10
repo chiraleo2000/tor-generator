@@ -104,6 +104,92 @@ class BatchIngestionResult:
     results: list[IngestionResult] = field(default_factory=list)
 
 
+def _failed_ingestion(
+    document_id: str,
+    document_name: str,
+    error_msg: str,
+) -> IngestionResult:
+    return IngestionResult(
+        document_id=document_id,
+        document_name=document_name,
+        success=False,
+        error_message=error_msg,
+    )
+
+
+async def _mark_failed(
+    session: AsyncSession | None,
+    document_id: str,
+    document_name: str,
+    error_msg: str,
+) -> IngestionResult:
+    if session:
+        await _update_document_status(session, document_id, "failed", error_message=error_msg)
+    return _failed_ingestion(document_id, document_name, error_msg)
+
+
+async def _embed_one_chunk(
+    chunk: Any,
+    document_id: str,
+    document_name: str,
+    embedding_provider: EmbeddingProvider,
+    vector_store_provider: VectorStoreProvider,
+    extra_metadata: dict | None,
+) -> ChunkFailure | None:
+    chunk_id = _generate_chunk_id(document_id, chunk.metadata.chunk_index)
+    try:
+        embedding = await embedding_provider.embed_query(chunk.text)
+    except Exception as exc:
+        logger.warning(
+            "Embedding failed for chunk %d of document %s: %s",
+            chunk.metadata.chunk_index,
+            document_id,
+            str(exc),
+        )
+        return ChunkFailure(
+            chunk_index=chunk.metadata.chunk_index,
+            document_id=document_id,
+            error=f"Embedding failed: {type(exc).__name__}: {exc}",
+        )
+    metadata = _build_chunk_metadata(chunk, document_name, extra_metadata)
+    try:
+        await vector_store_provider.upsert(id=chunk_id, vector=embedding, metadata=metadata)
+    except Exception as exc:
+        logger.warning(
+            "Vector store upsert failed for chunk %d of document %s: %s",
+            chunk.metadata.chunk_index,
+            document_id,
+            str(exc),
+        )
+        return ChunkFailure(
+            chunk_index=chunk.metadata.chunk_index,
+            document_id=document_id,
+            error=f"Vector store upsert failed: {type(exc).__name__}: {exc}",
+        )
+    return None
+
+
+async def _record_ingest_status(
+    session: AsyncSession | None,
+    document_id: str,
+    embedded_count: int,
+    total_chunks: int,
+    failed_chunks: list[ChunkFailure],
+) -> None:
+    if session is None:
+        return
+    if embedded_count > 0:
+        await _update_document_status(
+            session, document_id, "completed", chunk_count=embedded_count
+        )
+        return
+    error_msg = (
+        f"All {total_chunks} chunks failed embedding/storage. "
+        f"First failure: {failed_chunks[0].error if failed_chunks else 'unknown'}"
+    )
+    await _update_document_status(session, document_id, "failed", error_message=error_msg)
+
+
 async def ingest_document(
     document_id: str,
     document_name: str,
@@ -132,150 +218,48 @@ async def ingest_document(
         IngestionResult with details about the ingestion outcome.
     """
     logger.info("Starting ingestion for document: %s (id=%s)", document_name, document_id)
-
-    # Update status to processing
     if session:
         await _update_document_status(session, document_id, "processing")
-
-    # Step 1: Extract text
     try:
         extraction_result: ExtractionResult = extract_text(file_path, mime_type)
-    except Exception as e:
-        error_msg = f"Text extraction failed: {type(e).__name__}: {e}"
+    except Exception as exc:
+        error_msg = f"Text extraction failed: {type(exc).__name__}: {exc}"
         logger.error("Extraction failed for document %s: %s", document_id, error_msg)
-        if session:
-            await _update_document_status(
-                session, document_id, "failed", error_message=error_msg
-            )
-        return IngestionResult(
-            document_id=document_id,
-            document_name=document_name,
-            success=False,
-            error_message=error_msg,
-        )
-
+        return await _mark_failed(session, document_id, document_name, error_msg)
     if not extraction_result.text.strip():
         error_msg = "Extraction produced empty text"
         logger.warning("Document %s produced no text after extraction", document_id)
-        if session:
-            await _update_document_status(
-                session, document_id, "failed", error_message=error_msg
-            )
-        return IngestionResult(
-            document_id=document_id,
-            document_name=document_name,
-            success=False,
-            error_message=error_msg,
-        )
-
-    # Step 2: Chunk text (Thai-aware)
+        return await _mark_failed(session, document_id, document_name, error_msg)
     try:
         chunking_result: ChunkingResult = chunk_text(
             text=extraction_result.text,
             document_id=document_id,
         )
-    except Exception as e:
-        error_msg = f"Chunking failed: {type(e).__name__}: {e}"
+    except Exception as exc:
+        error_msg = f"Chunking failed: {type(exc).__name__}: {exc}"
         logger.error("Chunking failed for document %s: %s", document_id, error_msg)
-        if session:
-            await _update_document_status(
-                session, document_id, "failed", error_message=error_msg
-            )
-        return IngestionResult(
-            document_id=document_id,
-            document_name=document_name,
-            success=False,
-            error_message=error_msg,
-        )
-
+        return await _mark_failed(session, document_id, document_name, error_msg)
     if not chunking_result.chunks:
         error_msg = "Chunking produced no chunks"
         logger.warning("Document %s produced no chunks after text chunking", document_id)
-        if session:
-            await _update_document_status(
-                session, document_id, "failed", error_message=error_msg
-            )
-        return IngestionResult(
-            document_id=document_id,
-            document_name=document_name,
-            success=False,
-            error_message=error_msg,
-        )
-
-    # Step 3 & 4: Embed and upsert each chunk
-    total_chunks = len(chunking_result.chunks)
-    embedded_count = 0
+        return await _mark_failed(session, document_id, document_name, error_msg)
     failed_chunks: list[ChunkFailure] = []
-
+    embedded_count = 0
     for chunk in chunking_result.chunks:
-        chunk_id = _generate_chunk_id(document_id, chunk.metadata.chunk_index)
-
-        # Step 3: Generate embedding for this chunk
-        try:
-            embedding = await embedding_provider.embed_query(chunk.text)
-        except Exception as e:
-            # Req 3.8: Skip failed chunk, log failure, continue
-            failure = ChunkFailure(
-                chunk_index=chunk.metadata.chunk_index,
-                document_id=document_id,
-                error=f"Embedding failed: {type(e).__name__}: {e}",
-            )
-            failed_chunks.append(failure)
-            logger.warning(
-                "Embedding failed for chunk %d of document %s: %s",
-                chunk.metadata.chunk_index,
-                document_id,
-                str(e),
-            )
-            continue
-
-        # Step 4: Upsert into vector store with metadata
-        metadata = _build_chunk_metadata(chunk, document_name, extra_metadata)
-
-        try:
-            await vector_store_provider.upsert(
-                id=chunk_id,
-                vector=embedding,
-                metadata=metadata,
-            )
+        failure = await _embed_one_chunk(
+            chunk,
+            document_id,
+            document_name,
+            embedding_provider,
+            vector_store_provider,
+            extra_metadata,
+        )
+        if failure is None:
             embedded_count += 1
-        except Exception as e:
-            # Treat vector store upsert failure same as embedding failure
-            failure = ChunkFailure(
-                chunk_index=chunk.metadata.chunk_index,
-                document_id=document_id,
-                error=f"Vector store upsert failed: {type(e).__name__}: {e}",
-            )
-            failed_chunks.append(failure)
-            logger.warning(
-                "Vector store upsert failed for chunk %d of document %s: %s",
-                chunk.metadata.chunk_index,
-                document_id,
-                str(e),
-            )
-            continue
-
-    # Determine success: at least one chunk was embedded
-    success = embedded_count > 0
-
-    # Update document status in database
-    if session:
-        if success:
-            await _update_document_status(
-                session,
-                document_id,
-                "completed",
-                chunk_count=embedded_count,
-            )
         else:
-            error_msg = (
-                f"All {total_chunks} chunks failed embedding/storage. "
-                f"First failure: {failed_chunks[0].error if failed_chunks else 'unknown'}"
-            )
-            await _update_document_status(
-                session, document_id, "failed", error_message=error_msg
-            )
-
+            failed_chunks.append(failure)
+    total_chunks = len(chunking_result.chunks)
+    await _record_ingest_status(session, document_id, embedded_count, total_chunks, failed_chunks)
     if failed_chunks:
         logger.info(
             "Document %s: %d/%d chunks embedded, %d failed",
@@ -284,7 +268,7 @@ async def ingest_document(
             total_chunks,
             len(failed_chunks),
         )
-
+    success = embedded_count > 0
     return IngestionResult(
         document_id=document_id,
         document_name=document_name,

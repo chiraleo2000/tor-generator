@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -250,9 +251,18 @@ async def test_admit_generates_request_id_and_sync_on_wait() -> None:
 def test_concurrency_cap_local_llm_is_one() -> None:
     local = MagicMock(llm_max_concurrent=8, embedding_max_concurrent=16, llm_provider="lm_studio")
     cloud = MagicMock(llm_max_concurrent=8, embedding_max_concurrent=16, llm_provider="bedrock")
+    shared = MagicMock(
+        llm_max_concurrent=8,
+        embedding_max_concurrent=16,
+        llm_provider="lm_studio",
+        embedding_provider="local",
+        local_embedding_server="lm_studio",
+    )
     assert concurrency_cap("llm", local) == 1
     assert concurrency_cap("llm", cloud) == 8
     assert concurrency_cap("embedding", local) == 16
+    assert concurrency_cap("llm", shared) == 1
+    assert concurrency_cap("embedding", shared) == 1
     assert slot_ttl_seconds("embedding", MagicMock(llm_queue_wait_timeout_seconds=30)) >= 300
 
 
@@ -261,5 +271,79 @@ async def test_reset_admission_queues_deletes_keys() -> None:
     redis = MagicMock()
     redis.delete = AsyncMock()
     await reset_admission_queues(redis)
-    assert redis.delete.await_count == 2
+    assert redis.delete.await_count == 3
     await reset_admission_queues(None)
+
+
+def _shared_local_settings() -> MagicMock:
+    return MagicMock(
+        llm_provider="lm_studio",
+        embedding_provider="local",
+        local_embedding_server="lm_studio",
+        llm_max_concurrent=8,
+        embedding_max_concurrent=16,
+        llm_queue_wait_timeout_seconds=30,
+        lm_studio_timeout=30,
+    )
+
+
+@pytest.mark.asyncio
+async def test_overlapping_acquires_do_not_both_enter_provider() -> None:
+    """Chat and embedding HTTP calls share one local slot and must not overlap."""
+    from app.providers.embedding.qwen3_provider import Qwen3LocalEmbeddingProvider
+    from app.providers.llm.lm_studio_provider import LMStudioLocalProvider
+
+    current = 0
+    peak = 0
+
+    async def hold() -> None:
+        nonlocal current, peak
+        current += 1
+        peak = max(peak, current)
+        await asyncio.sleep(0.05)
+        current -= 1
+
+    chat = LMStudioLocalProvider(
+        base_url="http://127.0.0.1:9/v1",
+        model_name="test-model",
+        timeout=5,
+    )
+    embedder = Qwen3LocalEmbeddingProvider(
+        base_url="http://127.0.0.1:9/v1",
+        model="embed",
+        api_key="not-needed",
+        max_retries=0,
+    )
+
+    usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+    message = MagicMock(content="ok")
+    choice = MagicMock(message=message, finish_reason="stop")
+    chat_response = MagicMock(choices=[choice], model="test-model", usage=usage)
+
+    async def fake_chat(**_kwargs):
+        await hold()
+        return chat_response
+
+    embed_item = MagicMock(embedding=[0.1, 0.2], index=0)
+    embed_response = MagicMock(data=[embed_item])
+
+    async def fake_embed(**_kwargs):
+        await hold()
+        return embed_response
+
+    chat._client.chat.completions.create = fake_chat
+    embedder._client.embeddings.create = fake_embed
+
+    with patch("app.llm_admission.get_settings", return_value=_shared_local_settings()):
+        await asyncio.gather(
+            chat.invoke([{"role": "user", "content": "one"}]),
+            embedder.embed_query("two"),
+        )
+        assert peak == 1
+
+        peak = 0
+        await asyncio.gather(
+            chat.invoke([{"role": "user", "content": "three"}]),
+            chat.invoke([{"role": "user", "content": "four"}]),
+        )
+    assert peak == 1

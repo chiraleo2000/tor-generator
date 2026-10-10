@@ -77,8 +77,8 @@ function OverviewTab() {
     <GuideBlock title="ภาพรวมระบบ">
       <p>
         ระบบช่วยเจ้าหน้าที่พัสดุ<strong>ร่างและตรวจสอบ TOR</strong> ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ
-        พ.ศ. 2560 โครงหมวดหลักและหัวข้อย่อยขอบเขตงาน<strong>แปรตามหมวดใหญ่ ๗ ประเภท</strong> (ไม่ใช้ชุด
-        <code>s4.1</code>–<code>s4.14</code> ตายตัวกับทุกโครงการ)
+        พ.ศ. 2560 โครงหมวดหลักและหัวข้อย่อยขอบเขตงาน<strong>แปรตามหมวดใหญ่ ๗ ประเภท</strong>{" "}
+        (ไม่ใช้ชุด <code>s4.1</code>–<code>s4.14</code> ตายตัวกับทุกโครงการ)
       </p>
       <p>
         เส้นทางหลักบนหน้าจอคือ<strong>พื้นที่ทำงานห้าขั้น</strong> (ไม่ใช่วิซาร์ดแปดขั้น) แยกจากเมนู{" "}
@@ -138,9 +138,7 @@ function OverviewTab() {
           <tr>
             <td>AI ค่าเริ่มต้น (ทดสอบในเครื่อง)</td>
             <td>
-              ตาม <code>.env</code> (<code>LM_STUDIO_MODEL</code> /{" "}
-              <code>LM_STUDIO_EMBEDDING_MODEL</code> / <code>EMBEDDING_DIMENSIONS</code>
-              ) — ตัวอย่างใน <code>.env.example</code> คือ Gemma 4 + EmbeddingGemma 768-d
+              ตาม <code>.env</code> (<code>LM_STUDIO_MODEL</code> / <code>LM_STUDIO_EMBEDDING_MODEL</code> / <code>EMBEDDING_DIMENSIONS</code>) — ตัวอย่างใน <code>.env.example</code> คือ Gemma 4 + EmbeddingGemma 768-d
             </td>
           </tr>
           <tr>

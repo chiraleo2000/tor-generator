@@ -18,7 +18,8 @@ export type ChatBlock =
 export type ChatSection = { heading: string | null; blocks: ChatBlock[] };
 
 const SOURCE_LINE = /^(แหล่งข้อมูล|แหล่งอ้างอิง|แหล่งออนไลน์|เอกสารในคลัง)\s*[:：]/;
-const LIST_ITEM = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
+const LIST_BULLETS = new Set(["-", "*", "•"]);
+const SOURCE_SEPARATORS = "—–-|:";
 const ONLINE_HEADINGS = new Set([
   "แหล่งออนไลน์",
   "แหล่งจากเว็บ",
@@ -76,15 +77,69 @@ export function uniqueCitations(citations: ChatCitation[]): ChatCitation[] {
   return Array.from(byLabel.values());
 }
 
+function isWhitespace(ch: string): boolean {
+  return ch.trim() === "";
+}
+
+function isAsciiDigit(ch: string): boolean {
+  return ch >= "0" && ch <= "9";
+}
+
+function skipWhitespace(text: string, index: number): number {
+  let cursor = index;
+  while (cursor < text.length && isWhitespace(text[cursor])) cursor += 1;
+  return cursor;
+}
+
+function listMarkerEnd(text: string, index: number): number {
+  if (index >= text.length) return -1;
+  if (LIST_BULLETS.has(text[index])) return index + 1;
+  if (!isAsciiDigit(text[index])) return -1;
+  let cursor = index;
+  while (cursor < text.length && isAsciiDigit(text[cursor])) cursor += 1;
+  if (cursor < text.length && (text[cursor] === "." || text[cursor] === ")")) return cursor + 1;
+  return -1;
+}
+
+function listItemCapture(line: string): string | null {
+  const marker = listMarkerEnd(line, skipWhitespace(line, 0));
+  if (marker < 0 || marker >= line.length || !isWhitespace(line[marker])) return null;
+  const rest = line.slice(marker);
+  if (rest.length < 2) return null;
+  let splitAt = 0;
+  while (splitAt < rest.length - 1 && isWhitespace(rest[splitAt])) splitAt += 1;
+  return rest.slice(splitAt);
+}
+
+function hashHeadingBody(trimmed: string): string | null {
+  let hashes = 0;
+  while (hashes < trimmed.length && hashes < 3 && trimmed[hashes] === "#") hashes += 1;
+  if (hashes < 1 || (hashes < trimmed.length && trimmed[hashes] === "#")) return null;
+  if (hashes >= trimmed.length || !isWhitespace(trimmed[hashes])) return null;
+  const rest = trimmed.slice(hashes);
+  if (rest.length < 2) return null;
+  let splitAt = 0;
+  while (splitAt < rest.length - 1 && isWhitespace(rest[splitAt])) splitAt += 1;
+  return rest.slice(splitAt);
+}
+
+function boldWrapped(text: string): string | null {
+  if (!text.startsWith("**") || !text.endsWith("**") || text.length < 5) return null;
+  return text.slice(2, -2);
+}
+
 export function isNumericCell(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  const compact = trimmed.replace(/,/g, "").replace(/\s/g, "");
+  let compact = "";
+  for (const ch of trimmed) {
+    if (ch !== "," && !isWhitespace(ch)) compact += ch;
+  }
   return /^[+-]?\d+(\.\d+)?%?$/.test(compact);
 }
 
 function stripMarkdown(value: string): string {
-  return value.replace(/\*\*/g, "").trim();
+  return value.replaceAll("**", "").trim();
 }
 
 function looksLikeSectionTitle(title: string): boolean {
@@ -93,32 +148,45 @@ function looksLikeSectionTitle(title: string): boolean {
 
 function headingText(line: string): string | null {
   const trimmed = line.trim();
-  const hash = trimmed.match(/^#{1,3}\s+(.+)$/);
-  if (hash) return stripMarkdown(hash[1]);
-  const boldOnly = trimmed.match(/^\*\*(.+?)\*\*\s*$/);
-  if (boldOnly) {
-    const title = stripMarkdown(boldOnly[1]);
-    if (looksLikeSectionTitle(title) || (title.length <= 40 && !/[.。]/.test(title))) {
+  const hashed = hashHeadingBody(trimmed);
+  if (hashed !== null) return stripMarkdown(hashed);
+  const boldOnly = boldOnlyTitle(trimmed);
+  if (boldOnly !== null) {
+    const title = stripMarkdown(boldOnly);
+    if (looksLikeSectionTitle(title) || (title.length <= 40 && !title.includes(".") && !title.includes("。"))) {
       return title;
     }
   }
-  if (looksLikeSectionTitle(trimmed) && !LIST_ITEM.test(trimmed)) {
+  if (looksLikeSectionTitle(trimmed) && listItemCapture(trimmed) === null) {
     return stripMarkdown(trimmed);
   }
   return null;
 }
 
+function boldOnlyTitle(trimmed: string): string | null {
+  if (!trimmed.startsWith("**") || !trimmed.endsWith("**")) return null;
+  const close = trimmed.lastIndexOf("**");
+  if (close <= 2) return null;
+  return trimmed.slice(2, close);
+}
+
 function splitInlineHeading(line: string): { heading: string; rest: string } | null {
-  const match = line.trim().match(/^\*\*(.+?)\*\*\s+(.+)$/);
-  if (match && looksLikeSectionTitle(match[1])) {
-    return { heading: stripMarkdown(match[1]), rest: match[2].trim() };
-  }
-  return null;
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("**")) return null;
+  const close = trimmed.indexOf("**", 2);
+  if (close <= 2) return null;
+  const after = trimmed.slice(close + 2);
+  if (!after || !isWhitespace(after[0]) || after.length < 2) return null;
+  let splitAt = 0;
+  while (splitAt < after.length - 1 && isWhitespace(after[splitAt])) splitAt += 1;
+  const heading = trimmed.slice(2, close);
+  if (!looksLikeSectionTitle(heading)) return null;
+  return { heading: stripMarkdown(heading), rest: after.slice(splitAt).trim() };
 }
 
 function listItemText(line: string): string | null {
-  const match = line.match(LIST_ITEM);
-  return match ? match[1].trim() : null;
+  const capture = listItemCapture(line);
+  return capture === null ? null : capture.trim();
 }
 
 function isHttpUrl(url: string): boolean {
@@ -130,34 +198,90 @@ function isHttpUrl(url: string): boolean {
   }
 }
 
-export function parseOnlineSourceItem(text: string): OnlineSourceItem | null {
-  const markdown = text.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/);
-  if (markdown && isHttpUrl(markdown[2])) {
-    const rest = text
-      .replace(markdown[0], "")
-      .replace(/^[—–\-|,:.\s]+/, "")
-      .trim();
-    return { title: stripMarkdown(markdown[1]), url: markdown[2], date: rest || undefined };
-  }
-  const labeled = stripMarkdown(text).match(
-    /^(.*?)\s*[—–\-|:]\s*(https?:\/\/\S+?)(?:\s+[—–\-|:]\s*(.+))?$/
-  );
-  if (labeled && isHttpUrl(labeled[2])) {
-    return {
-      title: labeled[1].trim() || labeled[2],
-      url: labeled[2],
-      date: labeled[3]?.trim(),
-    };
-  }
-  const bare = stripMarkdown(text).match(/https?:\/\/\S+/);
-  if (bare && isHttpUrl(bare[0])) {
-    const title = stripMarkdown(text)
-      .replace(bare[0], "")
-      .replace(/^[—–\-|:.\s]+|[—–\-|:.\s]+$/g, "")
-      .trim();
-    return { title: title || bare[0], url: bare[0] };
+function httpAt(text: string, from = 0): number {
+  const secure = text.indexOf("https://", from);
+  const plain = text.indexOf("http://", from);
+  if (secure < 0) return plain;
+  if (plain < 0) return secure;
+  return Math.min(secure, plain);
+}
+
+function isSourceSeparator(ch: string): boolean {
+  return SOURCE_SEPARATORS.includes(ch);
+}
+
+function trimEdgeDecor(value: string): string {
+  let start = 0;
+  let end = value.length;
+  const decor = (ch: string) => isSourceSeparator(ch) || ch === "." || isWhitespace(ch);
+  while (start < end && decor(value[start])) start += 1;
+  while (end > start && decor(value[end - 1])) end -= 1;
+  return value.slice(start, end);
+}
+
+function trimLeadingDecor(value: string): string {
+  let start = 0;
+  const decor = (ch: string) => isSourceSeparator(ch) || ch === "." || ch === "," || isWhitespace(ch);
+  while (start < value.length && decor(value[start])) start += 1;
+  return value.slice(start);
+}
+
+function readUrlToken(text: string, start: number): string {
+  let end = start;
+  while (end < text.length && !isWhitespace(text[end]) && text[end] !== ")") end += 1;
+  return text.slice(start, end);
+}
+
+function markdownLink(text: string): { title: string; url: string; raw: string } | null {
+  let from = 0;
+  while (from < text.length) {
+    const open = text.indexOf("[", from);
+    if (open < 0) return null;
+    const close = text.indexOf("]", open + 1);
+    if (close < 0) return null;
+    const title = text.slice(open + 1, close);
+    if (title && text[close + 1] === "(") {
+      const url = readUrlToken(text, close + 2);
+      if ((url.startsWith("https://") || url.startsWith("http://")) && text[close + 2 + url.length] === ")") {
+        const rawEnd = close + 2 + url.length + 1;
+        return { title, url, raw: text.slice(open, rawEnd) };
+      }
+    }
+    from = open + 1;
   }
   return null;
+}
+
+function labeledSource(plain: string): OnlineSourceItem | null {
+  const urlAt = httpAt(plain);
+  if (urlAt <= 0) return null;
+  let cursor = urlAt;
+  while (cursor > 0 && isWhitespace(plain[cursor - 1])) cursor -= 1;
+  if (cursor === 0 || !isSourceSeparator(plain[cursor - 1])) return null;
+  const url = readUrlToken(plain, urlAt);
+  if (!isHttpUrl(url)) return null;
+  let date = plain.slice(urlAt + url.length).trim();
+  if (date && isSourceSeparator(date[0])) date = date.slice(1).trim();
+  else date = "";
+  const title = plain.slice(0, cursor - 1).trim();
+  return { title: title || url, url, date: date || undefined };
+}
+
+export function parseOnlineSourceItem(text: string): OnlineSourceItem | null {
+  const markdown = markdownLink(text);
+  if (markdown && isHttpUrl(markdown.url)) {
+    const rest = trimLeadingDecor(text.replace(markdown.raw, "")).trim();
+    return { title: stripMarkdown(markdown.title), url: markdown.url, date: rest || undefined };
+  }
+  const labeled = labeledSource(stripMarkdown(text));
+  if (labeled) return labeled;
+  const plain = stripMarkdown(text);
+  const bareAt = httpAt(plain);
+  if (bareAt < 0) return null;
+  const bare = readUrlToken(plain, bareAt);
+  if (!isHttpUrl(bare)) return null;
+  const title = trimEdgeDecor(plain.replace(bare, "")).trim();
+  return { title: title || bare, url: bare };
 }
 
 function collectOnlineItems(blocks: ChatBlock[]): OnlineSourceItem[] {
@@ -231,69 +355,75 @@ export function groupChatSections(blocks: ChatBlock[]): ChatSection[] {
   return sections;
 }
 
-function parseRichParagraph(text: string): ChatBlock[] {
-  const lines = text.replaceAll("\r\n", "\n").split("\n");
-  const blocks: ChatBlock[] = [];
-  let para: string[] = [];
-  let list: string[] = [];
+type ParagraphAcc = { blocks: ChatBlock[]; para: string[]; list: string[] };
 
-  const flushPara = () => {
-    const body = para.join("\n").trim();
-    if (body) blocks.push({ kind: "para", text: body });
-    para = [];
-  };
-  const flushList = () => {
-    if (list.length) blocks.push({ kind: "list", items: list });
-    list = [];
-  };
+function flushParagraph(acc: ParagraphAcc) {
+  const body = acc.para.join("\n").trim();
+  if (body) acc.blocks.push({ kind: "para", text: body });
+  acc.para = [];
+}
 
-  for (const line of lines) {
-    const inline = splitInlineHeading(line);
-    if (inline) {
-      flushPara();
-      flushList();
-      blocks.push({ kind: "heading", text: inline.heading });
-      if (inline.rest) para.push(inline.rest);
-      continue;
+function flushList(acc: ParagraphAcc) {
+  if (acc.list.length) acc.blocks.push({ kind: "list", items: acc.list });
+  acc.list = [];
+}
+
+function absorbSourceLine(acc: ParagraphAcc, sourceLine: string) {
+  flushParagraph(acc);
+  flushList(acc);
+  if (sourceLine.startsWith("แหล่งออนไลน์")) {
+    const parsed = parseOnlineSourceItem(sourceLine);
+    if (parsed) {
+      acc.blocks.push({ kind: "online", items: [parsed] });
+      return;
     }
-    const heading = headingText(line);
-    if (heading) {
-      flushPara();
-      flushList();
-      blocks.push({ kind: "heading", text: heading });
-      continue;
-    }
-    if (SOURCE_LINE.test(line.trim())) {
-      flushPara();
-      flushList();
-      const sourceLine = line.trim();
-      if (/^แหล่งออนไลน์/.test(sourceLine)) {
-        const parsed = parseOnlineSourceItem(sourceLine);
-        if (parsed) {
-          blocks.push({ kind: "online", items: [parsed] });
-          continue;
-        }
-      }
-      blocks.push({ kind: "source", text: sourceLine });
-      continue;
-    }
-    const item = listItemText(line);
-    if (item) {
-      flushPara();
-      list.push(item);
-      continue;
-    }
-    if (!line.trim()) {
-      flushPara();
-      flushList();
-      continue;
-    }
-    flushList();
-    para.push(line);
   }
-  flushPara();
-  flushList();
-  return blocks;
+  acc.blocks.push({ kind: "source", text: sourceLine });
+}
+
+function absorbParagraphLine(acc: ParagraphAcc, line: string) {
+  const inline = splitInlineHeading(line);
+  if (inline) {
+    flushParagraph(acc);
+    flushList(acc);
+    acc.blocks.push({ kind: "heading", text: inline.heading });
+    if (inline.rest) acc.para.push(inline.rest);
+    return;
+  }
+  const heading = headingText(line);
+  if (heading) {
+    flushParagraph(acc);
+    flushList(acc);
+    acc.blocks.push({ kind: "heading", text: heading });
+    return;
+  }
+  if (SOURCE_LINE.test(line.trim())) {
+    absorbSourceLine(acc, line.trim());
+    return;
+  }
+  const item = listItemText(line);
+  if (item) {
+    flushParagraph(acc);
+    acc.list.push(item);
+    return;
+  }
+  if (!line.trim()) {
+    flushParagraph(acc);
+    flushList(acc);
+    return;
+  }
+  flushList(acc);
+  acc.para.push(line);
+}
+
+function parseRichParagraph(text: string): ChatBlock[] {
+  const acc: ParagraphAcc = { blocks: [], para: [], list: [] };
+  for (const line of text.replaceAll("\r\n", "\n").split("\n")) {
+    absorbParagraphLine(acc, line);
+  }
+  flushParagraph(acc);
+  flushList(acc);
+  return acc.blocks;
 }
 
 function InlineMd({ text }: Readonly<{ text: string }>) {
@@ -301,11 +431,11 @@ function InlineMd({ text }: Readonly<{ text: string }>) {
   return (
     <>
       {parts.map((part, index) => {
-        const bold = part.match(/^\*\*(.+)\*\*$/);
+        const bold = boldWrapped(part);
         if (bold) {
           return (
-            <strong key={`b-${index}-${bold[1].slice(0, 12)}`} className="font-semibold text-slate-800">
-              {bold[1]}
+            <strong key={`b-${index}-${bold.slice(0, 12)}`} className="font-semibold text-slate-800">
+              {bold}
             </strong>
           );
         }

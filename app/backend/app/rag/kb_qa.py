@@ -218,10 +218,81 @@ def chat_rag_score_threshold() -> float:
     return max(0.0, min(1.0, value))
 
 
+RATE_CATALOG_NAME_MARK = "อัตราค่าจ้างที่ปรึกษา"
+
+_RATE_QUESTION_MARKERS = (
+    "อัตราค่าจ้างที่ปรึกษา",
+    "ค่าจ้างที่ปรึกษา",
+    "ปริญญาโท",
+    "ปริญญาเอก",
+    "ค่าอาหาร",
+    "อาหารว่าง",
+    "ค่าเอกสาร",
+    "สถานที่เอกชน",
+    "ครึ่งวัน",
+    "เต็มวัน",
+)
+
+
+def question_asks_rate_catalog(question: str) -> bool:
+    """True when the officer is asking about the budget-bureau rate PDF."""
+    text = question or ""
+    return any(marker in text for marker in _RATE_QUESTION_MARKERS)
+
+
+def _chunk_identity(chunk: Any) -> str:
+    chunk_id = str(getattr(chunk, "id", "") or "")
+    if chunk_id:
+        return chunk_id
+    return str(getattr(chunk, "text", "") or "")[:120]
+
+
+def pin_rate_catalog_chunks(retrieved: list[Any] | None, catalog: list[Any] | None) -> list[Any]:
+    """Keep the rate PDF ahead of other consultant guidelines for rate questions."""
+    ordered: list[Any] = []
+    seen: set[str] = set()
+
+    def add(chunk: Any) -> None:
+        key = _chunk_identity(chunk)
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append(chunk)
+
+    for chunk in catalog or []:
+        add(chunk)
+    rate_rest: list[Any] = []
+    other: list[Any] = []
+    for chunk in retrieved or []:
+        name = str(getattr(chunk, "source_document", "") or "")
+        if RATE_CATALOG_NAME_MARK in name:
+            rate_rest.append(chunk)
+        else:
+            other.append(chunk)
+    for chunk in rate_rest:
+        add(chunk)
+    for chunk in other:
+        add(chunk)
+    return ordered
+
+
+def rate_catalog_instruction(chunks: list[Any] | None) -> str:
+    """Tell the model to cite the rate PDF when that file is in the context."""
+    for chunk in chunks or []:
+        name = str(getattr(chunk, "source_document", "") or "")
+        if RATE_CATALOG_NAME_MARK in name:
+            return (
+                "ถ้าคำถามเป็นอัตราค่าจ้างที่ปรึกษา ค่าอาหาร ค่าอาหารว่าง ค่าเอกสาร หรือสถานที่อบรม "
+                "ให้ยึดไฟล์ที่ชื่อมี อัตราค่าจ้างที่ปรึกษา เป็นแหล่งหลัก "
+                "และอ้างชื่อไฟล์นั้นในคำตอบ "
+            )
+    return ""
+
+
 def select_rag_chunks_for_qa(chunks: list[Any] | None) -> list[Any]:
     """Keep score>=threshold chunks; if none meet it, keep fallback top-N only."""
     scored = sorted(
-        list(chunks or []),
+        chunks or [],
         key=lambda chunk: float(getattr(chunk, "score", 0) or 0),
         reverse=True,
     )
@@ -451,6 +522,7 @@ def build_kb_qa_messages(
         "ใช้รายการสั้นเมื่อเป็นขั้นตอน ใช้ย่อหน้าเมื่อคำถามสั้นหรือใช่/ไม่ใช่ "
         "ห้ามบังคับหัวข้อตายตัว "
         "อ้างไฟล์กับหน้าจากคลัง และชื่อกับ URL จากแหล่งออนไลน์เมื่อมี "
+        f"{rate_catalog_instruction(chunks)}"
     )
     if context:
         user = (

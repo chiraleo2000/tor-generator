@@ -17,9 +17,9 @@ from typing import Any
 
 from app.rule_engine.engine import (
     KIND_LEGAL,
+    SEVERITY_DEDUCTIONS,
     Finding,
     Severity,
-    SEVERITY_DEDUCTIONS,
     first_law_citation,
 )
 from app.rule_engine.rules.legal import (
@@ -30,6 +30,7 @@ from app.rule_engine.rules.legal import (
 )
 from app.rule_engine.rules.risk import AnnouncedPriceRule, ProcurementMethodRule
 from app.rule_engine.rules.timeline import TimelineFeasibilityRule
+from app.services.bidder_risk import assess_bidder_risk, strip_page_markers
 
 PART_LEGAL = "legal"
 PART_LOCK_IN = "lock_in"
@@ -136,6 +137,7 @@ class TorAnalysisResult:
     summary: str
     missing_sections: dict[str, str] = field(default_factory=dict)
     halted: bool = False
+    bidder_risk: dict[str, Any] = field(default_factory=dict)
 
     def part(self, key: str) -> PartScore:
         mapping = {
@@ -149,6 +151,68 @@ class TorAnalysisResult:
 def analysis_as_dict(result: TorAnalysisResult) -> dict[str, Any]:
     """JSON-ready payload for review APIs and analysis_json."""
     return asdict(result)
+
+
+def load_budget_rule_findings(document_text: str) -> list[dict[str, Any]]:
+    """Call the shared consultant-budget rules. Empty when that module is not ready."""
+    try:
+        from app.domain.consultant_budget import budget_rule_findings
+    except ImportError:
+        return []
+    rows = budget_rule_findings(document_text)
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _budget_project_findings(document_text: str) -> list[AnalyzerFinding]:
+    findings: list[AnalyzerFinding] = []
+    for row in load_budget_rule_findings(document_text):
+        message = str(row.get("message") or "").strip()
+        evidence = str(row.get("evidence") or "").strip()
+        if not message or not evidence:
+            continue
+        severity = str(row.get("severity") or "suggestion").strip().lower()
+        if severity not in {"suggestion", "warning", "error"}:
+            severity = "suggestion"
+        findings.append(
+            AnalyzerFinding(
+                source_quote=evidence[:280],
+                reason=message,
+                suggested_text=str(row.get("suggestion") or "").strip(),
+                section_key="s6",
+                severity=severity,
+            )
+        )
+    return findings
+
+
+def _document_without_page_markers(
+    document: dict[str, Any],
+    sections: dict[str, str],
+) -> dict[str, Any]:
+    """Copy the document so section text no longer contains page markers.
+
+    The nested ``sections`` dict stays a dict. The scorer's section map may also
+    contain a joined ``sections`` string, and that string must not replace it.
+    """
+    clean = dict(document)
+    nested = clean.get("sections")
+    if isinstance(nested, dict):
+        clean["sections"] = {
+            key: strip_page_markers(value) if isinstance(value, str) else value
+            for key, value in nested.items()
+        }
+    for key, value in sections.items():
+        if key == "sections":
+            continue
+        if isinstance(clean.get(key), str):
+            clean[key] = value
+    for key, value in list(clean.items()):
+        if key == "sections" or not isinstance(value, str):
+            continue
+        clean[key] = strip_page_markers(value)
+    return clean
 
 
 def analyze_tor(
@@ -171,18 +235,32 @@ def analyze_tor(
         Thai summary of which part pulled the score down.
     """
     document = dict(tor_document or {})
-    sections = _section_map(document)
+    raw_sections = _section_map(document)
+    source_text = str(document.get("_source_text") or "")
+    if not source_text.strip():
+        source_text = "\n".join(raw_sections.values())
+    sections = {key: strip_page_markers(value) for key, value in raw_sections.items()}
+    document = _document_without_page_markers(document, sections)
     joined = "\n".join(sections.values())
     has_content = bool(joined.strip())
     missing, halted = _missing_sections(document)
 
     legal_findings = _score_legal(document, sections, rag_text)
     lock_findings = _score_lock_in(document, sections)
-    project_findings = _score_project(document, sections)
+    project_findings = _dedupe_findings(_score_project(document, sections))
 
     legal = _build_part(PART_LEGAL, legal_findings, has_content, missing)
     lock_in = _build_part(PART_LOCK_IN, lock_findings, has_content, missing)
     project = _build_part(PART_PROJECT, project_findings, has_content, missing)
+    # Budget suggestions stay on the project list. They do not change the
+    # 40/30/30 score, which the existing analyzer tests lock in.
+    budget_findings = _budget_project_findings(joined)
+    if budget_findings:
+        project.findings.extend(budget_findings)
+        project.explanation = (
+            f"{project.explanation} มีข้อเสนอจากกฎงบประมาณที่ปรึกษาและอบรม"
+            "ซึ่งไม่นำมาหักคะแนนสามด้าน"
+        ).strip()
 
     if has_content:
         legal, lock_in, project = _guard_nonzero_panel(legal, lock_in, project)
@@ -197,6 +275,21 @@ def analyze_tor(
 
     total = _weighted_total(legal, lock_in, project)
     summary = _summary_sentence(legal, lock_in, project, missing)
+    pages = document.get("pages")
+    budget = document.get("budget")
+    rate = document.get("penalty_rate_percent")
+    budget_value = None
+    if isinstance(budget, (int, float)) and not isinstance(budget, bool):
+        budget_value = budget
+    rate_value = None
+    if isinstance(rate, (int, float)) and not isinstance(rate, bool):
+        rate_value = rate
+    bidder = assess_bidder_risk(
+        source_text,
+        pages=pages if isinstance(pages, list) else None,
+        budget=budget_value,
+        penalty_rate_percent=rate_value,
+    )
     return TorAnalysisResult(
         legal=legal,
         lock_in=lock_in,
@@ -205,6 +298,7 @@ def analyze_tor(
         summary=summary,
         missing_sections=missing,
         halted=halted,
+        bidder_risk=bidder.as_dict(),
     )
 
 

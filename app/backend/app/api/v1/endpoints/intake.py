@@ -718,7 +718,7 @@ async def intake_analyze(
     )
     await db.commit()
     result = await analyze_pack(
-        subject,  # type: ignore[arg-type]
+        subject,
         pack,
         filenames,
         # Do not early-persist heuristics: that set analyzed=True and the UI

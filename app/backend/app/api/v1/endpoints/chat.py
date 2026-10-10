@@ -31,7 +31,7 @@ from app.models.user import User
 from app.providers.factory import ProviderFactory
 from app.providers.llm.stream_fallback import stream_llm_tokens
 from app.rag.document_pipeline import ingest_file_bytes
-from app.rag.hybrid import unpack_hybrid
+from app.rag.hybrid import load_rate_catalog_chunks, unpack_hybrid
 from app.rag.hybrid import hybrid_retrieve_multi as hybrid_retrieve
 from app.llm_tokens import clamp_max_tokens, live_chat_max_tokens
 from app.rag.kb_qa import (
@@ -44,7 +44,9 @@ from app.rag.kb_qa import (
     is_context_overflow_error,
     messages_token_estimate,
     normalize_kb_qa_answer,
+    pin_rate_catalog_chunks,
     prepare_kb_qa_messages,
+    question_asks_rate_catalog,
     select_rag_chunks_for_qa,
     shrink_kb_qa_messages,
     trim_history,
@@ -491,6 +493,7 @@ async def _stream_chat_tokens(
     llm: Any,
     messages: list[dict[str, str]],
     max_tokens: int,
+    event_q: Any | None = None,
 ) -> list[str]:
     from app.providers.model_capabilities import llm_call_kwargs
 
@@ -502,7 +505,11 @@ async def _stream_chat_tokens(
         messages,
         **llm_call_kwargs(temperature=0.2, max_tokens=capped),
     ):
+        if not token:
+            continue
         parts.append(token)
+        if event_q is not None:
+            await event_q.put(("token", {"text": token}))
     return parts
 
 
@@ -527,7 +534,9 @@ async def _run_chat_llm(
             active_messages = messages
             active_max = max_tokens
             try:
-                parts_local = await _stream_chat_tokens(llm, active_messages, active_max)
+                parts_local = await _stream_chat_tokens(
+                    llm, active_messages, active_max, event_q
+                )
             except Exception as first_exc:
                 if not is_context_overflow_error(first_exc):
                     raise
@@ -537,7 +546,9 @@ async def _run_chat_llm(
                 )
                 active_messages = shrink_kb_qa_messages(active_messages, ratio=0.4)
                 active_max = min(active_max, 4_096)
-                parts_local = await _stream_chat_tokens(llm, active_messages, active_max)
+                parts_local = await _stream_chat_tokens(
+                    llm, active_messages, active_max, event_q
+                )
         full_text = normalize_kb_qa_answer("".join(parts_local))
         await _persist_assistant_reply(session_factory, room_id, full_text, citations)
         await event_q.put(
@@ -583,6 +594,9 @@ async def _iter_chat_sse(
             top_k=top_k,
         )
     )
+    if is_kb and question_asks_rate_catalog(question):
+        catalog = await load_rate_catalog_chunks()
+        result.chunks = pin_rate_catalog_chunks(result.chunks, catalog)
     qa_chunks = select_rag_chunks_for_qa(result.chunks) if is_kb else list(result.chunks)
     if is_kb:
         keep_docs = {

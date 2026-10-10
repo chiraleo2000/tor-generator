@@ -56,14 +56,16 @@ def test_cost_worksheet_is_not_announced_price():
             "ราคากลาง": 888888,
         }
     )
-    assert sheet["license"] == 1000
-    assert sheet["labor"] == 2000
+    assert sheet["equipment"] == 1000
+    assert sheet["personnel"] == 2000
+    assert sheet["procurement"] == 300
+    assert sheet["training"] == 700
     assert sheet["total"] == 4000
     assert sheet["is_announced_price"] is False
     assert "ราคากลาง" in sheet["label"]
     assert "announcedPrice" not in sheet
     assert "ราคากลาง" not in sheet
-    assert sheet["license"] != 999999
+    assert sheet["equipment"] != 999999
 
 
 def test_merge_cost_worksheet_keeps_existing_analysis():
@@ -219,7 +221,7 @@ def test_cost_worksheet_endpoints_persist_analysis(client, officer):
     assert payload["total"] == 375
     assert payload["is_announced_price"] is False
     assert project.analysis_json["slot_map"]["s6"]["content"] == "งบ"
-    assert cost_worksheet_of(project.analysis_json)["labor"] == 200
+    assert cost_worksheet_of(project.analysis_json)["personnel"] == 200
 
 
 def test_product_search_message_does_not_insert_until_confirm(client, officer, monkeypatch):

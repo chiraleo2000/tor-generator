@@ -32,7 +32,10 @@ export default defineConfig({
         "src/app/**/knowledge-base/page.tsx",
         "src/components/wizard/inline-validation-feedback.tsx",
         "src/components/chat/chat-shell.tsx",
+        "src/components/chat/chat-answer.tsx",
         "src/components/chat/mini-room-list.tsx",
+        "src/components/review/bidder-risk-panel.tsx",
+        "src/app/**/analyze/page.tsx",
       ],
       thresholds: {
         statements: 90,

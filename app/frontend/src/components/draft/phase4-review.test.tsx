@@ -337,4 +337,62 @@ describe("Phase4Review", () => {
     expect(preview.querySelector("table")).toBeTruthy();
     expect(screen.queryByText("s4.s4.1")).not.toBeInTheDocument();
   });
+
+  it("shows only the bid recommendation line, not the six risk tables", async () => {
+    render(
+      <Phase4Review
+        projectId="p1"
+        filledCount={13}
+        total={13}
+        score={80}
+        partScores={{
+          legal: {
+            key: "legal",
+            label: "ส่วนที่คาดว่าผิดกฎหมาย",
+            score: 90,
+            explanation: "ไม่พบประเด็น",
+            findings: [],
+          },
+          lock_in: {
+            key: "lock_in",
+            label: "ความเสี่ยง lock specs",
+            score: 90,
+            explanation: "ไม่พบประเด็น",
+            findings: [],
+          },
+          project: {
+            key: "project",
+            label: "ความเสี่ยงบริหารโครงการ",
+            score: 90,
+            explanation: "ไม่พบประเด็น",
+            findings: [],
+          },
+          total: 90,
+          summary: "ทั้งสามด้านได้คะแนนสูงใกล้เคียงกัน",
+          bidder_risk: {
+            recommendation: "ไม่ควรยื่นในสถานะข้อมูลปัจจุบัน",
+            categories: [
+              {
+                key: "clarity",
+                label: "ความชัดเจนและปริมาณงาน",
+                rows: [{ issue: "ย้ายข้อมูล", requirement: "อ้างอิง", impact: "ค้าง", level: "สูงมาก", mitigation: "ถาม" }],
+              },
+            ],
+          },
+        }}
+        findings={[]}
+        suggestions={[]}
+        busy={false}
+        error={null}
+        onBack={vi.fn()}
+        onReview={vi.fn().mockResolvedValue(undefined)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    expect(await screen.findByTestId("phase4-bid-recommendation")).toHaveTextContent(
+      "ไม่ควรยื่นในสถานะข้อมูลปัจจุบัน"
+    );
+    expect(screen.queryByTestId("bidder-risk-table-clarity")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bidder-risk-panel")).not.toBeInTheDocument();
+  });
 });

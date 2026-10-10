@@ -232,6 +232,8 @@ def test_mongo_list_visible_excludes_other_owners():
 
 
 def test_local_llm_and_embedding_hosts_are_independent():
+    """Each local chat server also hosts embeddings, on one shared slot."""
+    from app.llm_admission import concurrency_cap, local_models_share_one_slot
     from app.providers.factory import ProviderFactory
     from app.providers.llm.lm_studio_provider import LMStudioLocalProvider
 
@@ -241,9 +243,18 @@ def test_local_llm_and_embedding_hosts_are_independent():
         ("llama_cpp", "8080"),
     )
     for provider, port in cases:
-        settings = make_settings(deployment_mode="on_prem", llm_provider=provider)
-        llm = ProviderFactory(settings=settings).get_llm()
-        embedding = ProviderFactory(settings=settings).get_embedding()
+        settings = make_settings(
+            deployment_mode="on_prem",
+            llm_provider=provider,
+            embedding_provider="local",
+            local_embedding_server=provider,
+        )
+        assert local_models_share_one_slot(settings) is True
+        assert concurrency_cap("llm", settings) == 1
+        assert concurrency_cap("embedding", settings) == 1
+        factory = ProviderFactory(settings=settings)
+        llm = factory.get_llm()
+        embedding = factory.get_embedding()
         assert isinstance(llm, LMStudioLocalProvider)
         assert port in llm._base_url
-        assert "1234" in embedding._base_url
+        assert port in embedding._base_url

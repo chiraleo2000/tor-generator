@@ -63,6 +63,87 @@ class IngestionResult:
     timed_out: bool = False
 
 
+def _timeout_status(upload: Any) -> FileStatus:
+    return FileStatus(
+        name=getattr(upload, "filename", None) or "unnamed",
+        size=0,
+        content_hash="",
+        status="error",
+        error="ingestion_timeout",
+    )
+
+
+def _error_status(name: str, size: int, error: str) -> FileStatus:
+    return FileStatus(
+        name=name,
+        size=size,
+        content_hash="",
+        status="error",
+        error=error,
+    )
+
+
+def _ok_status(name: str, size: int, digest: str, text: str) -> FileStatus:
+    return FileStatus(
+        name=name,
+        size=size,
+        content_hash=digest,
+        status="ok",
+        chars=len(text),
+        text=text,
+    )
+
+
+def _append_extracted(result: IngestionResult, status: FileStatus, remaining: int) -> int:
+    if status.status != "ok" or not status.text:
+        return remaining
+    chunk = status.text[:remaining]
+    if not chunk:
+        return remaining
+    result.texts.append({"name": status.name, "text": chunk})
+    result.total_chars += len(chunk)
+    return remaining - len(chunk)
+
+
+def _append_free_text(result: IngestionResult, free_text: str | None, remaining: int) -> None:
+    if not free_text or remaining <= 0:
+        return
+    text = free_text.strip()[:remaining]
+    if not text:
+        return
+    result.texts.append({"name": "ข้อความผู้ใช้.txt", "text": text})
+    result.total_chars += len(text)
+
+
+def _join_named_texts(texts: list[dict[str, str]]) -> str:
+    parts = [f"=== {item['name']} ===\n{item['text']}" for item in texts]
+    return "\n\n".join(parts)
+
+
+async def _read_upload_bytes(upload: Any) -> bytes:
+    if not hasattr(upload, "read"):
+        return b""
+    raw = upload.read()
+    content = await raw if asyncio.iscoroutine(raw) else raw
+    if isinstance(content, (bytes, bytearray)):
+        return bytes(content)
+    return bytes(content or b"")
+
+
+def _status_from_cache(name: str, size: int, digest: str, cached: Any) -> FileStatus | None:
+    if not isinstance(cached, dict) or cached.get("text") is None:
+        return None
+    text = str(cached.get("text") or "")
+    return FileStatus(
+        name=name,
+        size=size,
+        content_hash=digest,
+        status="ok",
+        chars=len(text),
+        text=text,
+    )
+
+
 def guess_mime(filename: str, claimed: str | None) -> str | None:
     suffix = Path(filename or "").suffix.lower()
     if suffix in EXT_TO_MIME:
@@ -110,15 +191,7 @@ class IntakeIngestionService:
         for upload in file_list:
             if time.monotonic() >= deadline:
                 result.timed_out = True
-                result.files.append(
-                    FileStatus(
-                        name=getattr(upload, "filename", None) or "unnamed",
-                        size=0,
-                        content_hash="",
-                        status="error",
-                        error="ingestion_timeout",
-                    )
-                )
+                result.files.append(_timeout_status(upload))
                 continue
             status = await self._process_one(
                 project_id,
@@ -129,24 +202,10 @@ class IntakeIngestionService:
                 minio_client or self._storage,
             )
             result.files.append(status)
-            if status.status != "ok" or not status.text:
-                continue
-            chunk = status.text[:remaining]
-            if chunk:
-                result.texts.append({"name": status.name, "text": chunk})
-                remaining -= len(chunk)
-                result.total_chars += len(chunk)
+            remaining = _append_extracted(result, status, remaining)
 
-        if free_text and remaining > 0:
-            text = free_text.strip()[:remaining]
-            if text:
-                result.texts.append({"name": "ข้อความผู้ใช้.txt", "text": text})
-                result.total_chars += len(text)
-
-        parts: list[str] = []
-        for item in result.texts:
-            parts.append(f"=== {item['name']} ===\n{item['text']}")
-        result.concatenated = "\n\n".join(parts)
+        _append_free_text(result, free_text, remaining)
+        result.concatenated = _join_named_texts(result.texts)
         return result
 
     async def _process_one(
@@ -159,54 +218,23 @@ class IntakeIngestionService:
         minio_client: Any | None,
     ) -> FileStatus:
         name = getattr(upload, "filename", None) or "unnamed"
-        content: bytes
-        if hasattr(upload, "read"):
-            raw = upload.read()
-            content = await raw if asyncio.iscoroutine(raw) else raw
-        else:
-            content = b""
-        if not isinstance(content, (bytes, bytearray)):
-            content = bytes(content or b"")
+        content = await _read_upload_bytes(upload)
         size = len(content)
         if size > MAX_FILE_SIZE_BYTES:
-            return FileStatus(
-                name=name,
-                size=size,
-                content_hash="",
-                status="error",
-                error="file_too_large",
-            )
+            return _error_status(name, size, "file_too_large")
         mime = guess_mime(name, getattr(upload, "content_type", None))
         if mime is None:
-            return FileStatus(
-                name=name,
-                size=size,
-                content_hash="",
-                status="error",
-                error="unsupported_format",
-            )
+            return _error_status(name, size, "unsupported_format")
         digest = content_hash(bytes(content))
         cached = await self._cache.get_extraction(project_id, digest)
-        if isinstance(cached, dict) and cached.get("text") is not None:
-            return FileStatus(
-                name=name,
-                size=size,
-                content_hash=digest,
-                status="ok",
-                chars=len(str(cached.get("text") or "")),
-                text=str(cached.get("text") or ""),
-            )
+        cached_status = _status_from_cache(name, size, digest, cached)
+        if cached_status is not None:
+            return cached_status
         try:
             text = await self._extract_bytes(content, mime, name)
         except Exception as exc:
             logger.warning("Extraction failed for %s: %s", name, exc)
-            return FileStatus(
-                name=name,
-                size=size,
-                content_hash=digest,
-                status="error",
-                error="extraction_failed",
-            )
+            return _error_status(name, size, "extraction_failed")
         await self._store_raw(
             project_id, name, content, mime, storage_backend, minio_client
         )

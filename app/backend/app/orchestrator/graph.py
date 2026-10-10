@@ -796,7 +796,7 @@ def _focus_validation_result(result: Any, section: str) -> Any:
     for category in categories:
         kept = [
             finding
-            for finding in list(getattr(category, "findings", None) or [])
+            for finding in getattr(category, "findings", None) or []
             if _finding_applies_to_section(finding, section)
         ]
         score = 100.0

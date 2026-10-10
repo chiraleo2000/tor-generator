@@ -91,24 +91,26 @@ def _load_category_hints() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _profile_hint(section_key: str, category: str) -> str:
+    profile = profile_for_project(category)
+    blob = _load_category_hints().get(profile.category) or {}
+    formulaic = blob.get("formulaic") if isinstance(blob, dict) else None
+    if isinstance(formulaic, dict):
+        semantic = STORAGE_TO_SEMANTIC.get(section_key) or storage_to_semantic_scope(section_key)
+        found = str(formulaic.get(section_key) or formulaic.get(semantic) or "").strip()
+        if found:
+            return found
+    for item in (*profile.main_sections, *profile.scope_subsections):
+        if item.storage_key == section_key and item.hint:
+            return item.hint
+    return ""
+
+
 def hint_for(section_key: str, category: str | None = None) -> str:
     if category:
-        profile = profile_for_project(category)
-        blob = _load_category_hints().get(profile.category) or {}
-        formulaic = blob.get("formulaic") if isinstance(blob, dict) else None
-        if isinstance(formulaic, dict):
-            semantic = STORAGE_TO_SEMANTIC.get(section_key) or storage_to_semantic_scope(
-                section_key
-            )
-            found = str(formulaic.get(section_key) or formulaic.get(semantic) or "").strip()
-            if found:
-                return found
-        for item in profile.main_sections:
-            if item.storage_key == section_key and item.hint:
-                return item.hint
-        for item in profile.scope_subsections:
-            if item.storage_key == section_key and item.hint:
-                return item.hint
+        found = _profile_hint(section_key, category)
+        if found:
+            return found
     if section_key in SCOPE_DRAFT_HINTS:
         return SCOPE_DRAFT_HINTS[section_key]
     from app.domain.tor_taxonomy import hint_for as tax_hint

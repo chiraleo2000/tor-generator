@@ -27,7 +27,20 @@ function ignoredSpecs(): string[] {
 /** Separate process from the operator's daily Chrome/Edge windows. */
 const headedChannel = process.env.E2E_CHANNEL || "";
 
+/** Default window stays 1280×860. Guideline recordings set E2E_WINDOW=1920,1080. */
+function e2eWindowSize(): { width: number; height: number } {
+  const raw = process.env.E2E_WINDOW || "1280,860";
+  const [widthText, heightText] = raw.split(",");
+  const width = Number(widthText);
+  const height = Number(heightText);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
+    return { width: 1280, height: 860 };
+  }
+  return { width, height };
+}
+
 function headedLaunchOptions() {
+  const windowSize = e2eWindowSize();
   return {
     slowMo: Number(process.env.E2E_SLOWMO_MS || "400"),
     args: [
@@ -35,7 +48,7 @@ function headedLaunchOptions() {
       // Offset from open-test-ui.mjs (80,80) so the headed runner stays visible
       // and Chrome does not throttle an occluded Playwright window.
       "--window-position=140,40",
-      "--window-size=1280,860",
+      `--window-size=${windowSize.width},${windowSize.height}`,
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-session-crashed-bubble",
@@ -51,7 +64,7 @@ export default defineConfig({
   testIgnore: ignoredSpecs(),
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : headed ? 1 : 0,
+  retries: process.env.CI || headed ? 1 : 0,
   // Shared demo officer account on the live Docker stack — parallel workers collide.
   workers: 1,
   timeout: headed ? 4_800_000 : 180_000,
