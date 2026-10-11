@@ -367,9 +367,10 @@ async def _stream_filled_ack(
     asking: Any,
     user_id: uuid.UUID,
     attach_legal: bool,
+    category: str | None = None,
 ) -> AsyncIterator[str]:
     asking_key = _asking_key(asking)
-    reply = phase2_filled_ack(filled_keys, asking_key)
+    reply = phase2_filled_ack(filled_keys, asking_key, category)
     if attach_legal and filled_keys:
         extra = await _attach_legal_to_filled(slot_map, filled_keys, user_id, True)
         if extra:
@@ -609,6 +610,7 @@ async def _iter_intake_chat_sse(
             asking=asking,
             user_id=user_id,
             attach_legal=body.attach_legal_reference,
+            category=getattr(project, "project_type", None),
         ):
             yield event
         return

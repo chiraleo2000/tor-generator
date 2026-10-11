@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.slots import (
-    FACT_REQUIRED_SLOTS,
     INTAKE_SLOT_LABELS,
     INTAKE_SLOT_ORDER,
     empty_slot_keys,
@@ -340,8 +339,16 @@ def append_next_slot_question(reply: str, slot_key: str | None) -> str:
     return f"{reply.rstrip()}\n\n{question}"
 
 
-def _facts_done_continue_msg(next_slot: str | None) -> str:
-    if next_slot and next_slot not in FACT_REQUIRED_SLOTS:
+def _fact_key_set(category: str | None = None) -> set[str]:
+    """Category-aware fact keys (do not hardcode buy_goods FACT_REQUIRED_SLOTS)."""
+    return set(fact_required_slots(category))
+
+
+def _facts_done_continue_msg(
+    next_slot: str | None, category: str | None = None
+) -> str:
+    facts = _fact_key_set(category)
+    if next_slot and next_slot not in facts:
         return (
             "ข้อเท็จจริงหลักครบแล้ว — เติมช่องอื่นต่อได้ "
             "หรือกดปุ่ม «ครบแล้ว — ไปร่าง (ขั้นที่ ๓)» ได้เลยครับ"
@@ -352,13 +359,16 @@ def _facts_done_continue_msg(next_slot: str | None) -> str:
     )
 
 
-def ack_filled_slot_reply(filled_key: str, next_slot: str | None) -> str:
+def ack_filled_slot_reply(
+    filled_key: str, next_slot: str | None, category: str | None = None
+) -> str:
     """Short Phase-2 ack without calling the LLM (keeps chat snappy)."""
     label = INTAKE_SLOT_LABELS.get(filled_key, filled_key)
     reply = f"บันทึกข้อมูล «{label}» แล้วครับ"
+    facts = _fact_key_set(category)
     if next_slot:
-        if filled_key in FACT_REQUIRED_SLOTS and next_slot not in FACT_REQUIRED_SLOTS:
-            reply = f"{reply} {_facts_done_continue_msg(next_slot)}"
+        if filled_key in facts and next_slot not in facts:
+            reply = f"{reply} {_facts_done_continue_msg(next_slot, category)}"
         return append_next_slot_question(reply, next_slot)
     return f"{reply} ข้อมูลที่จำเป็นครบแล้ว กดปุ่ม «ครบแล้ว — ไปร่าง (ขั้นที่ ๓)» ได้เลยครับ"
 
@@ -368,14 +378,16 @@ def phase2_template_reply(
     filled_keys: list[str],
     next_slot: str | None,
     all_filled: bool,
+    category: str | None = None,
 ) -> str:
     """Deterministic Phase-2 reply so the UI never waits on a stalled local LLM."""
+    facts = _fact_key_set(category)
     if filled_keys:
-        return ack_filled_slot_reply(filled_keys[-1], next_slot)
+        return ack_filled_slot_reply(filled_keys[-1], next_slot, category)
     if next_slot:
         prefix = (
             "รับข้อความแล้วครับ ข้อเท็จจริงหลักครบแล้ว — เติมช่องอื่นต่อได้"
-            if all_filled and next_slot not in FACT_REQUIRED_SLOTS
+            if all_filled and next_slot not in facts
             else "รับข้อความแล้วครับ"
         )
         return append_next_slot_question(prefix, next_slot)
@@ -589,22 +601,26 @@ def apply_chat_answer_to_slots(
     )
 
 
-def phase2_filled_ack(filled_keys: list[str], next_slot: str | None) -> str:
+def phase2_filled_ack(
+    filled_keys: list[str],
+    next_slot: str | None,
+    category: str | None = None,
+) -> str:
+    facts = _fact_key_set(category)
     if not filled_keys:
         return phase2_template_reply(
             filled_keys=[],
             next_slot=next_slot,
-            all_filled=next_slot is None or next_slot not in FACT_REQUIRED_SLOTS,
+            all_filled=next_slot is None or next_slot not in facts,
+            category=category,
         )
     if len(filled_keys) == 1:
-        return ack_filled_slot_reply(filled_keys[0], next_slot)
+        return ack_filled_slot_reply(filled_keys[0], next_slot, category)
     labels = [INTAKE_SLOT_LABELS.get(key, key) for key in filled_keys]
     reply = "บันทึกข้อมูลหลายช่องแล้วครับ: " + ", ".join(labels)
     if next_slot:
-        if next_slot not in FACT_REQUIRED_SLOTS and any(
-            key in FACT_REQUIRED_SLOTS for key in filled_keys
-        ):
-            reply = f"{reply} {_facts_done_continue_msg(next_slot)}"
+        if next_slot not in facts and any(key in facts for key in filled_keys):
+            reply = f"{reply} {_facts_done_continue_msg(next_slot, category)}"
         return append_next_slot_question(reply, next_slot)
     return (
         f"{reply} ข้อมูลที่จำเป็นครบแล้ว "
@@ -612,28 +628,38 @@ def phase2_filled_ack(filled_keys: list[str], next_slot: str | None) -> str:
     )
 
 
-def slot_map_for_prompt(slot_map: dict[str, Any]) -> str:
+def slot_map_for_prompt(
+    slot_map: dict[str, Any], category: str | None = None
+) -> str:
     lines: list[str] = []
-    for key in INTAKE_SLOT_ORDER:
+    facts = _fact_key_set(category)
+    order = intake_slot_order(category)
+    labels = intake_slot_labels(category)
+    for key in order:
         slot = slot_map.get(key) or {}
         if not isinstance(slot, dict):
             continue
-        label = INTAKE_SLOT_LABELS.get(key, key)
+        label = labels.get(key, key)
         content = str(slot.get("content") or "").strip()[:200]
         if _slot_is_filled(slot_map, key):
             lines.append(f"{key} {label} [ได้แล้ว]: {content}")
             continue
-        if key in FACT_REQUIRED_SLOTS:
+        if key in facts:
             lines.append(f"{key} {label} [ยังขาด]")
     return "\n".join(lines)
 
 
-def _phase2_filled_fact_lines(slot_map: dict[str, Any]) -> list[str]:
+def _phase2_filled_fact_lines(
+    slot_map: dict[str, Any], category: str | None = None
+) -> list[str]:
     filled_lines: list[str] = []
-    for key in INTAKE_SLOT_ORDER:
-        if key not in FACT_REQUIRED_SLOTS:
+    facts = _fact_key_set(category)
+    order = intake_slot_order(category)
+    labels = intake_slot_labels(category)
+    for key in order:
+        if key not in facts:
             continue
-        label = INTAKE_SLOT_LABELS.get(key, key)
+        label = labels.get(key, key)
         slot = slot_map.get(key) or {}
         content = str(slot.get("content") or "").strip() if isinstance(slot, dict) else ""
         if _slot_is_filled(slot_map, key):
@@ -669,14 +695,20 @@ def _phase2_opening_tail(
     return parts
 
 
-def build_phase2_opening(slot_map: dict[str, Any], gap_questions: list[str]) -> str:
-    filled_lines = _phase2_filled_fact_lines(slot_map)
+def build_phase2_opening(
+    slot_map: dict[str, Any],
+    gap_questions: list[str],
+    category: str | None = None,
+) -> str:
+    filled_lines = _phase2_filled_fact_lines(slot_map, category)
     parts = ["สวัสดีครับ ผมอ่านเอกสารจากขั้นที่ ๑ แล้ว สรุปให้ฟังสั้น ๆ นะครับ"]
     if filled_lines:
         parts.append("ข้อมูลที่จัดเข้าช่องได้แล้ว:")
         parts.extend(filled_lines)
-    nxt = next_asking_slot(slot_map)
-    parts.extend(_phase2_opening_tail(nxt, missing_fact_keys(slot_map), gap_questions))
+    nxt = next_asking_slot(slot_map, category=category)
+    parts.extend(
+        _phase2_opening_tail(nxt, missing_fact_keys(slot_map, category), gap_questions)
+    )
     return "\n".join(parts)
 
 
@@ -1541,6 +1573,7 @@ def apply_reference_to_slot(
     *,
     force_append: bool = False,
     as_standard: bool = False,
+    category: str | None = None,
 ) -> str:
     """Merge RAG text into one slot. Never downgrade a filled fact slot.
 
@@ -1555,7 +1588,8 @@ def apply_reference_to_slot(
     if not incoming:
         return "skipped"
     incoming_sources = filled.get("sources") if isinstance(filled.get("sources"), list) else []
-    if as_standard and slot_key not in FACT_REQUIRED_SLOTS:
+    facts = _fact_key_set(category)
+    if as_standard and slot_key not in facts:
         sources = list(incoming_sources)
         if "มาตรฐานกลางจากคลัง" not in sources:
             sources.append("มาตรฐานกลางจากคลัง")
@@ -1572,7 +1606,7 @@ def apply_reference_to_slot(
             "sources": list(incoming_sources),
         }
         return "filled"
-    if slot_key in FACT_REQUIRED_SLOTS and not force_append:
+    if slot_key in facts and not force_append:
         return "skipped"
     if incoming and incoming not in content:
         slot["content"] = content + REFERENCE_BLOCK + incoming

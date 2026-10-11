@@ -326,11 +326,23 @@ export function IntakeChatPanel({
           }}
           onCoverage={(rows) => {
             setCoverage(rows);
+            // Unlock Phase 3 as soon as local chat coverage is complete —
+            // do not wait only on GET /coverage (refresh can lag or fail).
+            if (factTopicsComplete(rows)) {
+              onFactsReady?.();
+            }
           }}
           onChatReady={() => {
-            refreshCoverage().catch(() => {
-              /* coverage refresh is best-effort after chat */
-            });
+            refreshCoverage()
+              .then((payload) => {
+                const rows = payload.coverage || [];
+                if (payload.ready_to_compose || factTopicsComplete(rows)) {
+                  onFactsReady?.();
+                }
+              })
+              .catch(() => {
+                /* coverage refresh is best-effort after chat */
+              });
           }}
         />
       ) : null}

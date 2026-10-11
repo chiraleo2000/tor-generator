@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { analysisMappingReady, factProgressFromCoverage, factTopicsComplete } from "@/lib/intake-complete";
+import {
+  analysisMappingReady,
+  factProgressFromCoverage,
+  factTopicsComplete,
+  slotMapFactsComplete,
+} from "@/lib/intake-complete";
+import { factRequiredFor } from "@/lib/tor-profiles";
 
 describe("intake-complete", () => {
   it("requires analyzed plus coverage rows before leaving Phase 0", () => {
@@ -37,15 +43,40 @@ describe("intake-complete", () => {
     ).toBe(true);
   });
 
-  it("falls back to known fact keys when fact_required flags are missing", () => {
-    const rows = ["s1", "s2", "s5", "s6", "s7", "s4.1"].map((key) => ({
+  it("falls back to profile fact keys when fact_required flags are missing", () => {
+    const partial = ["s1", "s2"].map((key) => ({
       key,
       label: key,
-      status: "filled",
+      status: "filled" as const,
       filled: true,
       fact_required: false,
     }));
-    expect(factTopicsComplete(rows)).toBe(true);
+    expect(factTopicsComplete(partial, "buy_goods")).toBe(false);
+
+    const rows = factRequiredFor("buy_goods").map((key) => ({
+      key,
+      label: key,
+      status: "filled" as const,
+      filled: true,
+      fact_required: false,
+    }));
+    expect(factTopicsComplete(rows, "buy_goods")).toBe(true);
+  });
+
+  it("unlocks from slot_map when every profile fact key is filled", () => {
+    const slot_map: Record<string, { status: string; content: string }> = {};
+    for (const key of factRequiredFor("buy_goods")) {
+      slot_map[key] = { status: "filled", content: `ค่า ${key}` };
+    }
+    expect(
+      slotMapFactsComplete({ analyzed: true, slot_map }, "buy_goods")
+    ).toBe(true);
+    expect(
+      slotMapFactsComplete(
+        { analyzed: true, slot_map: { s1: { status: "filled", content: "แค่ช่องเดียว" } } },
+        "buy_goods"
+      )
+    ).toBe(false);
   });
 
   it("reports zero progress when no coverage rows exist", () => {

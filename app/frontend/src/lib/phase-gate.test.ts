@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canSelectPhase, displayPhase, hasIntakeMaterial, intakeUnlockedPhase } from "@/lib/phase-gate";
+import { factRequiredFor } from "@/lib/tor-profiles";
 
 describe("phase-gate", () => {
   it("stays at phase 0 when the project has no text or files", () => {
@@ -62,6 +63,20 @@ describe("phase-gate", () => {
         ]
       )
     ).toBe(3);
+  });
+
+  it("unlocks draft (phase 3) from filled slot_map without ready_to_compose", () => {
+    const slot_map: Record<string, { status: string; content: string }> = {};
+    for (const key of factRequiredFor("buy_goods")) {
+      slot_map[key] = { status: "filled", content: `ค่า ${key}` };
+    }
+    expect(
+      intakeUnlockedPhase({
+        projectType: "buy_goods",
+        analysisJson: { analyzed: true, ready_to_compose: false, slot_map },
+      })
+    ).toBe(3);
+    expect(canSelectPhase(2, 3, 3)).toBe(true);
   });
 
   it("unlocks draft (phase 3) only after ready_to_compose", () => {
