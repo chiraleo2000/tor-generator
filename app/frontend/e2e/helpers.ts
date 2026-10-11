@@ -478,7 +478,7 @@ async function answerGapList(page: Page, answers: readonly string[]): Promise<vo
   await answerGapList(page, rest);
 }
 
-async function answerFactGapsViaIntakeChat(page: Page) {
+export async function answerFactGapsViaIntakeChat(page: Page) {
   await answerGapList(page, LIVE_GAP_ANSWERS);
   expect(await allFactSlotsFilled(page)).toBe(true);
 }

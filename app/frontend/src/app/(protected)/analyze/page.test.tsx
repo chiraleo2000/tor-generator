@@ -118,7 +118,7 @@ describe("AnalyzePage", () => {
         text: "ร่าง TOR ทดสอบ Oracle โดยไม่มีหรือเทียบเท่า",
         project_id: undefined,
       },
-      { timeout: 60_000 }
+      { timeout: 2_700_000 }
     );
     expect(await screen.findByTestId("analyze-summary")).toHaveTextContent("70/100");
     expect(screen.getByTestId("analyze-panel-legal")).toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("AnalyzePage", () => {
           text: undefined,
           project_id: "p1",
         },
-        { timeout: 60_000 }
+        { timeout: 2_700_000 }
       )
     );
   });
@@ -301,5 +301,29 @@ describe("AnalyzePage", () => {
         expect.stringContaining("ไม่ควรยื่นในสถานะข้อมูลปัจจุบัน")
       )
     );
+  });
+
+  it("changes กำลังวิเคราะห์ to elapsed time then the finished score without a reload", async () => {
+    let resolvePost: (value: unknown) => void = () => undefined;
+    vi.mocked(apiClient.post).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePost = resolve;
+        })
+    );
+    render(<AnalyzePage />);
+    fireEvent.change(screen.getByTestId("analyze-text"), {
+      target: { value: "ร่าง TOR ที่ใช้เวลานาน" },
+    });
+    fireEvent.click(screen.getByTestId("analyze-run"));
+    const status = screen.getByTestId("analyze-status");
+    expect(status).toHaveTextContent("กำลังวิเคราะห์");
+    await waitFor(
+      () => expect(status.textContent).toMatch(/ผ่านมา \d+ วินาที/),
+      { timeout: 4_000 }
+    );
+    resolvePost({ data: { ok: true, data: ANALYSIS } });
+    await waitFor(() => expect(status).toHaveTextContent("วิเคราะห์เสร็จ — คะแนนรวม 70/100"));
+    expect(screen.getByTestId("analyze-summary")).toBeInTheDocument();
   });
 });

@@ -13,6 +13,7 @@ import { useProjectStore } from "@/stores/project-store";
 import { cn } from "@/lib/utils";
 import type { AnalyzerFindingView, PartScoreView, TorPartScoresView } from "@/components/review/three-part-scores";
 import { BidderRiskPanel } from "@/components/review/bidder-risk-panel";
+import { useElapsedStatus } from "@/lib/elapsed-status";
 
 type AnalyzePanel = "legal" | "lock_in" | "project" | "bidder_risk" | "recommendations";
 
@@ -229,7 +230,7 @@ async function postTorAnalysis(text: string, projectId: string): Promise<Analyze
       text: text || undefined,
       project_id: projectId || undefined,
     },
-    { timeout: 60_000 }
+    { timeout: 2_700_000 }
   );
   const payload = unwrapData<unknown>(response);
   if (!isAnalyzeResult(payload)) {
@@ -401,6 +402,7 @@ export default function AnalyzePage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const shownStatus = useElapsedStatus(busy && status.startsWith("กำลังวิเคราะห์"), status);
 
   useEffect(() => {
     fetchProjects(1).catch(() => undefined);
@@ -453,7 +455,7 @@ export default function AnalyzePage() {
         >
           {runLabel(busy)}
         </Button>
-        <AnalyzeStatus status={status} />
+        <AnalyzeStatus status={shownStatus} />
         <AnalyzeError error={error} />
       </div>
 

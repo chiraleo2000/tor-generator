@@ -281,4 +281,28 @@ describe("DraftConversation", () => {
     fireEvent.click(screen.getByTestId("chat-send"));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/แชทล้มเหลว/));
   });
+
+  it("changes the intake waiting sentence while the reply is still in flight", async () => {
+    let finish: (() => void) | undefined;
+    vi.mocked(streamSsePost).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: { ok: true, data: { messages: [] } },
+    } as never);
+    render(<DraftConversation projectId="p1" mode="intake" apiBase="/api/v1" />);
+    await screen.findByTestId("chat-input");
+    fireEvent.change(screen.getByTestId("chat-input"), { target: { value: "วงเงินสองล้าน" } });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    const status = await screen.findByTestId("intake-chat-status");
+    expect(status).toHaveTextContent("กำลังประมวลผล");
+    await waitFor(
+      () => expect(status.textContent).toMatch(/ผ่านมา \d+ วินาที/),
+      { timeout: 4_000 }
+    );
+    finish?.();
+  });
 });

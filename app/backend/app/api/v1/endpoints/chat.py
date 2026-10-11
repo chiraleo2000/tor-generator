@@ -43,8 +43,11 @@ from app.rag.kb_qa import (
     chat_rag_top_k,
     is_context_overflow_error,
     messages_token_estimate,
+    attach_rate_source_line,
+    citation_matches_documents,
     normalize_kb_qa_answer,
     pin_rate_catalog_chunks,
+    rate_document_citations,
     prepare_kb_qa_messages,
     question_asks_rate_catalog,
     select_rag_chunks_for_qa,
@@ -549,7 +552,10 @@ async def _run_chat_llm(
                 parts_local = await _stream_chat_tokens(
                     llm, active_messages, active_max, event_q
                 )
-        full_text = normalize_kb_qa_answer("".join(parts_local))
+        full_text = attach_rate_source_line(
+            normalize_kb_qa_answer("".join(parts_local)),
+            citations,
+        )
         await _persist_assistant_reply(session_factory, room_id, full_text, citations)
         await event_q.put(
             (
@@ -597,6 +603,7 @@ async def _iter_chat_sse(
     if is_kb and question_asks_rate_catalog(question):
         catalog = await load_rate_catalog_chunks()
         result.chunks = pin_rate_catalog_chunks(result.chunks, catalog)
+        citations = list(citations or []) + rate_document_citations(catalog)
     qa_chunks = select_rag_chunks_for_qa(result.chunks) if is_kb else list(result.chunks)
     if is_kb:
         keep_docs = {
@@ -606,13 +613,7 @@ async def _iter_chat_sse(
         citations = [
             cite
             for cite in (citations or [])
-            if str(
-                (cite.get("document") if isinstance(cite, dict) else None)
-                or (cite.get("source_document") if isinstance(cite, dict) else None)
-                or ""
-            )
-            in keep_docs
-            or not keep_docs
+            if citation_matches_documents(cite, keep_docs)
         ]
         messages = await prepare_kb_qa_messages(
             question=question,

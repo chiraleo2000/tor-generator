@@ -461,7 +461,7 @@ function BriefTable({ rows, blockKey: key }: Readonly<{ rows: string[][]; blockK
   const [header, ...body] = rows;
   return (
     <div className="max-w-full min-w-0 overflow-x-auto">
-      <table className="w-full min-w-[28rem] border-collapse text-[13.5px]">
+      <table className="w-full min-w-[28rem] border-collapse text-sm">
         <thead>
           <tr>
             {header.map((cell, cIdx) => (
@@ -507,7 +507,7 @@ function renderBodyBlock(block: ChatBlock, index: number) {
   const key = blockKey(block, index);
   if (block.kind === "list") {
     return (
-      <ul key={key} className="space-y-1.5 pl-5 text-[14.5px] leading-[1.7] text-slate-600">
+      <ul key={key} className="space-y-1.5 pl-5 text-base leading-relaxed text-slate-700">
         {block.items.map((item) => (
           <li key={`${key}-${item.slice(0, 24)}`} className="list-disc marker:text-slate-400">
             <InlineMd text={item} />
@@ -560,7 +560,7 @@ function renderBodyBlock(block: ChatBlock, index: number) {
     );
   }
   return (
-    <p key={key} className="text-[14.5px] leading-[1.75] text-slate-600">
+    <p key={key} className="text-base leading-relaxed text-slate-800">
       <InlineMd text={block.text} />
     </p>
   );
@@ -603,7 +603,7 @@ export function ChatCitationBar({
       className="mt-4 flex max-w-full min-w-0 flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3"
       data-testid="chat-source-bar"
     >
-      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">
         <Database className="h-3 w-3" />
         แหล่งข้อมูล
       </span>
@@ -611,7 +611,7 @@ export function ChatCitationBar({
         <span
           key={`${cite.type}-${cite.label}`}
           data-testid="chat-citation"
-          className="max-w-[16rem] truncate rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-navy"
+          className="max-w-full whitespace-normal break-words rounded-full bg-slate-100 px-3 py-1 text-sm font-medium leading-snug text-navy"
           title={citationChipText(cite)}
         >
           {citationChipText(cite)}

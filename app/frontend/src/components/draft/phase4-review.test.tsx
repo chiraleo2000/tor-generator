@@ -395,4 +395,28 @@ describe("Phase4Review", () => {
     expect(screen.queryByTestId("bidder-risk-table-clarity")).not.toBeInTheDocument();
     expect(screen.queryByTestId("bidder-risk-panel")).not.toBeInTheDocument();
   });
+
+  it("replaces the in-progress review sentence with the score without remounting", async () => {
+    const props = {
+      projectId: "p-live",
+      filledCount: 13,
+      total: 13,
+      findings: [],
+      suggestions: [],
+      error: null,
+      onBack: vi.fn(),
+      onReview: vi.fn().mockResolvedValue(undefined),
+      onSubmit: vi.fn().mockResolvedValue(undefined),
+    };
+    const view = render(<Phase4Review {...props} score={null} busy />);
+    const status = await screen.findByTestId("phase4-review-status");
+    expect(status).toHaveTextContent("กำลังตรวจสอบด้วยกฎระเบียบ");
+    await waitFor(
+      () => expect(status.textContent).toMatch(/ผ่านมา \d+ วินาที/),
+      { timeout: 4_000 }
+    );
+    view.rerender(<Phase4Review {...props} score={81} busy={false} />);
+    expect(screen.getByTestId("phase4-rule-score")).toHaveTextContent("81/100");
+    expect(screen.queryByTestId("phase4-review-status")).not.toBeInTheDocument();
+  });
 });

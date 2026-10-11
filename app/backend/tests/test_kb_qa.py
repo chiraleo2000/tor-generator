@@ -11,8 +11,11 @@ from app.rag.kb_qa import (
     CHAT_MAX_TOKENS,
     CHAT_RAG_TOP_K,
     KB_QA_SYSTEM,
+    attach_rate_source_line,
     build_kb_qa_messages,
+    citation_matches_documents,
     pin_rate_catalog_chunks,
+    rate_document_citations,
     question_asks_rate_catalog,
     rate_catalog_instruction,
     chat_context_token_budget,
@@ -251,3 +254,15 @@ def test_rate_question_pins_the_rate_pdf_ahead_of_other_guidelines():
     body = messages[-1]["content"]
     assert "อัตราค่าจ้างที่ปรึกษา" in body
     assert "30,090" in body
+
+
+def test_rate_answer_keeps_the_pdf_filename_when_the_model_omits_it():
+    name = "อัตราค่าจ้างที่ปรึกษา ประชาสัมพันธ์ อบรม .pdf"
+    catalog = _chunk("30,090 บาท", name, score=0.99)
+    cites = rate_document_citations([catalog])
+    assert cites == [{"type": "document", "label": name}]
+    assert citation_matches_documents(cites[0], {name}) is True
+    assert citation_matches_documents({"type": "document", "label": "อื่น.pdf"}, {name}) is False
+    body = attach_rate_source_line("ใช้แถวอายุงาน 2 ปี", cites)
+    assert name in body
+    assert attach_rate_source_line(body, cites) == body

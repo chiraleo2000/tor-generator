@@ -460,4 +460,22 @@ describe("DraftChat", () => {
       ).toBe(true)
     );
   });
+
+  it("updates the drafting status on the same screen while the model is still working", async () => {
+    let finish: (() => void) | undefined;
+    mockStream(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    render(<DraftChat projectId="p-tick" onAllDrafted={vi.fn()} />);
+    const status = await screen.findByTestId("draft-chat-status");
+    expect(status.textContent).toMatch(/กำลังร่าง/);
+    await waitFor(
+      () => expect(screen.getByTestId("draft-chat-status").textContent).toMatch(/ผ่านมา \d+ วินาที/),
+      { timeout: 4_000 }
+    );
+    finish?.();
+  });
 });

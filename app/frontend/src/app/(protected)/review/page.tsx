@@ -30,6 +30,7 @@ import {
 } from "@/components/review/three-part-scores";
 import { BidderRiskPanel } from "@/components/review/bidder-risk-panel";
 import { cn } from "@/lib/utils";
+import { useElapsedStatus } from "@/lib/elapsed-status";
 
 interface ReviewResult {
   quality_score?: number;
@@ -337,6 +338,7 @@ export default function StandaloneReviewPage() {
 
   const findings = result?.findings || [];
   const preview = previewSnippet(extracted?.extracted_text || "");
+  const shownStatus = useElapsedStatus(busy && status.startsWith("กำลัง"), status);
 
   return (
     <div className="grid min-w-0 gap-4 lg:grid-cols-2" data-testid="review-page">
@@ -366,14 +368,14 @@ export default function StandaloneReviewPage() {
             {error}
           </p>
         ) : null}
-        {status ? (
+        {shownStatus ? (
           <p
-            className={`mt-2 text-sm ${
+            className={`mt-2 text-sm font-semibold ${
               (result?.quality_score ?? 0) >= 70 ? "text-brand-green" : "text-navy"
             }`}
             data-testid="review-status"
           >
-            {status}
+            {shownStatus}
           </p>
         ) : null}
 

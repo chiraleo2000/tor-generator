@@ -285,8 +285,57 @@ def rate_catalog_instruction(chunks: list[Any] | None) -> str:
                 "ถ้าคำถามเป็นอัตราค่าจ้างที่ปรึกษา ค่าอาหาร ค่าอาหารว่าง ค่าเอกสาร หรือสถานที่อบรม "
                 "ให้ยึดไฟล์ที่ชื่อมี อัตราค่าจ้างที่ปรึกษา เป็นแหล่งหลัก "
                 "และอ้างชื่อไฟล์นั้นในคำตอบ "
+                "ห้ามสร้างสูตรหรือตัวเลขที่ไม่มีในตารางของไฟล์นั้น "
             )
     return ""
+
+
+def citation_matches_documents(cite: object, keep_docs: set[str]) -> bool:
+    """Keep a chip when its label is one of the documents actually sent to the model."""
+    if not keep_docs:
+        return True
+    if not isinstance(cite, dict):
+        return False
+    fields = [
+        str(cite.get("document") or ""),
+        str(cite.get("source_document") or ""),
+        str(cite.get("label") or ""),
+    ]
+    for field in fields:
+        if not field:
+            continue
+        for doc in keep_docs:
+            if doc and (field == doc or field in doc or doc in field):
+                return True
+    return False
+
+
+def rate_document_citations(chunks: list[Any] | None) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    citations: list[dict[str, str]] = []
+    for chunk in chunks or []:
+        name = str(getattr(chunk, "source_document", "") or "")
+        if RATE_CATALOG_NAME_MARK not in name or name in seen:
+            continue
+        seen.add(name)
+        citations.append({"type": "document", "label": name})
+    return citations
+
+
+def attach_rate_source_line(answer: str, citations: list[Any] | None) -> str:
+    """Name the rate PDF when the model answer omitted the filename."""
+    name = ""
+    for cite in citations or []:
+        if not isinstance(cite, dict):
+            continue
+        label = str(cite.get("label") or "")
+        if RATE_CATALOG_NAME_MARK in label and "ประชาสัมพันธ์" in label:
+            name = label
+            break
+    body = answer or ""
+    if not name or name in body:
+        return body
+    return f"{body.rstrip()}\n\nแหล่งข้อมูล: {name}"
 
 
 def select_rag_chunks_for_qa(chunks: list[Any] | None) -> list[Any]:

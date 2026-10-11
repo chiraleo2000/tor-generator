@@ -9,6 +9,7 @@ import { adoptServerChatMessages, streamSsePost, type ChatMessageItem } from "@/
 import { factProgressFromCoverage } from "@/lib/intake-complete";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
+import { useElapsedStatus } from "@/lib/elapsed-status";
 import type { CoverageRow } from "@/components/draft/phase1-coverage";
 
 const DEFAULT_MOF_OPTION =
@@ -363,6 +364,15 @@ export function DraftConversation({
   }
 
   const options = conversationOptions(replyOptions, mode, allFactFilled);
+  const lastMessage = messages.at(-1);
+  const waitingForReply =
+    busy &&
+    (!lastMessage ||
+      lastMessage.role !== "assistant" ||
+      lastMessage.content === "" ||
+      lastMessage.content === "รอคิวตอบ…" ||
+      lastMessage.content === "กำลังประมวลผล…");
+  const waitText = useElapsedStatus(waitingForReply, "กำลังประมวลผล");
 
   return (
     <div className="flex min-h-[48vh] flex-col overflow-hidden rounded-xl border bg-white" data-testid="draft-conversation">
@@ -391,6 +401,11 @@ export function DraftConversation({
       {error ? (
         <p className="px-4 py-2 text-sm text-destructive" role="alert">
           {error}
+        </p>
+      ) : null}
+      {waitingForReply ? (
+        <p className="px-4 pt-3 text-sm font-semibold text-navy" data-testid="intake-chat-status">
+          {waitText}
         </p>
       ) : null}
       <div className="flex-1 space-y-3 overflow-y-auto p-4" data-testid="chat-messages">

@@ -38,6 +38,7 @@ import {
 import { uniqueById } from "@/lib/kb-categories";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
+import { useElapsedStatus } from "@/lib/elapsed-status";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 const TITLE_KB = "ถาม-ตอบคลังความรู้";
@@ -567,8 +568,8 @@ export function ChatShell({
   return (
     <div
       className={cn(
-        "flex overflow-hidden rounded-xl border bg-white",
-        compact ? "min-h-[52vh]" : "relative min-h-[70vh]",
+        "flex min-h-0 overflow-hidden rounded-xl border bg-white",
+        compact ? "min-h-[52vh]" : "relative h-[calc(100dvh-9rem)] min-h-[32rem]",
         briefing && "bg-slate-50"
       )}
       data-testid="chat-shell"
@@ -606,7 +607,7 @@ export function ChatShell({
         onToggleCollapse={() => setCollapsed((value) => !value)}
       />
       )}
-      <section className="flex min-w-0 flex-1 flex-col bg-[hsl(150,20%,97%)]">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-[hsl(150,20%,97%)]">
         {briefing ? (
           <div className="border-b bg-white px-5 py-4">
             <div className="flex items-start gap-3">
@@ -782,7 +783,7 @@ function ChatTranscript({
   onPrompt: (body: string) => void;
 }>) {
   return (
-    <div className="min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-5" data-testid="chat-messages">
+    <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto p-6" data-testid="chat-messages">
       {messages.length === 0 ? (
         <div className="space-y-4 py-6" data-testid="chat-empty">
           <p className="text-center text-sm text-muted-foreground">
@@ -835,7 +836,7 @@ function ChatComposer({
   onSend: () => void;
 }>) {
   return (
-    <div className="border-t bg-white p-3">
+    <div className="shrink-0 border-t bg-white p-4">
       <div className="mb-2 flex flex-wrap gap-1">
         {compact
           ? null
@@ -855,7 +856,7 @@ function ChatComposer({
         <textarea
           data-testid="chat-input"
           className={cn(
-            "min-h-[48px] flex-1 border p-2 text-sm",
+            "min-h-[56px] flex-1 border p-3 text-base leading-relaxed",
             briefing ? "rounded-2xl px-4 py-3 shadow-sm" : "rounded-md"
           )}
           value={draft}
@@ -888,14 +889,14 @@ function ChatComposer({
 
 function userBubbleClass(briefing: boolean): string {
   return cn(
-    "ml-auto max-w-[85%] rounded-2xl px-4 py-2.5 text-sm text-white",
+    "ml-auto max-w-[70%] rounded-2xl px-5 py-3 text-base leading-relaxed text-white",
     briefing ? "bg-emerald-500" : "bg-navy"
   );
 }
 
 function assistantBubbleClass(briefing: boolean): string {
   if (briefing) {
-    return "w-full min-w-0 max-w-none rounded-2xl bg-white px-6 py-5 text-sm shadow-[0_2px_12px_rgba(15,23,42,0.06)]";
+    return "w-full min-w-0 max-w-none rounded-2xl bg-white px-6 py-5 text-base leading-relaxed shadow-[0_2px_12px_rgba(15,23,42,0.06)]";
   }
   return "max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground";
 }
@@ -928,6 +929,8 @@ function ChatBubble({
   const isUser = item.role === "user";
   const noRetrieve =
     !isUser && looksLikeNoRetrieve(item.content, item.citations);
+  const waiting = !isUser && busy && !(item.content || "").trim();
+  const waitText = useElapsedStatus(waiting, queueStatus || "กำลังค้นคลังและตอบ");
   return (
     <article
       data-testid={isUser ? "chat-msg-user" : "chat-msg-assistant"}
@@ -938,18 +941,10 @@ function ChatBubble({
       ) : (
         <ChatAnswerBody text={item.content} />
       )}
-      {!item.content && !isUser && busy ? (
-        <span className="inline-flex items-center gap-1 text-sm" aria-label="กำลังพิมพ์">
-          {queueStatus ? (
-            <span>{queueStatus}</span>
-          ) : (
-            <>
-              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
-            </>
-          )}
-        </span>
+      {waiting ? (
+        <p className="text-base font-semibold text-navy" data-testid="chat-wait-status">
+          {waitText}
+        </p>
       ) : null}
       {item.created_at && !briefing ? (
         <time className="mt-1 block text-[10px] opacity-70" dateTime={item.created_at}>

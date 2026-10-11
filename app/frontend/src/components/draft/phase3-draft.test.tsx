@@ -657,4 +657,34 @@ describe("Phase3Draft", () => {
     expect(screen.getByTestId("training-scope-attendees")).toBeInTheDocument();
     expect(screen.getByTestId("training-scope-documents")).toBeInTheDocument();
   });
+
+  it("shows the finished draft banner when section content arrives without a page reload", () => {
+    const props = {
+      expanded: "",
+      openSub: "",
+      extracted: {},
+      busy: false,
+      actionError: null,
+      actionInfo: null,
+      onExpand: vi.fn(),
+      onOpenSub: vi.fn(),
+      onSave: vi.fn().mockResolvedValue(undefined),
+      onDraft: vi.fn(),
+      onBack: vi.fn(),
+      onConfirm: vi.fn().mockResolvedValue(undefined),
+      projectId: "p-live",
+    };
+    const view = render(<Phase3Draft {...props} sections={[s3]} />);
+    fireEvent.click(screen.getByTestId("mock-all-drafted"));
+    expect(screen.getByTestId("phase3-draft-pending-save")).toBeInTheDocument();
+    expect(screen.queryByTestId("phase3-all-drafted")).not.toBeInTheDocument();
+    view.rerender(
+      <Phase3Draft
+        {...props}
+        sections={[{ ...s3, filled: true, content: "คุณสมบัติผู้ยื่นข้อเสนอครบตามที่หน่วยงานกำหนด" }]}
+      />
+    );
+    expect(screen.getByTestId("phase3-all-drafted")).toHaveTextContent("ขั้นที่ ๔");
+    expect(screen.queryByTestId("phase3-draft-pending-save")).not.toBeInTheDocument();
+  });
 });

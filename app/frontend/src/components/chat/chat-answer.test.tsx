@@ -214,4 +214,13 @@ describe("citation chips", () => {
     expect(screen.getAllByTestId("chat-citation")).toHaveLength(8);
     expect(screen.getByTestId("chat-citation-more")).toHaveTextContent("+4");
   });
+
+  it("shows a long source filename in full instead of cutting it off", () => {
+    const label = "อัตราค่าจ้างที่ปรึกษา ประชาสัมพันธ์ อบรม .pdf";
+    render(<ChatCitationBar citations={[{ type: "document", label }]} />);
+    const chip = screen.getByTestId("chat-citation");
+    expect(chip).toHaveTextContent(label);
+    expect(chip.className).not.toContain("truncate");
+    expect(chip.className).toContain("text-sm");
+  });
 });

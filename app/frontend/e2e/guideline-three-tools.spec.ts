@@ -25,12 +25,12 @@ test.describe.serial("Guideline three tools at 1920x1080", () => {
   });
 
   test("02 review budget finding and risk panel", async ({ page }) => {
-    test.setTimeout(900_000);
+    test.setTimeout(2_400_000);
     await reviewRealDraft(page);
   });
 
   test("03 analyze budget finding and risk panel", async ({ page }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(2_400_000);
     await analyzeRealDraft(page);
   });
 

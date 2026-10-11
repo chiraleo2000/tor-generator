@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import StandaloneReviewPage from "./page";
 import { apiClient } from "@/lib/api-client";
 import {
@@ -312,5 +312,38 @@ describe("StandaloneReviewPage", () => {
     await vi.advanceTimersByTimeAsync(2100);
     expect(await screen.findByTestId("review-score")).toHaveTextContent("88");
     vi.useRealTimers();
+  });
+
+  it("moves review status from the in-progress sentence to the finished score on the same page", async () => {
+    vi.mocked(extractReviewFile).mockResolvedValue({
+      id: "job-live",
+      extracted_text: "ร่าง TOR ทดสอบ",
+    });
+    vi.mocked(extractCompareFiles).mockResolvedValue([]);
+    vi.mocked(compareExtractJobs).mockResolvedValue({ comparisons: [] });
+    let resolvePost: (value: unknown) => void = () => undefined;
+    vi.mocked(apiClient.post).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePost = resolve;
+        })
+    );
+    render(<StandaloneReviewPage />);
+    fireEvent.click(screen.getAllByTestId("review-upload")[0]);
+    fireEvent.click(screen.getByTestId("review-extract"));
+    fireEvent.click(await screen.findByTestId("review-confirm-run"));
+    const status = await screen.findByTestId("review-status");
+    expect(status.textContent).toMatch(/กำลังตรวจ/);
+    await waitFor(
+      () => expect(status.textContent).toMatch(/ผ่านมา \d+ วินาที/),
+      { timeout: 4_000 }
+    );
+    resolvePost({
+      data: { ok: true, data: { quality_score: 82, findings: [] } },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("review-status")).toHaveTextContent("ตรวจเสร็จ — ผ่านเกณฑ์เบื้องต้น (82/100)")
+    );
+    expect(screen.getByTestId("review-score")).toHaveTextContent("82/100");
   });
 });

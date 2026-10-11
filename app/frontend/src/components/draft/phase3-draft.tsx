@@ -410,7 +410,7 @@ export function Phase3Draft({
         ) : null}
         {allDrafted && !draftedEnough ? (
           <p className="mb-3 text-sm text-amber-800" data-testid="phase3-draft-pending-save">
-            ระบบร่างครบแล้ว แต่บางหมวดยังไม่มีเนื้อหาที่บันทึก — กดบันทึกหมวดหรือรอรีเฟรชรายการหมวดก่อนเข้าทบทวน
+            ระบบร่างครบแล้ว แต่บางหมวดยังไม่แสดงเนื้อหา — หน้านี้จะอัปเดตเองเมื่อโหลดเนื้อหาหมวดเสร็จ
           </p>
         ) : null}
       </div>

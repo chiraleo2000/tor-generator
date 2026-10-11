@@ -55,7 +55,7 @@ export function MiniRoomList({
     <aside
       data-testid="chat-room-list"
       className={cn(
-        "flex shrink-0 flex-col border-r bg-white",
+        "flex min-h-0 shrink-0 flex-col overflow-hidden border-r bg-white",
         collapsed
           ? "w-12 sm:w-14"
           : "absolute z-20 h-full w-[min(260px,85vw)] shadow-lg md:relative md:w-[260px] md:shadow-none"

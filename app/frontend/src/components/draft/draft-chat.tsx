@@ -10,6 +10,7 @@ import { streamSsePost } from "@/lib/chat-sse";
 import { useAuthStore } from "@/stores/auth-store";
 import { TOR_SECTION_LABELS, formatScopeSubHeading, formatTorSectionHeading, sectionIndexPad } from "@/lib/tor-sections";
 import { cn } from "@/lib/utils";
+import { useElapsedStatus } from "@/lib/elapsed-status";
 
 interface SectionStatus {
   section_key: string;
@@ -845,7 +846,7 @@ export function DraftChat({
     if (!text) setDraft("");
     setBusy(true);
     setError(null);
-    const sectionKey = sectionKeyOverride || currentEditSection;
+    const sectionKey = sectionKeyOverride || currentEditSection || "";
 
     // Add user message
     setMessages((prev) => [
@@ -961,6 +962,7 @@ export function DraftChat({
   }
 
   const hint = phaseStatusCopy(phase, draftingLabel);
+  const liveHint = useElapsedStatus(phase === "drafting", hint?.text || "");
 
   return (
     <div className="flex flex-col rounded-xl border bg-white" data-testid="draft-chat">
@@ -979,7 +981,11 @@ export function DraftChat({
             data-testid="draft-progress-bar"
           />
         </div>
-        {hint ? <p className={hint.className}>{hint.text}</p> : null}
+        {hint ? (
+          <p className="mt-1.5 text-sm font-semibold text-navy" data-testid="draft-chat-status">
+            {phase === "drafting" ? liveHint : hint.text}
+          </p>
+        ) : null}
       </div>
 
       {/* Messages area */}

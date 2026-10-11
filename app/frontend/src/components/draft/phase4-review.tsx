@@ -15,6 +15,7 @@ import {
   ThreePartScores,
   type TorPartScoresView,
 } from "@/components/review/three-part-scores";
+import { useElapsedStatus } from "@/lib/elapsed-status";
 import {
   TOR_SECTION_LABELS,
   formatScopeSubHeading,
@@ -57,9 +58,18 @@ export function Phase4Review({
   onAsk?: (question: string) => Promise<string>;
 }>) {
   const pct = Math.round((filledCount / total) * 100);
+  const reviewStatus = useElapsedStatus(
+    busy && score == null,
+    "กำลังตรวจสอบด้วยกฎระเบียบ"
+  );
   return (
     <div className="gov-card" data-testid="phase4-review">
       <h3 className="mb-2 text-navy">ขั้นที่ ๔: ทบทวนและอนุมัติ</h3>
+      {busy && score == null ? (
+        <p className="mb-2 text-sm font-semibold text-navy" data-testid="phase4-review-status">
+          {reviewStatus}
+        </p>
+      ) : null}
       <p className="mb-2 text-xs text-muted-foreground">
         ด้านล่างคือตัวอย่างเอกสารที่จะถูกส่งออก — หมวดขอบเขตงานแสดงเป็นหัวข้อย่อยตามประเภทงานที่รวมจากขั้นที่ ๓
         ขั้นนี้ตรวจร่างกับ พ.ร.บ. การจัดซื้อจัดจ้าง กฎระเบียบ และเอกสารที่อัปโหลดในขั้นที่ ๐ ของโครงการนี้

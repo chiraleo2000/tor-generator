@@ -577,4 +577,25 @@ describe("ChatShell MCP degraded banner", () => {
       expect(screen.getByTestId("chat-error").textContent).toMatch(/ยังไม่มีห้องแชทสำหรับแนบไฟล์/)
     );
   });
+
+  it("changes the waiting sentence before the answer arrives", async () => {
+    let finish: (() => void) | undefined;
+    vi.mocked(streamSsePost).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    render(<ChatShell kind="kb" />);
+    const input = await screen.findByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "อัตราค่าจ้างที่ปรึกษา" } });
+    fireEvent.click(screen.getByTestId("chat-send"));
+    const status = await screen.findByTestId("chat-wait-status");
+    expect(status.textContent).toMatch(/กำลังค้นคลัง|รอคิว/);
+    await waitFor(
+      () => expect(status.textContent).toMatch(/ผ่านมา \d+ วินาที/),
+      { timeout: 4_000 }
+    );
+    finish?.();
+  });
 });
