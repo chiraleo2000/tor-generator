@@ -7,7 +7,12 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, INTAKE_SLOT_ORDER
+from app.domain.slots import (
+    fact_required_slots,
+    intake_slot_order,
+    slot_key_aliases,
+    slot_label,
+)
 from app.providers.factory import ProviderFactory
 from app.providers.structured_invoke import invoke_with_schema
 from app.schemas.llm_structured import GapQuestionsResult, json_schema_for
@@ -26,19 +31,36 @@ class GapInfo:
     status: str
 
 
-def _gap_from_slot(key: str, slot: dict[str, Any]) -> GapInfo | None:
-    status = str(slot.get("status") or "gap")
-    content = str(slot.get("content") or "").strip()
-    if status == "filled" and bool(content):
+def _slot_filled(slot_map: dict[str, Any], key: str) -> bool:
+    for alias in slot_key_aliases(key):
+        slot = slot_map.get(alias) or {}
+        if not isinstance(slot, dict):
+            continue
+        content = str(slot.get("content") or "").strip()
+        if slot.get("status") == "filled" and bool(content):
+            return True
+    return False
+
+
+def _gap_from_slot(
+    key: str,
+    slot_map: dict[str, Any],
+    facts: frozenset[str] | set[str],
+    category: str | None,
+) -> GapInfo | None:
+    if _slot_filled(slot_map, key):
         return None
-    fact_required = key in FACT_REQUIRED_SLOTS
+    slot = slot_map.get(key) if isinstance(slot_map.get(key), dict) else {}
+    status = str((slot or {}).get("status") or "gap")
+    content = str((slot or {}).get("content") or "").strip()
+    fact_required = key in facts
     is_gap = status in {"gap", "reference_only", "error"} or not content
     if not is_gap or (not fact_required and status not in {"gap", "error"}):
         return None
     visible = status if status in {"gap", "reference_only", "error"} else "gap"
     return GapInfo(
         slot_key=key,
-        label=INTAKE_SLOT_LABELS.get(key, key),
+        label=slot_label(key, category),
         critical=fact_required,
         status=visible,
     )
@@ -57,13 +79,15 @@ class GapDetector:
     def __init__(self, llm: Any | None = None) -> None:
         self._llm = llm
 
-    def detect_gaps(self, slot_map: dict[str, Any]) -> list[GapInfo]:
+    def detect_gaps(
+        self, slot_map: dict[str, Any], category: str | None = None
+    ) -> list[GapInfo]:
         critical: list[GapInfo] = []
         other: list[GapInfo] = []
         mapping = slot_map if isinstance(slot_map, dict) else {}
-        for key in INTAKE_SLOT_ORDER:
-            slot = mapping.get(key) if isinstance(mapping.get(key), dict) else {}
-            info = _gap_from_slot(key, slot)
+        facts = fact_required_slots(category)
+        for key in intake_slot_order(category):
+            info = _gap_from_slot(key, mapping, facts, category)
             if info is None:
                 continue
             if info.critical:

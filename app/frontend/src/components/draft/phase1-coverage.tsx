@@ -36,6 +36,7 @@ export function Phase1Coverage({
   message,
   isError,
   onEnterQa,
+  projectType,
 }: Readonly<{
   coverage: CoverageRow[];
   gaps: string[];
@@ -44,8 +45,9 @@ export function Phase1Coverage({
   message: string | null;
   isError: boolean;
   onEnterQa: () => void;
+  projectType?: string | null;
 }>) {
-  const factReady = factTopicsComplete(coverage);
+  const factReady = factTopicsComplete(coverage, projectType);
 
   function continueToQa() {
     onEnterQa();

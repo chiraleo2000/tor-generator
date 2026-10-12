@@ -82,6 +82,25 @@ describe("Phase2Qa", () => {
     expect(screen.getByTestId("draft-conversation")).toBeInTheDocument();
   });
 
+  it("enables confirm when chat reports facts complete even if coverage chips lag", () => {
+    render(
+      <Phase2Qa
+        {...baseProps}
+        chatFactsComplete
+        coverage={[
+          {
+            key: "s1",
+            label: "ชื่อโครงการ",
+            status: "gap",
+            filled: false,
+            fact_required: true,
+          },
+        ]}
+      />
+    );
+    expect(screen.getByTestId("intake-confirm-ready")).toBeEnabled();
+  });
+
   it("shows the coverage table and confirms without a fill-reference button", () => {
     const onConfirmReady = vi.fn();
     render(

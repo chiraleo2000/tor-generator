@@ -215,10 +215,14 @@ def _slot_preview(slot_map: dict[str, Any], key: str) -> str:
 
 
 def coverage_table(
-    slot_map: dict[str, Any], category: str | None = None
+    slot_map: dict[str, Any],
+    category: str | None = None,
+    *,
+    preview_limit: int = 12_000,
 ) -> list[dict[str, Any]]:
     labels = intake_slot_labels(category)
     facts = fact_required_slots(category)
+    limit = max(0, int(preview_limit))
     rows = []
     for key in intake_slot_order(category):
         slot = slot_map.get(key) or {}
@@ -231,7 +235,7 @@ def coverage_table(
                 "status": "filled" if filled else status,
                 "filled": filled,
                 "fact_required": key in facts,
-                "preview": _slot_preview(slot_map, key)[:12_000],
+                "preview": _slot_preview(slot_map, key)[:limit],
             }
         )
     return rows
@@ -1510,7 +1514,7 @@ async def analyze_pack(
                 timeout=ANALYZE_LLM_TIMEOUT_SEC,
             )
             # LLM is the source of truth for content found in the documents.
-            slot_map = overlay_filled_slots(slot_map, llm_map)
+            slot_map = overlay_filled_slots(slot_map, llm_map, category)
             slot_map = repair_misplaced_slots(slot_map)
         except TimeoutError:
             logger.warning("intake analyze LLM timed out for project %s", project.id)
@@ -1531,7 +1535,7 @@ async def analyze_pack(
     # same slot is replaced by the longer passage from the file.
     order = intake_slot_order(category)
     before_fallback = sum(1 for key in order if _slot_is_filled(slot_map, key))
-    slot_map = overlay_filled_slots(slot_map, heuristic_map)
+    slot_map = overlay_filled_slots(slot_map, heuristic_map, category)
     slot_map = expand_shallow_slots(slot_map, heuristic_map)
     slot_map = repair_misplaced_slots(slot_map)
     after_fallback = sum(1 for key in order if _slot_is_filled(slot_map, key))

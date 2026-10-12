@@ -511,6 +511,7 @@ export function DraftWorkspace() {
         <IntakeChatPanel
           projectId={projectId}
           phase={phase}
+          projectType={activeProject?.projectType}
           onAnalyzed={() => persistPhase(1, Math.max(unlocked, 2))}
           onEnterQa={() => persistPhase(2, Math.max(unlocked, 2))}
           onFactsReady={() => {

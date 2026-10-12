@@ -34,6 +34,7 @@ const ANALYZING_STATUS_PREFIX = "กำลังอ่านเอกสาร�
 export function IntakeChatPanel({
   projectId,
   phase,
+  projectType,
   onAnalyzed,
   onEnterQa,
   onReady,
@@ -41,12 +42,14 @@ export function IntakeChatPanel({
 }: Readonly<{
   projectId: string;
   phase: number;
+  projectType?: string | null;
   onAnalyzed: () => void;
   onEnterQa: () => void;
   onReady: () => void;
   onFactsReady?: () => void;
 }>) {
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
+  const [chatFactsComplete, setChatFactsComplete] = useState(false);
   const [gaps, setGaps] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [hasPack, setHasPack] = useState(false);
@@ -71,11 +74,14 @@ export function IntakeChatPanel({
     setGaps(payload.gap_questions || []);
     setReady(Boolean(payload.ready_to_compose));
     if (payload.has_material) setHasPack(true);
-    if (payload.ready_to_compose || factTopicsComplete(rows)) {
+    const factsDone =
+      Boolean(payload.ready_to_compose) || factTopicsComplete(rows, projectType);
+    if (factsDone) {
+      setChatFactsComplete(true);
       onFactsReady?.();
     }
     return payload;
-  }, [projectId, onFactsReady]);
+  }, [projectId, projectType, onFactsReady]);
 
   const stopAnalyzeTicker = useCallback(() => {
     analyzeEpochRef.current += 1;
@@ -310,6 +316,7 @@ export function IntakeChatPanel({
           message={message}
           isError={isError}
           onEnterQa={onEnterQa}
+          projectType={projectType}
         />
       ) : null}
       {phase === 2 ? (
@@ -321,6 +328,8 @@ export function IntakeChatPanel({
           message={message}
           isError={isError}
           apiBase={apiBase}
+          chatFactsComplete={chatFactsComplete}
+          projectType={projectType}
           onConfirmReady={() => {
             confirmReady().catch(() => undefined);
           }}
@@ -328,15 +337,22 @@ export function IntakeChatPanel({
             setCoverage(rows);
             // Unlock Phase 3 as soon as local chat coverage is complete —
             // do not wait only on GET /coverage (refresh can lag or fail).
-            if (factTopicsComplete(rows)) {
+            if (factTopicsComplete(rows, projectType)) {
+              setChatFactsComplete(true);
               onFactsReady?.();
             }
+          }}
+          onAllFactFilled={(value) => {
+            if (!value) return;
+            setChatFactsComplete(true);
+            onFactsReady?.();
           }}
           onChatReady={() => {
             refreshCoverage()
               .then((payload) => {
                 const rows = payload.coverage || [];
-                if (payload.ready_to_compose || factTopicsComplete(rows)) {
+                if (payload.ready_to_compose || factTopicsComplete(rows, projectType)) {
+                  setChatFactsComplete(true);
                   onFactsReady?.();
                 }
               })

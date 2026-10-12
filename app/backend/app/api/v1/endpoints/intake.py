@@ -19,7 +19,12 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.api.constants import PROJECT_NOT_FOUND
 from app.api.sse import sse_streaming_response
 from app.deps import get_current_user, get_db
-from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS, empty_slot_keys, fact_required_slots
+from app.domain.slots import (
+    INTAKE_SLOT_LABELS,
+    empty_slot_keys,
+    fact_required_slots,
+    slot_label,
+)
 from app.exceptions import NotFoundError, ValidationError
 from app.io_temp import unlink_path, write_temp_bytes
 from app.llm_admission import AdmissionTimeoutError, admit
@@ -218,11 +223,12 @@ def _intake_pack(texts: Any) -> tuple[str, list[str]]:
     return "\n\n".join(parts), filenames
 
 
-def _gap_questions_for(slot_map: dict[str, Any]) -> list[str]:
+def _gap_questions_for(
+    slot_map: dict[str, Any], category: str | None = None
+) -> list[str]:
     return [
-        f"ขอข้อมูลสำหรับ {INTAKE_SLOT_LABELS.get(key, key)} ({key})"
-        for key in FACT_REQUIRED_SLOTS
-        if (slot_map.get(key) or {}).get("status") != "filled"
+        f"ขอข้อมูลสำหรับ {slot_label(key, category)} ({key})"
+        for key in missing_fact_keys(slot_map, category)
     ]
 
 
@@ -234,7 +240,7 @@ async def _persist_heuristic_slot_map(
         project.analysis_json or {},
         {
             "slot_map": slot_map,
-            "gap_questions": _gap_questions_for(slot_map),
+            "gap_questions": _gap_questions_for(slot_map, _ptype(project)),
             "ready_to_compose": False,
             "analyzed": False,
             "analyze_in_progress": True,
@@ -272,6 +278,10 @@ def _ptype(project: Project | None) -> str | None:
     return raw if isinstance(raw, str) else None
 
 
+# Keep chat SSE "done" frames small — huge previews break FE updates (button stays locked).
+_CHAT_COVERAGE_PREVIEW_LIMIT = 240
+
+
 def _chat_done_payload(
     *,
     content: str,
@@ -285,7 +295,9 @@ def _chat_done_payload(
     payload: dict[str, Any] = {
         "content": content,
         "citations": citations or [],
-        "coverage": coverage_table(slot_map, category),
+        "coverage": coverage_table(
+            slot_map, category, preview_limit=_CHAT_COVERAGE_PREVIEW_LIMIT
+        ),
         "filled_slots": filled_keys,
         "current_slot": asking_key,
         "next_question": build_slot_question(asking_key, category) if asking_key else None,
@@ -308,6 +320,7 @@ async def _stream_reference_fill(
     ref_key: str,
     filled_keys: list[str],
     user_id: uuid.UUID,
+    category: str | None = None,
 ) -> AsyncIterator[str]:
     filled = await fill_reference_slot(ref_key, user_id)
     action = apply_reference_to_slot(slot_map, ref_key, filled, as_standard=True)
@@ -329,6 +342,7 @@ async def _stream_reference_fill(
             filled_keys=filled_keys,
             asking_key=asking,
             extra={"reference_action": action, "reference_slot": ref_key},
+            category=category,
         ),
     )
 
@@ -340,6 +354,7 @@ async def _stream_reference_prompt(
     room_id: uuid.UUID,
     slot_map: dict[str, Any],
     analysis: dict[str, Any],
+    category: str | None = None,
 ) -> AsyncIterator[str]:
     asking = _asking_key(analysis.get("current_asking_slot"))
     reply = append_next_slot_question(
@@ -352,7 +367,11 @@ async def _stream_reference_prompt(
     yield _sse(
         "done",
         _chat_done_payload(
-            content=reply, slot_map=slot_map, filled_keys=[], asking_key=asking
+            content=reply,
+            slot_map=slot_map,
+            filled_keys=[],
+            asking_key=asking,
+            category=category,
         ),
     )
 
@@ -385,6 +404,7 @@ async def _stream_filled_ack(
             slot_map=slot_map,
             filled_keys=filled_keys,
             asking_key=asking_key,
+            category=category,
         ),
     )
 
@@ -408,16 +428,21 @@ async def _retrieve_legal_context(
 
 
 def _intake_llm_user_prompt(
-    analysis: dict[str, Any], slot_map: dict[str, Any], content: str, context: str
+    analysis: dict[str, Any],
+    slot_map: dict[str, Any],
+    content: str,
+    context: str,
+    category: str | None = None,
 ) -> str:
-    current_slot = analysis.get("current_asking_slot")
-    slot_label = INTAKE_SLOT_LABELS.get(current_slot or "", "")
-    missing = missing_fact_keys(slot_map)
+    raw_slot = analysis.get("current_asking_slot")
+    current_slot = raw_slot if isinstance(raw_slot, str) else ""
+    current_label = slot_label(current_slot, category) if current_slot else ""
+    missing = missing_fact_keys(slot_map, category)
     missing_labels = ", ".join(
-        INTAKE_SLOT_LABELS.get(key, key) for key in missing[:6]
+        slot_label(key, category) for key in missing[:6]
     ) or "(ไม่มี)"
     return (
-        f"ช่องที่กำลังถาม: {slot_label or '-'} ({current_slot or '-'})\n"
+        f"ช่องที่กำลังถาม: {current_label or '-'} ({current_slot or '-'})\n"
         f"ช่องข้อเท็จจริงที่ยังขาด: {missing_labels}\n"
         f"บริบทกฎหมาย:\n{(context or '(ไม่มี)')[:1200]}\n\n"
         f"ข้อความผู้ใช้:\n{(content or '')[:2000]}\n\n"
@@ -575,6 +600,8 @@ async def _iter_intake_chat_sse(
     asking_key = _asking_key(asking)
     all_filled_now = not missing_fact_keys(slot_map, _ptype(project))
 
+    category = _ptype(project)
+
     if ref_key:
         async for event in _stream_reference_fill(
             session_maker=session_maker,
@@ -585,6 +612,7 @@ async def _iter_intake_chat_sse(
             ref_key=ref_key,
             filled_keys=filled_keys,
             user_id=user_id,
+            category=category,
         ):
             yield event
         return
@@ -596,6 +624,7 @@ async def _iter_intake_chat_sse(
             room_id=room.id,
             slot_map=slot_map,
             analysis=analysis,
+            category=category,
         ):
             yield event
         return
@@ -610,7 +639,7 @@ async def _iter_intake_chat_sse(
             asking=asking,
             user_id=user_id,
             attach_legal=body.attach_legal_reference,
-            category=getattr(project, "project_type", None),
+            category=category,
         ):
             yield event
         return
@@ -634,7 +663,9 @@ async def _iter_intake_chat_sse(
         attached=attached,
         citations=citations,
         degraded=degraded,
-        user_prompt=_intake_llm_user_prompt(analysis, slot_map, body.content, context),
+        user_prompt=_intake_llm_user_prompt(
+            analysis, slot_map, body.content, context, category
+        ),
     )
     async for event in _stream_intake_llm(work):
         yield event

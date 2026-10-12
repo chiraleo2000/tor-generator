@@ -816,6 +816,19 @@ def test_intake_helper_pack_flag_and_payload():
     assert _asking_key("s1") == "s1"
     questions = _gap_questions_for(empty_slot_map())
     assert any("s1" in item for item in questions)
+    hire = {
+        "s1": {"status": "filled", "content": "ความเป็นมา"},
+        "s2": {"status": "filled", "content": "วัตถุประสงค์"},
+        "s5": {"status": "filled", "content": "12 เดือน"},
+        "s6": {"status": "filled", "content": "6000000"},
+        "functional": {"status": "filled", "content": "x" * 500},
+    }
+    assert _gap_questions_for(hire, "hire_develop") == []
+    missing_scope = {key: value for key, value in hire.items() if key != "functional"}
+    hire_gaps = _gap_questions_for(missing_scope, "hire_develop")
+    assert any("functional" in item for item in hire_gaps)
+    goods_gaps = _gap_questions_for(missing_scope)
+    assert any("items" in item for item in goods_gaps)
     payload = _chat_done_payload(
         content="ตอบ",
         slot_map=empty_slot_map(),
@@ -824,6 +837,16 @@ def test_intake_helper_pack_flag_and_payload():
         extra={"graph_degraded": True},
     )
     assert payload["graph_degraded"] is True
+    hire_done = _chat_done_payload(
+        content="ครบ",
+        slot_map=hire,
+        filled_keys=["functional"],
+        asking_key=None,
+        category="hire_develop",
+    )
+    assert hire_done["all_fact_filled"] is True
+    assert hire_done["progress"]["total"] == 5
+    assert max(len(row["preview"]) for row in hire_done["coverage"]) <= 240
     project = MagicMock(spec=Project)
     _flag_analysis(project)
 

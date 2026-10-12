@@ -17,7 +17,8 @@ const DEFAULT_MOF_OPTION =
 
 function progressFromPayload(
   progress: { filled?: number; total?: number; percent?: number } | undefined,
-  coverage: CoverageRow[]
+  coverage: CoverageRow[],
+  projectType?: string | null
 ) {
   if (
     progress &&
@@ -30,7 +31,7 @@ function progressFromPayload(
       percent: typeof progress.percent === "number" ? progress.percent : 0,
     };
   }
-  return factProgressFromCoverage(coverage);
+  return factProgressFromCoverage(coverage, projectType);
 }
 
 function conversationOptions(
@@ -53,6 +54,8 @@ type IntakeStreamActions = {
   setBusy: (value: boolean) => void;
   setError: (value: string | null) => void;
   onCoverage?: (rows: CoverageRow[]) => void;
+  onAllFactFilled?: (value: boolean) => void;
+  projectType?: string | null;
 };
 
 function replaceLastAssistant(
@@ -103,7 +106,9 @@ function applyIntakeProgress(data: Record<string, unknown>, actions: IntakeStrea
     return;
   }
   if (Array.isArray(data.coverage)) {
-    actions.setProgress(factProgressFromCoverage(data.coverage as CoverageRow[]));
+    actions.setProgress(
+      factProgressFromCoverage(data.coverage as CoverageRow[], actions.projectType)
+    );
   }
 }
 
@@ -119,6 +124,7 @@ function applyIntakeDone(data: Record<string, unknown>, actions: IntakeStreamAct
   }
   if (typeof data.all_fact_filled === "boolean") {
     actions.setAllFactFilled(data.all_fact_filled);
+    actions.onAllFactFilled?.(data.all_fact_filled);
   }
   if (Array.isArray(data.coverage)) {
     actions.onCoverage?.(data.coverage as CoverageRow[]);
@@ -165,15 +171,21 @@ export function DraftConversation({
   apiBase,
   placeholder,
   onCoverage,
+  onAllFactFilled,
   onSectionRevised,
+  onIntakeSettled,
+  projectType,
 }: Readonly<{
   projectId: string;
   mode: "intake" | "compose";
   apiBase: string;
   placeholder?: string;
   coverage?: CoverageRow[];
+  projectType?: string | null;
   onCoverage?: (rows: CoverageRow[]) => void;
+  onAllFactFilled?: (value: boolean) => void;
   onSectionRevised?: () => void;
+  onIntakeSettled?: () => void;
 }>) {
   const token = useAuthStore((state) => state.token);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -192,6 +204,10 @@ export function DraftConversation({
 
   const onCoverageRef = useRef(onCoverage);
   onCoverageRef.current = onCoverage;
+  const onAllFactFilledRef = useRef(onAllFactFilled);
+  onAllFactFilledRef.current = onAllFactFilled;
+  const onIntakeSettledRef = useRef(onIntakeSettled);
+  onIntakeSettledRef.current = onIntakeSettled;
   const onSectionRevisedRef = useRef(onSectionRevised);
   onSectionRevisedRef.current = onSectionRevised;
 
@@ -226,7 +242,7 @@ export function DraftConversation({
         }
         if (payload.coverage?.length) {
           onCoverageRef.current?.(payload.coverage);
-          setProgress(progressFromPayload(payload.progress, payload.coverage));
+          setProgress(progressFromPayload(payload.progress, payload.coverage, projectType));
         }
         let loaded: ChatMessageItem[] = [];
         if (id) {
@@ -289,6 +305,8 @@ export function DraftConversation({
           setBusy,
           setError,
           onCoverage: onCoverageRef.current,
+          onAllFactFilled: onAllFactFilledRef.current,
+          projectType,
         });
       },
       controller.signal
@@ -356,6 +374,9 @@ export function DraftConversation({
     } finally {
       setBusy(false);
       abortRef.current = null;
+      if (mode === "intake") {
+        onIntakeSettledRef.current?.();
+      }
     }
   }
 

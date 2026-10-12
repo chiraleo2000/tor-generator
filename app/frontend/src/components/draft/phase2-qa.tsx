@@ -27,9 +27,12 @@ export function Phase2Qa({
   message,
   isError,
   apiBase,
+  chatFactsComplete = false,
+  projectType,
   onConfirmReady,
   onChatReady,
   onCoverage,
+  onAllFactFilled,
 }: Readonly<{
   projectId: string;
   coverage: CoverageRow[];
@@ -38,16 +41,19 @@ export function Phase2Qa({
   message: string | null;
   isError: boolean;
   apiBase: string;
+  chatFactsComplete?: boolean;
+  projectType?: string | null;
   onConfirmReady: () => void;
   onChatReady: () => void;
   onCoverage?: (rows: CoverageRow[]) => void;
+  onAllFactFilled?: (value: boolean) => void;
 }>) {
   const facts = coverage.filter((row) => row.fact_required);
   const missingFacts = facts.filter((row) => !(row.filled || row.status === "filled"));
   const gapNonFacts = coverage.filter(
     (row) => !row.fact_required && row.status === "gap"
   );
-  const factReady = factTopicsComplete(coverage);
+  const factReady = chatFactsComplete || factTopicsComplete(coverage, projectType);
   const [standardBusy, setStandardBusy] = useState(false);
   const [standardMsg, setStandardMsg] = useState<string | null>(null);
 
@@ -171,6 +177,9 @@ export function Phase2Qa({
           onCoverage?.(rows);
           onChatReady();
         }}
+        onAllFactFilled={onAllFactFilled}
+        onIntakeSettled={onChatReady}
+        projectType={projectType}
       />
     </div>
   );

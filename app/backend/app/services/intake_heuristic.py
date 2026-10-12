@@ -321,8 +321,10 @@ def _apply_compact_facts(text: str, found: dict[str, str]) -> None:
         found["s4"] = found["s4.1"]
 
 
-def facts_are_complete(slot_map: dict) -> bool:
-    for key in FACT_REQUIRED_SLOTS:
+def facts_are_complete(slot_map: dict, category: str | None = None) -> bool:
+    from app.domain.slots import fact_required_slots
+
+    for key in fact_required_slots(category):
         slot = slot_map.get(key) or {}
         if not isinstance(slot, dict):
             return False
@@ -407,7 +409,13 @@ def _trim_fact_slots(found: dict[str, str]) -> None:
             found["s2"] = purpose[idx:].strip()
 
 
-def _overlay_one_slot(current: dict, value: dict, *, slot_key: str = "") -> dict | None:
+def _overlay_one_slot(
+    current: dict,
+    value: dict,
+    *,
+    slot_key: str = "",
+    fact_keys: frozenset[str] | set[str] | None = None,
+) -> dict | None:
     content = str(value.get("content") or "").strip()
     status = value.get("status")
     sources = list(value.get("sources") or [])
@@ -417,7 +425,7 @@ def _overlay_one_slot(current: dict, value: dict, *, slot_key: str = "") -> dict
     if current_filled and status == "filled":
         if (
             slot_key
-            and slot_key not in FACT_REQUIRED_SLOTS
+            and slot_key not in (fact_keys if fact_keys is not None else FACT_REQUIRED_SLOTS)
             and len(content) > max(len(current_content) + 80, int(len(current_content) * 1.25))
         ):
             return {"content": content, "status": "filled", "sources": sources}
@@ -429,13 +437,18 @@ def _overlay_one_slot(current: dict, value: dict, *, slot_key: str = "") -> dict
     return None
 
 
-def overlay_filled_slots(base: dict, incoming: dict) -> dict:
+def overlay_filled_slots(
+    base: dict, incoming: dict, category: str | None = None
+) -> dict:
+    from app.domain.slots import fact_required_slots
+
+    fact_keys = fact_required_slots(category) if category else None
     merged = {key: dict(value) if isinstance(value, dict) else value for key, value in base.items()}
     for key, value in incoming.items():
         if key not in merged or not isinstance(value, dict):
             continue
         current = merged.get(key) if isinstance(merged.get(key), dict) else {}
-        replacement = _overlay_one_slot(current, value, slot_key=key)
+        replacement = _overlay_one_slot(current, value, slot_key=key, fact_keys=fact_keys)
         if replacement is not None:
             merged[key] = replacement
     return merged

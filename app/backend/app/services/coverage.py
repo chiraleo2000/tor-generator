@@ -56,6 +56,10 @@ def _coverage_status(slot: dict[str, Any]) -> str:
     return status
 
 
+# Agent coverage responses echo slot text. Cap it so a long pack cannot stall the client.
+_COVERAGE_CONTENT_LIMIT = 2_000
+
+
 def _coverage_row(
     slot_map: dict[str, Any],
     key: str,
@@ -73,7 +77,7 @@ def _coverage_row(
         "filled": status == "filled",
         "fact_required": fact_required,
         "criticality": "critical" if critical else "non-critical",
-        "content": str(slot.get("content") or ""),
+        "content": str(slot.get("content") or "")[:_COVERAGE_CONTENT_LIMIT],
         "sources": slot.get("sources") if isinstance(slot.get("sources"), list) else [],
     }
 

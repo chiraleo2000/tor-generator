@@ -30,12 +30,18 @@ def _warnings(state: AgentWorkflowState) -> list[str]:
     return list(current)
 
 
-def _with_coverage(slot_map: dict) -> dict[str, Any]:
+def _project_category(state: AgentWorkflowState) -> str | None:
+    meta = state.get("project_metadata") or {}
+    raw = meta.get("project_type") if isinstance(meta, dict) else None
+    return raw if isinstance(raw, str) and raw.strip() else None
+
+
+def _with_coverage(slot_map: dict, category: str | None = None) -> dict[str, Any]:
     return {
         "slot_map": slot_map,
-        "coverage_map": build_coverage_map(slot_map),
-        "readiness_score": compute_readiness_score(slot_map),
-        "ready": compute_ready(slot_map),
+        "coverage_map": build_coverage_map(slot_map, category),
+        "readiness_score": compute_readiness_score(slot_map, category),
+        "ready": compute_ready(slot_map, category),
     }
 
 
@@ -113,7 +119,7 @@ async def map_sections_node(state: AgentWorkflowState) -> dict[str, Any]:
     mapping = await mapper.map_content(content, state.get("project_metadata") or {})
     if mapping.error:
         warnings.append(f"การจัดช่องไม่สมบูรณ์: {mapping.error}")
-    patch = _with_coverage(mapping.slot_map)
+    patch = _with_coverage(mapping.slot_map, _project_category(state))
     cache = SessionCacheService()
     await cache.set_slot_map(state["project_id"], mapping.slot_map)
     patch.update({"phase": "gap_filling", "error": None, "warnings": warnings})
@@ -122,11 +128,12 @@ async def map_sections_node(state: AgentWorkflowState) -> dict[str, Any]:
 
 async def detect_gaps_node(state: AgentWorkflowState) -> dict[str, Any]:
     slot_map = state.get("slot_map") or {}
+    category = _project_category(state)
     detector = GapDetector()
-    gaps = detector.detect_gaps(slot_map)
+    gaps = detector.detect_gaps(slot_map, category)
     iteration = int(state.get("gap_iteration") or 0)
     max_iter = int(state.get("max_gap_iterations") or MAX_GAP_ITERATIONS)
-    patch = _with_coverage(slot_map)
+    patch = _with_coverage(slot_map, category)
     if iteration >= max_iter:
         patch.update(
             {
@@ -137,7 +144,7 @@ async def detect_gaps_node(state: AgentWorkflowState) -> dict[str, Any]:
             }
         )
         return patch
-    if not gaps or compute_ready(slot_map):
+    if not gaps or compute_ready(slot_map, category):
         patch.update({"phase": "confirming", "gap_questions": []})
         return patch
     questions = await detector.generate_questions(gaps, state.get("project_metadata") or {})
@@ -154,7 +161,7 @@ async def fill_slot_node(state: AgentWorkflowState) -> dict[str, Any]:
     result = await mapper.incremental_update(
         answer, slot_map, list(state.get("gap_questions") or [])
     )
-    patch = _with_coverage(result.slot_map)
+    patch = _with_coverage(result.slot_map, _project_category(state))
     cache = SessionCacheService()
     await cache.set_slot_map(state["project_id"], result.slot_map)
     messages = list(state.get("messages") or [])

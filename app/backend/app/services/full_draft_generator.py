@@ -9,7 +9,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.domain.section_profile import section_order
-from app.domain.slots import FACT_REQUIRED_SLOTS, INTAKE_SLOT_LABELS
+from app.domain.slots import INTAKE_SLOT_LABELS, fact_required_slots, slot_label
 from app.domain.tor_sections import TOR_SECTION_ORDER
 from app.llm_tokens import DRAFT_MAX_TOKENS
 from app.orchestrator.agents.registry import get_agent_for_section
@@ -90,13 +90,14 @@ def slot_user_input(slot_map: dict[str, Any], section_key: str) -> dict[str, Any
     return payload
 
 
-def _warn_missing_facts(slot_map: dict[str, Any], result: DraftResult) -> None:
-    for key in FACT_REQUIRED_SLOTS:
+def _warn_missing_facts(
+    slot_map: dict[str, Any], result: DraftResult, category: str | None = None
+) -> None:
+    for key in fact_required_slots(category):
         slot = (slot_map or {}).get(key) or {}
         if slot.get("status") == "filled" and str(slot.get("content") or "").strip():
             continue
-        label = INTAKE_SLOT_LABELS.get(key, key)
-        result.warnings.append(f"ยังขาดข้อเท็จจริงใน {label} ({key})")
+        result.warnings.append(f"ยังขาดข้อเท็จจริงใน {slot_label(key, category)} ({key})")
 
 
 class FullDraftGenerator:
@@ -160,10 +161,10 @@ class FullDraftGenerator:
     ) -> DraftResult:
         self._deployment_mode = deployment_mode
         result = DraftResult()
-        _warn_missing_facts(slot_map, result)
-        deadline = time.monotonic() + TOTAL_TIMEOUT
         meta = project_metadata or {}
         ptype = meta.get("project_type") if isinstance(meta.get("project_type"), str) else None
+        _warn_missing_facts(slot_map, result, ptype)
+        deadline = time.monotonic() + TOTAL_TIMEOUT
         order = section_order(ptype) or list(TOR_SECTION_ORDER)
         for section_key in order:
             if time.monotonic() >= deadline:
