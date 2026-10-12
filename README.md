@@ -36,8 +36,11 @@
 โฟลเดอร์รีโปเป็นภาษาไทย ต้องตั้งชื่อโปรเจกต์ Compose เป็น `tor-app`
 
 ```bash
-copy .env.example .env
-docker compose -p tor-app --env-file .env up -d --build
+copy .env.example .env.bedrock
+# Active machine deploy: Bedrock chat (not LM Studio Gemma). Embeddings stay local.
+powershell -File scripts/deploy-bedrock.ps1 -Build
+# equivalent:
+# docker compose -p tor-app --env-file .env.bedrock up -d --build
 ```
 
 | บริการ | URL |

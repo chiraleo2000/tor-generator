@@ -53,7 +53,8 @@ services:
       - "${BACKEND_PORT:-4000}:4000"
     environment:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-on_prem}
-      - PIN_ON_PREM_LLM=${PIN_ON_PREM_LLM:-true}
+      # Active stack: Bedrock chat. PIN true would force LM Studio — keep false.
+      - PIN_ON_PREM_LLM=${PIN_ON_PREM_LLM:-false}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-tor_app}
@@ -86,7 +87,8 @@ services:
       - OPENAI_CHAT_MODEL=${OPENAI_CHAT_MODEL:-gpt-4o-mini}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
       - GEMINI_EMBEDDING_MODEL=${GEMINI_EMBEDDING_MODEL:-text-embedding-004}
-      - LLM_PROVIDER=${LLM_PROVIDER:-lm_studio}
+      # Default chat provider is Bedrock. Use --env-file .env.bedrock for this machine.
+      - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
       - LLM_FALLBACK_PROVIDER=${LLM_FALLBACK_PROVIDER:-}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-local}
       - LOCAL_EMBEDDING_SERVER=${LOCAL_EMBEDDING_SERVER:-lm_studio}
