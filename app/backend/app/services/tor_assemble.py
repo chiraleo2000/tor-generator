@@ -59,6 +59,15 @@ def assemble_review_document(sections: list[Any]) -> tuple[dict[str, str], dict[
         sub = getattr(section, "sub_key", None)
         key = document_section_key(parent, sub)
         tor_document[key] = content
+        # Scope rows are stored as sub_key=functional while rules read that storage key.
+        if (
+            parent == "s4"
+            and sub
+            and sub != key
+            and "." not in sub
+            and not sub.startswith("s")
+        ):
+            tor_document[sub] = content
         if not sub:
             sections_map[parent] = content
     return tor_document, sections_map

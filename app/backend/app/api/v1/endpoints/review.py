@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -207,6 +208,10 @@ async def run_review(
     # Add project metadata needed for validation rules
     tor_document["budget"] = project.budget
     tor_document["project_type"] = project.project_type
+    project_name = str(project.name or "").strip()
+    if project_name:
+        tor_document["title"] = project_name
+        tor_document["document_title"] = project_name
 
     # Run the Rule Engine
     try:
@@ -225,15 +230,11 @@ async def run_review(
             details=str(exc),
         ) from exc
 
-    legal_context = await _law_review_context(project.project_type)
     requirements = _project_requirements_text(project)
-    part_analysis = analyze_tor(
-        tor_document,
-        user_documents=requirements,
-        rag_text=legal_context,
-    )
-    part_scores = TorAnalysisResponse.model_validate(analysis_as_dict(part_analysis))
-    findings_response = _findings_response(validation_result.findings, legal_context)
+    # Save the rule result before RAG. Tests mock retrieval, so they never see
+    # this wait; a live review was dropping the HTTP call and showing a failure
+    # while the score was already stored.
+    findings_response = _findings_response(validation_result.findings, "")
 
     # Build category scores response
     category_labels = {
@@ -257,13 +258,39 @@ async def run_review(
     analysis = dict(project.analysis_json or {})
     analysis["review_score"] = validation_result.quality_score
     analysis["review_is_valid"] = validation_result.is_valid
-    analysis["review_part_scores"] = analysis_as_dict(part_analysis)
     analysis["review_findings"] = [
         item.model_dump(mode="json") for item in findings_response
     ]
+    analysis["review_request_id"] = (
+        request.headers.get("X-AI-Request-Id") or ""
+    ).strip()
     persist_analysis_json(project, analysis)
     await db.flush()
     await db.commit()
+
+    try:
+        legal_context = await asyncio.wait_for(
+            _law_review_context(project.project_type),
+            timeout=12,
+        )
+    except Exception:
+        legal_context = ""
+    if legal_context and validation_result.findings:
+        findings_response = _findings_response(validation_result.findings, legal_context)
+        analysis["review_findings"] = [
+            item.model_dump(mode="json") for item in findings_response
+        ]
+        persist_analysis_json(project, analysis)
+        await db.flush()
+    part_analysis = analyze_tor(
+        tor_document,
+        user_documents=requirements,
+        rag_text=legal_context,
+    )
+    part_scores = TorAnalysisResponse.model_validate(analysis_as_dict(part_analysis))
+    analysis["review_part_scores"] = analysis_as_dict(part_analysis)
+    persist_analysis_json(project, analysis)
+    await db.flush()
 
     # Invoke ReviewAgent to generate suggestions (async, best-effort)
     suggestions_generated = 0
@@ -273,19 +300,22 @@ async def run_review(
             request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
         ).strip()
         redis = getattr(request.app.state, "redis", None)
-        suggestions_generated, overall_assessment = await _generate_suggestions(
-            project_id=project_id,
-            sections_map=sections_map,
-            project_metadata={
-                "budget": project.budget,
-                "project_type": project.project_type,
-                "requirements": requirements,
-                "legal_context": legal_context,
-            },
-            db=db,
-            custom_requirements=project.custom_requirements_text,
-            redis=redis,
-            request_id=request_id,
+        suggestions_generated, overall_assessment = await asyncio.wait_for(
+            _generate_suggestions(
+                project_id=project_id,
+                sections_map=sections_map,
+                project_metadata={
+                    "budget": project.budget,
+                    "project_type": project.project_type,
+                    "requirements": requirements,
+                    "legal_context": legal_context,
+                },
+                db=db,
+                custom_requirements=project.custom_requirements_text,
+                redis=redis,
+                request_id=request_id,
+            ),
+            timeout=20,
         )
         if not overall_assessment:
             overall_assessment = part_analysis.summary
@@ -658,6 +688,10 @@ async def validate_tor(
     # Add project metadata
     tor_document["budget"] = project.budget
     tor_document["project_type"] = project.project_type
+    project_name = str(project.name or "").strip()
+    if project_name:
+        tor_document["title"] = project_name
+        tor_document["document_title"] = project_name
 
     # Run the Rule Engine
     try:

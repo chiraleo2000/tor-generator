@@ -227,6 +227,25 @@ class TestRequiredSubsectionsRule:
         assert len(findings) == 2
         assert all("รายการพัสดุ" not in f.message for f in findings)
 
+    def test_hire_develop_scope_stored_as_s4_prefix_passes(self):
+        """Draft rows are saved as s4.functional, not the bare storage key."""
+        findings = RequiredSubsectionsRule().validate(
+            {
+                "project_type": "hire_develop",
+                "s4.functional": "หน้าที่การทำงานของระบบที่ต้องพัฒนาและรองรับหน่วยบริการ",
+                "s4.testing": "แผนทดสอบระบบและเกณฑ์การยอมรับก่อนส่งมอบงาน",
+            }
+        )
+        assert findings == []
+
+
+def test_pass_fail_price_method_does_not_require_a_weight_table():
+    from app.rule_engine.rules.completeness import _needs_weight_table
+
+    text = "ผ่านหรือไม่ผ่านด้านเทคนิคก่อน แล้วจึงพิจารณาราคา ประกอบด้วยหกข้อ"
+    assert _needs_weight_table(text) is False
+    assert _needs_weight_table("ใช้เกณฑ์ราคาประกอบคุณภาพโดยไม่ระบุสัดส่วน") is True
+
 
 # --- Tests: MinimumContentRule ---
 

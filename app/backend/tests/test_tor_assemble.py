@@ -35,6 +35,17 @@ def test_assemble_keeps_parent_and_sub_keys_separate():
     assert document["s1"] == "ความเป็นมาของหน่วยงาน"
 
 
+def test_assemble_exposes_semantic_scope_keys():
+    rows = [
+        SimpleNamespace(section_key="s4", sub_key="functional", content="หน้าที่การทำงานของระบบ"),
+        SimpleNamespace(section_key="s4", sub_key="testing", content="เกณฑ์การยอมรับระบบ"),
+    ]
+    document, _parents = assemble_review_document(rows)
+    assert document["s4.functional"] == "หน้าที่การทำงานของระบบ"
+    assert document["functional"] == "หน้าที่การทำงานของระบบ"
+    assert document["testing"] == "เกณฑ์การยอมรับระบบ"
+
+
 def test_plain_tor_from_section_items_uses_s4_subs_not_parent_json():
     text = plain_tor_from_section_items(
         [

@@ -113,14 +113,15 @@ class RequiredSubsectionsRule(BaseRule):
         s4_content = sections.get("s4")
         required = [item for item in profile.scope_subsections if item.required]
         for item in required:
-            has_subsection = bool(str(sections.get(item.storage_key) or "").strip())
+            candidates = (
+                item.storage_key,
+                item.semantic_key,
+                f"s4.{item.storage_key}",
+            )
+            has_subsection = any(str(sections.get(key) or "").strip() for key in candidates)
             if not has_subsection and isinstance(s4_content, dict):
-                has_subsection = bool(
-                    str(
-                        s4_content.get(item.storage_key)
-                        or s4_content.get(item.semantic_key)
-                        or ""
-                    ).strip()
+                has_subsection = any(
+                    str(s4_content.get(key) or "").strip() for key in candidates
                 )
             if not has_subsection:
                 findings.append(
@@ -192,11 +193,19 @@ def _append_payment_finding(findings: list[Finding], sections: dict, focus: str 
 
 
 def _needs_weight_table(evaluation: str) -> bool:
-    if not evaluation.strip():
+    """Weight tables apply to quality-price scoring, not pass/fail then price."""
+    text = evaluation.strip()
+    if not text:
         return False
-    if "คุณภาพ" not in evaluation and "ประกอบ" not in evaluation:
+    if "ร้อยละ" in text or "น้ำหนัก" in text:
         return False
-    return "ร้อยละ" not in evaluation and "น้ำหนัก" not in evaluation
+    quality_price = any(
+        token in text
+        for token in ("ราคาประกอบคุณภาพ", "เกณฑ์คุณภาพ", "คะแนนคุณภาพ")
+    )
+    if not quality_price:
+        return False
+    return "ผ่านหรือไม่ผ่าน" not in text
 
 
 def _append_evaluation_finding(findings: list[Finding], sections: dict, focus: str | None) -> None:

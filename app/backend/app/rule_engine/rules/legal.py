@@ -17,6 +17,13 @@ import re
 from app.rule_engine.engine import Finding, Severity
 from app.rule_engine.rules.base import BaseRule, applies_to_section
 
+_THAI_DIGITS = str.maketrans("๐๑๒๓๔๕๖๗๘๙", "0123456789")
+
+
+def _normalize_digits(text: str) -> str:
+    return text.translate(_THAI_DIGITS)
+
+
 # Required legal references that should appear in a compliant TOR
 REQUIRED_LEGAL_REFERENCES: list[str] = [
     "พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560",
@@ -439,6 +446,7 @@ class RequiredLegalReferencesRule(BaseRule):
         for key, value in tor_document.items():
             if isinstance(value, str):
                 all_text += " " + value
+        all_text = _normalize_digits(all_text)
 
         # Check for any acceptable reference form
         all_references = REQUIRED_LEGAL_REFERENCES + ACCEPTABLE_SHORT_REFERENCES

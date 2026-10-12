@@ -165,7 +165,13 @@ def load_budget_rule_findings(document_text: str) -> list[dict[str, Any]]:
     return [row for row in rows if isinstance(row, dict)]
 
 
-def _budget_project_findings(document_text: str) -> list[AnalyzerFinding]:
+def _budget_project_findings(
+    document_text: str, project_type: str = ""
+) -> list[AnalyzerFinding]:
+    # The five-category consultant sheet applies to จ้างที่ปรึกษา only.
+    # Other procurement types mention training without that sheet.
+    if project_type and project_type != "hire_consult":
+        return []
     findings: list[AnalyzerFinding] = []
     for row in load_budget_rule_findings(document_text):
         message = str(row.get("message") or "").strip()
@@ -254,7 +260,9 @@ def analyze_tor(
     project = _build_part(PART_PROJECT, project_findings, has_content, missing)
     # Budget suggestions stay on the project list. They do not change the
     # 40/30/30 score, which the existing analyzer tests lock in.
-    budget_findings = _budget_project_findings(joined)
+    budget_findings = _budget_project_findings(
+        joined, str(document.get("project_type") or "")
+    )
     if budget_findings:
         project.findings.extend(budget_findings)
         project.explanation = (
@@ -639,8 +647,23 @@ def _impossible_timeline(
     ]
 
 
+def _scope_blob(sections: dict[str, str]) -> str:
+    """Parent s4 plus semantic scope rows (functional, s4.testing, …)."""
+    parts = [sections.get("s4") or ""]
+    for key, value in sections.items():
+        if key.startswith("s4.") or key in {
+            "functional",
+            "testing",
+            "deliverable_docs",
+            "sla_warranty",
+            "system_overview",
+        }:
+            parts.append(value)
+    return "\n".join(part for part in parts if part)
+
+
 def _delivery_vs_scope(sections: dict[str, str]) -> list[AnalyzerFinding]:
-    scope = sections.get("s4") or ""
+    scope = _scope_blob(sections)
     payment = sections.get("s8") or ""
     if len(scope) < 80:
         return []
@@ -674,7 +697,13 @@ def _delivery_vs_scope(sections: dict[str, str]) -> list[AnalyzerFinding]:
 
 
 def _sla_consideration(sections: dict[str, str]) -> list[AnalyzerFinding]:
-    joined = " ".join(sections.get(key, "") for key in ("s4", "s9", "s11"))
+    joined = " ".join(
+        (
+            _scope_blob(sections),
+            sections.get("s9", ""),
+            sections.get("s11", ""),
+        )
+    )
     if len(joined) < 80:
         return []
     it_like = any(
@@ -683,7 +712,17 @@ def _sla_consideration(sections: dict[str, str]) -> list[AnalyzerFinding]:
     )
     if not it_like:
         return []
-    if "SLA" in joined or "ระดับบริการ" in joined or "เวลาซ่อม" in joined:
+    if any(
+        token in joined
+        for token in (
+            "SLA",
+            "ระดับบริการ",
+            "เวลาซ่อม",
+            "บำรุงรักษา",
+            "เวลาเข้าดำเนินการ",
+            "ความพร้อมใช้",
+        )
+    ):
         return []
     return [
         AnalyzerFinding(
@@ -705,11 +744,20 @@ def _site_access(sections: dict[str, str]) -> list[AnalyzerFinding]:
     joined = " ".join(sections.values())
     site_like = any(
         word in joined
-        for word in (_WORD_INSTALL, _WORD_SITE, "หน่วยงานผู้ใช้", "เข้าพื้นที่", "ลงพื้นที่", "ก่อสร้าง")
+        for word in (
+            "เข้าพื้นที่",
+            "ลงพื้นที่",
+            "ก่อสร้าง",
+            "สถานที่ปฏิบัติงาน",
+            "สถานที่ติดตั้ง",
+        )
     )
     if not site_like:
         return []
-    if "เข้างาน" in joined or "เข้าพื้นที่" in joined or "เวลาทำการ" in joined:
+    if any(
+        token in joined
+        for token in ("เข้างาน", "เข้าพื้นที่", "เวลาทำการ", "เวลาราชการ", "วันและเวลา")
+    ):
         return []
     return [
         AnalyzerFinding(
@@ -732,7 +780,7 @@ def _owner_dependencies(sections: dict[str, str]) -> list[AnalyzerFinding]:
         return []
     needs_owner = any(
         word in joined
-        for word in ("ข้อมูลเดิม", "เข้าถึงระบบ", "บัญชีผู้ใช้", _WORD_SITE, _WORD_INSTALL)
+        for word in ("ข้อมูลเดิม", "เข้าถึงระบบ", "บัญชีผู้ใช้")
     )
     if not needs_owner:
         return []

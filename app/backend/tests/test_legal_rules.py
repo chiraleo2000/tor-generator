@@ -499,6 +499,21 @@ class TestRequiredLegalReferencesRule:
         ref_findings = [f for f in findings if f.rule_violated == "LEGAL_REF_MISSING_ACT"]
         assert len(ref_findings) == 0
 
+    def test_thai_digit_year_counts_as_the_act(
+        self, legal_ref_rule: RequiredLegalReferencesRule
+    ):
+        """Live drafts cite พ.ศ. ๒๕๖๐; ASCII-only matching flagged them as missing."""
+        doc = {
+            "s1": "ความเป็นมา",
+            "s3": "ตามพระราชบัญญัติการจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. ๒๕๖๐",
+            "s4": "ขอบเขต...",
+            "s9": "รับประกัน...",
+            "s10": "ค่าปรับ...",
+        }
+        findings = legal_ref_rule.validate(doc)
+        ref_findings = [f for f in findings if f.rule_violated == "LEGAL_REF_MISSING_ACT"]
+        assert ref_findings == []
+
     def test_no_legal_reference_produces_warning(
         self, legal_ref_rule: RequiredLegalReferencesRule
     ):

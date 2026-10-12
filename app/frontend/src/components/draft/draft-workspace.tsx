@@ -351,13 +351,12 @@ export function DraftWorkspace() {
         .catch(() => undefined);
     }, 500);
     let succeeded = false;
-    const scoreBefore = reviewScore;
     const resultPoll = window.setInterval(() => {
       fetchProject(projectId)
         .then((project) => {
           if (succeeded) return;
+          if (project.analysisJson?.review_request_id !== requestId) return;
           if (project.qualityScore == null) return;
-          if (scoreBefore != null && project.qualityScore === scoreBefore) return;
           succeeded = true;
           setReviewScore(project.qualityScore);
           const persisted = project.analysisJson?.review_findings;
@@ -376,6 +375,7 @@ export function DraftWorkspace() {
           if (isTorPartScores(persistedParts)) {
             setReviewPartScores(persistedParts);
           }
+          setActionError(null);
           setActionInfo((current) => keepExportNotice(current, null));
           setReviewBusy(false);
         })
@@ -423,7 +423,7 @@ export function DraftWorkspace() {
       markProjectReviewFinished(projectId, succeeded);
       setReviewBusy(false);
     }
-  }, [projectId, fetchProject, reviewScore]);
+  }, [projectId, fetchProject]);
 
   async function exportDocument(
     format: "docx" | "pdf",
