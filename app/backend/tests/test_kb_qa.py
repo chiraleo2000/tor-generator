@@ -266,3 +266,13 @@ def test_rate_answer_keeps_the_pdf_filename_when_the_model_omits_it():
     body = attach_rate_source_line("ใช้แถวอายุงาน 2 ปี", cites)
     assert name in body
     assert attach_rate_source_line(body, cites) == body
+
+
+def test_packed_context_keeps_raw_and_judgment_filenames():
+    raw = _chunk("แนวทางส่งเสริมหรือสนับสนุน", "ว56 แนวทางปฏิบัติ.pdf", score=0.95)
+    judgment = _chunk("คดีหมายเลข 01012-610054", "01012-610054-4f.pdf", score=0.94)
+    packed = pack_kb_context([raw, judgment], token_budget=4000, max_chunks=4)
+    assert "ว56 แนวทางปฏิบัติ.pdf" in packed
+    assert "01012-610054" in packed
+    assert "ประมาณงบประมาณ" in KB_QA_SYSTEM
+    assert "คำพิพากษา" in KB_QA_SYSTEM

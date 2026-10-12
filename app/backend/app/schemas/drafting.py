@@ -204,6 +204,7 @@ class TorAnalysisResponse(BaseModel):
     missing_sections: dict[str, str] = Field(default_factory=dict)
     halted: bool = False
     bidder_risk: BidderRiskResponse | None = None
+    cost_topics: dict = Field(default_factory=dict)
 
 
 class ReviewResponse(BaseModel):

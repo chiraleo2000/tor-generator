@@ -138,6 +138,7 @@ class TorAnalysisResult:
     missing_sections: dict[str, str] = field(default_factory=dict)
     halted: bool = False
     bidder_risk: dict[str, Any] = field(default_factory=dict)
+    cost_topics: dict[str, Any] = field(default_factory=dict)
 
     def part(self, key: str) -> PartScore:
         mapping = {
@@ -298,6 +299,8 @@ def analyze_tor(
         budget=budget_value,
         penalty_rate_percent=rate_value,
     )
+    from app.domain.cost_topics import cost_analysis_topics
+
     return TorAnalysisResult(
         legal=legal,
         lock_in=lock_in,
@@ -307,6 +310,7 @@ def analyze_tor(
         missing_sections=missing,
         halted=halted,
         bidder_risk=bidder.as_dict(),
+        cost_topics=cost_analysis_topics(source_text or joined),
     )
 
 

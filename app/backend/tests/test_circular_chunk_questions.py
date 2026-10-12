@@ -90,6 +90,10 @@ CHAT_QUESTIONS: list[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = [
 def _chunk_text(path: Path) -> str:
     payload = json.loads(path.read_text(encoding="utf-8"))
     parts: list[str] = []
+    if isinstance(payload, dict):
+        source = str(payload.get("source_file") or "").strip()
+        if source:
+            parts.append(source)
     focus = payload.get("focus_areas") if isinstance(payload, dict) else None
     if isinstance(focus, dict):
         for sections in focus.values():

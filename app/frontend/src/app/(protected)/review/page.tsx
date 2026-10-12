@@ -29,6 +29,7 @@ import {
   type TorPartScoresView,
 } from "@/components/review/three-part-scores";
 import { BidderRiskPanel } from "@/components/review/bidder-risk-panel";
+import { CostTopicsPanel } from "@/components/review/cost-topics-panel";
 import { cn } from "@/lib/utils";
 import { useElapsedStatus } from "@/lib/elapsed-status";
 
@@ -175,6 +176,7 @@ function ReviewResults({
       {result.part_scores?.bidder_risk ? (
         <BidderRiskPanel report={result.part_scores.bidder_risk} />
       ) : null}
+      <CostTopicsPanel report={result.part_scores?.cost_topics} />
       <ReviewFindingBuckets findings={findings} />
       {comparisons.map((row) => (
         <CheckItem

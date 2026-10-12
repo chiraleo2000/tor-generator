@@ -28,6 +28,7 @@ export type TorPartScoresView = {
   missing_sections?: Record<string, string>;
   halted?: boolean;
   bidder_risk?: BidderRiskView | null;
+  cost_topics?: { topics?: Array<{ id?: string; title?: string; status?: string; note?: string; evidence?: string; rate_note?: string }> };
 };
 
 const PART_ORDER: Array<keyof Pick<TorPartScoresView, "legal" | "lock_in" | "project">> = [

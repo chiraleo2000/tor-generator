@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckItem } from "@/components/brand/check-item";
+import { CostTopicsPanel } from "@/components/review/cost-topics-panel";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
@@ -110,6 +111,7 @@ export function Phase4Review({
           {partScores.bidder_risk.recommendation}
         </p>
       ) : null}
+      <CostTopicsPanel report={partScores?.cost_topics} />
       <ReviewFindingBuckets findings={findings} />
       {suggestions.length ? (
         <h4 className="mb-1 mt-3 text-sm font-bold text-navy">

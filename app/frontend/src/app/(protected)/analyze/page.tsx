@@ -13,9 +13,10 @@ import { useProjectStore } from "@/stores/project-store";
 import { cn } from "@/lib/utils";
 import type { AnalyzerFindingView, PartScoreView, TorPartScoresView } from "@/components/review/three-part-scores";
 import { BidderRiskPanel } from "@/components/review/bidder-risk-panel";
+import { CostTopicsPanel } from "@/components/review/cost-topics-panel";
 import { useElapsedStatus } from "@/lib/elapsed-status";
 
-type AnalyzePanel = "legal" | "lock_in" | "project" | "bidder_risk" | "recommendations";
+type AnalyzePanel = "legal" | "lock_in" | "project" | "bidder_risk" | "cost_topics" | "recommendations";
 
 type AnalyzeSource = {
   title?: string;
@@ -58,6 +59,7 @@ const PANELS: Array<{
   { id: "lock_in", label: "ความเสี่ยง lock specs รวม Oracle/IVM", icon: ShieldAlert },
   { id: "project", label: "ความเสี่ยงบริหารโครงการ (เข้างาน, ต้นทุนต่ำสุด, price-performance)", icon: Briefcase },
   { id: "bidder_risk", label: "ความเสี่ยงก่อนตัดสินใจยื่น", icon: AlertTriangle },
+  { id: "cost_topics", label: "ประมาณงบประมาณ ต้นทุน บุคลากร และค่าอบรม", icon: Briefcase },
   { id: "recommendations", label: "ข้อเสนอแนะตามหมวดที่ควรแก้", icon: Lightbulb },
 ];
 
@@ -358,6 +360,7 @@ function AnalyzePanelBody({
   if (panel === "lock_in") return <PartPanel part={result.lock_in} />;
   if (panel === "project") return <PartPanel part={result.project} />;
   if (panel === "bidder_risk") return <BidderRiskSlot report={result.bidder_risk} />;
+  if (panel === "cost_topics") return <CostTopicsPanel report={result.cost_topics} />;
   if (panel === "recommendations") {
     return <RecommendationsPanel result={result} copiedKey={copiedKey} onCopy={onCopy} />;
   }

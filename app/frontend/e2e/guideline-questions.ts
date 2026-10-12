@@ -21,9 +21,13 @@ export const CIRCULAR_QUESTION =
 export const JUDGMENT_QUESTION =
   "คำพิพากษาหมายเลข 01012-610054 ศาลวินิจฉัยประเด็นใด";
 
+export const BUDGET_TOPIC_QUESTION =
+  "โครงการนี้ควรวิเคราะห์หัวข้อประมาณงบประมาณ ต้นทุน บุคลากร และค่าอบรมอย่างไร";
+
 export const GUIDELINE_CHAT_TURNS = [
   SHORT_RATE_QUESTION,
   LONG_RATE_QUESTION,
+  BUDGET_TOPIC_QUESTION,
   CIRCULAR_QUESTION,
   JUDGMENT_QUESTION,
 ] as const;
