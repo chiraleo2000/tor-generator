@@ -172,3 +172,9 @@ def test_content_never_returns_three_unexplained_zeros():
 
 def test_lock_in_part_key_constant():
     assert PART_LOCK_IN == "lock_in"
+
+
+def test_unfilled_blanks_lower_project_score():
+    result = analyze_tor({"s8": "งวดจ่ายร้อยละ [ระบุ] ของวงเงินตามสัญญา"})
+    assert result.project.score < 100
+    assert any("เว้นช่อง" in item.reason for item in result.project.findings)

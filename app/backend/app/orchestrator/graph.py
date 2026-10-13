@@ -448,12 +448,14 @@ def _create_rule_engine() -> RuleEngine:
             RequiredSubsectionsRule,
             RequiredTablesRule,
             SectionPresenceRule,
+            UnfilledDetailRule,
         )
 
         engine.register_rule("completeness", SectionPresenceRule())
         engine.register_rule("completeness", RequiredSubsectionsRule())
         engine.register_rule("completeness", MinimumContentRule())
         engine.register_rule("completeness", RequiredTablesRule())
+        engine.register_rule("completeness", UnfilledDetailRule())
     except ImportError:
         logger.debug("Completeness rules module not available, skipping registration")
 

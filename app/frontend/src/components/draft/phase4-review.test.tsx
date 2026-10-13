@@ -166,9 +166,10 @@ describe("Phase4Review", () => {
         onSubmit={vi.fn().mockResolvedValue(undefined)}
       />
     );
-    await waitFor(() =>
-      expect(screen.getByTestId("run-review")).toHaveTextContent("กำลังตรวจสอบ...")
-    );
+    expect(screen.getByTestId("run-review")).toHaveTextContent("ตรวจอีกครั้ง");
+    expect(screen.getByTestId("run-review")).toBeEnabled();
+    expect(screen.getByTestId("phase4-submit")).toBeEnabled();
+    expect(screen.getByTestId("phase4-model-note")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("ตรวจไม่สำเร็จ");
   });
 

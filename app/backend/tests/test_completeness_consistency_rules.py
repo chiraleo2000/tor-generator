@@ -25,6 +25,7 @@ from app.rule_engine.rules.completeness import (
     RequiredSubsectionsRule,
     RequiredTablesRule,
     SectionPresenceRule,
+    UnfilledDetailRule,
 )
 from app.rule_engine.rules.consistency import (
     BudgetScopeConsistencyRule,
@@ -686,3 +687,39 @@ class TestRequiredTablesRule:
             {"project_type": "hire_maintain", "sections": {"s12": "เอกสารทั่วไป"}}
         )
         assert any(item.rule_violated == "COMPLETENESS_SOC_TABLE" for item in findings)
+
+
+class TestUnfilledDetailRule:
+    def test_blanks_empty_table_and_unwritten_scope_warn(self):
+        findings = UnfilledDetailRule().validate(
+            {
+                "s8": "งวดที่ ๑ ร้อยละ [ระบุ] ของวงเงิน",
+                "s17": "ติดต่อ [ระบุที่อยู่หน่วยงาน]",
+                "s4.licenses": "| ลำดับ | รายการ |\n| --- | --- |\n| รวม | |",
+                "s4.functional": "ไม่มีรายละเอียดเชิงฟังก์ชันสำหรับระบบนี้",
+                "s6": "วงเงินงบประมาณ 6,000,000 บาท",
+            }
+        )
+        rules = {item.rule_violated for item in findings}
+        assert "COMPLETENESS_UNFILLED_BLANK" in rules
+        assert "COMPLETENESS_EMPTY_TABLE" in rules
+        assert "COMPLETENESS_SCOPE_UNWRITTEN" in rules
+        assert "s6" not in {item.affected_section for item in findings}
+
+    def test_filled_text_passes(self):
+        findings = UnfilledDetailRule().validate(
+            {"s8": "งวดที่ 1 ร้อยละ 40 เมื่อส่งมอบรายงานวิเคราะห์ความต้องการ"}
+        )
+        assert findings == []
+
+    def test_blanks_pull_the_quality_score_below_100(self):
+        engine = RuleEngine()
+        engine.register_rule("completeness", UnfilledDetailRule())
+        result = engine.validate(
+            {
+                "s17": "[ระบุที่อยู่หน่วยงาน] [ระบุหมายเลขโทรศัพท์]",
+                "s20": "วางหลักประกันร้อยละ [ระบุร้อยละ]",
+            }
+        )
+        assert result.quality_score < 100
+        assert result.quality_score <= 94

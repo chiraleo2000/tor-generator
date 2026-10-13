@@ -1191,3 +1191,30 @@ def test_upload_requirements_extraction_errors(client, mock_officer_user):
             files={"file": ("req.txt", b"hello-file", "text/plain")},
         )
     assert short.status_code == 400
+
+
+async def test_new_review_cancels_the_previous_pass():
+    """A new review for the same project cancels the in-flight model pass."""
+    import asyncio
+
+    from app.api.v1.endpoints import review as review_endpoint
+
+    project_id = uuid.uuid4()
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def hold() -> None:
+        review_endpoint._claim_review(project_id)
+        started.set()
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    first = asyncio.create_task(hold())
+    await started.wait()
+    review_endpoint._claim_review(project_id)
+    await asyncio.wait_for(cancelled.wait(), timeout=1)
+    await asyncio.gather(first, return_exceptions=True)
+    review_endpoint._live_reviews.pop(project_id, None)

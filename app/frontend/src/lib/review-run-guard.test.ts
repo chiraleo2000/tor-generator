@@ -30,6 +30,11 @@ describe("review-run-guard", () => {
     expect(shouldSkipProjectReview("p1", true)).toBe(false);
   });
 
+  it("lets a forced click replace a run that is still in flight", () => {
+    markProjectReviewStarted("p1");
+    expect(shouldSkipProjectReview("p1", true)).toBe(false);
+  });
+
   it("allows another auto-run after a failed attempt", () => {
     markProjectReviewStarted("p1");
     markProjectReviewFinished("p1", false);

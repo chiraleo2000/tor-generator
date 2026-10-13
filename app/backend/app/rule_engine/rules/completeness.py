@@ -5,10 +5,19 @@ Uses Section_Profile of the project's procurement category.
 
 from __future__ import annotations
 
+import re
+
 from app.domain.section_profile import MissingSectionProfile, profile_for_project, require_profile
 from app.domain.tor_sections import CRITICAL_SECTIONS_MIN_LENGTH, MINIMUM_CONTENT_LENGTH
-from app.rule_engine.engine import Finding, Severity
+from app.rule_engine.engine import KIND_RISK, Finding, Severity
 from app.rule_engine.rules.base import BaseRule, focus_section
+
+_BLANK_PATTERN = re.compile(r"\[(?=[^\]]{0,80}ระบุ)[^\]]{0,80}\]")
+_SCOPE_ADMISSIONS = (
+    "ไม่มีรายละเอียดเชิงฟังก์ชัน",
+    "เนื่องจากข้อมูลเจ้าของสาระ",
+)
+_MAX_DETAIL_FINDINGS = 8
 
 TOR_REQUIRED_SECTIONS: dict[str, str] = {
     item.storage_key: item.title
@@ -294,4 +303,141 @@ class RequiredTablesRule(BaseRule):
         _append_evaluation_finding(findings, sections, focus)
         _append_personnel_finding(findings, sections, focus, category)
         _append_soc_finding(findings, sections, focus, category)
+        return findings
+
+
+def _is_section_key(key: str) -> bool:
+    return key.startswith("s") and len(key) > 1 and key[1].isdigit()
+
+
+def _section_in_focus(key: str, focus: str | None) -> bool:
+    if focus is None:
+        return True
+    return key == focus or key.startswith(f"{focus}.")
+
+
+def _section_texts(tor_document: dict) -> list[tuple[str, str]]:
+    sections = _sections(tor_document)
+    focus = focus_section(tor_document)
+    rows: list[tuple[str, str]] = []
+    for key, value in sections.items():
+        if not isinstance(key, str) or not _is_section_key(key):
+            continue
+        if not _section_in_focus(key, focus):
+            continue
+        if isinstance(value, dict):
+            text = " ".join(str(item) for item in value.values() if item is not None)
+        else:
+            text = str(value or "")
+        if text.strip():
+            rows.append((key, text))
+    return rows
+
+
+def _blank_samples(text: str) -> list[str]:
+    return [match.group(0) for match in _BLANK_PATTERN.finditer(text)]
+
+
+def _blank_finding(section_key: str, samples: list[str]) -> Finding:
+    shown = ", ".join(samples[:4])
+    return Finding(
+        severity=Severity.WARNING,
+        rule_violated="COMPLETENESS_UNFILLED_BLANK",
+        affected_section=section_key,
+        message=f"หัวข้อ {section_key} ยังเว้นช่องที่ต้องกรอกค่าจริง: {shown}",
+        recommended_correction="แทนที่ช่องในวงเล็บเหลี่ยมด้วยจำนวน สถานที่ หรือเงื่อนไขที่ใช้ในสัญญาได้",
+        finding_kind=KIND_RISK,
+        risk_type="content",
+        excerpt=samples[0][:180],
+    )
+
+
+def _is_table_separator(line: str) -> bool:
+    cells = [cell.strip() for cell in line.strip("|").split("|")]
+    return bool(cells) and all(set(cell) <= set("-: ") and "-" in cell for cell in cells if cell)
+
+
+def _table_lacks_substance(rows: list[str]) -> bool:
+    if not rows:
+        return True
+    for row in rows:
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        for cell in cells:
+            if cell in {"", "รวม", "-", "—"}:
+                continue
+            if any(char.isdigit() for char in cell) or len(cell) >= 4:
+                return False
+    return True
+
+
+def _has_empty_table(text: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        if not line.startswith("|") or not _is_table_separator(line) or index == 0:
+            continue
+        if not lines[index - 1].startswith("|"):
+            continue
+        rows: list[str] = []
+        cursor = index + 1
+        while cursor < len(lines) and lines[cursor].startswith("|"):
+            rows.append(lines[cursor])
+            cursor += 1
+        if _table_lacks_substance(rows):
+            return True
+    return False
+
+
+def _empty_table_finding(section_key: str) -> Finding:
+    return Finding(
+        severity=Severity.WARNING,
+        rule_violated="COMPLETENESS_EMPTY_TABLE",
+        affected_section=section_key,
+        message=f"หัวข้อ {section_key} มีตารางที่ยังไม่มีรายการหรือตัวเลข",
+        recommended_correction="เติมรายการ จำนวน และราคาในตารางให้ครบก่อนใช้เป็นขอบเขตงาน",
+        finding_kind=KIND_RISK,
+        risk_type="content",
+    )
+
+
+def _admission_phrase(text: str) -> str:
+    for phrase in _SCOPE_ADMISSIONS:
+        if phrase in text:
+            return phrase
+    return ""
+
+
+def _admission_finding(section_key: str, phrase: str) -> Finding:
+    return Finding(
+        severity=Severity.WARNING,
+        rule_violated="COMPLETENESS_SCOPE_UNWRITTEN",
+        affected_section=section_key,
+        message=(
+            f"หัวข้อ {section_key} ยังไม่ได้เขียนขอบเขตงาน "
+            f"ข้อความระบุว่า{phrase}"
+        ),
+        recommended_correction="เขียนฟังก์ชัน ปริมาณงาน และผลส่งมอบที่ตรวจรับได้แทนคำอธิบายว่ายังไม่มีรายละเอียด",
+        finding_kind=KIND_RISK,
+        risk_type="content",
+        excerpt=phrase,
+    )
+
+
+class UnfilledDetailRule(BaseRule):
+    """Flag blanks, empty tables, and scope text that admits it was not written."""
+
+    def validate(self, tor_document: dict) -> list[Finding]:
+        findings: list[Finding] = []
+        for section_key, text in _section_texts(tor_document):
+            if len(findings) >= _MAX_DETAIL_FINDINGS:
+                break
+            samples = _blank_samples(text)
+            if samples:
+                findings.append(_blank_finding(section_key, samples))
+                continue
+            phrase = _admission_phrase(text)
+            if phrase:
+                findings.append(_admission_finding(section_key, phrase))
+                continue
+            if _has_empty_table(text):
+                findings.append(_empty_table_finding(section_key))
         return findings

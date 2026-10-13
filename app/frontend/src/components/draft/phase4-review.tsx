@@ -59,16 +59,29 @@ export function Phase4Review({
   onAsk?: (question: string) => Promise<string>;
 }>) {
   const pct = Math.round((filledCount / total) * 100);
+  const waitingForRules = busy && score == null;
+  let reviewButtonLabel = "ตรวจด้วยกฎระเบียบ";
+  if (waitingForRules) {
+    reviewButtonLabel = "กำลังตรวจสอบ...";
+  } else if (score != null) {
+    reviewButtonLabel = "ตรวจอีกครั้ง";
+  }
   const reviewStatus = useElapsedStatus(
-    busy && score == null,
+    waitingForRules,
     "กำลังตรวจสอบด้วยกฎระเบียบ"
   );
   return (
     <div className="gov-card" data-testid="phase4-review">
       <h3 className="mb-2 text-navy">ขั้นที่ ๔: ทบทวนและอนุมัติ</h3>
-      {busy && score == null ? (
+      {waitingForRules ? (
         <p className="mb-2 text-sm font-semibold text-navy" data-testid="phase4-review-status">
           {reviewStatus}
+        </p>
+      ) : null}
+      {busy && score != null ? (
+        <p className="mb-2 text-sm text-navy" data-testid="phase4-model-note">
+          คะแนนจากกฎพร้อมใช้แล้ว โมเดลกำลังเขียนข้อเสนอแนะของรอบนี้อยู่
+          สั่งตรวจอีกครั้งได้ถ้าต้องการเริ่มรอบใหม่
         </p>
       ) : null}
       <p className="mb-2 text-xs text-muted-foreground">
@@ -135,7 +148,7 @@ export function Phase4Review({
       <ReviewChat
         score={score}
         findings={findings}
-        busy={busy}
+        busy={waitingForRules}
         onReview={onReview}
         onAsk={onAsk}
       />
@@ -149,14 +162,14 @@ export function Phase4Review({
             onClick={() => {
               onReview(true).catch(() => undefined);
             }}
-            disabled={busy}
+            disabled={waitingForRules}
             data-testid="run-review"
           >
-            {busy ? "กำลังตรวจสอบ..." : "ตรวจด้วยกฎระเบียบ"}
+            {reviewButtonLabel}
           </Button>
           <Button
             onClick={onSubmit}
-            disabled={pct < 100 || busy}
+            disabled={pct < 100 || waitingForRules}
             data-testid="phase4-submit"
           >
             ส่งขออนุมัติ

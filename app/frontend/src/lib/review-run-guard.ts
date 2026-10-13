@@ -15,7 +15,10 @@ export function shouldSkipProjectReview(projectId: string | null, force: boolean
   if (force) {
     return false;
   }
-  return inFlightIds.has(projectId) || doneIds.has(projectId);
+  if (inFlightIds.has(projectId)) {
+    return true;
+  }
+  return doneIds.has(projectId);
 }
 
 export function markProjectReviewStarted(projectId: string): void {

@@ -55,6 +55,31 @@ from app.schemas.responses import MetaInfo, SuccessResponse
 
 logger = logging.getLogger("tor_app.review")
 
+# One review task per project. A new run cancels the previous model pass.
+_live_reviews: dict[uuid.UUID, asyncio.Task] = {}
+
+
+def _drop_live_review(project_id: uuid.UUID, done: asyncio.Task) -> None:
+    if _live_reviews.get(project_id) is done:
+        _live_reviews.pop(project_id, None)
+
+
+def _claim_review(project_id: uuid.UUID) -> None:
+    """Keep a single review task. Cancel the previous one so a new order replaces it."""
+    task = asyncio.current_task()
+    if task is None:
+        return
+    previous = _live_reviews.get(project_id)
+    _live_reviews[project_id] = task
+    task.add_done_callback(lambda done, pid=project_id: _drop_live_review(pid, done))
+    if previous is None or previous is task or previous.done():
+        return
+    logger.info(
+        "Cancelling in-flight review for project %s so the new run can start",
+        project_id,
+    )
+    previous.cancel()
+
 router = APIRouter()
 
 def _slot_map_snippets(analysis: dict) -> list[str]:
@@ -197,6 +222,7 @@ async def run_review(
     Requirements: 6.1, 10.1, 10.2
     """
     project = await _get_project_with_access(project_id, current_user, db)
+    _claim_review(project_id)
 
     # Collect all TOR sections
     sections_stmt = select(TORSection).where(TORSection.project_id == project_id)
@@ -300,22 +326,19 @@ async def run_review(
             request.headers.get("X-AI-Request-Id") or str(uuid.uuid4())
         ).strip()
         redis = getattr(request.app.state, "redis", None)
-        suggestions_generated, overall_assessment = await asyncio.wait_for(
-            _generate_suggestions(
-                project_id=project_id,
-                sections_map=sections_map,
-                project_metadata={
-                    "budget": project.budget,
-                    "project_type": project.project_type,
-                    "requirements": requirements,
-                    "legal_context": legal_context,
-                },
-                db=db,
-                custom_requirements=project.custom_requirements_text,
-                redis=redis,
-                request_id=request_id,
-            ),
-            timeout=20,
+        suggestions_generated, overall_assessment = await _generate_suggestions(
+            project_id=project_id,
+            sections_map=sections_map,
+            project_metadata={
+                "budget": project.budget,
+                "project_type": project.project_type,
+                "requirements": requirements,
+                "legal_context": legal_context,
+            },
+            db=db,
+            custom_requirements=project.custom_requirements_text,
+            redis=redis,
+            request_id=request_id,
         )
         if not overall_assessment:
             overall_assessment = part_analysis.summary
@@ -325,9 +348,10 @@ async def run_review(
             await db.flush()
     except Exception as exc:
         logger.warning(
-            "ReviewAgent suggestion generation failed for project %s: %s. "
+            "ReviewAgent suggestion generation failed for project %s: %s: %s. "
             "Continuing with Rule Engine results only.",
             project_id,
+            type(exc).__name__,
             exc,
         )
 

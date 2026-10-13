@@ -397,7 +397,20 @@ def _score_project(
     findings.extend(_site_access(sections))
     findings.extend(_owner_dependencies(sections))
     findings.extend(_cost_vs_performance(sections))
+    findings.extend(_unfilled_detail_findings(document, sections))
     return _dedupe_findings(findings)
+
+
+def _unfilled_detail_findings(
+    document: dict[str, Any],
+    sections: dict[str, str],
+) -> list[AnalyzerFinding]:
+    from app.rule_engine.rules.completeness import UnfilledDetailRule
+
+    return [
+        _from_engine_finding(item, sections, None)
+        for item in UnfilledDetailRule().validate(document)
+    ]
 
 
 def _from_engine_finding(

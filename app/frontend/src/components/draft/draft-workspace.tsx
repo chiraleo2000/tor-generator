@@ -107,6 +107,8 @@ export function DraftWorkspace() {
   const [chatDrafting, setChatDrafting] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const hydrateGen = useRef(0);
+  const reviewAbortRef = useRef<AbortController | null>(null);
+  const reviewGenRef = useRef(0);
   const { ask, dialog } = useConfirmPhase();
 
   const loadSections = useCallback(async () => {
@@ -320,9 +322,18 @@ export function DraftWorkspace() {
   }
 
   const runProjectReview = useCallback(async (force = false) => {
-    if (shouldSkipProjectReview(projectId, force) || !projectId) {
+    if (!projectId) {
       return;
     }
+    if (force) {
+      reviewAbortRef.current?.abort();
+    } else if (shouldSkipProjectReview(projectId, false)) {
+      return;
+    }
+    const controller = new AbortController();
+    reviewAbortRef.current = controller;
+    const gen = reviewGenRef.current + 1;
+    reviewGenRef.current = gen;
     markProjectReviewStarted(projectId);
     setReviewBusy(true);
     setActionError(null);
@@ -331,6 +342,10 @@ export function DraftWorkspace() {
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `req-${Date.now()}`;
+    let succeeded = false;
+    let rulesReady = false;
+    const modelStillWriting =
+      "คะแนนจากกฎพร้อมแล้ว กำลังให้โมเดลเขียนข้อเสนอแนะ...";
     const poll = window.setInterval(() => {
       apiClient
         .get(`/ai/queue/${requestId}`)
@@ -345,19 +360,23 @@ export function DraftWorkspace() {
               )
             );
           } else if (payload.status === "running") {
-            setActionInfo((current) => keepExportNotice(current, "กำลังตรวจสอบ..."));
+            setActionInfo((current) =>
+              keepExportNotice(
+                current,
+                rulesReady ? modelStillWriting : "กำลังตรวจสอบ..."
+              )
+            );
           }
         })
         .catch(() => undefined);
     }, 500);
-    let succeeded = false;
     const resultPoll = window.setInterval(() => {
       fetchProject(projectId)
         .then((project) => {
           if (succeeded) return;
           if (project.analysisJson?.review_request_id !== requestId) return;
           if (project.qualityScore == null) return;
-          succeeded = true;
+          rulesReady = true;
           setReviewScore(project.qualityScore);
           const persisted = project.analysisJson?.review_findings;
           if (Array.isArray(persisted)) {
@@ -376,8 +395,7 @@ export function DraftWorkspace() {
             setReviewPartScores(persistedParts);
           }
           setActionError(null);
-          setActionInfo((current) => keepExportNotice(current, null));
-          setReviewBusy(false);
+          setActionInfo((current) => keepExportNotice(current, modelStillWriting));
         })
         .catch(() => undefined);
     }, 2000);
@@ -385,8 +403,15 @@ export function DraftWorkspace() {
       const response = await apiClient.post(
         `/projects/${projectId}/review`,
         {},
-        { headers: { "X-AI-Request-Id": requestId }, timeout: 2_700_000 }
+        {
+          headers: { "X-AI-Request-Id": requestId },
+          timeout: 2_700_000,
+          signal: controller.signal,
+        }
       );
+      if (gen !== reviewGenRef.current) {
+        return;
+      }
       const payload = unwrapData<{
         quality_score?: number;
         findings?: Record<string, unknown>[];
@@ -413,6 +438,15 @@ export function DraftWorkspace() {
       }
       setActionInfo((current) => keepExportNotice(current, null));
     } catch (err: unknown) {
+      const cancelled =
+        controller.signal.aborted ||
+        (typeof err === "object" &&
+          err !== null &&
+          "code" in err &&
+          (err as { code?: string }).code === "ERR_CANCELED");
+      if (gen !== reviewGenRef.current || cancelled) {
+        return;
+      }
       if (!succeeded) {
         setActionError(apiErrorMessage(err, "ตรวจสอบไม่สำเร็จ"));
         setActionInfo((current) => keepExportNotice(current, null));
@@ -420,6 +454,9 @@ export function DraftWorkspace() {
     } finally {
       window.clearInterval(poll);
       window.clearInterval(resultPoll);
+      if (gen !== reviewGenRef.current) {
+        return;
+      }
       markProjectReviewFinished(projectId, succeeded);
       setReviewBusy(false);
     }
