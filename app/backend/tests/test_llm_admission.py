@@ -267,6 +267,39 @@ def test_concurrency_cap_local_llm_is_one() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stale_slot_is_reclaimed_for_the_next_request() -> None:
+    redis = MagicMock()
+    redis.rpush = AsyncMock()
+    redis.hset = AsyncMock()
+    redis.expire = AsyncMock()
+    redis.lrange = AsyncMock(return_value=[b"next"])
+    redis.get = AsyncMock(side_effect=[1, 0, 1, 0])
+    redis.incr = AsyncMock()
+    redis.lrem = AsyncMock()
+    redis.decr = AsyncMock()
+    redis.set = AsyncMock()
+
+    async def scan_iter(_pattern: str):
+        yield "llm:admit:req:dead"
+
+    redis.scan_iter = scan_iter
+    redis.hgetall = AsyncMock(
+        return_value={"status": "running", "updated_at": "1"}
+    )
+    with patch("app.llm_admission.get_settings") as settings:
+        settings.return_value = MagicMock(
+            llm_max_concurrent=1,
+            embedding_max_concurrent=1,
+            llm_queue_wait_timeout_seconds=5,
+            llm_provider="bedrock",
+        )
+        async with admit(redis, "llm", request_id="next"):
+            pass
+    redis.set.assert_any_await("llm:admit:llm:slots", 0)
+    redis.incr.assert_awaited()
+
+
+@pytest.mark.asyncio
 async def test_reset_admission_queues_deletes_keys() -> None:
     redis = MagicMock()
     redis.delete = AsyncMock()

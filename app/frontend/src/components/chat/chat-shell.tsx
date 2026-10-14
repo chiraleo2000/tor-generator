@@ -481,7 +481,7 @@ export function ChatShell({
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `req-${Date.now()}`;
-    setQueueStatus("รอคิว AI...");
+    setQueueStatus("กำลังค้นคลังและตอบ...");
     try {
       await streamSsePost(
         pathFor(roomId),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -556,6 +557,8 @@ async def _run_chat_llm(
             normalize_kb_qa_answer("".join(parts_local)),
             citations,
         )
+        if not full_text.strip():
+            full_text = "ยังตอบไม่ได้จากคลังในรอบนี้ กรุณาส่งคำถามอีกครั้ง"
         await _persist_assistant_reply(session_factory, room_id, full_text, citations)
         await event_q.put(
             (
@@ -568,11 +571,16 @@ async def _run_chat_llm(
                 },
             )
         )
+    except asyncio.CancelledError:
+        raise
     except AdmissionTimeoutError as exc:
+        await _persist_assistant_reply(session_factory, room_id, str(exc), [])
         await event_q.put(("error", {"message": str(exc)}))
     except Exception as exc:
         logger.exception("chat stream failed")
-        await event_q.put(("error", {"message": str(exc)}))
+        message = str(exc).strip() or "แชทล้มเหลว"
+        await _persist_assistant_reply(session_factory, room_id, message, [])
+        await event_q.put(("error", {"message": message}))
     finally:
         await event_q.put(None)
 
@@ -652,7 +660,9 @@ async def _iter_chat_sse(
             event_name, payload = item
             yield _sse(event_name, payload)
     finally:
-        await task
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 @router.post("/rooms/{room_id}/messages", dependencies=[Depends(rate_limit_ai)])

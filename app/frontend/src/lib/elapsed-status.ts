@@ -2,11 +2,21 @@
 
 import { useEffect, useState } from "react";
 
+function stripTrailingEllipsis(base: string): string {
+  const trimmed = base.trim();
+  if (trimmed.endsWith("...")) {
+    return trimmed.slice(0, -3).trim();
+  }
+  if (trimmed.endsWith("…")) {
+    return trimmed.slice(0, -1).trim();
+  }
+  return trimmed;
+}
+
 /** In-progress sentence plus a rising elapsed count, so a long wait is visibly alive. */
 export function elapsedStatusText(base: string, seconds: number): string {
-  const stem = base.replace(/\s*\.{3}\s*$/, "").replace(/…\s*$/, "").trim();
   if (seconds < 1) return base;
-  return `${stem}... ผ่านมา ${seconds} วินาที`;
+  return `${stripTrailingEllipsis(base)}... ผ่านมา ${seconds} วินาที`;
 }
 
 export function useElapsedStatus(active: boolean, base: string): string {

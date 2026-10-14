@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 import uuid
@@ -29,6 +30,8 @@ _STATUS_RUNNING = "running"
 _STATUS_DONE = "done"
 _STATUS_TIMEOUT = "timeout"
 _STATUS_ERROR = "error"
+_HEARTBEAT_SECONDS = 10.0
+_STALE_RUNNING_SECONDS = 45.0
 
 
 def local_models_share_one_slot(settings: Any) -> bool:
@@ -193,7 +196,11 @@ async def _try_acquire_slot(
         await redis.set(slots_key, 0)
         slots = 0
     if slots >= max_slots:
-        return False
+        if not await _slot_holder_is_stale(redis):
+            return False
+        logger.warning("Reclaiming stale local model slot count=%s", slots)
+        await redis.set(slots_key, 0)
+        slots = 0
     await redis.incr(slots_key)
     if slot_ttl > 0:
         await redis.expire(slots_key, slot_ttl)
@@ -207,6 +214,45 @@ async def _try_acquire_slot(
         waiting_ms=waiting_ms,
     )
     return True
+
+
+def _hash_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value or "")
+
+
+async def _slot_holder_is_stale(redis: Redis) -> bool:
+    """A slot count with no fresh running heartbeat belongs to a dead request."""
+    newest = 0.0
+    found = False
+    async for key in redis.scan_iter("llm:admit:req:*"):
+        data = await redis.hgetall(key)
+        if _hash_text(data.get("status") or data.get(b"status")) != _STATUS_RUNNING:
+            continue
+        found = True
+        raw = _hash_text(data.get("updated_at") or data.get(b"updated_at"))
+        try:
+            newest = max(newest, float(raw or 0))
+        except ValueError:
+            continue
+    if not found:
+        return True
+    return (time.time() - newest) > _STALE_RUNNING_SECONDS
+
+
+async def _heartbeat_running(
+    redis: Redis,
+    rid: str,
+    kind: Kind,
+    stop: asyncio.Event,
+) -> None:
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=_HEARTBEAT_SECONDS)
+            return
+        except TimeoutError:
+            await _set_request(redis, rid, kind=kind, status=_STATUS_RUNNING)
 
 
 async def _release_slot(redis: Redis, slots_key: str) -> None:
@@ -353,7 +399,15 @@ async def admit(
             slot_ttl=slot_ttl_seconds(kind, settings),
         )
         acquired = True
-        yield rid
+        stop_beat = asyncio.Event()
+        beater = asyncio.create_task(_heartbeat_running(redis, rid, kind, stop_beat))
+        try:
+            yield rid
+        finally:
+            stop_beat.set()
+            beater.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await beater
     finally:
         try:
             if redis is not None and waiters_key:
