@@ -78,7 +78,7 @@ export default function AdminKnowledgeBasePage() {
         <Button
           type="button"
           variant="outline"
-          onClick={async () => {
+          onClick={() => { void (async () => {
             setError(null);
             try {
               await apiClient.post("/knowledge-base/batch-ingest");
@@ -87,7 +87,7 @@ export default function AdminKnowledgeBasePage() {
             } catch (err: unknown) {
               setError(apiErrorMessage(err, "ประมวลผลคลังไม่สำเร็จ"));
             }
-          }}
+          })(); }}
         >
           ประมวลผลใหม่ทั้งชุด
         </Button>
@@ -95,7 +95,7 @@ export default function AdminKnowledgeBasePage() {
           type="button"
           variant="outline"
           data-testid="kb-sync-mandatory"
-          onClick={async () => {
+          onClick={() => { void (async () => {
             setError(null);
             try {
               const response = await apiClient.post("/knowledge-base/sync-mandatory");
@@ -108,7 +108,7 @@ export default function AdminKnowledgeBasePage() {
             } catch (err: unknown) {
               setError(apiErrorMessage(err, "ซิงก์โฟลเดอร์ข้อมูลดิบไม่สำเร็จ"));
             }
-          }}
+          })(); }}
         >
           ซิงก์จากโฟลเดอร์ข้อมูลดิบ
         </Button>
@@ -171,7 +171,7 @@ export default function AdminKnowledgeBasePage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={async () => {
+              onClick={() => { void (async () => {
                 setError(null);
                 try {
                   const response = await apiClient.get(`/knowledge-base/${doc.id}/file`, {
@@ -186,14 +186,14 @@ export default function AdminKnowledgeBasePage() {
                 } catch (err: unknown) {
                   setError(apiErrorMessage(err, "ดาวน์โหลดไม่สำเร็จ"));
                 }
-              }}
+              })(); }}
             >
               ดาวน์โหลด
             </Button>
             <Button
               size="sm"
               variant="destructive"
-              onClick={async () => {
+              onClick={() => { void (async () => {
                 if (!window.confirm("ลบเอกสารนี้?")) return;
                 setError(null);
                 try {
@@ -202,7 +202,7 @@ export default function AdminKnowledgeBasePage() {
                 } catch (err: unknown) {
                   setError(apiErrorMessage(err, "ลบเอกสารไม่สำเร็จ"));
                 }
-              }}
+              })(); }}
             >
               ลบ
             </Button>

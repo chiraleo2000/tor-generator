@@ -549,8 +549,12 @@ export function DraftWorkspace() {
           projectId={projectId}
           phase={phase}
           projectType={activeProject?.projectType}
-          onAnalyzed={() => persistPhase(1, Math.max(unlocked, 2))}
-          onEnterQa={() => persistPhase(2, Math.max(unlocked, 2))}
+          onAnalyzed={() => {
+            void persistPhase(1, Math.max(unlocked, 2));
+          }}
+          onEnterQa={() => {
+            void persistPhase(2, Math.max(unlocked, 2));
+          }}
           onFactsReady={() => {
             setUnlocked((prev) => Math.max(prev, 3));
           }}
@@ -585,7 +589,9 @@ export function DraftWorkspace() {
             setSections((prev) => patchSectionsWithDraft(prev, sectionKey, draftContent));
           }}
           onDraftingChange={setChatDrafting}
-          onBack={() => persistPhase(2, unlocked, { allowDowngrade: true })}
+          onBack={() => {
+            void persistPhase(2, unlocked, { allowDowngrade: true });
+          }}
           onConfirm={async () => {
             setActionError(null);
             let latest = sections;
@@ -640,7 +646,9 @@ export function DraftWorkspace() {
             partScores={reviewPartScores}
             busy={reviewBusy}
             error={actionError}
-            onBack={() => persistPhase(3, unlocked, { allowDowngrade: true })}
+            onBack={() => {
+              void persistPhase(3, unlocked, { allowDowngrade: true });
+            }}
             onReview={runProjectReview}
             onAsk={async (question) => {
               const res = await apiClient.post(`/projects/${projectId}/review/comment`, {

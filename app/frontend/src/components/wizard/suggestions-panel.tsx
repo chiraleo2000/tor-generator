@@ -80,7 +80,7 @@ export function SuggestionsPanel({
 
   // Load suggestions on mount
   React.useEffect(() => {
-    fetchSuggestions();
+    void fetchSuggestions();
   }, [fetchSuggestions]);
 
   // Accept a suggestion: apply change via PUT, then re-validate
@@ -194,7 +194,9 @@ export function SuggestionsPanel({
           <Button
             variant="ghost"
             size="icon"
-            onClick={fetchSuggestions}
+            onClick={() => {
+              void fetchSuggestions();
+            }}
             disabled={isLoading}
             aria-label="รีเฟรชข้อเสนอแนะ"
           >
@@ -284,7 +286,7 @@ export function SuggestionsPanel({
                 className="mt-1 text-xs"
                 onClick={() => {
                   setError(null);
-                  fetchSuggestions();
+                  void fetchSuggestions();
                 }}
               >
                 ลองใหม่
@@ -312,8 +314,12 @@ export function SuggestionsPanel({
             <SuggestionItem
               key={suggestion.id}
               suggestion={suggestion}
-              onAccept={handleAccept}
-              onDismiss={handleDismiss}
+              onAccept={(id) => {
+                void handleAccept(id);
+              }}
+              onDismiss={(id) => {
+                void handleDismiss(id);
+              }}
               isProcessing={processingId === suggestion.id}
             />
           ))}

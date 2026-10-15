@@ -447,7 +447,9 @@ export default function StandaloneReviewPage() {
           <Button
             className="mt-5 w-full"
             data-testid="review-extract"
-            onClick={extract}
+            onClick={() => {
+              void extract();
+            }}
             disabled={!file || busy}
           >
             {busy ? "กำลังสกัดข้อความ..." : "อัปโหลดและสกัดข้อความ"}

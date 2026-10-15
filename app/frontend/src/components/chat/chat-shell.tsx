@@ -602,8 +602,12 @@ export function ChatShell({
         onNew={() => {
           void handleNew(true);
         }}
-        onRename={handleRename}
-        onDelete={handleDelete}
+        onRename={(id) => {
+          void handleRename(id);
+        }}
+        onDelete={(id) => {
+          void handleDelete(id);
+        }}
         onToggleCollapse={() => setCollapsed((value) => !value)}
       />
       )}

@@ -14,6 +14,53 @@ import { GUIDELINE_CHAT_TURNS } from "./guideline-questions";
 const FROZEN_MS = 180_000;
 const READ_MS = 6_000;
 
+async function oneByOne<T>(items: readonly T[], visit: (item: T) => Promise<void>) {
+  await items.reduce(async (previous, item) => {
+    await previous;
+    await visit(item);
+  }, Promise.resolve());
+}
+
+async function watchUntil(
+  page: Page,
+  timeoutMs: number,
+  timeoutMessage: string,
+  read: () => Promise<{ done: boolean; marker: string; frozen: string }>
+) {
+  const started = Date.now();
+  let last = "";
+  let lastChange = started;
+  await new Promise<void>((resolve, reject) => {
+    const tick = () => {
+      void (async () => {
+        try {
+          if (Date.now() - started >= timeoutMs) {
+            reject(new Error(timeoutMessage));
+            return;
+          }
+          const sample = await read();
+          if (sample.done) {
+            resolve();
+            return;
+          }
+          if (sample.marker !== last) {
+            last = sample.marker;
+            lastChange = Date.now();
+          } else if (Date.now() - lastChange > FROZEN_MS) {
+            reject(new Error(sample.frozen));
+            return;
+          }
+          await page.waitForTimeout(1_000);
+          tick();
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      })();
+    };
+    tick();
+  });
+}
+
 const REVIEW_TEXTS = [
   { name: "tor-develop.txt", text: LIVE_INTAKE_TEXT },
   { name: "tor-maintain.txt", text: HIRE_MAINTAIN_INTAKE_TEXT || LIVE_INTAKE_TEXT },
@@ -32,21 +79,17 @@ async function showStep(page: Page, phase: number) {
 
 /** Wait until `done` is visible. Throw if the status line stops changing for 3 minutes. */
 async function untilVisible(page: Page, done: Locator, status: Locator, timeoutMs: number) {
-  const started = Date.now();
-  let last = "";
-  let lastChange = started;
-  while (Date.now() - started < timeoutMs) {
-    if (await done.isVisible().catch(() => false)) return;
-    const text = (await status.innerText().catch(() => "")).trim();
-    if (text !== last) {
-      last = text;
-      lastChange = Date.now();
-    } else if (Date.now() - lastChange > FROZEN_MS) {
-      throw new Error(text ? `สถานะค้าง: ${text}` : "หน้าจอค้างโดยไม่มีข้อความสถานะ");
+  await watchUntil(page, timeoutMs, "ไม่เห็นผลบนหน้าเดิมภายในเวลาที่กำหนด", async () => {
+    if (await done.isVisible().catch(() => false)) {
+      return { done: true, marker: "", frozen: "" };
     }
-    await page.waitForTimeout(1_000);
-  }
-  throw new Error("ไม่เห็นผลบนหน้าเดิมภายในเวลาที่กำหนด");
+    const text = (await status.innerText().catch(() => "")).trim();
+    return {
+      done: false,
+      marker: text,
+      frozen: text ? `สถานะค้าง: ${text}` : "หน้าจอค้างโดยไม่มีข้อความสถานะ",
+    };
+  });
 }
 
 async function uploadPhase0(page: Page, intakeText: string) {
@@ -74,10 +117,11 @@ async function dwellOnRisk(page: Page) {
   const tables = panel.locator("[data-testid^='bidder-risk-table-']");
   await expect.poll(async () => tables.count()).toBeGreaterThan(1);
   const count = await tables.count();
-  for (let index = 0; index < count; index += 1) {
+  const indexes = Array.from({ length: count }, (_, index) => index);
+  await oneByOne(indexes, async (index) => {
     await tables.nth(index).scrollIntoViewIfNeeded();
     await dwell(page, 3_000);
-  }
+  });
 }
 
 async function showWorksheet(page: Page) {
@@ -88,15 +132,18 @@ async function showWorksheet(page: Page) {
     await budgetCard.getByRole("button").first().click();
   }
   await expect(sheet).toBeVisible();
-  for (const label of ["ทรัพยากรบุคคล", "อุปกรณ์", "การจัดซื้อจัดจ้าง", "การจ้างที่ปรึกษา", "ค่าอบรม"]) {
-    await expect(sheet).toContainText(label);
-  }
-  for (const key of ["personnel", "equipment", "procurement", "consultant", "training"]) {
+  await oneByOne(
+    ["ทรัพยากรบุคคล", "อุปกรณ์", "การจัดซื้อจัดจ้าง", "การจ้างที่ปรึกษา", "ค่าอบรม"],
+    async (label) => {
+      await expect(sheet).toContainText(label);
+    }
+  );
+  await oneByOne(["personnel", "equipment", "procurement", "consultant", "training"], async (key) => {
     const row = page.getByTestId(`cost-worksheet-${key}`);
     await row.scrollIntoViewIfNeeded();
     await expect(row).toBeVisible();
     await dwell(page, 1_500);
-  }
+  });
   await page.getByTestId("cost-worksheet-apply").click();
   await expect(page.getByTestId("cost-worksheet-info")).toContainText("ใช้ตัวเลขที่คำนวณแล้ว", {
     timeout: 60_000,
@@ -171,7 +218,7 @@ export async function openCalculatedWorksheet(page: Page) {
   const score = page.getByTestId("phase4-rule-score");
   await expect(reviewStatus.or(score)).toBeVisible({ timeout: 30_000 });
   await untilVisible(page, score, reviewStatus, 1_080_000);
-  await expect(score).toContainText(/[0-9]{1,3}\/100/);
+  await expect(score).toContainText(/\d{1,3}\/100/);
   await score.scrollIntoViewIfNeeded();
   await dwell(page, READ_MS);
   const exportPanel = page.getByTestId("phase4-export");
@@ -227,7 +274,13 @@ export async function reviewRealDraft(page: Page) {
 }
 
 async function analyzeOneTor(page: Page, text: string) {
-  await typeLikeUser(page.getByTestId("analyze-text"), text.slice(0, 8_000));
+  await page.locator("[data-testid=analyze-page] input[type=file]").first().setInputFiles({
+    name: "tor-analyze.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(text.slice(0, 8_000), "utf-8"),
+  });
+  await page.getByTestId("analyze-extract").click();
+  await expect(page.getByTestId("analyze-extract-preview")).toBeVisible({ timeout: 180_000 });
   const status = page.getByTestId("analyze-status");
   await page.getByTestId("analyze-run").click();
   await status.scrollIntoViewIfNeeded();
@@ -262,24 +315,16 @@ async function askAndRead(page: Page, question: string) {
   await page.getByTestId("chat-send").click();
   const answer = page.getByTestId("chat-msg-assistant").last();
   const status = page.getByTestId("chat-wait-status");
-  const started = Date.now();
-  let last = "";
-  let lastChange = started;
-  while (Date.now() - started < 600_000) {
-    const body = (await answer.innerText().catch(() => "")).trim();
+  let body = "";
+  await watchUntil(page, 600_000, "ไม่ได้รับคำตอบจากคลัง", async () => {
+    body = (await answer.innerText().catch(() => "")).trim();
     if (body.length > 40 && body.trim() !== question.trim()) {
-      return body;
+      return { done: true, marker: "", frozen: "" };
     }
     const marker = `${(await status.innerText().catch(() => "")).trim()}|${body}`;
-    if (marker !== last) {
-      last = marker;
-      lastChange = Date.now();
-    } else if (Date.now() - lastChange > FROZEN_MS) {
-      throw new Error(`แชทค้าง: ${marker}`);
-    }
-    await page.waitForTimeout(1_000);
-  }
-  throw new Error("ไม่ได้รับคำตอบจากคลัง");
+    return { done: false, marker, frozen: `แชทค้าง: ${marker}` };
+  });
+  return body;
 }
 
 export async function askGuidelineChat(page: Page) {
@@ -290,7 +335,7 @@ export async function askGuidelineChat(page: Page) {
   await page.getByTestId("chat-new-room").click();
   await expect(page.getByTestId("chat-input")).toBeVisible();
   const bodies: string[] = [];
-  for (const question of GUIDELINE_CHAT_TURNS) {
+  await oneByOne(GUIDELINE_CHAT_TURNS, async (question) => {
     const body = await askAndRead(page, question);
     bodies.push(body);
     const user = page.getByTestId("chat-msg-user").last();
@@ -300,10 +345,11 @@ export async function askGuidelineChat(page: Page) {
     const cite = answer.getByTestId("chat-citation");
     if (await cite.count()) {
       await cite.first().scrollIntoViewIfNeeded();
-      bodies[bodies.length - 1] = `${body}\n${await cite.allInnerTexts().then((lines) => lines.join(" "))}`;
+      const lines = await cite.allInnerTexts();
+      bodies[bodies.length - 1] = `${body}\n${lines.join(" ")}`;
     }
     await dwell(page, 8_000);
-  }
+  });
   const rateText = `${bodies[0]}\n${bodies[1]}`;
   expect(rateText).toMatch(/อัตราค่าจ้างที่ปรึกษา/);
   expect(bodies).toHaveLength(GUIDELINE_CHAT_TURNS.length);

@@ -1237,13 +1237,13 @@ def test_extraction_json_and_image(tmp_path):
 
     png = tmp_path / "scan.png"
     png.write_bytes(b"png")
-    with patch("app.rag.extraction.ocr_page", return_value="จากรูป"):
+    with patch("app.rag.extraction.ocr_layout", return_value="จากรูป"):
         image = extract_text(str(png), "image/png")
     assert image.method == "ocr"
-    with patch("app.rag.extraction.ocr_page", side_effect=FileNotFoundError):
+    with patch("app.rag.extraction.ocr_layout", side_effect=FileNotFoundError):
         image = extract_text(str(png), "image/png")
     assert image.warnings
-    with patch("app.rag.extraction.ocr_page", side_effect=RuntimeError("bad")):
+    with patch("app.rag.extraction.ocr_layout", side_effect=RuntimeError("bad")):
         image = extract_text(str(png), "image/png")
     assert image.warnings
 
@@ -1942,8 +1942,8 @@ async def test_run_sequential_draft_retries_and_marks_failed():
         patch.object(dc, "bump_progress", AsyncMock()),
         patch.object(dc, "mark_status", AsyncMock()) as mark,
         patch.object(dc, "_try_draft_one_section", AsyncMock(return_value=False)),
-        patch.object(dc, "sequential_draft_order", lambda project_type=None: ["s1"]),
-        patch.object(dc, "_mains", lambda project_type=None: ["s1"]),
+        patch.object(dc, "sequential_draft_order", return_value=["s1"]),
+        patch.object(dc, "_mains", return_value=["s1"]),
     ):
         count = await dc._run_sequential_draft(job, remaining_passes=1)
     assert count == 0
@@ -1953,8 +1953,8 @@ async def test_run_sequential_draft_retries_and_marks_failed():
         patch.object(dc, "set_job", AsyncMock()),
         patch.object(dc, "mark_status", AsyncMock()),
         patch.object(dc, "_try_draft_one_section", AsyncMock(side_effect=RuntimeError("boom"))),
-        patch.object(dc, "sequential_draft_order", lambda project_type=None: ["s1"]),
-        patch.object(dc, "_mains", lambda project_type=None: ["s1"]),
+        patch.object(dc, "sequential_draft_order", return_value=["s1"]),
+        patch.object(dc, "_mains", return_value=["s1"]),
     ):
         with pytest.raises(RuntimeError, match="boom"):
             await dc._run_sequential_draft(job, remaining_passes=0)

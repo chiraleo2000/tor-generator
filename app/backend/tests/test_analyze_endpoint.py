@@ -209,6 +209,29 @@ def test_analyze_endpoint_returns_sources_per_revised_section() -> None:
         assert all(item.get("suggested_text") for item in row["suggestions"])
 
 
+def test_analyze_extract_reads_an_uploaded_file() -> None:
+    client = _client()
+    response = client.post(
+        "/api/v1/analyze/extract",
+        files={"file": ("tor.txt", "ร่าง TOR มีตารางจำนวน 10 เครื่อง".encode(), "text/plain")},
+    )
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert "ตาราง" in data["extracted_text"]
+    assert data["method"] == "direct"
+
+
+def test_analyze_extract_rejects_an_empty_file() -> None:
+    client = _client()
+    response = client.post(
+        "/api/v1/analyze/extract",
+        files={"file": ("empty.txt", b"", "text/plain")},
+    )
+    app.dependency_overrides.clear()
+    assert response.status_code == 400
+
+
 def test_analyze_endpoint_requires_text_or_project() -> None:
     client = _client()
     response = client.post("/api/v1/analyze", json={})

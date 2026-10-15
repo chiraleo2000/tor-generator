@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import struct
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ MIN_USABLE_PAGE_CHARS = 80
 
 # Default OCR timeout in seconds (Thai scanned TOR pages are slow)
 DEFAULT_OCR_TIMEOUT = 180
+_OCR_LANG = "tha+eng"
 
 
 def _readable_char_count(text: str) -> int:
@@ -120,7 +122,7 @@ def extract_text(file_path: str, mime_type: str) -> ExtractionResult:
     if mime_type in ("image/png", "image/jpeg", "image/gif", "image/webp"):
         warnings: list[str] = []
         try:
-            text = ocr_page(file_path)
+            text = ocr_layout(file_path)
         except FileNotFoundError:
             warnings.append("ไม่พบ Tesseract สำหรับ OCR รูปสแกน")
             text = ""
@@ -210,6 +212,644 @@ def _grid_markdown(data: list[list[object]] | None) -> str:
     return "\n".join(lines)
 
 
+def _format_table(grid: list[list[str]] | None) -> str:
+    """Markdown when the grid has a header and body; otherwise keep cell text."""
+    markdown = _grid_markdown(grid)
+    if markdown:
+        return markdown
+    if not grid:
+        return ""
+    lines = [" | ".join(cell for cell in row if cell) for row in grid if any(row)]
+    return "\n".join(lines)
+
+
+def _normalize_thai_ocr(text: str) -> str:
+    """Join the sara-am pair Tesseract often emits as nikhahit + sara aa."""
+    return (text or "").replace("\u0e4d\u0e32", "\u0e33")
+
+
+def _note_once(warnings: list[str], message: str) -> None:
+    if message and message not in warnings:
+        warnings.append(message)
+
+
+@dataclass(frozen=True)
+class OcrWord:
+    """One Tesseract word box, in image pixels."""
+
+    text: str
+    left: int
+    top: int
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
+class _LayoutCell:
+    left: int
+    text: str
+
+
+_RULE_MARKS = "|/\\│┃┆┇¦"
+
+
+def _clean_ocr_token(text: str) -> str:
+    """Drop rule fragments Tesseract reads from table borders."""
+    return (text or "").strip().strip(_RULE_MARKS).strip()
+
+
+def _tsv_confidence(raw: str) -> float:
+    try:
+        return float(raw)
+    except ValueError:
+        return -1.0
+
+
+def _tsv_box(parts: list[str]) -> tuple[int, int, int, int] | None:
+    try:
+        left, top, width, height = (int(float(parts[index])) for index in (6, 7, 8, 9))
+    except ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return left, top, width, height
+
+
+def _ocr_word_from_tsv(parts: list[str]) -> OcrWord | None:
+    if len(parts) < 12 or parts[0] != "5":
+        return None
+    text = _clean_ocr_token(parts[11])
+    if not text:
+        return None
+    if 0 <= _tsv_confidence(parts[10]) < 30:
+        return None
+    box = _tsv_box(parts)
+    if box is None:
+        return None
+    left, top, width, height = box
+    return OcrWord(text=text, left=left, top=top, width=width, height=height)
+
+
+def parse_tesseract_tsv(raw: str) -> list[OcrWord]:
+    """Read word boxes from Tesseract TSV. Low-confidence noise is dropped."""
+    words: list[OcrWord] = []
+    lines = (raw or "").splitlines()
+    start = 1 if lines and lines[0].lower().startswith("level") else 0
+    for line in lines[start:]:
+        word = _ocr_word_from_tsv(line.split("\t"))
+        if word is not None:
+            words.append(word)
+    return words
+
+
+def _cluster_rows(words: list[OcrWord]) -> list[list[OcrWord]]:
+    ordered = sorted(words, key=lambda word: (word.top, word.left))
+    rows: list[list[OcrWord]] = []
+    for word in ordered:
+        if not rows:
+            rows.append([word])
+            continue
+        row = rows[-1]
+        band_top = min(item.top for item in row)
+        band_bottom = max(item.top + item.height for item in row)
+        word_bottom = word.top + max(word.height, 1)
+        overlap = min(word_bottom, band_bottom) - max(word.top, band_top)
+        if overlap >= max(word.height, 1) * 0.45:
+            row.append(word)
+        else:
+            rows.append([word])
+    for row in rows:
+        row.sort(key=lambda item: item.left)
+    return rows
+
+
+def _column_gap(previous: OcrWord, word: OcrWord) -> bool:
+    """True when the next box starts a new table column, not the next glyph."""
+    step = word.left - previous.left
+    if step <= 0:
+        return False
+    ink = previous.width
+    if previous.left + previous.width > word.left + 4:
+        ink = min(previous.width, step)
+    ink = max(8, ink)
+    return step >= max(40, int(ink * 1.9))
+
+
+def _has_thai(text: str) -> bool:
+    return any("\u0e00" <= char <= "\u0e7f" for char in text)
+
+
+def _glue_tokens(previous: str, nxt: str, advance: int, typical: int) -> str:
+    if _has_thai(previous) or _has_thai(nxt) or advance <= typical * 1.35:
+        return previous + nxt
+    return f"{previous} {nxt}"
+
+
+def _split_row(row: list[OcrWord]) -> list[_LayoutCell]:
+    if not row:
+        return []
+    cells = [_LayoutCell(row[0].left, row[0].text)]
+    previous = row[0]
+    for word in row[1:]:
+        if _column_gap(previous, word):
+            cells.append(_LayoutCell(word.left, word.text))
+        else:
+            current = cells[-1]
+            cells[-1] = _LayoutCell(
+                current.left,
+                _glue_tokens(current.text, word.text, word.left - previous.left, 16),
+            )
+        previous = word
+    return cells
+
+
+def _markdown_from_cells(rows: list[list[_LayoutCell]]) -> str:
+    edges: list[int] = []
+    for row in rows:
+        for cell in row:
+            if not any(abs(cell.left - edge) <= 40 for edge in edges):
+                edges.append(cell.left)
+    edges.sort()
+    grid: list[list[str]] = []
+    for row in rows:
+        slots = [""] * len(edges)
+        for cell in row:
+            index = min(
+                range(len(edges)),
+                key=lambda item, cell=cell: abs(edges[item] - cell.left),
+            )
+            slots[index] = f"{slots[index]} {cell.text}".strip() if slots[index] else cell.text
+        grid.append(slots)
+    return _format_table(grid)
+
+
+def _table_block_end(classified: list[list[_LayoutCell]], index: int) -> int:
+    end = index + 1
+    while end < len(classified) and len(classified[end]) >= 2:
+        end += 1
+    return end
+
+
+def _layout_segment(classified: list[list[_LayoutCell]], index: int) -> tuple[str, int]:
+    cells = classified[index]
+    if len(cells) < 2:
+        if cells and cells[0].text.strip():
+            return cells[0].text.strip(), index + 1
+        return "", index + 1
+    end = _table_block_end(classified, index)
+    block = classified[index:end]
+    if len(block) >= 2:
+        segment = _markdown_from_cells(block)
+    else:
+        segment = " ".join(cell.text for cell in cells)
+    return segment.strip(), end
+
+
+def words_to_layout_text(words: list[OcrWord]) -> str:
+    """Rebuild prose and markdown tables from OCR word boxes, top to bottom."""
+    usable = [word for word in words if word.text.strip()]
+    if not usable:
+        return ""
+    classified = [_split_row(row) for row in _cluster_rows(usable)]
+    segments: list[str] = []
+    index = 0
+    while index < len(classified):
+        segment, index = _layout_segment(classified, index)
+        if segment:
+            segments.append(segment)
+    return _normalize_thai_ocr("\n\n".join(segments))
+
+
+def _image_pixel_size(blob: bytes) -> tuple[int, int] | None:
+    if blob.startswith(b"\x89PNG\r\n\x1a\n") and len(blob) >= 24:
+        width, height = struct.unpack(">II", blob[16:24])
+        return int(width), int(height)
+    if not blob.startswith(b"\xff\xd8"):
+        return None
+    cursor = 2
+    while cursor + 8 < len(blob):
+        if blob[cursor] != 0xFF:
+            break
+        marker = blob[cursor + 1]
+        if marker in {0xC0, 0xC1, 0xC2}:
+            height, width = struct.unpack(">HH", blob[cursor + 5 : cursor + 9])
+            return int(width), int(height)
+        if cursor + 4 > len(blob):
+            break
+        segment = struct.unpack(">H", blob[cursor + 2 : cursor + 4])[0]
+        cursor += 2 + segment
+    return None
+
+
+def _image_blob_worth_ocr(blob: bytes) -> bool:
+    if len(blob) < 800:
+        return False
+    size = _image_pixel_size(blob)
+    if size is None:
+        return len(blob) >= 12_000
+    width, height = size
+    return width >= 80 and height >= 40
+
+
+def _gray_pixmap(pix: fitz.Pixmap) -> fitz.Pixmap:
+    if pix.alpha:
+        pix = fitz.Pixmap(pix, 0)
+    if pix.n != 1:
+        pix = fitz.Pixmap(fitz.csGRAY, pix)
+    return pix
+
+
+def _stretch_contrast(data: bytearray) -> None:
+    if len(data) < 32:
+        return
+    step = max(1, len(data) // 4000)
+    sample = sorted(data[::step])
+    low = sample[max(0, int(len(sample) * 0.02))]
+    high = sample[min(len(sample) - 1, int(len(sample) * 0.98))]
+    span = int(high) - int(low)
+    if span < 30:
+        return
+    for index, value in enumerate(data):
+        data[index] = _clamp_channel((int(value) - int(low)) * 255 // span)
+
+
+def _clamp_channel(scaled: int) -> int:
+    if scaled < 0:
+        return 0
+    if scaled > 255:
+        return 255
+    return scaled
+
+
+def _pixel_offset(horizontal: bool, width: int, major: int, minor: int) -> int:
+    if horizontal:
+        return major * width + minor
+    return minor * width + major
+
+
+def _erase_run(
+    data: bytearray,
+    horizontal: bool,
+    width: int,
+    major: int,
+    start: int,
+    run: int,
+) -> None:
+    for pixel in range(start, start + run):
+        data[_pixel_offset(horizontal, width, major, pixel)] = 255
+
+
+def _dark_rule_pixel(
+    data: bytearray,
+    horizontal: bool,
+    width: int,
+    major: int,
+    cursor: int,
+    inner: int,
+) -> bool:
+    if cursor >= inner:
+        return False
+    return data[_pixel_offset(horizontal, width, major, cursor)] < 100
+
+
+def _clear_rule_line(
+    data: bytearray,
+    horizontal: bool,
+    width: int,
+    major: int,
+    inner: int,
+    min_run: int,
+) -> None:
+    run = 0
+    start = 0
+    for cursor in range(inner + 1):
+        if _dark_rule_pixel(data, horizontal, width, major, cursor, inner):
+            if run == 0:
+                start = cursor
+            run += 1
+            continue
+        if run >= min_run:
+            _erase_run(data, horizontal, width, major, start, run)
+        run = 0
+
+
+def _whiten_axis(
+    data: bytearray,
+    width: int,
+    height: int,
+    horizontal: bool,
+    min_run: int,
+) -> None:
+    outer = height if horizontal else width
+    inner = width if horizontal else height
+    for major in range(outer):
+        _clear_rule_line(data, horizontal, width, major, inner, min_run)
+
+
+def _whiten_rules(data: bytearray, width: int, height: int) -> None:
+    """Erase long horizontal and vertical rules so OCR can read text inside cells."""
+    min_run = max(48, int(min(width, height) * 0.08))
+    _whiten_axis(data, width, height, True, min_run)
+    _whiten_axis(data, width, height, False, min_run)
+
+
+def _prepare_ocr_image(src: str) -> str:
+    """Upscale small scans, stretch contrast, and remove table rules."""
+    pix = fitz.Pixmap(src)
+    width, height = pix.width, pix.height
+    if max(width, height) < 1400 and min(width, height) >= 20:
+        scale = min(2.5, 1600 / max(width, height))
+        if scale >= 1.15:
+            doc = fitz.open()
+            page = doc.new_page(width=width * scale, height=height * scale)
+            page.insert_image(page.rect, filename=src)
+            pix = page.get_pixmap(alpha=False)
+            doc.close()
+    pix = _gray_pixmap(pix)
+    data = bytearray(pix.samples)
+    _stretch_contrast(data)
+    _whiten_rules(data, pix.width, pix.height)
+    prepared = fitz.Pixmap(fitz.csGRAY, pix.width, pix.height, bytes(data), False)
+    fd, path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    prepared.save(path)
+    return path
+
+
+def _layout_from_image(path: str, *, lang: str, timeout: int) -> str:
+    best = ""
+    for psm in ("6", "4"):
+        tsv = _run_tesseract(path, lang=lang, timeout=timeout, psm=psm, output="tsv")
+        text = words_to_layout_text(parse_tesseract_tsv(tsv))
+        if _readable_char_count(text) > _readable_char_count(best):
+            best = text
+        if _readable_char_count(best) >= 40:
+            break
+    return best
+
+
+def ocr_layout(
+    image_path: str,
+    lang: str = _OCR_LANG,
+    timeout: int = DEFAULT_OCR_TIMEOUT,
+) -> str:
+    """OCR an image and keep table rows as markdown when word boxes align."""
+    prepared: str | None = None
+    try:
+        try:
+            prepared = _prepare_ocr_image(image_path)
+        except Exception as exc:
+            logger.warning("OCR image prepare failed: %s", exc)
+            prepared = None
+        target = prepared or image_path
+        text = _layout_from_image(target, lang=lang, timeout=timeout)
+        if _readable_char_count(text) >= 20:
+            return text
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        raise
+    except Exception as exc:
+        logger.warning("Layout OCR failed: %s", exc)
+    finally:
+        if prepared:
+            try:
+                os.unlink(prepared)
+            except OSError:
+                pass
+    return _normalize_thai_ocr(ocr_page(image_path, lang=lang, timeout=timeout))
+
+
+def _intersection_area(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> float:
+    x0 = max(left[0], right[0])
+    y0 = max(left[1], right[1])
+    x1 = min(left[2], right[2])
+    y1 = min(left[3], right[3])
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    return (x1 - x0) * (y1 - y0)
+
+
+def _center_inside(
+    inner: tuple[float, float, float, float],
+    outer: tuple[float, float, float, float],
+) -> bool:
+    center_x = (inner[0] + inner[2]) / 2
+    center_y = (inner[1] + inner[3]) / 2
+    return outer[0] <= center_x <= outer[2] and outer[1] <= center_y <= outer[3]
+
+
+def _box_tuple(value: object) -> tuple[float, float, float, float]:
+    raw = tuple(value)  # type: ignore[arg-type]
+    return (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
+
+
+def _same_table(
+    bbox: tuple[float, float, float, float],
+    seen: list[tuple[float, float, float, float]],
+) -> bool:
+    if not any(_intersection_area(bbox, prev) > 0 for prev in seen):
+        return False
+    area = max((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]), 1)
+    return any(_intersection_area(bbox, prev) / area > 0.5 for prev in seen)
+
+
+def _record_table(
+    table: object,
+    regions: list[tuple[tuple[float, float, float, float], str]],
+    seen: list[tuple[float, float, float, float]],
+) -> None:
+    try:
+        bbox = _box_tuple(table.bbox)  # type: ignore[attr-defined]
+        grid = table.extract()  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.warning("Table extract failed: %s", exc)
+        return
+    if _same_table(bbox, seen):
+        return
+    markdown = _grid_markdown(grid)
+    if not markdown:
+        return
+    regions.append((bbox, markdown))
+    seen.append(bbox)
+
+
+def _locate_tables(page: fitz.Page, kwargs: dict[str, str]) -> tuple[object | None, bool]:
+    """Return the finder and whether detection must stop."""
+    try:
+        return page.find_tables(**kwargs), False
+    except TypeError:
+        return None, not bool(kwargs)
+    except Exception as exc:
+        logger.warning("Table detection failed: %s", exc)
+        return None, False
+
+
+def _table_regions(page: fitz.Page) -> list[tuple[tuple[float, float, float, float], str]]:
+    """Ruled tables first, then text-aligned tables that rules did not catch."""
+    regions: list[tuple[tuple[float, float, float, float], str]] = []
+    seen: list[tuple[float, float, float, float]] = []
+    attempts: list[dict[str, str]] = [
+        {},
+        {"vertical_strategy": "text", "horizontal_strategy": "text"},
+    ]
+    for kwargs in attempts:
+        if kwargs and regions:
+            break
+        found, abort = _locate_tables(page, kwargs)
+        if abort:
+            return regions
+        if found is None:
+            continue
+        for table in getattr(found, "tables", None) or []:
+            _record_table(table, regions, seen)
+    return regions
+
+
+def _dict_block_text(block: dict) -> str:
+    lines: list[str] = []
+    for line in block.get("lines") or []:
+        parts = [str(span.get("text") or "") for span in line.get("spans") or []]
+        text = "".join(parts).strip()
+        if text:
+            lines.append(text)
+    return "\n".join(lines)
+
+
+def _pdf_image_worth_ocr(
+    bbox: tuple[float, float, float, float],
+    page_area: float,
+    text_boxes: list[tuple[float, float, float, float]],
+) -> bool:
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    if width < 72 or height < 36:
+        return False
+    if (width * height) / page_area > 0.75:
+        return False
+    area = max(width * height, 1)
+    for other in text_boxes:
+        if _intersection_area(bbox, other) / area > 0.45:
+            return False
+    return True
+
+
+def _ocr_pdf_clip(
+    page: fitz.Page,
+    bbox: tuple[float, float, float, float],
+    timeout: int,
+    warnings: list[str],
+) -> str:
+    tmp_path: str | None = None
+    try:
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(300 / 72, 300 / 72),
+            clip=fitz.Rect(*bbox),
+            alpha=False,
+        )
+        fd, tmp_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        pix.save(tmp_path)
+        return ocr_layout(tmp_path, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _note_once(warnings, "OCR รูปในหน้าหมดเวลา")
+        return ""
+    except Exception as exc:
+        logger.warning("Image clip OCR failed: %s", exc)
+        _note_once(warnings, f"OCR รูปในหน้าไม่สำเร็จ: {exc}")
+        return ""
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
+def _page_dict(page: fitz.Page) -> dict:
+    try:
+        return page.get_text("dict") or {}
+    except Exception:
+        return {}
+
+
+def _covered_by_table(
+    bbox: tuple[float, float, float, float],
+    tables: list[tuple[tuple[float, float, float, float], str]],
+) -> bool:
+    if any(_center_inside(bbox, region) for region, _markdown in tables):
+        return True
+    block_area = max((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]), 1)
+    return any(_intersection_area(bbox, region) / block_area > 0.4 for region, _md in tables)
+
+
+def _collect_text_and_images(
+    blocks: list,
+    tables: list[tuple[tuple[float, float, float, float], str]],
+) -> tuple[
+    list[tuple[float, float, str]],
+    list[tuple[float, float, float, float]],
+    list[tuple[float, float, float, float]],
+]:
+    pieces: list[tuple[float, float, str]] = []
+    text_boxes: list[tuple[float, float, float, float]] = []
+    images: list[tuple[float, float, float, float]] = []
+    for block in blocks:
+        bbox = _box_tuple(block.get("bbox") or (0, 0, 0, 0))
+        if _covered_by_table(bbox, tables):
+            continue
+        if block.get("type") == 0:
+            text = _dict_block_text(block).strip()
+            if text:
+                pieces.append((bbox[1], bbox[0], text))
+                text_boxes.append(bbox)
+        elif block.get("type") == 1:
+            images.append(bbox)
+    return pieces, text_boxes, images
+
+
+def _append_image_ocr(
+    page: fitz.Page,
+    images: list[tuple[float, float, float, float]],
+    text_boxes: list[tuple[float, float, float, float]],
+    page_area: float,
+    ocr_timeout: int,
+    warnings: list[str],
+    pieces: list[tuple[float, float, str]],
+) -> bool:
+    image_ocr = False
+    for bbox in images:
+        if not _pdf_image_worth_ocr(bbox, page_area, text_boxes):
+            continue
+        ocr_text = _ocr_pdf_clip(page, bbox, ocr_timeout, warnings).strip()
+        if not ocr_text:
+            continue
+        image_ocr = True
+        pieces.append((bbox[1], bbox[0], ocr_text))
+    return image_ocr
+
+
+def compose_text_page(
+    page: fitz.Page,
+    ocr_timeout: int,
+    warnings: list[str],
+) -> tuple[str, bool]:
+    """Place body text, markdown tables, and OCR'd figures in reading order."""
+    tables = _table_regions(page)
+    blocks = _page_dict(page).get("blocks") or []
+    pieces, text_boxes, images = _collect_text_and_images(blocks, tables)
+    page_area = max(float(page.rect.width * page.rect.height), 1.0)
+    image_ocr = _append_image_ocr(
+        page, images, text_boxes, page_area, ocr_timeout, warnings, pieces
+    )
+    for bbox, markdown in tables:
+        pieces.append((bbox[1], bbox[0], markdown))
+    pieces.sort(key=lambda item: (round(item[0], 1), item[1]))
+    body = "\n\n".join(piece for _y, _x, piece in pieces if piece.strip())
+    return body, image_ocr
+
+
 def markdown_tables_from_page(page: fitz.Page) -> str:
     """Turn vector tables on a PDF page into markdown, header row included."""
     try:
@@ -269,12 +909,18 @@ def _pdf_page_record(
     warnings: list[str],
 ) -> tuple[dict[str, str | int | None], bool, bool]:
     plain, used_direct, used_ocr = _page_plain_text(page, page_num, ocr_timeout, warnings)
-    tables_md = markdown_tables_from_page(page)
+    if used_direct:
+        composed, image_ocr = compose_text_page(page, ocr_timeout, warnings)
+        used_ocr = used_ocr or image_ocr
+        if composed.strip():
+            plain = composed
+        else:
+            plain = _compose_page_text(plain, markdown_tables_from_page(page))
     file_index = page_num + 1
     record = {
         "index": file_index,
         "printed": printed_page_number(plain, file_index),
-        "text": _compose_page_text(plain, tables_md),
+        "text": plain.strip(),
     }
     return record, used_direct, used_ocr
 
@@ -323,7 +969,7 @@ def _ocr_pdf_page(
     page_num: int,
     timeout: int,
     warnings: list[str],
-    lang: str = "tha+eng",
+    lang: str = _OCR_LANG,
 ) -> str:
     """Render a PDF page to image and OCR it.
 
@@ -349,7 +995,7 @@ def _ocr_pdf_page(
         fd, tmp_path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
         pix.save(tmp_path)
-        return ocr_page(tmp_path, lang=lang, timeout=timeout)
+        return ocr_layout(tmp_path, lang=lang, timeout=timeout)
 
     except subprocess.TimeoutExpired:
         warnings.append(
@@ -368,7 +1014,7 @@ def _ocr_pdf_page(
                 pass
 
 
-def ocr_page(image_path: str, lang: str = "tha+eng", timeout: int = DEFAULT_OCR_TIMEOUT) -> str:
+def ocr_page(image_path: str, lang: str = _OCR_LANG, timeout: int = DEFAULT_OCR_TIMEOUT) -> str:
     """OCR a single page image using Tesseract.
 
     Calls Tesseract via subprocess for better timeout control.
@@ -420,6 +1066,7 @@ def _run_tesseract(
     lang: str,
     timeout: int,
     psm: str,
+    output: str = "txt",
 ) -> str:
     exe = _tesseract_executable()
     cmd = [
@@ -431,6 +1078,8 @@ def _run_tesseract(
         "--psm",
         psm,
     ]
+    if output == "tsv":
+        cmd.append("tsv")
     env = os.environ.copy()
     # Windows Tesseract expects TESSDATA_PREFIX to be the tessdata/ folder itself.
     tessdata_dir = Path(exe).resolve().parent / "tessdata"
@@ -484,16 +1133,117 @@ def _docx_paragraph_line(paragraph: object) -> str | None:
     return f"{prefix} {text}"
 
 
-def _docx_table_lines(table: object, table_idx: int) -> list[str]:
-    table_lines: list[str] = []
-    for row in table.rows:
-        cells = [cell.text.strip() for cell in row.cells]
-        unique_cells = _deduplicate_adjacent(cells)
-        if any(unique_cells):
-            table_lines.append(" | ".join(unique_cells))
-    if not table_lines:
+def _tc_grid_span(cell: object) -> int:
+    tc_pr = cell._tc.tcPr
+    if tc_pr is None or tc_pr.gridSpan is None:
+        return 1
+    try:
+        return max(1, int(tc_pr.gridSpan.val))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _tc_vmerge_continue(cell: object) -> bool:
+    tc_pr = cell._tc.tcPr
+    if tc_pr is None or tc_pr.vMerge is None:
+        return False
+    value = tc_pr.vMerge.val
+    return value in (None, "continue")
+
+
+def _embed_id(blip: object) -> str:
+    for key, value in blip.attrib.items():  # type: ignore[attr-defined]
+        if key == "embed" or str(key).endswith("}embed"):
+            return str(value)
+    return ""
+
+
+def _blip_text(blip: object, related: dict, warnings: list[str]) -> str:
+    rid = _embed_id(blip)
+    part = related.get(rid) if rid else None
+    blob = getattr(part, "blob", None) if part is not None else None
+    if not blob:
+        return ""
+    text, warning = _ocr_image_bytes(blob)
+    if warning:
+        _note_once(warnings, warning)
+    return text.strip()
+
+
+def _paragraph_image_texts(paragraph: object, doc: object, warnings: list[str]) -> list[str]:
+    try:
+        blips = paragraph._p.xpath(".//*[local-name()='blip']")  # type: ignore[attr-defined]
+    except Exception:
         return []
-    return [f"\n[Table {table_idx + 1}]", *table_lines]
+    related = getattr(getattr(doc, "part", None), "related_parts", {}) or {}
+    texts: list[str] = []
+    for blip in blips:
+        text = _blip_text(blip, related, warnings)
+        if text:
+            texts.append(text)
+    return texts
+
+
+def _ocr_image_bytes(blob: bytes) -> tuple[str, str | None]:
+    if not _image_blob_worth_ocr(blob):
+        return "", None
+    if blob.startswith(b"\x89PNG"):
+        suffix = ".png"
+    elif blob.startswith(b"\xff\xd8"):
+        suffix = ".jpg"
+    else:
+        suffix = ".img"
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    try:
+        Path(path).write_bytes(blob)
+        return ocr_layout(path).strip(), None
+    except FileNotFoundError:
+        return "", "ไม่พบ Tesseract สำหรับ OCR รูปในเอกสาร"
+    except subprocess.TimeoutExpired:
+        return "", "OCR รูปในเอกสารหมดเวลา"
+    except Exception as exc:
+        return "", f"OCR รูปในเอกสารไม่สำเร็จ: {exc}"
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _cell_display_text(cell: object, doc: object, warnings: list[str]) -> str:
+    base = "" if _tc_vmerge_continue(cell) else _clean_table_cell(cell.text)
+    extras: list[str] = []
+    for paragraph in cell.paragraphs:
+        extras.extend(_paragraph_image_texts(paragraph, doc, warnings))
+    extra = " ".join(item for item in extras if item).strip()
+    if base and extra:
+        return f"{base} {extra}"
+    return base or extra
+
+
+def _docx_row_cells(row: object, doc: object, warnings: list[str]) -> list[str]:
+    cells: list[str] = []
+    seen: set[int] = set()
+    for cell in row.cells:
+        marker = id(cell._tc)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        text = _cell_display_text(cell, doc, warnings)
+        cells.append(text)
+        cells.extend([""] * (_tc_grid_span(cell) - 1))
+    return cells
+
+
+def _docx_table_lines(table: object, doc: object, warnings: list[str]) -> list[str]:
+    grid: list[list[str]] = []
+    for row in table.rows:
+        values = _docx_row_cells(row, doc, warnings)
+        if any(values):
+            grid.append(values)
+    formatted = _format_table(grid)
+    return [formatted] if formatted else []
 
 
 def _estimate_text_pages(full_text: str) -> int:
@@ -501,39 +1251,45 @@ def _estimate_text_pages(full_text: str) -> int:
     return max(1, length // 3000 + (1 if length % 3000 else 0))
 
 
-def _docx_body_sections(doc: object) -> list[str]:
+def _append_paragraph_block(
+    sections: list[str],
+    paragraph: object,
+    doc: object,
+    warnings: list[str],
+) -> None:
+    line = _docx_paragraph_line(paragraph)
+    if line is not None:
+        sections.append(line)
+    sections.extend(_paragraph_image_texts(paragraph, doc, warnings))
+
+
+def _docx_body_sections(doc: object, warnings: list[str]) -> list[str]:
     from docx.oxml.ns import qn
     from docx.table import Table
     from docx.text.paragraph import Paragraph
 
     sections: list[str] = []
-    table_idx = 0
     body = doc.element.body
     for child in body.iterchildren():
         if child.tag == qn("w:p"):
-            line = _docx_paragraph_line(Paragraph(child, doc))
-            if line is not None:
-                sections.append(line)
+            _append_paragraph_block(sections, Paragraph(child, doc), doc, warnings)
             continue
         if child.tag != qn("w:tbl"):
             continue
-        sections.extend(_docx_table_lines(Table(child, doc), table_idx))
-        table_idx += 1
+        sections.extend(_docx_table_lines(Table(child, doc), doc, warnings))
     return sections
 
 
-def _docx_fallback_sections(doc: object) -> list[str]:
+def _docx_fallback_sections(doc: object, warnings: list[str]) -> list[str]:
     from docx.document import Document as DocxDocument
 
     if not isinstance(doc, DocxDocument):
         return []
     sections: list[str] = []
     for paragraph in doc.paragraphs:
-        line = _docx_paragraph_line(paragraph)
-        if line is not None:
-            sections.append(line)
-    for idx, table in enumerate(doc.tables):
-        sections.extend(_docx_table_lines(table, idx))
+        _append_paragraph_block(sections, paragraph, doc, warnings)
+    for table in doc.tables:
+        sections.extend(_docx_table_lines(table, doc, warnings))
     return sections
 
 
@@ -554,13 +1310,14 @@ def extract_docx(file_path: str) -> ExtractionResult:
     except Exception as e:
         raise ValueError(f"Failed to open DOCX file: {e}") from e
 
-    sections = _docx_body_sections(doc) or _docx_fallback_sections(doc)
+    warnings: list[str] = []
+    sections = _docx_body_sections(doc, warnings) or _docx_fallback_sections(doc, warnings)
     full_text = "\n".join(sections)
     return ExtractionResult(
         text=full_text,
         page_count=_estimate_text_pages(full_text),
         method="direct",
-        warnings=[],
+        warnings=warnings,
     )
 
 
@@ -584,17 +1341,29 @@ def _deduplicate_adjacent(items: list[str]) -> list[str]:
 
 
 def _pptx_table_lines(shape: object) -> list[str]:
-    table_lines: list[str] = []
-    for row in shape.table.rows:
-        cells = [cell.text.strip() for cell in row.cells]
-        table_lines.append(" | ".join(cells))
-    return table_lines
+    grid = [
+        [_clean_table_cell(cell.text) for cell in row.cells]
+        for row in shape.table.rows
+    ]
+    formatted = _format_table(grid)
+    return [formatted] if formatted else []
+
+
+def _pptx_picture_text(shape: object) -> str:
+    image = getattr(shape, "image", None)
+    blob = getattr(image, "blob", None) if image is not None else None
+    if not blob:
+        return ""
+    text, _warning = _ocr_image_bytes(blob)
+    return text.strip()
 
 
 def _pptx_shape_lines(shape: object) -> list[str]:
     if getattr(shape, "has_table", False):
-        table_lines = _pptx_table_lines(shape)
-        return ["\n".join(table_lines)] if table_lines else []
+        return _pptx_table_lines(shape)
+    picture = _pptx_picture_text(shape)
+    if picture:
+        return [picture]
     text = getattr(shape, "text", "") or ""
     stripped = text.strip()
     return [stripped] if stripped else []
@@ -704,25 +1473,30 @@ def _is_raw_json_token(text: str) -> bool:
     return all(char in allowed for char in text)
 
 
+def _remember_prose(text: str, parts: list[str]) -> None:
+    cleaned = text.strip()
+    if cleaned and not _is_raw_json_token(cleaned):
+        parts.append(cleaned)
+
+
+def _append_dict_prose(value: dict, parts: list[str]) -> None:
+    for key, item in value.items():
+        if isinstance(key, str):
+            _remember_prose(key, parts)
+        _append_thai_text(item, parts)
+
+
 def _append_thai_text(value: object, parts: list[str]) -> None:
     """Collect Thai (and other prose) strings from nested JSON, skipping raw keys."""
     if isinstance(value, str):
-        text = value.strip()
-        if text and not _is_raw_json_token(text):
-            parts.append(text)
+        _remember_prose(value, parts)
         return
     if isinstance(value, list):
         for item in value:
             _append_thai_text(item, parts)
         return
-    if not isinstance(value, dict):
-        return
-    for key, item in value.items():
-        if isinstance(key, str):
-            key_text = key.strip()
-            if key_text and not _is_raw_json_token(key_text):
-                parts.append(key_text)
-        _append_thai_text(item, parts)
+    if isinstance(value, dict):
+        _append_dict_prose(value, parts)
 
 
 def _combined_section_contents(payload: object) -> list[str]:

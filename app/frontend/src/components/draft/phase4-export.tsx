@@ -54,14 +54,18 @@ export function Phase4Export({
         <Button
           disabled={exporting}
           data-testid="export-docx"
-          onClick={() => onExport("docx", numberingScheme)}
+          onClick={() => {
+            void onExport("docx", numberingScheme);
+          }}
         >
           ส่งออก Word
         </Button>
         <Button
           disabled={exporting}
           data-testid="export-pdf"
-          onClick={() => onExport("pdf", numberingScheme)}
+          onClick={() => {
+            void onExport("pdf", numberingScheme);
+          }}
         >
           ส่งออก PDF
         </Button>

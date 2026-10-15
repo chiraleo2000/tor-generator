@@ -278,7 +278,7 @@ class TestExtractPdf:
         assert result.page_count == 1
         assert "Single page content" in result.text
 
-    @patch("app.rag.extraction.ocr_page", return_value="OCR from rendered PNG")
+    @patch("app.rag.extraction.ocr_layout", return_value="OCR from rendered PNG")
     def test_ocr_renders_temp_png_then_calls_tesseract(
         self, mock_ocr: MagicMock, sample_pdf_empty_page: str
     ):
@@ -332,7 +332,8 @@ class TestExtractDocx:
         result = extract_docx(sample_docx)
         assert "Header A" in result.text
         assert "Row 1 Col A" in result.text
-        assert "[Table 1]" in result.text
+        assert "| Header A | Header B | Header C |" in result.text
+        assert "[Table 1]" not in result.text
 
     def test_preserves_body_order_with_tables(self, tmp_path: Path):
         """Tables stay between surrounding paragraphs (not dumped at the end)."""

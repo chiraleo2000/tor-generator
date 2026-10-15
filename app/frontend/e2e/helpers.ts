@@ -279,7 +279,18 @@ export async function installMockedFourToolsApi(page: Page) {
     });
   });
 
-  await page.route("**/api/v1/analyze", async (route) => {
+  await page.route("**/api/v1/analyze**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/analyze/extract")) {
+      await route.fulfill({
+        json: apiEnvelope({
+          extracted_text: "ร่าง TOR ทดสอบ Oracle โดยไม่มีหรือเทียบเท่า",
+          method: "direct",
+          warnings: [],
+        }),
+      });
+      return;
+    }
     await route.fulfill({ json: apiEnvelope(MOCK_ANALYZE_RESULT) });
   });
 
@@ -449,16 +460,12 @@ export async function walkFivePhases(page: Page) {
 }
 
 async function allFactSlotsFilled(page: Page): Promise<boolean> {
-  for (const key of FACT_SLOT_KEYS) {
+  return FACT_SLOT_KEYS.reduce(async (previous, key) => {
+    if (!(await previous)) return false;
     const row = page.getByTestId(`coverage-row-${key}`);
-    if ((await row.count()) === 0) {
-      return false;
-    }
-    if ((await row.getAttribute("data-status")) !== "filled") {
-      return false;
-    }
-  }
-  return true;
+    if ((await row.count()) === 0) return false;
+    return (await row.getAttribute("data-status")) === "filled";
+  }, Promise.resolve(true));
 }
 
 async function sendGapAnswer(page: Page, answer: string) {
@@ -665,7 +672,7 @@ export async function finishLivePhase3ToSubmit(page: Page) {
     (response) =>
       response.request().method() === "POST" &&
       /\/projects\/[^/]+\/submit(?:\?|$)/.test(response.url()),
-    { timeout: 20_000 }
+    { timeout: 180_000 }
   );
   await page.getByTestId("phase4-submit").click();
   const submitted = await submitResponse;

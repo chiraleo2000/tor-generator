@@ -192,7 +192,9 @@ export function NewProjectDialog({
           ยกเลิก
         </Button>
         <Button
-          onClick={handleCreate}
+          onClick={() => {
+            void handleCreate();
+          }}
           disabled={saving}
           data-testid="create-project-submit"
         >

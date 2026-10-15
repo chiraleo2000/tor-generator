@@ -99,9 +99,13 @@ describe("KnowledgeBasePage", () => {
     expect(screen.getAllByText("ข้อมูลอื่น ๆ").length).toBeGreaterThan(0);
     expect(screen.getByTestId("kb-mine-status-b")).toHaveTextContent("ใช้กับ RAG ได้");
     expect(screen.getByTestId("kb-mine-count")).toHaveTextContent("1 ไฟล์");
+    expect(screen.getByTestId("kb-central-count")).toHaveTextContent("1 ไฟล์");
     expect(screen.getByTestId("download-mine-b")).toBeInTheDocument();
     expect(screen.queryByText("ประกาศราคากลาง / ระเบียบ")).not.toBeInTheDocument();
-    expect(screen.getAllByText("พ.ร.บ. / กฎหมาย").length).toBeGreaterThan(0);
+    expect(screen.queryByText("พ.ร.บ. / กฎหมาย")).not.toBeInTheDocument();
+    expect(screen.queryByText(/chunks/i)).not.toBeInTheDocument();
+    expect(screen.getByText("คู่มือแนวปฏิบัติ (บังคับ)")).toBeInTheDocument();
+    expect(screen.getAllByText("คลังกลาง · บังคับ")).toHaveLength(2);
     expect(screen.getByText("หนังสือเวียนกรมบัญชีกลาง")).toBeInTheDocument();
   });
 
@@ -201,7 +205,8 @@ describe("KnowledgeBasePage", () => {
     render(<KnowledgeBasePage />);
     fireEvent.click(await screen.findByText("ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)"));
     expect(screen.getByText("พรบ.pdf")).toBeInTheDocument();
-    expect(screen.getByText(/10 chunks · ลบไม่ได้/)).toBeInTheDocument();
+    expect(screen.getByText("ลบไม่ได้")).toBeInTheDocument();
+    expect(screen.queryByText(/chunks/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "กฎกระทรวง" }));
     vi.mocked(apiClient.post).mockResolvedValue({ data: { ok: true } } as never);
     fireEvent.click(screen.getByTestId("upload-trigger"));
@@ -239,6 +244,30 @@ describe("KnowledgeBasePage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("ลบเอกสารไม่สำเร็จ");
   });
 
+  it("shows the empty personal library and the two central groups", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        ok: true,
+        data: {
+          groups: [],
+          userFiles: [],
+          totals: { files: 0, chunks: 0 },
+          raw: {},
+          chunked: [{ key: "law", name: "law", files: 1, chunks: 3 }],
+        },
+      },
+    } as never);
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByTestId("kb-mine-count")).toHaveTextContent("0 ไฟล์");
+    expect(
+      screen.getByText("ยังไม่มีเอกสารของฉัน — อัปโหลดด้านบนหรือแนบจากถาม-ตอบ")
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("kb-central-count")).toHaveTextContent("0 ไฟล์");
+    expect(screen.getByText("คู่มือแนวปฏิบัติ (บังคับ)")).toBeInTheDocument();
+    expect(screen.getByText("ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)")).toBeInTheDocument();
+    expect(screen.queryByText(/chunks/i)).not.toBeInTheDocument();
+  });
+
   it("expands a raw category when grouped catalog is empty", async () => {
     vi.mocked(apiClient.get).mockResolvedValue({
       data: {
@@ -255,13 +284,9 @@ describe("KnowledgeBasePage", () => {
       },
     } as never);
     render(<KnowledgeBasePage />);
-    fireEvent.click(
-      await screen.findByText((text, el) =>
-        Boolean(el?.classList.contains("font-semibold") && text === "พ.ร.บ. / กฎหมาย")
-      )
-    );
+    fireEvent.click(await screen.findByTestId("kb-group-mandatory_raw"));
     expect(await screen.findByText("พรบ-raw.pdf")).toBeInTheDocument();
-    expect(screen.getAllByText(/3 chunks/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/chunks/i)).not.toBeInTheDocument();
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",

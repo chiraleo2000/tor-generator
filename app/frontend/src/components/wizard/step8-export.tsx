@@ -55,7 +55,8 @@ export function Step8Export() {
   const pollExportStatus = React.useCallback(() => {
     if (!projectId) return;
 
-    pollTimerRef.current = setInterval(async () => {
+    pollTimerRef.current = setInterval(() => {
+      void (async () => {
       try {
         const response = await apiClient.get(
           `/projects/${projectId}/export/status`
@@ -89,6 +90,7 @@ export function Step8Export() {
           errorMessage: "ไม่สามารถตรวจสอบสถานะการส่งออกได้",
         }));
       }
+      })();
     }, POLL_INTERVAL_MS);
   }, [projectId, setFormData]);
 
@@ -135,7 +137,7 @@ export function Step8Export() {
 
   const handleRetry = () => {
     stopPolling();
-    handleTriggerExport();
+    void handleTriggerExport();
   };
 
   const handleDownload = async (format: "docx" | "pdf") => {
@@ -202,7 +204,9 @@ export function Step8Export() {
                 <span>ใส่เลขหมวดต่อเนื่อง (๑. ๒. ๓. …)</span>
               </label>
               <Button
-                onClick={handleTriggerExport}
+                onClick={() => {
+                  void handleTriggerExport();
+                }}
                 size="lg"
                 aria-label="สร้างเอกสาร TOR"
                 data-testid="export-generate"
@@ -277,7 +281,9 @@ export function Step8Export() {
             </div>
             <div className="flex justify-center gap-3">
               <Button
-                onClick={() => handleDownload("docx")}
+                onClick={() => {
+                  void handleDownload("docx");
+                }}
                 variant="outline"
                 aria-label="ดาวน์โหลดไฟล์ Word (.docx)"
                 data-testid="export-download-docx"
@@ -286,7 +292,9 @@ export function Step8Export() {
                 ดาวน์โหลด Word (.docx)
               </Button>
               <Button
-                onClick={() => handleDownload("pdf")}
+                onClick={() => {
+                  void handleDownload("pdf");
+                }}
                 variant="outline"
                 aria-label="ดาวน์โหลดไฟล์ PDF"
                 data-testid="export-download-pdf"

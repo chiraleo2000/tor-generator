@@ -8,7 +8,7 @@ import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
 import {
-  KB_CATEGORIES,
+  KB_BAR_CATEGORIES,
   kbCategoryLabel,
   kbProcessingBadgeClass,
   kbProcessingLabel,
@@ -45,6 +45,31 @@ interface CatalogPayload {
   totals?: { files: number; chunks: number };
 }
 
+const CORPUS_GROUPS = [
+  { key: "mandatory_handbook", label: "คู่มือแนวปฏิบัติ (บังคับ)" },
+  { key: "mandatory_raw", label: "ข้อมูลดิบกฎหมาย/ระเบียบ (บังคับ)" },
+] as const;
+
+const KB_FILTERS = [{ id: "all", label: "ทั้งหมด" }, ...KB_BAR_CATEGORIES];
+
+function inCategory(doc: CatalogFile, category: string): boolean {
+  if (category === "all") return true;
+  return (doc.category || "other") === category;
+}
+
+function corpusSource(
+  metaKey: string,
+  fromGroup: CatalogFile[],
+  groups: CatalogGroup[],
+  raw: Record<string, CatalogFile[]>
+): CatalogFile[] {
+  if (fromGroup.length > 0 || groups.length > 0) return fromGroup;
+  if (metaKey !== "mandatory_raw") return [];
+  return Object.entries(raw).flatMap(([category, items]) =>
+    items.map((item) => ({ ...item, category: item.category || category }))
+  );
+}
+
 async function downloadPrivateFile(documentId: string, fileName: string) {
   const response = await apiClient.get(`/knowledge-base/mine/${documentId}/file`, {
     responseType: "blob",
@@ -61,9 +86,8 @@ export default function KnowledgeBasePage() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const [catalog, setCatalog] = useState<CatalogPayload>({});
-  const [type, setType] = useState("law");
+  const [type, setType] = useState("all");
   const [openGroup, setOpenGroup] = useState<string>("");
-  const [openCat, setOpenCat] = useState<string>("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,21 +121,19 @@ export default function KnowledgeBasePage() {
     setError(null);
     setMessage(null);
     try {
-      for (const file of Array.from(files)) {
+      await Array.from(files).reduce(async (previous, file) => {
+        await previous;
         const body = new FormData();
         body.append("file", file);
-        body.append("category", type);
+        body.append("category", type === "all" ? "other" : type);
         body.append("name", file.name);
-        if (isAdmin) {
-          await apiClient.post("/knowledge-base/upload", body);
-        } else {
-          await apiClient.post("/knowledge-base/mine", body);
-        }
-      }
+        const path = isAdmin ? "/knowledge-base/upload" : "/knowledge-base/mine";
+        await apiClient.post(path, body);
+      }, Promise.resolve());
       setMessage(
         isAdmin
           ? "อัปโหลดเข้าคลังส่วนกลางแล้ว — กำลังประมวลผล"
-          : "อัปโหลดเฉพาะบัญชีของคุณแล้ว — กำลังแบ่ง chunk และฝังเข้า RAG"
+          : "อัปโหลดเฉพาะบัญชีของคุณแล้ว — กำลังประมวลผลเข้าคลัง"
       );
       await load();
     } catch (err: unknown) {
@@ -142,13 +164,18 @@ export default function KnowledgeBasePage() {
   }
 
   const raw = catalog.raw || {};
-  const chunked = catalog.chunked || [];
   const groups = catalog.groups || [];
-  const centralGroups = groups.filter((group) => group.mandatory);
-  const mineDocs = uniqueById([
+  const allMine = uniqueById([
     ...groups.flatMap((group) => (group.mandatory ? [] : group.items)),
     ...(catalog.userFiles || []),
   ]);
+  const mineDocs = allMine.filter((doc) => inCategory(doc, type));
+  const corpusGroups = CORPUS_GROUPS.map((meta) => {
+    const fromGroup = groups.find((group) => group.key === meta.key)?.items || [];
+    const source = corpusSource(meta.key, fromGroup, groups, raw);
+    return { ...meta, items: source.filter((doc) => inCategory(doc, type)) };
+  });
+  const centralCount = corpusGroups.reduce((sum, group) => sum + group.items.length, 0);
 
   return (
     <div data-testid="knowledge-base-page">
@@ -158,14 +185,15 @@ export default function KnowledgeBasePage() {
         </h2>
         <p className="mb-3 text-[12.5px] text-muted-foreground">
           {isAdmin
-            ? "ไฟล์ที่อัปโหลดที่นี่เป็นคลังบังคับ/ส่วนกลาง เห็นได้ทุกบัญชี — ไม่มีการแชร์เอกสารส่วนตัวข้ามผู้ใช้"
-            : "ไฟล์ของคุณถูก chunk และฝังเข้า RAG เฉพาะบัญชีนี้ ไม่เผยแพร่ให้เจ้าหน้าที่อื่น"}
+            ? "ไฟล์ที่อัปโหลดที่นี่เป็นคลังบังคับ/ส่วนกลาง เห็นได้ทุกบัญชี — เลือกประเภทจากแถบด้านบนก่อนอัปโหลด"
+            : "ไฟล์ของคุณเข้าคลังเฉพาะบัญชีนี้ ไม่เผยแพร่ให้เจ้าหน้าที่อื่น — เลือกประเภทจากแถบด้านบนก่อนอัปโหลด"}
         </p>
-        <div className="mb-3.5 flex flex-wrap gap-2">
-          {KB_CATEGORIES.map((item) => (
+        <div className="mb-3.5 flex flex-wrap gap-2" data-testid="kb-category-bar">
+          {KB_FILTERS.map((item) => (
             <button
               key={item.id}
               type="button"
+              data-testid={`kb-category-${item.id}`}
               className={cn(
                 "rounded-full border px-3.5 py-2 text-[12.5px] font-bold",
                 type === item.id
@@ -180,8 +208,14 @@ export default function KnowledgeBasePage() {
         </div>
         <UploadArea
           label="ลากไฟล์วาง หรือคลิกเพื่อเลือกไฟล์"
-          hint="รองรับ PDF, Word — ระบบแบ่ง chunk และฝังเข้า Vector Store"
-          onFiles={upload}
+          hint={
+            type === "all"
+              ? "รองรับ PDF, Word และรูปภาพ — เลือกทั้งหมดจะจัดเป็นข้อมูลอื่น ๆ"
+              : "รองรับ PDF, Word และรูปภาพ — จัดเข้าประเภทที่เลือกบนแถบ"
+          }
+          onFiles={(files) => {
+            void upload(files);
+          }}
         />
         {error ? (
           <p className="mt-2 text-sm text-destructive" role="alert">
@@ -201,7 +235,11 @@ export default function KnowledgeBasePage() {
         </span>
       </div>
       {mineDocs.length === 0 ? (
-        <p className="mb-6 text-sm text-muted-foreground">ยังไม่มีเอกสารของฉัน — อัปโหลดด้านบนหรือแนบจากถาม-ตอบ</p>
+        <p className="mb-6 text-sm text-muted-foreground">
+          {allMine.length === 0
+            ? "ยังไม่มีเอกสารของฉัน — อัปโหลดด้านบนหรือแนบจากถาม-ตอบ"
+            : "ไม่มีเอกสารของฉันในประเภทนี้"}
+        </p>
       ) : null}
       {mineDocs.map((doc) => (
         <div
@@ -237,7 +275,6 @@ export default function KnowledgeBasePage() {
             ) : null}
           </span>
           <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
-            {doc.chunk_count} chunks
             <Button
               type="button"
               size="sm"
@@ -257,7 +294,9 @@ export default function KnowledgeBasePage() {
               size="sm"
               variant="destructive"
               data-testid={`delete-user-file-${doc.id}`}
-              onClick={() => removeMine(doc.id, doc.name)}
+              onClick={() => {
+                void removeMine(doc.id, doc.name);
+              }}
             >
               ลบ
             </Button>
@@ -267,71 +306,49 @@ export default function KnowledgeBasePage() {
 
       <div className="mb-3 mt-6 flex items-center gap-2">
         <h2 className="text-[16.5px] text-navy">คลังกฎหมาย/ระเบียบตามกลุ่ม</h2>
-        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11.5px] font-bold">
-          {catalog.totals?.files || 0} ไฟล์
+        <span
+          className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11.5px] font-bold"
+          data-testid="kb-central-count"
+        >
+          {centralCount} ไฟล์
         </span>
       </div>
-      {centralGroups.length > 0
-        ? centralGroups.map((group) => (
-            <div key={group.key} className="mb-2.5 overflow-hidden rounded-[10px] bg-white shadow-sm">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between px-4 py-3"
-                onClick={() => setOpenGroup(openGroup === group.key ? "" : group.key)}
-              >
-                <span className="font-semibold text-navy">{group.label}</span>
-                <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700">
-                  คลังกลาง · บังคับ
-                </span>
-              </button>
-              {openGroup === group.key
-                ? group.items.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between gap-3 border-t px-4 py-2 text-[12.5px]"
-                    >
-                      <span>{doc.name}</span>
-                      <span className="text-muted-foreground">{doc.chunk_count} chunks · ลบไม่ได้</span>
-                    </div>
-                  ))
-                : null}
-            </div>
-          ))
-        : Object.entries(raw).map(([category, items]) => (
-            <div key={category} className="mb-2.5 overflow-hidden rounded-[10px] bg-white shadow-sm">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between px-4 py-3"
-                onClick={() => setOpenCat(openCat === category ? "" : category)}
-              >
-                <span className="font-semibold text-navy">{kbCategoryLabel(category)}</span>
-              </button>
-              {openCat === category
-                ? items.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex justify-between border-t px-4 py-2 text-[12.5px]"
-                    >
-                      <span>{doc.name}</span>
-                      <span className="text-muted-foreground">{doc.chunk_count} chunks</span>
-                    </div>
-                  ))
-                : null}
-            </div>
-          ))}
-
-      <div className="mb-3 mt-6 flex items-center gap-2">
-        <h2 className="text-[16.5px] text-navy">คลังความรู้ที่ผ่านการ Chunk เข้า RAG</h2>
-        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11.5px] font-bold">
-          {catalog.totals?.chunks || 0} chunks
-        </span>
-      </div>
-      {chunked.map((row) => (
-        <div key={row.key} className="mb-2 flex justify-between rounded-[10px] bg-white px-4 py-3 shadow-sm">
-          <span className="font-medium text-navy">{kbCategoryLabel(row.name)}</span>
-          <span className="text-[12px] text-muted-foreground">
-            {row.files} ไฟล์ · {row.chunks} chunks
-          </span>
+      {corpusGroups.map((group) => (
+        <div key={group.key} className="mb-2.5 overflow-hidden rounded-[10px] bg-white shadow-sm">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-4 py-3"
+            data-testid={`kb-group-${group.key}`}
+            onClick={() => setOpenGroup(openGroup === group.key ? "" : group.key)}
+          >
+            <span className="font-semibold text-navy">{group.label}</span>
+            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700">
+              คลังกลาง · บังคับ
+            </span>
+          </button>
+          {openGroup === group.key
+            ? group.items.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between gap-3 border-t px-4 py-2 text-[12.5px]"
+                >
+                  <span>
+                    {doc.name}
+                    {doc.category ? (
+                      <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
+                        {kbCategoryLabel(doc.category)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="text-muted-foreground">ลบไม่ได้</span>
+                </div>
+              ))
+            : null}
+          {openGroup === group.key && group.items.length === 0 ? (
+            <p className="border-t px-4 py-2 text-[12.5px] text-muted-foreground">
+              ไม่มีไฟล์ในประเภทนี้
+            </p>
+          ) : null}
         </div>
       ))}
     </div>

@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import AnalyzePage from "./page";
 import { apiClient } from "@/lib/api-client";
-import { useProjectStore } from "@/stores/project-store";
 
 vi.mock("@/lib/api-client", () => ({
   apiClient: {
@@ -10,24 +9,6 @@ vi.mock("@/lib/api-client", () => ({
     get: vi.fn(),
   },
 }));
-
-const PROJECT = {
-  id: "p1",
-  ownerId: "u1",
-  name: "ร่างระบบจัดซื้อ",
-  ministry: "กระทรวงทดสอบ",
-  budget: 1000000,
-  projectType: "hire_develop" as const,
-  status: "draft" as const,
-  currentStep: 1,
-  currentPhase: 3,
-  analysisJson: {},
-  extractedFields: {},
-  qualityScore: null,
-  templateId: null,
-  createdAt: "",
-  updatedAt: "",
-};
 
 const ANALYSIS = {
   legal: {
@@ -75,14 +56,33 @@ const ANALYSIS = {
   ],
 };
 
+function mockApi(analysis: unknown, extractText: string) {
+  vi.mocked(apiClient.post).mockImplementation(async (url: string) => {
+    if (String(url).includes("/extract")) {
+      return {
+        data: {
+          ok: true,
+          data: { extracted_text: extractText, method: "ocr", warnings: [] },
+        },
+      } as never;
+    }
+    return { data: { ok: true, data: analysis } } as never;
+  });
+}
+
+async function uploadAndExtract(text: string) {
+  const input = document.querySelector(
+    "[data-testid=analyze-page] input[type=file]"
+  ) as HTMLInputElement;
+  const file = new File([text], "tor.txt", { type: "text/plain" });
+  fireEvent.change(input, { target: { files: [file] } });
+  fireEvent.click(screen.getByTestId("analyze-extract"));
+  expect(await screen.findByTestId("analyze-extract-preview")).toHaveTextContent(text.slice(0, 24));
+}
+
 describe("AnalyzePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useProjectStore.setState({
-      projects: [PROJECT],
-      isLoading: false,
-      fetchProjects: vi.fn().mockResolvedValue(undefined),
-    } as never);
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
@@ -91,6 +91,9 @@ describe("AnalyzePage", () => {
   it("switches four in-tool panels without leaving the page", () => {
     render(<AnalyzePage />);
     expect(screen.getByTestId("analyze-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("analyze-text")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("analyze-project")).not.toBeInTheDocument();
+    expect(screen.getByTestId("analyze-extract")).toBeDisabled();
     expect(screen.getByTestId("analyze-tab-legal")).toHaveTextContent("ส่วนที่คาดว่าผิดกฎหมาย");
     expect(screen.getByTestId("analyze-tab-lock_in")).toHaveTextContent("lock specs");
     expect(screen.getByTestId("analyze-tab-project")).toHaveTextContent("บริหารโครงการ");
@@ -102,23 +105,21 @@ describe("AnalyzePage", () => {
     expect(screen.getByTestId("analyze-tab-project").className).toContain("bg-brand-orange");
   });
 
-  it("posts pasted text and copies suggested TOR text without writing a draft", async () => {
-    vi.mocked(apiClient.post).mockResolvedValue({
-      data: { ok: true, data: ANALYSIS },
-    } as never);
+  it("extracts an uploaded file and copies suggested TOR text without writing a draft", async () => {
+    const text = "ร่าง TOR ทดสอบ Oracle โดยไม่มีหรือเทียบเท่า";
+    mockApi(ANALYSIS, text);
     render(<AnalyzePage />);
-    fireEvent.change(screen.getByTestId("analyze-text"), {
-      target: { value: "ร่าง TOR ทดสอบ Oracle โดยไม่มีหรือเทียบเท่า" },
-    });
+    await uploadAndExtract(text);
     fireEvent.click(screen.getByTestId("analyze-run"));
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
-    expect(apiClient.post).toHaveBeenCalledWith(
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(
       "/analyze",
-      {
-        text: "ร่าง TOR ทดสอบ Oracle โดยไม่มีหรือเทียบเท่า",
-        project_id: undefined,
-      },
+      { text },
       { timeout: 2_700_000 }
+    ));
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/analyze/extract",
+      expect.any(FormData),
+      { timeout: 300_000 }
     );
     expect(await screen.findByTestId("analyze-summary")).toHaveTextContent("70/100");
     expect(screen.getByTestId("analyze-panel-legal")).toBeInTheDocument();
@@ -137,39 +138,23 @@ describe("AnalyzePage", () => {
     );
   });
 
-  it("sends a selected project id when no text is pasted", async () => {
-    vi.mocked(apiClient.post).mockResolvedValue({
-      data: { ok: true, data: ANALYSIS },
-    } as never);
-    render(<AnalyzePage />);
-    fireEvent.change(screen.getByTestId("analyze-project"), {
-      target: { value: "p1" },
-    });
-    fireEvent.click(screen.getByTestId("analyze-run"));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/analyze",
-        {
-          text: undefined,
-          project_id: "p1",
-        },
-        { timeout: 2_700_000 }
-      )
-    );
-  });
-
   it("shows กำลังวิเคราะห์ immediately and keeps the in-tool nav usable", async () => {
     let resolvePost: (value: unknown) => void = () => undefined;
-    vi.mocked(apiClient.post).mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolvePost = resolve;
-        })
-    );
-    render(<AnalyzePage />);
-    fireEvent.change(screen.getByTestId("analyze-text"), {
-      target: { value: "ร่าง TOR เพื่อดูสถานะ" },
+    vi.mocked(apiClient.post).mockImplementation((url: string) => {
+      if (String(url).includes("/extract")) {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            data: { extracted_text: "ร่าง TOR เพื่อดูสถานะ", method: "direct", warnings: [] },
+          },
+        }) as never;
+      }
+      return new Promise((resolve) => {
+        resolvePost = resolve;
+      });
     });
+    render(<AnalyzePage />);
+    await uploadAndExtract("ร่าง TOR เพื่อดูสถานะ");
     fireEvent.click(screen.getByTestId("analyze-run"));
     expect(screen.getByTestId("analyze-status")).toHaveTextContent("กำลังวิเคราะห์");
     expect(screen.getByTestId("analyze-tab-bidder_risk")).toBeEnabled();
@@ -181,34 +166,34 @@ describe("AnalyzePage", () => {
     expect(screen.getByTestId("analyze-run")).toBeEnabled();
   });
 
-  it("asks for text when nothing is selected and shows a failed analysis", async () => {
-    render(<AnalyzePage />);
-    fireEvent.click(screen.getByTestId("analyze-run"));
-    expect(screen.getByRole("alert")).toHaveTextContent("วางข้อความ TOR");
-
-    fireEvent.change(screen.getByTestId("analyze-text"), {
-      target: { value: "ร่างที่วิเคราะห์ไม่สำเร็จ" },
+  it("asks for a file before extract and shows a failed analysis", async () => {
+    const text = "ร่างที่วิเคราะห์ไม่สำเร็จ";
+    vi.mocked(apiClient.post).mockImplementation(async (url: string) => {
+      if (String(url).includes("/extract")) {
+        return {
+          data: { ok: true, data: { extracted_text: text, method: "direct", warnings: [] } },
+        } as never;
+      }
+      throw new Error("เซิร์ฟเวอร์ไม่ตอบ");
     });
-    vi.mocked(apiClient.post).mockRejectedValue(new Error("เซิร์ฟเวอร์ไม่ตอบ"));
+    render(<AnalyzePage />);
+    expect(screen.getByTestId("analyze-extract")).toBeDisabled();
+    expect(screen.queryByTestId("analyze-run")).not.toBeInTheDocument();
+    await uploadAndExtract(text);
     fireEvent.click(screen.getByTestId("analyze-run"));
     expect(await screen.findByRole("alert")).toHaveTextContent("วิเคราะห์ TOR ไม่สำเร็จ");
     expect(screen.getByTestId("analyze-status")).toHaveTextContent("วิเคราะห์ TOR ไม่สำเร็จ");
   });
 
   it("rejects a malformed payload and shows the empty risk slot", async () => {
-    vi.mocked(apiClient.post).mockResolvedValue({
-      data: { ok: true, data: { summary: "ไม่ครบ" } },
-    } as never);
+    const text = "ร่างที่รูปแบบผิด";
+    mockApi({ summary: "ไม่ครบ" }, text);
     render(<AnalyzePage />);
-    fireEvent.change(screen.getByTestId("analyze-text"), {
-      target: { value: "ร่างที่รูปแบบผิด" },
-    });
+    await uploadAndExtract(text);
     fireEvent.click(screen.getByTestId("analyze-run"));
     expect(await screen.findByRole("alert")).toHaveTextContent("วิเคราะห์ TOR ไม่สำเร็จ");
 
-    vi.mocked(apiClient.post).mockResolvedValue({
-      data: { ok: true, data: ANALYSIS },
-    } as never);
+    mockApi(ANALYSIS, text);
     fireEvent.click(screen.getByTestId("analyze-run"));
     await screen.findByTestId("analyze-summary");
     fireEvent.click(screen.getByTestId("analyze-tab-bidder_risk"));
@@ -220,16 +205,13 @@ describe("AnalyzePage", () => {
   });
 
   it("leaves the copy key unset when the clipboard rejects the text", async () => {
-    vi.mocked(apiClient.post).mockResolvedValue({
-      data: { ok: true, data: ANALYSIS },
-    } as never);
+    const text = "ร่างสำหรับคัดลอก";
+    mockApi(ANALYSIS, text);
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
     });
     render(<AnalyzePage />);
-    fireEvent.change(screen.getByTestId("analyze-text"), {
-      target: { value: "ร่างสำหรับคัดลอก" },
-    });
+    await uploadAndExtract(text);
     fireEvent.click(screen.getByTestId("analyze-run"));
     await screen.findByTestId("analyze-summary");
     fireEvent.click(screen.getByTestId("analyze-tab-recommendations"));
@@ -279,13 +261,10 @@ describe("AnalyzePage", () => {
         markdown: "# ความเสี่ยงก่อนตัดสินใจยื่น\n\nไม่ควรยื่นในสถานะข้อมูลปัจจุบัน",
       },
     };
-    vi.mocked(apiClient.post).mockResolvedValue({
-      data: { ok: true, data: risk },
-    } as never);
+    const text = "ร่างที่มีความเสี่ยงก่อนยื่น";
+    mockApi(risk, text);
     render(<AnalyzePage />);
-    fireEvent.change(screen.getByTestId("analyze-text"), {
-      target: { value: "ร่างที่มีความเสี่ยงก่อนยื่น" },
-    });
+    await uploadAndExtract(text);
     fireEvent.click(screen.getByTestId("analyze-run"));
     await screen.findByTestId("analyze-summary");
     fireEvent.click(screen.getByTestId("analyze-tab-bidder_risk"));
@@ -305,16 +284,21 @@ describe("AnalyzePage", () => {
 
   it("changes กำลังวิเคราะห์ to elapsed time then the finished score without a reload", async () => {
     let resolvePost: (value: unknown) => void = () => undefined;
-    vi.mocked(apiClient.post).mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolvePost = resolve;
-        })
-    );
-    render(<AnalyzePage />);
-    fireEvent.change(screen.getByTestId("analyze-text"), {
-      target: { value: "ร่าง TOR ที่ใช้เวลานาน" },
+    vi.mocked(apiClient.post).mockImplementation((url: string) => {
+      if (String(url).includes("/extract")) {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            data: { extracted_text: "ร่าง TOR ที่ใช้เวลานาน", method: "direct", warnings: [] },
+          },
+        }) as never;
+      }
+      return new Promise((resolve) => {
+        resolvePost = resolve;
+      });
     });
+    render(<AnalyzePage />);
+    await uploadAndExtract("ร่าง TOR ที่ใช้เวลานาน");
     fireEvent.click(screen.getByTestId("analyze-run"));
     const status = screen.getByTestId("analyze-status");
     expect(status).toHaveTextContent("กำลังวิเคราะห์");

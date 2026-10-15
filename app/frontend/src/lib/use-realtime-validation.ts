@@ -133,7 +133,7 @@ export function useRealtimeValidation(projectId: string | null) {
 
       // Set new 3-second debounce timer
       debounceTimerRef.current = setTimeout(() => {
-        performValidation(sectionKey, content, reqId);
+        void performValidation(sectionKey, content, reqId);
       }, VALIDATION_DEBOUNCE_MS);
     },
     [performValidation]

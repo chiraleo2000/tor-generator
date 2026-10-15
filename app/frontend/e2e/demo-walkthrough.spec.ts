@@ -99,7 +99,13 @@ test.describe.serial("Demo walkthrough video (draft, review, analyze, chat, admi
     await expect(page.getByTestId("analyze-tab-lock_in")).toBeVisible();
     await expect(page.getByTestId("analyze-tab-project")).toBeVisible();
     await expect(page.getByTestId("analyze-tab-recommendations")).toBeVisible();
-    await typeLikeUser(page.getByTestId("analyze-text"), LIVE_INTAKE_TEXT);
+    await page.locator("[data-testid=analyze-page] input[type=file]").first().setInputFiles({
+      name: "tor-analyze.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from(LIVE_INTAKE_TEXT, "utf-8"),
+    });
+    await page.getByTestId("analyze-extract").click();
+    await expect(page.getByTestId("analyze-extract-preview")).toBeVisible({ timeout: 180_000 });
     await pauseLikeUser(page, 600);
     await page.getByTestId("analyze-run").click();
     await expect(page.getByTestId("analyze-summary")).toBeVisible({ timeout: 720_000 });
@@ -178,9 +184,11 @@ test.describe.serial("Demo walkthrough video (draft, review, analyze, chat, admi
       "#anthropic-key, #openai-key, #gemini-key, #aws-secret, #azure-key, #compat-key, #custom-rag-key"
     );
     const secretCount = await secretFields.count();
-    for (let index = 0; index < secretCount; index += 1) {
+    const indexes = Array.from({ length: secretCount }, (_, index) => index);
+    await indexes.reduce(async (previous, index) => {
+      await previous;
       await expect(secretFields.nth(index)).toHaveAttribute("type", "password");
-    }
+    }, Promise.resolve());
     const visibleText = await page.getByTestId("admin-ai-settings-page").innerText();
     expect(visibleText).not.toMatch(/AWS_BEARER_TOKEN|sk-ant-|sk-proj-|AIza[0-9A-Za-z_-]{20,}/);
     await saveEvidence(page, "demo-05-admin-ai");

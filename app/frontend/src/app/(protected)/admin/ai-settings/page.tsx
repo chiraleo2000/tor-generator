@@ -577,13 +577,22 @@ export default function AdminAiSettingsPage() {
         <Button
           type="button"
           variant="outline"
-          onClick={testConnection}
+          onClick={() => {
+            void testConnection();
+          }}
           disabled={busy}
           data-testid="ai-settings-test"
         >
           ทดสอบการเชื่อมต่อ
         </Button>
-        <Button type="button" onClick={save} disabled={busy} data-testid="ai-settings-save">
+        <Button
+          type="button"
+          onClick={() => {
+            void save();
+          }}
+          disabled={busy}
+          data-testid="ai-settings-save"
+        >
           {busy ? "กำลังทำงาน..." : "บันทึก"}
         </Button>
       </div>

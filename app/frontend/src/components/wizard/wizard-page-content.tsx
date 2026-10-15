@@ -81,7 +81,9 @@ export function WizardPageContent() {
       setHydrating(true);
       try {
         await fetchProject(projectIdParam);
-        for (let n = 1; n <= 8; n += 1) {
+        const stepNumbers = Array.from({ length: 8 }, (_, index) => index + 1);
+        await stepNumbers.reduce(async (previous, n) => {
+          await previous;
           try {
             const response = await apiClient.get(
               `/projects/${projectIdParam}/steps/${n}`
@@ -94,7 +96,7 @@ export function WizardPageContent() {
           } catch {
             // empty step is fine
           }
-        }
+        }, Promise.resolve());
         if (!cancelled) {
           const project = useProjectStore.getState().activeProject;
           const step1 = useWizardStore.getState().formData[1] as
@@ -120,7 +122,7 @@ export function WizardPageContent() {
         if (!cancelled) setHydrating(false);
       }
     }
-    hydrate();
+    void hydrate();
     return () => {
       cancelled = true;
     };
@@ -139,16 +141,16 @@ export function WizardPageContent() {
         const snapshot = useWizardStore.getState().formData;
         const step1 = snapshot[1] as { location?: string } | undefined;
         const step7 = (snapshot[7] as Record<string, string>) || {};
-        for (const section of ORPHAN_SECTIONS) {
-          const existing =
-            section === "s7"
-              ? step1?.location || step7.s7
-              : step7[section];
-          if (existing && String(existing).trim()) continue;
+        let stopped = false;
+        await ORPHAN_SECTIONS.reduce(async (previous, section) => {
+          await previous;
+          if (stopped) return;
+          const existing = section === "s7" ? step1?.location || step7.s7 : step7[section];
+          if (existing && String(existing).trim()) return;
           const mappedStep = Object.entries(STEP_SECTION_MAP).find(([, keys]) =>
             keys.includes(section)
           )?.[0];
-          if (!mappedStep) continue;
+          if (!mappedStep) return;
           try {
             await apiClient.post(
               `/projects/${projectIdParam}/steps/${mappedStep}/draft`,
@@ -157,14 +159,15 @@ export function WizardPageContent() {
           } catch {
             // continue remaining sections
           }
-          if (cancelled) return;
-        }
+          if (cancelled) stopped = true;
+        }, Promise.resolve());
+        if (stopped) return;
         await apiClient.post(`/projects/${projectIdParam}/review`);
       } finally {
         if (!cancelled) setDrafting(false);
       }
     }
-    draftOrphans();
+    void draftOrphans();
     return () => {
       cancelled = true;
     };
@@ -201,12 +204,13 @@ export function WizardPageContent() {
     setDrafting(true);
     try {
       const keys = STEP_SECTION_MAP[step] || [];
-      for (const target of keys) {
+      await keys.reduce(async (previous, target) => {
+        await previous;
         await apiClient.post(`/projects/${projectId}/steps/${step}/draft`, {
           target_section: target,
           additional_context: toWizardApiPayload(step, formData[step]),
         });
-      }
+      }, Promise.resolve());
     } finally {
       setDrafting(false);
     }
@@ -275,7 +279,9 @@ export function WizardPageContent() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleDraftCurrent}
+            onClick={() => {
+              void handleDraftCurrent();
+            }}
             disabled={drafting}
           >
             {drafting ? (

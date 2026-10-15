@@ -184,7 +184,7 @@ export function useAutoSave() {
 
       // Set new 3-second debounce timer
       debounceTimerRef.current = setTimeout(() => {
-        syncToApi(pId, step, data);
+        void syncToApi(pId, step, data);
       }, AUTO_SAVE_DELAY_MS);
     },
     [syncToApi]
@@ -214,7 +214,7 @@ export function useAutoSave() {
         duration: 4000,
       });
       // Attempt to sync restored data to server
-      syncToApi(projectId, currentStep, backup);
+      void syncToApi(projectId, currentStep, backup);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, currentStep]);
@@ -226,7 +226,7 @@ export function useAutoSave() {
     if (!projectId) return;
     const data = formData[currentStep];
     if (data !== undefined) {
-      syncToApi(projectId, currentStep, data);
+      void syncToApi(projectId, currentStep, data);
     }
   }, [projectId, currentStep, formData, syncToApi]);
 

@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Scale, ShieldAlert, Briefcase, Lightbulb, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { UploadArea } from "@/components/brand/upload-area";
 import { CheckItem } from "@/components/brand/check-item";
 import { apiClient } from "@/lib/api-client";
 import { apiErrorMessage } from "@/lib/api-error";
 import { unwrapData } from "@/lib/api-unwrap";
-import { useProjectStore } from "@/stores/project-store";
 import { cn } from "@/lib/utils";
 import type { AnalyzerFindingView, PartScoreView, TorPartScoresView } from "@/components/review/three-part-scores";
 import { BidderRiskPanel } from "@/components/review/bidder-risk-panel";
@@ -223,17 +221,42 @@ type AnalyzeSetters = {
   setPanel: (value: AnalyzePanel) => void;
 };
 
-const EMPTY_ANALYSIS_MESSAGE = "วางข้อความ TOR หรือเลือกร่างจากโครงการก่อนวิเคราะห์";
+const EMPTY_ANALYSIS_MESSAGE = "อัปโหลดไฟล์ TOR แล้วสกัดข้อความก่อนวิเคราะห์";
+const PREVIEW_MAX = 20000;
+const ANALYZE_STEPS = ["เลือกไฟล์", "สกัดข้อความ", "วิเคราะห์"] as const;
 
-async function postTorAnalysis(text: string, projectId: string): Promise<AnalyzeResult> {
-  const response = await apiClient.post(
-    "/analyze",
-    {
-      text: text || undefined,
-      project_id: projectId || undefined,
-    },
-    { timeout: 2_700_000 }
-  );
+type AnalyzeStep = 1 | 2 | 3;
+
+type ExtractPayload = {
+  extracted_text?: string;
+  method?: string;
+  warnings?: string[];
+};
+
+function stripPageMarkers(text: string): string {
+  return text
+    .replaceAll("\f", "\n")
+    .replaceAll(/\[\[page\b[^\]]*\]\]/gi, "")
+    .replaceAll(/\[\[หน้า:[^\]]+\]\]/g, "")
+    .replaceAll(/<!--\s*page\b[^>]*-->/gi, "")
+    .replaceAll(/^---\s*(?:page|หน้า)\s+\d+\s*---\s*$/gim, "")
+    .replaceAll(/^\[PAGE\s+\d+\]\s*$/gim, "");
+}
+
+function previewSnippet(text: string): string {
+  const trimmed = stripPageMarkers(text).trim();
+  if (trimmed.length <= PREVIEW_MAX) return trimmed;
+  return `${trimmed.slice(0, PREVIEW_MAX)}\n…`;
+}
+
+function methodLabel(method: string | undefined): string {
+  if (method === "ocr") return "อ่านด้วย OCR";
+  if (method === "mixed") return "ดึงข้อความและ OCR";
+  return "ดึงข้อความจากไฟล์";
+}
+
+async function postTorAnalysis(text: string): Promise<AnalyzeResult> {
+  const response = await apiClient.post("/analyze", { text }, { timeout: 2_700_000 });
   const payload = unwrapData<unknown>(response);
   if (!isAnalyzeResult(payload)) {
     throw new Error("รูปแบบผลวิเคราะห์ไม่ถูกต้อง");
@@ -241,9 +264,17 @@ async function postTorAnalysis(text: string, projectId: string): Promise<Analyze
   return payload;
 }
 
-async function runAnalysis(text: string, projectId: string, actions: AnalyzeSetters): Promise<void> {
+async function extractAnalyzeFile(file: File): Promise<ExtractPayload> {
+  const body = new FormData();
+  body.append("file", file);
+  return unwrapData<ExtractPayload>(
+    await apiClient.post("/analyze/extract", body, { timeout: 300_000 })
+  );
+}
+
+async function runAnalysis(text: string, actions: AnalyzeSetters): Promise<void> {
   const trimmed = text.trim();
-  if (!trimmed && !projectId) {
+  if (!trimmed) {
     actions.setError(EMPTY_ANALYSIS_MESSAGE);
     actions.setStatus(EMPTY_ANALYSIS_MESSAGE);
     return;
@@ -253,7 +284,7 @@ async function runAnalysis(text: string, projectId: string, actions: AnalyzeSett
   actions.setError(null);
   actions.setCopiedKey(null);
   try {
-    const payload = await postTorAnalysis(trimmed, projectId);
+    const payload = await postTorAnalysis(trimmed);
     actions.setResult(payload);
     actions.setPanel("legal");
     actions.setStatus(`วิเคราะห์เสร็จ — คะแนนรวม ${payload.total}/100`);
@@ -381,7 +412,7 @@ function AnalyzeBody({
   if (!result) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
-        วางข้อความหรือเลือกโครงการ แล้วกดวิเคราะห์เพื่อดูผล
+        อัปโหลดไฟล์แล้วสกัดข้อความ จากนั้นกดวิเคราะห์เพื่อดูผล
       </p>
     );
   }
@@ -395,69 +426,152 @@ function AnalyzeBody({
   );
 }
 
+function AnalyzeStepper({ step }: Readonly<{ step: AnalyzeStep }>) {
+  return (
+    <ol className="mb-4 flex flex-wrap gap-2 text-[12px]" data-testid="analyze-stepper">
+      {ANALYZE_STEPS.map((label, index) => {
+        const id = (index + 1) as AnalyzeStep;
+        return (
+          <li
+            key={label}
+            className={cn(
+              "rounded-full border px-3 py-1 font-bold",
+              step === id
+                ? "border-crimson bg-brand-orange text-navy"
+                : "border-gray-200 bg-gray-50 text-muted-foreground"
+            )}
+          >
+            {id}. {label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function AnalyzePage() {
-  const { projects, fetchProjects } = useProjectStore();
-  const [text, setText] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [step, setStep] = useState<AnalyzeStep>(1);
+  const [extracted, setExtracted] = useState("");
+  const [methodNote, setMethodNote] = useState("");
   const [panel, setPanel] = useState<AnalyzePanel>("legal");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const shownStatus = useElapsedStatus(busy && status.startsWith("กำลังวิเคราะห์"), status);
+  const shownStatus = useElapsedStatus(busy && status.startsWith("กำลัง"), status);
+  const actions: AnalyzeSetters = { setBusy, setStatus, setError, setCopiedKey, setResult, setPanel };
 
-  useEffect(() => {
-    fetchProjects(1).catch(() => undefined);
-  }, [fetchProjects]);
+  function resetUpload(next: File | null) {
+    setFile(next);
+    setStep(1);
+    setExtracted("");
+    setMethodNote("");
+    setResult(null);
+    setError(null);
+    setStatus("");
+    setCopiedKey(null);
+  }
+
+  async function extract() {
+    if (!file) return;
+    setBusy(true);
+    setStatus("กำลังสกัดข้อความ...");
+    setError(null);
+    setResult(null);
+    setCopiedKey(null);
+    try {
+      const payload = await extractAnalyzeFile(file);
+      const text = (payload.extracted_text || "").trim();
+      if (!text) {
+        throw new Error("สกัดข้อความจากไฟล์ไม่ได้");
+      }
+      setExtracted(text);
+      setStep(2);
+      const warnings = (payload.warnings || []).filter(Boolean).join(" ");
+      setMethodNote([methodLabel(payload.method), warnings].filter(Boolean).join(" — "));
+      setStatus("สกัดข้อความสำเร็จ — ตรวจตัวอย่างแล้วกดวิเคราะห์ TOR");
+    } catch (err: unknown) {
+      const message = apiErrorMessage(err, "สกัดข้อความไม่สำเร็จ");
+      setStatus(message);
+      setError(message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="min-w-0" data-testid="analyze-page">
       <h1 className="text-2xl font-extrabold text-navy">วิเคราะห์ TOR</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        วางข้อความหรือเลือกร่างจากโครงการ แล้วดูสามด้านและข้อเสนอแนะพร้อมแหล่งออนไลน์ต่อหมวด
+        อัปโหลดไฟล์ TOR แล้วให้ระบบ OCR หรือดึงข้อความ จากนั้นดูสามด้านและข้อเสนอแนะพร้อมแหล่งออนไลน์ต่อหมวด
         ระบบจะไม่เขียนทับร่างให้อัตโนมัติ
       </p>
 
       <div className="mt-4 space-y-3 rounded-xl bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.07)]">
-        <label className="block text-sm font-bold text-navy" htmlFor="analyze-text">
-          วางข้อความ TOR
-        </label>
-        <Textarea
-          id="analyze-text"
-          data-testid="analyze-text"
-          rows={8}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder="วางร่าง TOR ที่นี่"
+        <AnalyzeStepper step={result ? 3 : step} />
+        <p className="text-sm text-muted-foreground">
+          เลือกไฟล์แล้วสกัดข้อความก่อน — ระบบจะไม่วิเคราะห์จนกว่าคุณยืนยัน
+        </p>
+        <UploadArea
+          label="ลากไฟล์ TOR วาง หรือคลิกเพื่อเลือก"
+          hint="PDF, Word (.docx), ข้อความ (.txt) หรือรูปภาพสแกน"
+          onFiles={(list) => resetUpload(list[0] || null)}
         />
-        <label className="block text-sm font-bold text-navy" htmlFor="analyze-project">
-          หรือเลือกร่างจากโครงการ
-        </label>
-        <Select
-          id="analyze-project"
-          data-testid="analyze-project"
-          placeholder="เลือกโครงการ"
-          value={projectId}
-          onChange={(event) => setProjectId(event.target.value)}
-          options={projects.map((item) => ({ value: item.id, label: item.name }))}
-        />
-        <Button
-          data-testid="analyze-run"
-          onClick={() => {
-            void runAnalysis(text, projectId, {
-              setBusy,
-              setStatus,
-              setError,
-              setCopiedKey,
-              setResult,
-              setPanel,
-            });
-          }}
-          disabled={busy}
-        >
-          {runLabel(busy)}
-        </Button>
+        {file ? (
+          <p className="text-[12.5px]" data-testid="analyze-file-name">
+            {file.name} · {Math.round(file.size / 1024)} KB
+          </p>
+        ) : null}
+        {step === 1 ? (
+          <Button
+            data-testid="analyze-extract"
+            onClick={() => {
+              void extract();
+            }}
+            disabled={!file || busy}
+          >
+            {busy ? "กำลังสกัดข้อความ..." : "อัปโหลดและสกัดข้อความ"}
+          </Button>
+        ) : null}
+        {step >= 2 && extracted ? (
+          <div data-testid="analyze-extract-preview">
+            <h2 className="text-sm font-bold text-navy">ตัวอย่างข้อความที่สกัดได้</h2>
+            {methodNote ? (
+              <p className="mt-1 text-xs text-muted-foreground" data-testid="analyze-extract-note">
+                {methodNote}
+              </p>
+            ) : null}
+            <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-[12px]">
+              {previewSnippet(extracted)}
+            </pre>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                data-testid="analyze-back"
+                onClick={() => {
+                  setStep(1);
+                  setResult(null);
+                  setStatus("");
+                  setError(null);
+                }}
+                disabled={busy}
+              >
+                ย้อนกลับ
+              </Button>
+              <Button
+                data-testid="analyze-run"
+                onClick={() => {
+                  void runAnalysis(extracted, actions);
+                }}
+                disabled={busy}
+              >
+                {runLabel(busy)}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <AnalyzeStatus status={shownStatus} />
         <AnalyzeError error={error} />
       </div>

@@ -138,7 +138,13 @@ export default function AdminTemplatesPage() {
           value={guidance}
           onChange={(e) => setGuidance(e.target.value)}
         />
-        <Button onClick={save}>{editing ? "บันทึก" : "สร้างร่าง"}</Button>
+        <Button
+          onClick={() => {
+            void save();
+          }}
+        >
+          {editing ? "บันทึก" : "สร้างร่าง"}
+        </Button>
       </div>
       <div className="space-y-2">
         {items.map((item) => (
@@ -156,7 +162,7 @@ export default function AdminTemplatesPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={async () => {
+                onClick={() => { void (async () => {
                   setError(null);
                   try {
                     const response = await apiClient.get(`/templates/${item.id}`);
@@ -174,19 +180,26 @@ export default function AdminTemplatesPage() {
                   } catch (err: unknown) {
                     setError(apiErrorMessage(err, "โหลดข้อมูลแม่แบบไม่สำเร็จ"));
                   }
-                }}
+                })(); }}
               >
                 แก้ไข
               </Button>
               {item.status === "draft" ? (
-                <Button size="sm" onClick={() => publish(item.id)}>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    void publish(item.id);
+                  }}
+                >
                   เผยแพร่
                 </Button>
               ) : (
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => unpublish(item.id, Boolean(warning))}
+                  onClick={() => {
+                    void unpublish(item.id, Boolean(warning));
+                  }}
                 >
                   ยกเลิกเผยแพร่
                 </Button>

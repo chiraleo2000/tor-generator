@@ -8,9 +8,10 @@ import re
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -24,10 +25,12 @@ from app.deps import get_current_user, get_db
 from app.domain.extraction_map import infer_review_budget, map_extracted_text
 from app.domain.tor_sections import TOR_SECTION_LABELS
 from app.exceptions import ValidationError
+from app.io_temp import unlink_path, write_temp_bytes
 from app.models.tor_section import TORSection
 from app.models.user import User
+from app.rag.extraction import extract_text
 from app.schemas.responses import MetaInfo, SuccessResponse
-from app.services.bidder_risk import strip_page_markers
+from app.services.bidder_risk import strip_page_markers, text_with_page_markers
 from app.services.tor_analysis import (
     PART_LABELS,
     PART_LEGAL,
@@ -45,7 +48,21 @@ logger = logging.getLogger("tor_app.analyze")
 
 router = APIRouter()
 
-ANALYZE_EMPTY_MESSAGE = "ไม่มีข้อความให้วิเคราะห์ — วางข้อความ TOR หรือเลือกโครงการ"
+ANALYZE_EMPTY_MESSAGE = "ไม่มีข้อความให้วิเคราะห์ — อัปโหลดไฟล์ TOR"
+_MAX_ANALYZE_BYTES = 50 * 1024 * 1024
+_MAX_ANALYZE_CHARS = 200_000
+_SUFFIX_MIME = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".txt": "text/plain",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 PREFER_LEGAL_CORPUS = (
     "แหล่งออนไลน์เป็นข้อมูลประกอบ หากถ้อยคำขัดกับคลังกฎหมาย ให้ยึดคลังกฎหมายก่อน"
 )
@@ -254,6 +271,58 @@ def analysis_payload(result: TorAnalysisResult, recommendations: list[dict[str, 
     )
     payload["suggested_text_note"] = NO_WARM_CONTRACT_NOTE
     return payload
+
+
+def _mime_for_upload(filename: str, claimed: str) -> str:
+    mapped = _SUFFIX_MIME.get(Path(filename or "").suffix.lower())
+    if mapped:
+        return mapped
+    clean = (claimed or "").split(";")[0].strip().lower()
+    return clean or "application/octet-stream"
+
+
+@router.post("/extract")
+async def extract_analyze_document(
+    request: Request,
+    file: UploadFile,
+    _current_user: Annotated[User, Depends(get_current_user)],
+) -> JSONResponse:
+    """OCR or read an uploaded TOR. Analysis starts only after the caller confirms."""
+    raw = await file.read()
+    if not raw:
+        raise ValidationError(message="ไฟล์ว่างเปล่า")
+    if len(raw) > _MAX_ANALYZE_BYTES:
+        raise ValidationError(message="ขนาดไฟล์เกินกำหนด สูงสุด 50 MB")
+    filename = file.filename or "upload.bin"
+    mime = _mime_for_upload(filename, file.content_type or "")
+    suffix = Path(filename).suffix or ".bin"
+    tmp_path = await write_temp_bytes(raw, suffix)
+    try:
+        try:
+            result = extract_text(tmp_path, mime)
+        except ValueError as exc:
+            raise ValidationError(
+                message="ไฟล์นี้ยังอ่านไม่ได้ — ใช้ PDF, Word, ข้อความ หรือรูปภาพ"
+            ) from exc
+    finally:
+        await unlink_path(tmp_path)
+    text = text_with_page_markers(result.text, getattr(result, "pages", None)).strip()
+    if not text:
+        detail = " ".join(result.warnings).strip()
+        message = "สกัดข้อความจากไฟล์ไม่ได้"
+        if detail:
+            message = f"{message}: {detail}"
+        raise ValidationError(message=message)
+    return _envelope(
+        request,
+        {
+            "extracted_text": text[:_MAX_ANALYZE_CHARS],
+            "method": result.method,
+            "warnings": result.warnings,
+            "page_count": result.page_count,
+            "truncated": len(text) > _MAX_ANALYZE_CHARS,
+        },
+    )
 
 
 @router.post("")

@@ -85,7 +85,7 @@ export default function AdminUsersPage() {
         </div>
         <div className="flex items-end">
           <Button
-            onClick={async () => {
+            onClick={() => { void (async () => {
               setError(null);
               try {
                 await apiClient.post("/admin/users", {
@@ -101,7 +101,7 @@ export default function AdminUsersPage() {
               } catch (err: unknown) {
                 setError(apiErrorMessage(err, "สร้างผู้ใช้ไม่สำเร็จ"));
               }
-            }}
+            })(); }}
           >
             สร้างผู้ใช้
           </Button>
@@ -124,7 +124,7 @@ export default function AdminUsersPage() {
             <div className="flex gap-2">
               <Select
                 value={user.role}
-                onChange={async (e) => {
+                onChange={(e) => { void (async () => {
                   setError(null);
                   try {
                     await apiClient.put(`/admin/users/${user.id}`, {
@@ -134,7 +134,7 @@ export default function AdminUsersPage() {
                   } catch (err: unknown) {
                     setError(apiErrorMessage(err, "เปลี่ยนบทบาทไม่สำเร็จ"));
                   }
-                }}
+                })(); }}
                 options={[
                   { value: "officer", label: "เจ้าหน้าที่" },
                   { value: "reviewer", label: "ผู้ตรวจสอบ" },
@@ -144,7 +144,7 @@ export default function AdminUsersPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={async () => {
+                onClick={() => { void (async () => {
                   setError(null);
                   try {
                     await apiClient.put(`/admin/users/${user.id}`, {
@@ -154,7 +154,7 @@ export default function AdminUsersPage() {
                   } catch (err: unknown) {
                     setError(apiErrorMessage(err, "เปลี่ยนสถานะไม่สำเร็จ"));
                   }
-                }}
+                })(); }}
               >
                 {user.disabled ? "เปิดใช้" : "ปิดใช้"}
               </Button>

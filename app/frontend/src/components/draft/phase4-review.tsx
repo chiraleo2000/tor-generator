@@ -168,7 +168,9 @@ export function Phase4Review({
             {reviewButtonLabel}
           </Button>
           <Button
-            onClick={onSubmit}
+            onClick={() => {
+              void onSubmit();
+            }}
             disabled={pct < 100 || waitingForRules}
             data-testid="phase4-submit"
           >
@@ -292,7 +294,13 @@ function RequirementsUpload({ projectId }: Readonly<{ projectId: string }>) {
           <p className="text-xs text-muted-foreground mb-1">
             {preview ? preview.slice(0, 200) + "..." : "อัปโหลดแล้ว"}
           </p>
-          <Button size="sm" variant="outline" onClick={clear}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void clear();
+            }}
+          >
             ลบข้อกำหนด
           </Button>
         </div>

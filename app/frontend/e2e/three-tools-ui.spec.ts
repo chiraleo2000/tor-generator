@@ -172,7 +172,13 @@ test.describe("Four tools live UI (draft, review, chat, analyze)", () => {
     await expect(page.getByTestId("analyze-tab-lock_in")).toBeVisible();
     await expect(page.getByTestId("analyze-tab-project")).toBeVisible();
     await expect(page.getByTestId("analyze-tab-recommendations")).toBeVisible();
-    await typeLikeUser(page.getByTestId("analyze-text"), LIVE_INTAKE_TEXT);
+    await page.locator("[data-testid=analyze-page] input[type=file]").first().setInputFiles({
+      name: "tor-analyze.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from(LIVE_INTAKE_TEXT, "utf-8"),
+    });
+    await page.getByTestId("analyze-extract").click();
+    await expect(page.getByTestId("analyze-extract-preview")).toBeVisible({ timeout: 180_000 });
     await pauseLikeUser(page, 600);
     await page.getByTestId("analyze-run").click();
     await expect(page.getByTestId("analyze-summary")).toBeVisible({ timeout: 240_000 });
@@ -283,7 +289,13 @@ test.describe("Four tools mocked API workflow", () => {
     await expect(page.getByTestId("analyze-tab-lock_in")).toBeVisible();
     await expect(page.getByTestId("analyze-tab-project")).toBeVisible();
     await expect(page.getByTestId("analyze-tab-recommendations")).toBeVisible();
-    await page.getByTestId("analyze-text").fill("ร่าง TOR ทดสอบ Oracle โดยไม่มีหรือเทียบเท่า");
+    await page.locator("[data-testid=analyze-page] input[type=file]").first().setInputFiles({
+      name: "tor-analyze.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("ร่าง TOR ทดสอบ Oracle โดยไม่มีหรือเทียบเท่า", "utf-8"),
+    });
+    await page.getByTestId("analyze-extract").click();
+    await expect(page.getByTestId("analyze-extract-preview")).toBeVisible();
     await page.getByTestId("analyze-run").click();
     await expect(page.getByTestId("analyze-summary")).toContainText("79/100");
     await expect(page.getByTestId("analyze-panel-legal")).toBeVisible();

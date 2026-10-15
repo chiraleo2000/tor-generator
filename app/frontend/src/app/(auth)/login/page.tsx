@@ -55,7 +55,13 @@ export default function LoginPage() {
       <p className="mb-6 text-center text-[13px] text-muted-foreground">
         TOR Generator — ระบบร่างและตรวจสอบ TOR ภาครัฐ
       </p>
-      <form onSubmit={handleSubmit} className="space-y-4" data-testid="login-form">
+      <form
+        onSubmit={(event) => {
+          void handleSubmit(event);
+        }}
+        className="space-y-4"
+        data-testid="login-form"
+      >
         {error ? (
           <div
             className="rounded-lg bg-red-50 p-3 text-[12.5px] text-red-700"

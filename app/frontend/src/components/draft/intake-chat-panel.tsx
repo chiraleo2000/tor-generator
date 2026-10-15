@@ -299,7 +299,9 @@ export function IntakeChatPanel({
               /* startAnalyze reports save failures */
             });
           }}
-          onUpload={uploadFiles}
+          onUpload={(files) => {
+            void uploadFiles(files);
+          }}
           onAnalyze={() => {
             startAnalyze().catch(() => {
               /* startAnalyze already sets message */

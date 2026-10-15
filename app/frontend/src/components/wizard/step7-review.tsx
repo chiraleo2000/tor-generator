@@ -400,7 +400,9 @@ export function Step7Review() {
             ไม่สามารถตรวจสอบเอกสารได้
           </p>
           <p className="text-sm text-muted-foreground mb-4">{errorMessage}</p>
-          <Button onClick={runReview} variant="outline" aria-label="ลองตรวจสอบอีกครั้ง">
+          <Button onClick={() => {
+            void runReview();
+          }} variant="outline" aria-label="ลองตรวจสอบอีกครั้ง">
             <RefreshCw className="h-4 w-4 mr-2" aria-hidden="true" />
             ลองใหม่อีกครั้ง
           </Button>
@@ -432,7 +434,9 @@ export function Step7Review() {
                 <CheckCircle2 className="h-4 w-4 text-green-600 inline-block mt-1" aria-hidden="true" />
               )}
             </div>
-            <Button onClick={runReview} variant="ghost" size="sm" aria-label="ตรวจสอบอีกครั้ง">
+            <Button onClick={() => {
+            void runReview();
+          }} variant="ghost" size="sm" aria-label="ตรวจสอบอีกครั้ง">
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
@@ -590,7 +594,9 @@ export function Step7Review() {
             กดยืนยันเพื่อเริ่มตรวจสอบคุณภาพเอกสาร TOR
           </p>
           <Button
-            onClick={runReview}
+            onClick={() => {
+            void runReview();
+          }}
             aria-label="เริ่มตรวจสอบ"
             data-testid="wizard-start-review"
           >

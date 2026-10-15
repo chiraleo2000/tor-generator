@@ -12,9 +12,12 @@ export const KB_CATEGORIES = [
 
 export type KbCategoryId = (typeof KB_CATEGORIES)[number]["id"];
 
+/** Categories shown on the knowledge-base bar. Laws stay in the label map. */
+export const KB_BAR_CATEGORIES = KB_CATEGORIES.filter((item) => item.id !== "law");
+
 export const KB_PROCESSING_LABEL: Record<string, string> = {
   pending: "รอประมวลผล",
-  processing: "กำลังแบ่ง chunk",
+  processing: "กำลังประมวลผล",
   completed: "ใช้กับ RAG ได้",
   failed: "ประมวลผลไม่สำเร็จ",
 };

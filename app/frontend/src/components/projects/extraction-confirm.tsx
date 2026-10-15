@@ -85,11 +85,24 @@ export function ExtractionConfirm({
         onChange={(e) => setFile(e.target.files?.[0] || null)}
       />
       <div className="flex gap-2">
-        <Button type="button" variant="outline" onClick={analyze} disabled={!file || busy}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            void analyze();
+          }}
+          disabled={!file || busy}
+        >
           วิเคราะห์ไฟล์
         </Button>
         {proposed && (
-          <Button type="button" onClick={confirmApply} disabled={busy}>
+          <Button
+            type="button"
+            onClick={() => {
+              void confirmApply();
+            }}
+            disabled={busy}
+          >
             ยืนยันนำเข้า
           </Button>
         )}
