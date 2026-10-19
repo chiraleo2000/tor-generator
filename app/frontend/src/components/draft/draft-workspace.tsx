@@ -25,7 +25,7 @@ import {
   markProjectReviewStarted,
   shouldSkipProjectReview,
 } from "@/lib/review-run-guard";
-import { canSelectPhase, displayPhase, intakeUnlockedPhase } from "@/lib/phase-gate";
+import { canSelectPhase, displayPhase, intakeUnlockedPhase, progressPhase } from "@/lib/phase-gate";
 import { phaseLabelTh } from "@/lib/phase-handoff";
 import { clearDraftingProject, markDraftingProject } from "@/lib/drafting-guard";
 import {
@@ -86,6 +86,7 @@ export function DraftWorkspace() {
   const { activeProject, fetchProject } = useProjectStore();
   const [phase, setPhase] = useState(0);
   const [unlocked, setUnlocked] = useState(0);
+  const [reached, setReached] = useState(0);
   const [sections, setSections] = useState<SectionPayload[]>([]);
   const [expanded, setExpanded] = useState<string>("s1");
   const [openSub, setOpenSub] = useState<string>("");
@@ -158,8 +159,11 @@ export function DraftWorkspace() {
       .then((project) => {
         if (hydrateGen.current !== gen) return;
         const nextUnlocked = intakeUnlockedPhase(project);
+        const saved = displayPhase(project.currentPhase ?? 0, nextUnlocked);
+        const progress = progressPhase(saved, nextUnlocked);
         setUnlocked(nextUnlocked);
-        setPhase((prev) => Math.max(prev, displayPhase(project.currentPhase ?? 0, nextUnlocked)));
+        setReached((prev) => Math.max(prev, progress));
+        setPhase((prev) => Math.max(prev, saved));
         if (project.extractedFields) {
           setExtracted(project.extractedFields);
         }
@@ -200,10 +204,17 @@ export function DraftWorkspace() {
   ) {
     const allowDowngrade = options?.allowDowngrade ?? false;
     // Allow advancing when caller passes a higher unlock (e.g. after analyze).
-    const effectiveUnlocked = Math.max(unlocked, nextUnlocked);
+    const effectiveUnlocked = Math.max(unlocked, nextUnlocked, reached);
     const allowed = canSelectPhase(phase, effectiveUnlocked, next);
     if (!allowed) {
       setActionError(`ยังไป${phaseLabelTh(next)}ไม่ได้ — ทำขั้นก่อนหน้าให้ครบก่อน`);
+      return;
+    }
+    // Looking back keeps the saved phase and its colors. Do not rewrite progress.
+    if (next < reached) {
+      setPhase(next);
+      setUnlocked(effectiveUnlocked);
+      setActionError(null);
       return;
     }
     // Resume/analyze must never yank the server backward (Phase 2 → 1 race).
@@ -214,6 +225,7 @@ export function DraftWorkspace() {
     const previousPhase = phase;
     const previousUnlocked = unlocked;
     setUnlocked(effectiveUnlocked);
+    setReached((prev) => Math.max(prev, next));
     setPhase(next);
     setActionError(null);
     try {
@@ -226,17 +238,24 @@ export function DraftWorkspace() {
   }
 
   async function requestStepperPhase(next: number) {
-    if (!canSelectPhase(phase, unlocked, next)) {
+    if (next === phase) return;
+    const selectable = Math.max(unlocked, reached);
+    if (!canSelectPhase(phase, selectable, next)) {
       setActionError(`ยังไป${phaseLabelTh(next)}ไม่ได้ — ทำขั้นก่อนหน้าให้ครบก่อน`);
       return;
     }
-    if (next > phase && next !== 2) {
+    if (next <= reached) {
+      setPhase(next);
+      setActionError(null);
+      return;
+    }
+    if (next !== 2) {
       const prompt =
         PHASE_FORWARD_CONFIRM[next] || `ไป${phaseLabelTh(next)}?`;
       const ok = await ask(prompt);
       if (!ok) return;
     }
-    await persistPhase(next, unlocked, { allowDowngrade: next < phase });
+    await persistPhase(next, selectable);
   }
 
   async function saveSection(
@@ -529,6 +548,7 @@ export function DraftWorkspace() {
         <PhaseFlow
           current={phase}
           unlocked={unlocked}
+          reached={reached}
           onSelect={(next) => {
             requestStepperPhase(next).catch(() => undefined);
           }}
@@ -557,6 +577,7 @@ export function DraftWorkspace() {
           }}
           onFactsReady={() => {
             setUnlocked((prev) => Math.max(prev, 3));
+            setReached((prev) => Math.max(prev, 3));
           }}
           onReady={() => {
             persistPhase(3, 3)

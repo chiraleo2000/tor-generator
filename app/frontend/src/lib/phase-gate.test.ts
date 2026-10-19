@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSelectPhase, displayPhase, hasIntakeMaterial, intakeUnlockedPhase } from "@/lib/phase-gate";
+import { canSelectPhase, displayPhase, hasIntakeMaterial, intakeUnlockedPhase, progressPhase } from "@/lib/phase-gate";
 import { factRequiredFor } from "@/lib/tor-profiles";
 
 describe("phase-gate", () => {
@@ -96,6 +96,14 @@ describe("phase-gate", () => {
       })
     ).toBe(4);
     expect(canSelectPhase(3, 4, 4)).toBe(true);
+  });
+
+  it("keeps later progress when the saved phase was browsed backward", () => {
+    expect(progressPhase(1, 2)).toBe(1);
+    expect(progressPhase(1, 4)).toBe(4);
+    expect(progressPhase(4, 4)).toBe(4);
+    expect(canSelectPhase(1, 4, 4)).toBe(true);
+    expect(canSelectPhase(1, 4, 3)).toBe(true);
   });
 
   it("clamps a saved phase display back when intake is empty", () => {

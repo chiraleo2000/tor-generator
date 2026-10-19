@@ -17,45 +17,52 @@ export const PHASES = [
 export function PhaseFlow({
   current,
   unlocked = 0,
+  reached,
   onSelect,
 }: Readonly<{
   current: number;
   unlocked?: number;
+  /** Furthest phase already achieved. Colors follow this, not the step being viewed. */
+  reached?: number;
   onSelect: (phase: number) => void;
 }>) {
+  const progress = reached ?? current;
+  const selectable = Math.max(unlocked, progress);
   return (
     <div className="mb-5 flex items-start overflow-x-auto pb-1">
       {PHASES.map((phase, index) => {
-        const done = phase.id < current;
-        const active = phase.id === current;
-        const locked = !canSelectPhase(current, unlocked, phase.id);
+        const done = phase.id < progress;
+        const live = phase.id === progress;
+        const looking = phase.id === current;
+        const locked = !canSelectPhase(current, selectable, phase.id);
+        const status = locked ? "locked" : live ? "current" : done ? "done" : "open";
         return (
           <div key={phase.id} className="flex min-w-[150px] flex-1 items-start">
             <button
               type="button"
               aria-label={`ขั้นที่ ${THAI_PHASE[phase.id]} ${phase.title}`}
               aria-disabled={locked}
-              aria-current={active ? "step" : undefined}
+              aria-current={looking ? "step" : undefined}
               data-testid={`phase-${phase.id}`}
+              data-status={status}
+              data-viewing={looking ? "true" : "false"}
               onClick={() => {
                 if (locked) return;
                 onSelect(phase.id);
               }}
               className={cn(
                 "flex-1 text-center",
-                locked && "cursor-not-allowed opacity-40",
-                active && "scale-110"
+                locked && "cursor-not-allowed opacity-40"
               )}
             >
               <span
                 className={cn(
                   "mx-auto mb-2 flex h-[52px] w-[52px] items-center justify-center rounded-full border-[3px] text-lg font-extrabold",
                   done && "border-[#0f5c22] bg-brand-green text-white",
-                  active &&
-                    "scale-110 border-crimson bg-brand-orange text-navy",
-                  !done &&
-                    !active &&
-                    "border-gray-200 bg-gray-200 text-gray-600"
+                  live && "scale-110 border-crimson bg-brand-orange text-navy",
+                  !done && !live && !locked && "border-navy/40 bg-white text-navy",
+                  locked && "border-gray-200 bg-gray-200 text-gray-600",
+                  looking && !live && "ring-4 ring-navy/25"
                 )}
               >
                 {done ? <Check className="h-5 w-5" /> : THAI_PHASE[phase.id]}
@@ -74,7 +81,7 @@ export function PhaseFlow({
               <span
                 className={cn(
                   "mt-[26px] h-[3px] w-[30px] shrink-0",
-                  phase.id < current ? "bg-brand-green" : "bg-gray-200"
+                  phase.id < progress ? "bg-brand-green" : "bg-gray-200"
                 )}
               />
             ) : null}

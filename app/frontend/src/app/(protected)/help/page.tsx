@@ -12,12 +12,14 @@ import {
   MessagesSquare,
   PenLine,
   ScanSearch,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { id: "overview", label: "ภาพรวม", icon: Home },
   { id: "login", label: "เข้าสู่ระบบ", icon: LogIn },
+  { id: "roles", label: "ระดับผู้ใช้", icon: Users },
   { id: "dashboard", label: "แดชบอร์ด", icon: LayoutDashboard },
   { id: "draft", label: "ร่าง TOR", icon: PenLine },
   { id: "chat", label: "ถาม-ตอบ", icon: MessagesSquare },
@@ -34,7 +36,7 @@ export default function HelpPage() {
       <div className="mb-2">
         <h1 className="text-2xl font-extrabold text-navy">คู่มือการใช้งาน</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          คำอธิบายและภาพประกอบแต่ละส่วนของระบบ — สรุปจาก discussions/13–30 (v0.3.0)
+          คำอธิบายระดับผู้ใช้และภาพประกอบแต่ละส่วนของระบบ (v0.9.8)
         </p>
       </div>
       <div className="mb-5 flex flex-wrap gap-1.5 border-b-2 pb-0">
@@ -61,6 +63,7 @@ export default function HelpPage() {
       </div>
       {tab === "overview" ? <OverviewTab /> : null}
       {tab === "login" ? <LoginTab /> : null}
+      {tab === "roles" ? <RolesTab /> : null}
       {tab === "dashboard" ? <DashboardTab /> : null}
       {tab === "draft" ? <DraftTab /> : null}
       {tab === "chat" ? <ChatTab /> : null}
@@ -230,6 +233,115 @@ function LoginTab() {
   );
 }
 
+function RolesTab() {
+  return (
+    <GuideBlock title="ระดับผู้ใช้" headingTestId="help-roles-heading">
+      <p>
+        ระบบมีสามระดับ บัญชีที่สมัครเองได้ระดับ<strong>เจ้าหน้าที่พัสดุ</strong> ผู้ดูแลเป็นคนเปลี่ยนระดับที่เมนูผู้ใช้
+      </p>
+      <div className="grid gap-3 md:grid-cols-3" data-testid="help-role-board">
+        <RoleCard
+          level="๑"
+          tone="bg-navy text-white"
+          title="เจ้าหน้าที่พัสดุ"
+          code="officer"
+          items={[
+            "สร้างและแก้โครงการของตนเอง",
+            "ร่างห้าขั้น ถาม-ตอบ ส่งออก",
+            "ตรวจไฟล์ TOR ภายนอก",
+            "ส่งขออนุมัติเมื่อร่างครบ",
+          ]}
+        />
+        <RoleCard
+          level="๒"
+          tone="bg-brand-orange text-navy"
+          title="ผู้ตรวจสอบ"
+          code="reviewer"
+          items={[
+            "เห็นโครงการทุกฉบับ",
+            "อนุมัติหรือส่งกลับเมื่อสถานะกำลังดำเนินการ",
+            "ไม่จัดการผู้ใช้หรือตั้งค่า AI",
+          ]}
+        />
+        <RoleCard
+          level="๓"
+          tone="bg-[#0f5c22] text-white"
+          title="ผู้ดูแลระบบ"
+          code="admin"
+          items={[
+            "สิทธิ์ผู้ตรวจสอบทั้งหมด",
+            "แม่แบบ คลังกลาง ผู้ใช้",
+            "ตั้งค่าโมเดลและคีย์ AI",
+          ]}
+        />
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ระดับ</th>
+            <th>เห็นโครงการ</th>
+            <th>อนุมัติ</th>
+            <th>เมนูผู้ดูแล</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>เจ้าหน้าที่</td>
+            <td>เฉพาะของตนเอง</td>
+            <td>ไม่ได้</td>
+            <td>ไม่เห็น</td>
+          </tr>
+          <tr>
+            <td>ผู้ตรวจสอบ</td>
+            <td>ทั้งหมด</td>
+            <td>ได้</td>
+            <td>ไม่เห็น</td>
+          </tr>
+          <tr>
+            <td>ผู้ดูแล</td>
+            <td>ทั้งหมด</td>
+            <td>ได้</td>
+            <td>เห็นครบ</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="rounded-md bg-slate-50 p-2 text-slate-800">
+        บัญชีทดลองใช้รหัส <code>Passw0rd!</code> — <code>officer@example.go.th</code> ·{" "}
+        <code>reviewer@example.go.th</code> · <code>admin@example.go.th</code>
+      </p>
+    </GuideBlock>
+  );
+}
+
+function RoleCard({
+  level,
+  tone,
+  title,
+  code,
+  items,
+}: Readonly<{
+  level: string;
+  tone: string;
+  title: string;
+  code: string;
+  items: string[];
+}>) {
+  return (
+    <article className="overflow-hidden rounded-xl border">
+      <header className={`px-3 py-3 ${tone}`}>
+        <p className="text-xs font-bold opacity-80">ระดับ {level}</p>
+        <h3 className="text-base font-extrabold">{title}</h3>
+        <p className="text-xs opacity-80">{code}</p>
+      </header>
+      <ul className="space-y-1 px-3 py-3 text-sm">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
 function DashboardTab() {
   return (
     <GuideBlock title="แดชบอร์ด">
@@ -340,6 +452,24 @@ function DraftTab() {
           "ขั้นที่ ๔ ทบทวน-เผยแพร่",
         ]}
       />
+      <h3>สีย้อนดูขั้นที่ทำแล้ว</h3>
+      <div className="flex flex-wrap gap-3 text-sm" data-testid="help-phase-colors">
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-4 w-4 rounded-full bg-brand-green" />
+          เขียว = ทำถึงแล้ว
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-4 w-4 rounded-full bg-brand-orange" />
+          ส้ม = สถานะจริงตอนนี้
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-4 w-4 rounded-full border-4 border-navy/30 bg-brand-green" />
+          วงแหวน = กำลังเปิดดูย้อนหลัง
+        </span>
+      </div>
+      <p>
+        คลิกย้อนกลับเพื่อดูผลเดิมได้ แล้วคลิกข้ามไปขั้นที่ทำถึงแล้วได้เลยโดยไม่ต้องประมวลผลซ้ำ สีบนแถบขั้นไม่เปลี่ยนตามหน้าที่กำลังเปิดดู
+      </p>
       <table>
         <thead>
           <tr>

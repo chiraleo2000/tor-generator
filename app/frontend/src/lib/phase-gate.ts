@@ -53,6 +53,18 @@ export function displayPhase(saved: number, unlocked: number): number {
   return unlocked;
 }
 
+/**
+ * Furthest phase the project has actually reached.
+ * Unlock 2 while still on phase 1 is the normal post-analyze state.
+ * Unlock 3+ ahead of the saved phase means a later step was completed
+ * and a backward click must not paint that progress as unfinished.
+ */
+export function progressPhase(saved: number, unlocked: number): number {
+  const viewing = displayPhase(saved, unlocked);
+  if (unlocked >= 3 && unlocked > viewing) return unlocked;
+  return viewing;
+}
+
 export function hasIntakeMaterial(project: Pick<Project, "analysisJson" | "extractedFields">): boolean {
   const texts = project.extractedFields?.intake_texts;
   if (Array.isArray(texts)) {
