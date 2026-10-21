@@ -12,15 +12,15 @@ from app.providers.llm.fallback_provider import (
 )
 
 
-class _ThrottlingException(Exception):
+class _ThrottlingException(Exception):  # noqa: N818
     pass
 
 
-class _ValidationException(Exception):
+class _ValidationException(Exception):  # noqa: N818
     pass
 
 
-class _AccessDeniedException(Exception):
+class _AccessDeniedException(Exception):  # noqa: N818
     pass
 
 
@@ -199,6 +199,7 @@ def test_factory_wraps_only_bedrock_with_gemini_flag_and_key():
     from app.providers.factory import ProviderFactory
     from app.providers.llm.fallback_provider import FallbackLLMProvider
     from app.providers.llm.lm_studio_provider import LMStudioLocalProvider
+    from app.providers.llm.usage_recording import llm_core
 
     created: list[str] = []
 
@@ -210,7 +211,7 @@ def test_factory_wraps_only_bedrock_with_gemini_flag_and_key():
         wrapped = ProviderFactory(
             settings=_settings(llm_fallback_provider="gemini")
         ).get_llm()
-        assert isinstance(wrapped, FallbackLLMProvider)
+        assert isinstance(llm_core(wrapped), FallbackLLMProvider)
         assert created == ["bedrock", "gemini"]
 
         created.clear()
@@ -218,14 +219,14 @@ def test_factory_wraps_only_bedrock_with_gemini_flag_and_key():
             settings=_settings(llm_fallback_provider="")
         ).get_llm()
         assert plain is not wrapped
-        assert not isinstance(plain, FallbackLLMProvider)
+        assert not isinstance(llm_core(plain), FallbackLLMProvider)
         assert created == ["bedrock"]
 
         created.clear()
         missing_key = ProviderFactory(
             settings=_settings(llm_fallback_provider="gemini", gemini_api_key="")
         ).get_llm()
-        assert not isinstance(missing_key, FallbackLLMProvider)
+        assert not isinstance(llm_core(missing_key), FallbackLLMProvider)
         assert created == ["bedrock"]
 
     with patch("app.providers.factory.probe_sglang_health_sync", return_value=False):
@@ -236,4 +237,4 @@ def test_factory_wraps_only_bedrock_with_gemini_flag_and_key():
                 gemini_api_key="gemini-test-key",
             )
         ).get_llm()
-    assert isinstance(local, LMStudioLocalProvider)
+    assert isinstance(llm_core(local), LMStudioLocalProvider)

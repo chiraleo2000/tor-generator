@@ -29,6 +29,9 @@ export function pageMeta(pathname: string): { title: string; sub: string } {
       sub: "คำอธิบายและภาพประกอบแต่ละส่วนของระบบ",
     };
   }
+  if (pathname.startsWith("/admin/usage")) {
+    return { title: "การใช้งานระบบ", sub: "โทเคน ค่าใช้จ่าย ความถี่ และการแจ้งเตือน" };
+  }
   if (pathname.startsWith("/admin/ai-settings")) {
     return { title: "การตั้งค่า AI", sub: "เลือกแชทและฝังเวกเตอร์อิสระ (ในเครื่อง / คลาวด์)" };
   }

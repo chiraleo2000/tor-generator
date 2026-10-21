@@ -1,7 +1,7 @@
 ﻿# การติดตั้งและรันระบบ TOR
 
 คู่มือนี้สำหรับสแตกที่รันจริง: Next.js + FastAPI ใน Docker  
-แอปปัจจุบัน **v0.9.8** — คัดลอก [`.env.example`](../.env.example) เป็น `.env` แล้วปรับเฉพาะค่าเครื่อง (พอร์ต/คีย์) ชุดโมเดลท้องถิ่นคือ `LM_STUDIO_MODEL` + `LM_STUDIO_EMBEDDING_MODEL` + `TOR_*` + `EMBEDDING_DIMENSIONS`  
+แอปปัจจุบัน **v0.9.9** — คัดลอก [`.env.example`](../.env.example) เป็น `.env` แล้วปรับเฉพาะค่าเครื่อง (พอร์ต/คีย์) ชุดโมเดลท้องถิ่นคือ `LM_STUDIO_MODEL` + `LM_STUDIO_EMBEDDING_MODEL` + `TOR_*` + `EMBEDDING_DIMENSIONS`  
 **Production บน AWS ล้วน (ECS/RDS/Bedrock):** ชุด [`24`](24-AWS_CLOUD_OVERVIEW.md)–[`27`](27-AWS_CODE_AND_CUTOVER.md) และรายการค้าง [`29-TBD-AWS-CLOUD-ONLY.md`](29-TBD-AWS-CLOUD-ONLY.md) — **ไม่มี hybrid**  
 ทางลัด EC2+Compose+Bedrock เท่านั้น: [`20-AWS_BEDROCK_SETUP.md`](20-AWS_BEDROCK_SETUP.md)  
 **Dev / on-prem:** LM Studio บนเครื่องโฮสต์ (ค่าเริ่มต้น) หรือ Ollama / llama.cpp / SGLang — สลับได้จาก Admin โดยไม่ถอดตัวเลือก
@@ -279,7 +279,7 @@ npm run test:e2e:headed
 คำเตือนใน Problems ของ Cursor มักเป็นหนึ่งในสามอย่างนี้ — ส่วนใหญ่ **ไม่ใช่บั๊กในแอปที่รันอยู่**:
 
 1. **พาธ `frontend/...` หรือ `backend/...` ที่ราก** — โฟลเดอร์เหล่านี้ **ไม่มีในดิสก์**. โค้ดจริงอยู่ที่ `app/frontend` และ `app/backend`. ปิดแท็บที่พาธไม่มีคำว่า `app/` แล้วกด **Developer: Reload Window**. TypeScript → **Use Workspace Version**.
-2. **การตั้งค่า IDE** — `.vscode/settings.json` ข้ามเฉพาะ `frontend/**` และ `backend/**` ที่ราก (อย่าใช้ `**/frontend/**` เพราะจะไปข้าม `app/frontend` ด้วย). `tsconfig.json` ที่รากชี้ไฟล์เดียว (`.vscode/tsconfig-placeholder.ts`) เพื่อไม่ให้ TS18002 และไม่ให้ language service ไป infer โปรเจกต์จากพาธราก. `sonar-project.properties` ใช้ `sonar.sources=app/frontend/src,app/backend/app` (ไม่สแกน `e2e/`). สเปก Playwright อยู่นอก `app/frontend/tsconfig.json` — เปิด `app/frontend/e2e/tsconfig.json` (`types: ["node"]`) และ `import { Buffer } from "node:buffer"` เพื่อไม่ให้ TS2580 เมื่อพิมพ์ `Buffer.from` ในอัปโหลด E2E.
+2. **การตั้งค่า IDE** — `.vscode/settings.json` ข้ามเฉพาะ `frontend/**` และ `backend/**` ที่ราก (อย่าใช้ `**/frontend/**` เพราะจะไปข้าม `app/frontend` ด้วย). `tsconfig.json` ที่รากชี้ไฟล์เดียว (`tsconfig.placeholder.ts`) เพื่อไม่ให้ TS18002 และไม่ให้ language service ไป infer โปรเจกต์จากพาธราก. `sonar-project.properties` ใช้ `sonar.sources=app/frontend/src,app/backend/app` (ไม่สแกน `e2e/`). สเปก Playwright อยู่นอก `app/frontend/tsconfig.json` — เปิด `app/frontend/e2e/tsconfig.json` (`types: ["node"]`) และ `import { Buffer } from "node:buffer"` เพื่อไม่ให้ TS2580 เมื่อพิมพ์ `Buffer.from` ในอัปโหลด E2E.
 3. **`documents/extract-scripts/**`** — สคริปต์วิจัย ไม่ได้ถูก Docker รัน — ถูก exclude จาก SonarLint / search.
 
 อย่าใส่ `"ignoreDeprecations": "6.0"` ใน `app/frontend/tsconfig.json`. อย่าเปลี่ยน `[0-9]` เป็น `\\d` ในกฎรูปแบบ (Python `\\d` ตรงกับเลขไทย).

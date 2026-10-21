@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.providers.llm.usage_recording import llm_core
 from app.rag.acl import document_is_visible
 from app.rag.graph_store import GraphRAGStore
 from app.storage.mongo_store import OriginalDocumentStore
@@ -255,6 +256,6 @@ def test_local_llm_and_embedding_hosts_are_independent():
         factory = ProviderFactory(settings=settings)
         llm = factory.get_llm()
         embedding = factory.get_embedding()
-        assert isinstance(llm, LMStudioLocalProvider)
+        assert isinstance(llm_core(llm), LMStudioLocalProvider)
         assert port in llm._base_url
         assert port in embedding._base_url

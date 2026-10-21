@@ -147,4 +147,10 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    from app.usage.context import set_usage_actor
+
+    set_usage_actor(
+        user_id=str(user.id),
+        request_id=getattr(request.state, "request_id", None),
+    )
     return user

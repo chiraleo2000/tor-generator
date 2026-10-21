@@ -94,13 +94,12 @@ data/
 # -----------------------------------------------------------------------------
 # IDE & Editors
 # -----------------------------------------------------------------------------
-# VS Code
-.vscode/
+# VS Code. Ignore contents, not the directory, so the exceptions below apply.
+.vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-!.vscode/tsconfig-placeholder.ts
 
 # JetBrains (PyCharm, WebStorm, IntelliJ)
 .idea/

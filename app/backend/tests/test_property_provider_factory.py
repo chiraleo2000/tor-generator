@@ -12,10 +12,10 @@ DEPLOYMENT_MODE environment variable:
 """
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 # Mock qdrant_client if not installed (optional dependency)
@@ -27,12 +27,9 @@ if "qdrant_client" not in sys.modules:
 from app.providers.base import EmbeddingProvider, LLMProvider, VectorStoreProvider
 from app.providers.factory import (
     VALID_DEPLOYMENT_MODES,
-    VALID_EMBEDDING_PROVIDERS,
-    VALID_LLM_PROVIDERS,
-    VALID_VECTOR_STORE_PROVIDERS,
     ProviderFactory,
 )
-
+from app.providers.llm.usage_recording import llm_core
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -270,7 +267,7 @@ class TestProviderFactoryModeResolution:
             vector_store_provider=vs_choice,
         )
         factory = ProviderFactory(settings=settings_obj)
-        llm = factory.get_llm()
+        llm = llm_core(factory.get_llm())
 
         if llm_choice == "claude":
             assert isinstance(llm, ClaudeSonnetProvider)

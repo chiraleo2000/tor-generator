@@ -5,7 +5,7 @@
     "strict": true,
     "isolatedModules": true
   },
-  "files": [".vscode/tsconfig-placeholder.ts"],
+  "files": ["tsconfig.placeholder.ts"],
   "exclude": [
     "frontend",
     "backend",

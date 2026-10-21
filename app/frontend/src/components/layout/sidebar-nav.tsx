@@ -11,6 +11,7 @@ import {
   FileText,
   Users,
   Cpu,
+  Activity,
   ClipboardList,
   MessagesSquare,
   FileSearch,
@@ -47,6 +48,7 @@ const adminItems: NavItem[] = [
   { href: "/admin/knowledge-base", label: "ฐานความรู้ (จัดการ)", icon: BookOpen, testId: "nav-admin-knowledge-base" },
   { href: "/admin/users", label: "ผู้ใช้", icon: Users, testId: "nav-admin-users" },
   { href: "/admin/ai-settings", label: "การตั้งค่า AI", icon: Cpu, testId: "nav-admin-ai-settings" },
+  { href: "/admin/usage", label: "การใช้งาน", icon: Activity, testId: "nav-admin-usage" },
 ];
 
 export function SidebarNav({

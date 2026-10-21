@@ -7,8 +7,8 @@ Tests cover:
 - Error handling: invalid DEPLOYMENT_MODE, missing sub-provider vars, missing API keys
 """
 
-from unittest.mock import MagicMock, patch
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,13 +20,13 @@ if "qdrant_client" not in sys.modules:
 
 from app.config import Settings
 from app.providers.factory import (
-    ProviderFactory,
     VALID_DEPLOYMENT_MODES,
     VALID_EMBEDDING_PROVIDERS,
     VALID_LLM_PROVIDERS,
     VALID_VECTOR_STORE_PROVIDERS,
+    ProviderFactory,
 )
-
+from app.providers.llm.usage_recording import llm_core
 
 # ---------------------------------------------------------------------------
 # Helper: create Settings instances with overrides
@@ -98,7 +98,7 @@ class TestOnPremMode:
         settings = make_settings(deployment_mode="on_prem")
         factory = ProviderFactory(settings=settings)
         llm = factory.get_llm()
-        assert isinstance(llm, LMStudioLocalProvider)
+        assert isinstance(llm_core(llm), LMStudioLocalProvider)
 
     def test_get_embedding_returns_qwen3_provider(self):
         """on_prem mode should return Qwen3LocalEmbeddingProvider."""
@@ -191,7 +191,7 @@ class TestCloudMode:
         )
         factory = ProviderFactory(settings=settings)
         llm = factory.get_llm()
-        assert isinstance(llm, ClaudeSonnetProvider)
+        assert isinstance(llm_core(llm), ClaudeSonnetProvider)
 
     def test_get_embedding_returns_openai_provider(self):
         """OpenAI embeddings should return OpenAIEmbeddingProvider."""
@@ -266,7 +266,7 @@ class TestHybridMode:
         )
         factory = ProviderFactory(settings=settings)
 
-        assert isinstance(factory.get_llm(), ClaudeSonnetProvider)
+        assert isinstance(llm_core(factory.get_llm()), ClaudeSonnetProvider)
         assert isinstance(factory.get_embedding(), OpenAIEmbeddingProvider)
         mock_session = MagicMock()
         assert isinstance(factory.get_vector_store(mock_session), PgVectorProvider)
@@ -285,7 +285,7 @@ class TestHybridMode:
         )
         factory = ProviderFactory(settings=settings)
 
-        assert isinstance(factory.get_llm(), LMStudioLocalProvider)
+        assert isinstance(llm_core(factory.get_llm()), LMStudioLocalProvider)
         assert isinstance(factory.get_embedding(), Qwen3LocalEmbeddingProvider)
         assert isinstance(factory.get_vector_store(), QdrantProvider)
 
@@ -303,7 +303,7 @@ class TestHybridMode:
                 anthropic_api_key="sk-ant-test-key",
             )
             factory = ProviderFactory(settings=settings)
-            assert isinstance(factory.get_llm(), ClaudeSonnetProvider)
+            assert isinstance(llm_core(factory.get_llm()), ClaudeSonnetProvider)
             assert isinstance(factory.get_embedding(), Qwen3LocalEmbeddingProvider)
 
     def test_hybrid_rejects_missing_anthropic_key_for_claude(self):
@@ -356,7 +356,7 @@ class TestExpandedProviders:
             ollama_base_url="http://host.docker.internal:11434/v1",
         )
         llm = ProviderFactory(settings=settings).get_llm()
-        assert isinstance(llm, LMStudioLocalProvider)
+        assert isinstance(llm_core(llm), LMStudioLocalProvider)
         assert llm._base_url == "http://host.docker.internal:11434/v1"
 
     def test_on_prem_llama_cpp_uses_8080(self):
@@ -388,7 +388,7 @@ class TestExpandedProviders:
             embedding_provider="local",
             openai_api_key="sk-openai-test-key",
         )
-        assert isinstance(ProviderFactory(settings=settings).get_llm(), OpenAILLMProvider)
+        assert isinstance(llm_core(ProviderFactory(settings=settings).get_llm()), OpenAILLMProvider)
 
     def test_hybrid_gemini_chat_and_embeddings(self):
         from app.providers.embedding.gemini_provider import GeminiEmbeddingProvider
@@ -401,7 +401,7 @@ class TestExpandedProviders:
             gemini_api_key="gem-test-key",
         )
         factory = ProviderFactory(settings=settings)
-        assert isinstance(factory.get_llm(), GeminiLLMProvider)
+        assert isinstance(llm_core(factory.get_llm()), GeminiLLMProvider)
         assert isinstance(factory.get_embedding(), GeminiEmbeddingProvider)
 
     def test_hybrid_gemini_chat_local_embeddings_strips_model_and_uses_cloud_timeout(self):
@@ -419,7 +419,7 @@ class TestExpandedProviders:
         )
         factory = ProviderFactory(settings=settings)
         llm = factory.get_llm()
-        assert isinstance(llm, GeminiLLMProvider)
+        assert isinstance(llm_core(llm), GeminiLLMProvider)
         assert llm._model_name == "gemini-3.5-flash-lite"
         assert llm._timeout == 300.0
         assert isinstance(factory.get_embedding(), Qwen3LocalEmbeddingProvider)
@@ -435,7 +435,7 @@ class TestExpandedProviders:
             openai_api_key="sk-openai-test-key",
         )
         factory = ProviderFactory(settings=settings)
-        assert isinstance(factory.get_llm(), OpenAILLMProvider)
+        assert isinstance(llm_core(factory.get_llm()), OpenAILLMProvider)
 
     def test_cloud_gemini_does_not_need_openai_when_embeddings_are_gemini(self):
         from app.providers.llm.gemini_provider import GeminiLLMProvider
@@ -449,7 +449,7 @@ class TestExpandedProviders:
             anthropic_api_key="",
         )
         factory = ProviderFactory(settings=settings)
-        assert isinstance(factory.get_llm(), GeminiLLMProvider)
+        assert isinstance(llm_core(factory.get_llm()), GeminiLLMProvider)
 
     def test_cloud_gemini_rejects_missing_gemini_key(self):
         settings = make_settings(
@@ -500,7 +500,7 @@ class TestExpandedProviders:
             }
         )
         llm = ProviderFactory().get_llm()
-        assert isinstance(llm, LMStudioLocalProvider)
+        assert isinstance(llm_core(llm), LMStudioLocalProvider)
         assert llm._base_url == "http://127.0.0.1:11434/v1"
 
     def test_local_embedding_host_is_independent_of_chat(self):
@@ -680,7 +680,7 @@ class TestAzureAndBedrockFactory:
             factory = ProviderFactory(settings=azure_settings)
             llm = factory.get_llm("chat")
             embedding = factory.get_embedding()
-        assert llm.__class__.__name__ == "AzureFoundryLLMProvider"
+        assert llm_core(llm).__class__.__name__ == "AzureFoundryLLMProvider"
         assert embedding is not None
 
         bedrock_settings = make_settings(
@@ -696,7 +696,7 @@ class TestAzureAndBedrockFactory:
             "app.providers.bedrock_client.bedrock_runtime_client", return_value=client
         ):
             factory = ProviderFactory(settings=bedrock_settings)
-            assert factory.get_llm("chat").__class__.__name__ == "BedrockLLMProvider"
+            assert llm_core(factory.get_llm("chat")).__class__.__name__ == "BedrockLLMProvider"
             assert factory.get_embedding().__class__.__name__ == "BedrockEmbeddingProvider"
 
     def test_none_embedding_skips_credentials(self):

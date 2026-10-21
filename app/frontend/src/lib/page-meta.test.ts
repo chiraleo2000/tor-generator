@@ -8,6 +8,7 @@ describe("pageMeta", () => {
     expect(pageMeta("/chat").title).toBe("ถาม-ตอบ");
     expect(pageMeta("/help").title).toBe("คู่มือการใช้งาน");
     expect(pageMeta("/admin/ai-settings").title).toBe("การตั้งค่า AI");
+    expect(pageMeta("/admin/usage").title).toBe("การใช้งานระบบ");
     expect(pageMeta("/admin/users").title).toBe("ผู้ใช้");
     expect(pageMeta("/admin/templates").title).toBe("แม่แบบ");
     expect(pageMeta("/projects").title).toBe("แดชบอร์ด");

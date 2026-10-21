@@ -142,8 +142,10 @@ def test_factory_creates_openai_compatible_llm():
         jwt_secret="changeme_jwt_secret_at_least_32_characters_long",
     )
     factory = ProviderFactory(settings=settings)
+    from app.providers.llm.usage_recording import llm_core
+
     llm = factory.get_llm()
-    assert isinstance(llm, OpenAILLMProvider)
+    assert isinstance(llm_core(llm), OpenAILLMProvider)
 
 
 @pytest.mark.asyncio

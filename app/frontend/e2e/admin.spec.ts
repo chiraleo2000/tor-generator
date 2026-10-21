@@ -3,6 +3,7 @@ import {
   ADMIN_EMAIL,
   DEMO_PASSWORD,
   login,
+  pauseLikeUser,
   saveEvidence,
   skipReason,
   skipUnlessLive,
@@ -93,5 +94,37 @@ test.describe("Admin pages", () => {
       await expect(page.getByTestId("ai-settings-status")).toContainText(/เชื่อมต่อ/);
       await saveEvidence(page, "09-admin-ai-lm-studio");
     }
+  });
+
+  test("usage monitoring shows tokens, frequency, infra, and pricing", async ({ page }) => {
+    await login(page, ADMIN_EMAIL, DEMO_PASSWORD);
+    await expect(page.getByTestId("nav-admin-usage")).toBeVisible();
+    await page.getByTestId("nav-admin-usage").click();
+    await expect(page).toHaveURL(/\/admin\/usage/);
+    await expect(page.getByTestId("admin-usage-page")).toBeVisible();
+    await expect(
+      page.getByTestId("admin-usage-page").getByRole("heading", { name: "การใช้งานระบบ" })
+    ).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-requests")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-prompt")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-completion")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-cache-read")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-cost")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-rate")).toBeVisible();
+    await expect(page.getByTestId("admin-usage-alerts")).toBeVisible();
+    await expect(page.getByTestId("admin-usage-frequency")).toBeVisible();
+    await expect(page.getByTestId("admin-usage-infra")).toBeVisible();
+    await expect(page.getByTestId("usage-service-postgres")).toContainText("up");
+    await expect(page.getByTestId("usage-service-redis")).toContainText("up");
+    await expect(page.getByTestId("usage-rate-limit")).toBeVisible();
+    await expect(page.getByTestId("usage-queue")).toBeVisible();
+    await expect(page.getByTestId("admin-usage-pricing")).toBeVisible();
+    await expect(page.getByTestId("usage-rate-input")).toBeVisible();
+    await page.getByTestId("usage-range-168").click();
+    await expect(page.getByTestId("usage-kpi-requests")).toBeVisible();
+    await pauseLikeUser(page, 700);
+    await page.getByTestId("usage-range-24").click();
+    await expect(page.getByTestId("usage-kpi-total")).toBeVisible();
+    await saveEvidence(page, "19-admin-usage");
   });
 });

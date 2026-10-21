@@ -222,12 +222,18 @@ class ProviderFactory:
 
         ``task`` selects local routing (LM Studio vs SGLang) when on-prem.
         Call as ``get_llm("draft")`` / ``get_llm("structured")``.
+        The returned client records token usage for the admin monitor.
         """
+        from app.providers.llm.usage_recording import UsageRecordingLLM
+
         provider = _attr(self._settings, "llm_provider", "lm_studio")
         if provider in LOCAL_LLM_PROVIDERS:
-            return self._create_local_llm_provider(self._local_kind_for_task(task))
+            kind = self._local_kind_for_task(task)
+            inner = self._create_local_llm_provider(kind)
+            return UsageRecordingLLM(inner, provider_name=str(kind), task=task)
         primary = self._create_cloud_llm_provider(provider)
-        return self._with_llm_fallback(primary, provider)
+        inner = self._with_llm_fallback(primary, provider)
+        return UsageRecordingLLM(inner, provider_name=str(provider), task=task)
 
     def _with_llm_fallback(self, primary: LLMProvider, kind: str) -> LLMProvider:
         """Wrap Bedrock with Gemini only when LLM_FALLBACK_PROVIDER=gemini."""

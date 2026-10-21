@@ -15,6 +15,7 @@ from redis.asyncio import Redis
 
 from app.config import get_settings
 from app.providers.constants import LOCAL_EMBEDDING_PROVIDERS, LOCAL_LLM_PROVIDERS
+from app.usage.context import bind_llm_request
 
 logger = logging.getLogger(__name__)
 
@@ -356,7 +357,8 @@ async def admit(
     if _task_holds.get(task_id, 0) > 0:
         _task_holds[task_id] += 1
         try:
-            yield rid
+            with bind_llm_request(kind, rid):
+                yield rid
         finally:
             _task_holds[task_id] = max(0, _task_holds.get(task_id, 1) - 1)
         return
@@ -378,7 +380,8 @@ async def admit(
                 # fail-open so cloud chat still works. A local server still
                 # takes the process lock above.
                 logger.warning("LLM admission skipped: Redis unavailable")
-            yield rid
+            with bind_llm_request(kind, rid):
+                yield rid
             return
 
         waiters_key, slots_key, _ = _keys(kind, rid, settings)
@@ -402,7 +405,8 @@ async def admit(
         stop_beat = asyncio.Event()
         beater = asyncio.create_task(_heartbeat_running(redis, rid, kind, stop_beat))
         try:
-            yield rid
+            with bind_llm_request(kind, rid):
+                yield rid
         finally:
             stop_beat.set()
             beater.cancel()

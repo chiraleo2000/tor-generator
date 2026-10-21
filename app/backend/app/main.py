@@ -8,6 +8,8 @@ Initializes the TOR Drafting and Review API with:
 - API v1 router
 """
 
+import asyncio
+import contextlib
 import logging
 import time
 import uuid
@@ -241,8 +243,18 @@ async def lifespan(app: FastAPI):
     _startup_mongo(app, settings)
     await _startup_neo4j(app, settings)
     await _startup_db_side_effects(app, getattr(app.state, "db_session_factory", None))
-    yield
-    await _shutdown_resources(app)
+    from app.usage.sweep import usage_sweep_loop
+
+    stop_usage = asyncio.Event()
+    sweep_task = asyncio.create_task(usage_sweep_loop(stop_usage))
+    try:
+        yield
+    finally:
+        stop_usage.set()
+        sweep_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweep_task
+        await _shutdown_resources(app)
 
 
 # -----------------------------------------------------------------------------
@@ -251,7 +263,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TOR Drafting and Review API",
-    description="API for drafting, reviewing, and exporting Terms of Reference documents compliant with Thai procurement law (พ.ร.บ. 2560)",
+    description=(
+        "API for drafting, reviewing, and exporting Terms of Reference documents "
+        "compliant with Thai procurement law (พ.ร.บ. 2560)"
+    ),
     version="0.2.3",
     lifespan=lifespan,
     redirect_slashes=False,

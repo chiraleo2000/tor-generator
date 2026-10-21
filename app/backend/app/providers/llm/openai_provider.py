@@ -14,6 +14,28 @@ from app.providers.model_capabilities import filter_llm_kwargs
 logger = logging.getLogger(__name__)
 
 
+def _cached_prompt_tokens(usage: object) -> int:
+    if usage is None:
+        return 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is None and isinstance(usage, dict):
+        details = usage.get("prompt_tokens_details")
+    if details is None:
+        return 0
+    if isinstance(details, dict):
+        return int(details.get("cached_tokens") or 0)
+    return int(getattr(details, "cached_tokens", 0) or 0)
+
+
+def _openai_usage(usage: object) -> dict[str, int]:
+    return {
+        "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0,
+        "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0,
+        "total_tokens": int(getattr(usage, "total_tokens", 0) or 0) if usage else 0,
+        "cache_read_input_tokens": _cached_prompt_tokens(usage),
+    }
+
+
 class OpenAILLMProvider(LLMProvider):
     """Cloud OpenAI chat completions client."""
 
@@ -54,15 +76,10 @@ class OpenAILLMProvider(LLMProvider):
                 request_kwargs["tools"] = tools
             response = await self._client.chat.completions.create(**request_kwargs)
             choice = response.choices[0]
-            usage = response.usage
             return LLMResponse(
                 content=choice.message.content or "",
                 model=response.model or self._model_name,
-                usage={
-                    "prompt_tokens": usage.prompt_tokens if usage else 0,
-                    "completion_tokens": usage.completion_tokens if usage else 0,
-                    "total_tokens": usage.total_tokens if usage else 0,
-                },
+                usage=_openai_usage(response.usage),
                 finish_reason=choice.finish_reason or "stop",
             )
         except APITimeoutError as exc:

@@ -122,6 +122,7 @@ def _usage_counts(payload: dict) -> dict:
         "prompt_tokens": usage_meta.get("promptTokenCount") or 0,
         "completion_tokens": usage_meta.get("candidatesTokenCount") or 0,
         "total_tokens": usage_meta.get("totalTokenCount") or 0,
+        "cache_read_input_tokens": usage_meta.get("cachedContentTokenCount") or 0,
     }
 
 

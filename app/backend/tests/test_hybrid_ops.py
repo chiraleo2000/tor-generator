@@ -8,12 +8,13 @@ import pytest
 
 from app.providers.factory import ProviderFactory
 from app.providers.llm.lm_studio_provider import LMStudioLocalProvider
+from app.providers.llm.usage_recording import llm_core
 from tests.test_provider_factory import make_settings
 
 
 def test_factory_resolves_all_three_modes():
     on_prem = ProviderFactory(make_settings(deployment_mode="on_prem"))
-    assert on_prem.get_llm().__class__.__name__ == "LMStudioLocalProvider"
+    assert llm_core(on_prem.get_llm()).__class__.__name__ == "LMStudioLocalProvider"
 
     cloud = ProviderFactory(
         make_settings(
@@ -23,7 +24,7 @@ def test_factory_resolves_all_three_modes():
             openai_api_key="sk-test",
         )
     )
-    assert cloud.get_llm().__class__.__name__ == "ClaudeSonnetProvider"
+    assert llm_core(cloud.get_llm()).__class__.__name__ == "ClaudeSonnetProvider"
 
     cloud_local_chat = ProviderFactory(
         make_settings(
@@ -33,7 +34,7 @@ def test_factory_resolves_all_three_modes():
             openai_api_key="sk-test",
         )
     )
-    assert cloud_local_chat.get_llm().__class__.__name__ == "LMStudioLocalProvider"
+    assert llm_core(cloud_local_chat.get_llm()).__class__.__name__ == "LMStudioLocalProvider"
 
     hybrid = ProviderFactory(
         make_settings(
@@ -43,7 +44,7 @@ def test_factory_resolves_all_three_modes():
             vector_store_provider="pgvector",
         )
     )
-    assert hybrid.get_llm().__class__.__name__ == "LMStudioLocalProvider"
+    assert llm_core(hybrid.get_llm()).__class__.__name__ == "LMStudioLocalProvider"
 
 
 @pytest.mark.asyncio

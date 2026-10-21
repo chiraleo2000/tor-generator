@@ -36,7 +36,7 @@ export default function HelpPage() {
       <div className="mb-2">
         <h1 className="text-2xl font-extrabold text-navy">คู่มือการใช้งาน</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          คำอธิบายระดับผู้ใช้และภาพประกอบแต่ละส่วนของระบบ (v0.9.8)
+          คำอธิบายระดับผู้ใช้และภาพประกอบแต่ละส่วนของระบบ (v0.9.9)
         </p>
       </div>
       <div className="mb-5 flex flex-wrap gap-1.5 border-b-2 pb-0">

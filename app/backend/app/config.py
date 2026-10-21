@@ -10,9 +10,9 @@ Local Compose may set PIN_ON_PREM_LLM=true to keep chat on a local model when
 LLM_PROVIDER is itself local.
 """
 
-from functools import cached_property
 import logging
 import os
+from functools import cached_property
 from typing import Any, Literal
 
 from pydantic import field_validator
@@ -258,6 +258,14 @@ class Settings(BaseSettings):
     llm_max_concurrent: int = 8
     embedding_max_concurrent: int = 16
     llm_queue_wait_timeout_seconds: float = 720.0
+    usage_daily_cost_usd_limit: float = 25.0
+    usage_burst_requests: int = 40
+    usage_burst_window_minutes: int = 15
+    usage_spike_multiplier: float = 5.0
+    usage_spike_floor_tokens: int = 100_000
+    usage_cache_miss_prompt_tokens: int = 8_000
+    usage_admission_wait_p95_ms: int = 120_000
+    usage_sweep_seconds: int = 300
 
     # -------------------------------------------------------------------------
     # Qdrant (Optional)

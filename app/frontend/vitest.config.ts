@@ -29,6 +29,7 @@ export default defineConfig({
         "src/components/draft/**/*.tsx",
         "src/app/**/review/page.tsx",
         "src/app/**/admin/ai-settings/page.tsx",
+        "src/app/**/admin/usage/page.tsx",
         "src/app/**/knowledge-base/page.tsx",
         "src/components/wizard/inline-validation-feedback.tsx",
         "src/components/chat/chat-shell.tsx",

@@ -10,6 +10,7 @@ from app.models.chat_room import ChatRoom
 from app.models.kb_chat_session import KBChatSession
 from app.models.kb_chunk import KBChunk
 from app.models.knowledge_base_document import KnowledgeBaseDocument
+from app.models.llm_usage import LlmPricingRate, LlmUsageEvent, UsageAlert
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.review_job import ReviewJob
@@ -30,6 +31,9 @@ __all__ = [
     "Template",
     "TemplateVersion",
     "KnowledgeBaseDocument",
+    "LlmUsageEvent",
+    "UsageAlert",
+    "LlmPricingRate",
     "KBChunk",
     "Suggestion",
     "AuditLog",

@@ -193,6 +193,27 @@ test.describe.serial("Demo walkthrough video (draft, review, analyze, chat, admi
     expect(visibleText).not.toMatch(/AWS_BEARER_TOKEN|sk-ant-|sk-proj-|AIza[0-9A-Za-z_-]{20,}/);
     await saveEvidence(page, "demo-05-admin-ai");
   });
+
+  test("6 หน้าติดตามการใช้งาน โทเคน ค่าใช้จ่าย และโครงสร้างพื้นฐาน", async ({ page }) => {
+    test.setTimeout(180_000);
+    await login(page, ADMIN_EMAIL, DEMO_PASSWORD);
+    await expect(page.getByTestId("nav-admin-usage")).toBeVisible();
+    await page.getByTestId("nav-admin-usage").click();
+    await expect(page).toHaveURL(/\/admin\/usage/);
+    await expect(page.getByTestId("admin-usage-page")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-requests")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-prompt")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-completion")).toBeVisible();
+    await expect(page.getByTestId("usage-kpi-cost")).toBeVisible();
+    await expect(page.getByTestId("admin-usage-alerts")).toBeVisible();
+    await expect(page.getByTestId("admin-usage-infra")).toBeVisible();
+    await expect(page.getByTestId("usage-service-postgres")).toContainText("up");
+    await page.getByTestId("usage-range-168").click();
+    await pauseLikeUser(page, 800);
+    await page.getByTestId("usage-range-24").click();
+    await expect(page.getByTestId("usage-rate-input")).toBeVisible();
+    await saveEvidence(page, "demo-06-usage");
+  });
 });
 
 async function showCostAndTrainingIfPresent(page: Page) {

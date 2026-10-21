@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from app.api.constants import PROJECTS_PREFIX
 from app.api.v1.endpoints import (
     admin_ai_settings,
+    admin_usage,
     admin_users,
     agent,
     ai_queue,
@@ -70,6 +71,7 @@ api_router.include_router(admin_users.router, prefix="/admin/users", tags=["admi
 api_router.include_router(
     admin_ai_settings.router, prefix="/admin/ai-settings", tags=["admin-ai-settings"]
 )
+api_router.include_router(admin_usage.router, prefix="/admin/usage", tags=["admin-usage"])
 api_router.include_router(standalone_review.router, prefix="/review", tags=["standalone-review"])
 api_router.include_router(analyze.router, prefix="/analyze", tags=["analyze"])
 

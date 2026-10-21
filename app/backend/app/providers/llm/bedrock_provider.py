@@ -12,6 +12,21 @@ from app.providers.bedrock_client import call_bedrock_with_retry
 logger = logging.getLogger(__name__)
 
 
+def _bedrock_usage(usage: dict | None) -> dict[str, int]:
+    payload = usage or {}
+    return {
+        "prompt_tokens": int(payload.get("inputTokens") or 0),
+        "completion_tokens": int(payload.get("outputTokens") or 0),
+        "total_tokens": int(payload.get("totalTokens") or 0),
+        "cache_creation_input_tokens": int(
+            payload.get("cacheWriteInputTokens") or payload.get("cacheWriteInputTokenCount") or 0
+        ),
+        "cache_read_input_tokens": int(
+            payload.get("cacheReadInputTokens") or payload.get("cacheReadInputTokenCount") or 0
+        ),
+    }
+
+
 def _bedrock_tool_spec(tool: Any) -> dict[str, Any] | None:
     """Map one OpenAI-style tool, or a native toolSpec, to a Converse tool entry."""
     if not isinstance(tool, dict):
@@ -223,15 +238,10 @@ class BedrockLLMProvider(LLMProvider):
             raise ConnectionError(f"Bedrock endpoint unreachable: {exc}") from exc
         chunks = response.get("output", {}).get("message", {}).get("content", [])
         text = "".join(part.get("text", "") for part in chunks if isinstance(part, dict))
-        usage = response.get("usage") or {}
         return LLMResponse(
             content=text,
             model=self._model_id,
-            usage={
-                "prompt_tokens": int(usage.get("inputTokens") or 0),
-                "completion_tokens": int(usage.get("outputTokens") or 0),
-                "total_tokens": int(usage.get("totalTokens") or 0),
-            },
+            usage=_bedrock_usage(response.get("usage")),
             finish_reason=str(response.get("stopReason") or "stop"),
         )
 
