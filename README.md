@@ -1,8 +1,8 @@
 ﻿# TOR Generator
 
-ระบบร่างและตรวจสอบ TOR ภาครัฐ (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560
+ระบบช่วยเจ้าหน้าที่พัสดุร่าง ตรวจ และถาม-ตอบเอกสารขอบเขตงาน (Terms of Reference) ตาม พ.ร.บ. การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ พ.ศ. 2560 งานเดินเป็น **5 Phase (0–4)** ที่ `/projects/{id}/draft`: รับไฟล์และจัดเข้าช่อง, เติมข้อเท็จจริง, ร่างหมวดด้วยโมเดล, ตรวจกฎแล้วส่งออก Word/PDF ถาม-ตอบคลังอยู่ที่ `/chat` ตรวจไฟล์ภายนอกอยู่ที่ `/review`
 
-แอปที่รันจริงคือ **v0.9.9**: Next.js 14 + FastAPI, พื้นที่ทำงาน **5 Phase (0–4)** ที่ `/projects/{id}/draft`, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) และ Amazon Quick connector (`amazon-quick :8767` → live pgvector) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md)  
+แอปที่รันจริงคือ **v0.10.0**: Next.js 14 + FastAPI, คลังความรู้ RAG จาก PDF ต้นฉบับ + MCP retrieve ท้องถิ่น (`mcp-rag :8765`) และ Amazon Quick connector (`amazon-quick :8767` → live pgvector) ต่อยอดโครง AWS ตาม [Discussions/30](Discussions/30-DEV-ASSIGNMENT-MCP-AND-AWS.md) ผู้ดูแลเห็นการใช้โมเดลที่ **การใช้งาน** (`/admin/usage`): จำนวนคำขอ, โทเคนเข้า/ออก, โทเคนแคช, ค่าใช้จ่ายโดยประมาณ, ความถี่, สุขภาพบริการพื้นฐาน และแจ้งเตือนในแอปเมื่อใช้ผิดปกติ  
 **Production แนะนำ:** Amazon Bedrock — แผนขึ้น webapp บน AWS: [Discussions/38-AWS-WEBAPP-DEPLOYMENT-PLAN.md](Discussions/38-AWS-WEBAPP-DEPLOYMENT-PLAN.md) (เส้น PN/EC2 หรือ ECS) · ทางลัด Bedrock บน EC2: [Discussions/20-AWS_BEDROCK_SETUP.md](Discussions/20-AWS_BEDROCK_SETUP.md)  
 **Amazon Quick บน AWS:** [app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md](app/infra/quick/คู่มือติดตั้ง-AWS-cloud.md)  
 **Dev:** LM Studio / Ollama / llama.cpp / SGLang หรือคลาวด์อื่น — สลับจากหน้าผู้ดูแลได้ทั้งหมด
@@ -58,6 +58,21 @@ docker compose -p tor-app --env-file .env exec backend python -m app.seed_db
 ```
 
 บัญชีทดลอง (รหัส `Passw0rd!`): `officer@example.go.th`, `admin@example.go.th`, `reviewer@example.go.th`
+
+### ติดตามการใช้งาน (ผู้ดูแล)
+
+หน้า **การใช้งาน** ที่ `/admin/usage` เปิดได้เฉพาะบทบาท `admin` ระบบบันทึกทุกครั้งที่เรียกโมเดล (ร่าง, ตรวจ, ถาม-ตอบ, วิเคราะห์) แล้วสรุปในช่วง 24 ชั่วโมงหรือ 7 วัน
+
+| สิ่งที่เห็น | ความหมาย |
+|------------|----------|
+| คำขอ, โทเคนเข้า/ออก, แคชเขียน/แคชอ่าน | ปริมาณการใช้จริงจากผู้ให้บริการ ถ้าสตรีมไม่มีตัวเลขโทเคน ระบบประมาณแล้วติดป้ายว่าเป็นการประมาณ |
+| ค่าใช้จ่าย (USD) | โทเคน × ราคาต่อ 1 ล้านโทเคน ผู้ให้บริการในเครื่อง (`lm_studio`, `ollama`, `llama.cpp`, `sglang`) ค่าเริ่มต้นเป็น 0 |
+| ครั้งต่อชั่วโมง และกราฟความถี่ | จำนวนครั้งที่เรียกโมเดลในช่วงที่เลือก |
+| การแจ้งเตือน | ในแอปเท่านั้น: โทเคนพุ่ง, เรียกถี่, ค่าใช้จ่ายวันนี้เกินงบ, พรอมต์ยาวแต่ไม่โดนแคช, บริการพื้นฐานล่มหรือคิวรอนาน |
+| โครงสร้างพื้นฐาน | สถานะเดียวกับ `/health` (`postgres` `redis` `minio` `mongo` `neo4j`) พร้อมเพดานคำขอ AI ต่อนาทีและคิวรอโมเดล |
+| ราคา | ผู้ดูแลแก้ราคาต่อผู้ให้บริการ/โมเดลได้ทันที โมเดลที่ไม่มีแถวใช้ราคา `*` |
+
+งบและเกณฑ์แจ้งเตือนตั้งใน env (ชื่อเดียวกันใน `Settings`): `USAGE_DAILY_COST_USD_LIMIT` (25), `USAGE_BURST_REQUESTS` (40), `USAGE_SPIKE_MULTIPLIER` (5), `USAGE_SPIKE_FLOOR_TOKENS` (100000), `USAGE_SWEEP_SECONDS` (300) ตารางสร้างตอน backend เริ่มด้วย Alembic `010_llm_usage`
 
 ### คลังความรู้ RAG (บังคับ)
 
